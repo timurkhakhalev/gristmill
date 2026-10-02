@@ -48,6 +48,9 @@ stops the linked recording and offers Restart. Losing the browser connection
 keeps recording and shows a reminder after five minutes.
 
 See [setup, lifecycle and verification limits](docs/google-meet-companion.md).
+[Telemost support](docs/telemost-companion.md) recognizes connected calls, local
+mute and the verified organizer Leave flow. It collects visible participant and
+activity evidence for speaker suggestions using an initial timing estimate.
 `pnpm run build:companion` creates separate production and Dev extensions, with
 distinct icons, IDs and native hosts. Dev connects only to Gristmill Dev (including
 `pnpm dev`); production connects only to Gristmill. Technical popup diagnostics
@@ -103,9 +106,13 @@ still creates its separate detailed log.
 The runner uses at most two ordinary test processes, with compiler/native and
 shared-resource tests in a sequential phase. Use `pnpm test -- --processes 1`
 for a one-process diagnostic run. Full runs share a lock across Git worktrees.
-Build the macOS arm64 app with `pnpm run build:mac:arm64` (Xcode command-line tools required). For a local install without a Developer ID certificate, use `pnpm run build:mac:arm64:local` to ad-hoc sign the app with its bundle identifier so macOS can register it for Accessibility access.
+Build the macOS arm64 app with `pnpm run build:mac:arm64` (Xcode command-line tools required). For a local install, use `pnpm run build:mac:arm64:local` with the persistent self-signed `Gristmill Local Signing` identity in your login keychain. The local build skips notarization and requires that identity; it is not a Developer ID release. Create or import this identity on each build Mac before using the local command. Keep its private key so rebuilds retain the same signing identity.
 The package does not include Whisper, llama.cpp or sherpa-onnx executables. The first use of a downloaded local model installs its required engine into the app's user data; cloud routes do not install them.
-An ad-hoc signature changes with each rebuild, so macOS may require microphone, system audio and Accessibility access again after a local update. Sign with a stable Apple certificate to preserve those grants across updates.
+For a local update, quit Gristmill and run `pnpm run update:local`. It builds the local production bundle, installs it and launches the installed version. To install an already built bundle without launching, use `node scripts/install-macos-local.cts`. The installer verifies the bundle, replaces `/Applications/Gristmill.app`, registers that path with Launch Services and keeps the previous version in `/Applications/.gristmill-backup.zip`. It refuses to replace a running app and restores the archive if installation fails. Do not retain renamed backups such as `previous.app`: macOS can track those as applications in its permission lists. Existing stale Accessibility entries must be removed in System Settings; the installer does not modify privacy grants.
+
+An ad-hoc signature changes with each rebuild. The persistent local certificate keeps the app's signing requirement stable across rebuilds. The first transition to this identity may require fresh Keychain and privacy permissions; grant Keychain access with **Always Allow** when prompted. Use a Developer ID Application certificate and notarization for distribution to other Macs.
+
+During the first local build, `codesign` may request access to the certificate's private key. Enter your login keychain password and choose **Always Allow**. **Allow** grants access once, so packaging may ask again for each embedded binary. This build-time permission is separate from the installed app's Keychain access.
 Build a separate unsigned development app with `pnpm run pack:dev`. It appears at `dist-dev/mac-arm64/Gristmill Dev.app`, uses its own `Gristmill-development` profile, and includes the Notes Debug menu and orange icons. Debug states are interactive and kept in memory; they do not save notes, record audio, or call providers.
 On its first launch, the development profile takes an additive, one-way snapshot of the production profile. `pnpm dev` and the packaged Dev app share the development database. Existing dev data is kept; `GRISTMILL_REFRESH_SNAPSHOT=1` copies only missing production files. Reset All App Data in Dev prevents automatic reseeding on later launches. Explicit `--user-data-dir` test profiles never import production data.
 Only the integrator runs tests/build/install, sequentially. `pnpm dev` and
@@ -122,6 +129,8 @@ packaged runtime before creating installers.
 - [BB agent route and pinned CLI version](docs/bb-integration.md)
 - [OpenWhispr cutover](docs/openwhispr-cutover.md)
 - [Delivery plan](docs/delivery-plan.md)
+
+Tooling inventory and TypeScript execution boundaries: [scripts](docs/scripts.md).
 
 ## Working name
 

@@ -18,6 +18,15 @@ Do not add a replacement dashboard without a product decision.
 Use isolated profiles for runtime smoke tests; never use the original
 OpenWhispr profile. Do not add compatibility shims.
 
+## Local updates
+
+Use `pnpm run update:local` when asked to update the installed local app. It
+builds, installs at `/Applications/Gristmill.app` with rollback and launches it.
+Quit Gristmill first, saving active or paused recordings. Never rename app backups,
+reset privacy grants or delete user settings as part of an update. For verification
+use a temporary `--target` together with `--user-data-dir`; updating the actual
+installed app requires a user request. See [script inventory](docs/scripts.md).
+
 ## Parallel agent resource limits
 
 The [quality steering](.memory-bank/steerings/quality.md) defines check selection,

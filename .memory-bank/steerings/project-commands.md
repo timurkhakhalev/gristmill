@@ -51,7 +51,7 @@ The optional leading `--` also works with selectors.
 - `pnpm run typecheck:main`, `pnpm run typecheck:renderer`,
   `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select
   compiler targets with the native TypeScript 7 `tsc`. `pnpm run typecheck`
-  runs those targets and `typecheck:companion` sequentially. `pnpm run build:main` uses the same native
+  runs those targets, `typecheck:companion` and `typecheck:scripts` sequentially. `pnpm run build:main` uses the same native
   compiler for emitted Electron code. The `typescript` dependency aliases
   TypeScript 6 for compiler-API consumers (test probes and ESLint); its
   executable is `tsc6`. Keep the CLI and API packages distinct until
@@ -71,12 +71,14 @@ The optional leading `--` also works with selectors.
 ## Google Meet extension
 
 - `pnpm run build:companion` typechecks and bundles the MV3 browser code into
-  `build/companion-dev`; load that directory unpacked in Chrome Stable.
+  `build/companion` and `build/companion-dev`; load the matching channel unpacked
+  in Chrome Stable.
 - `pnpm run typecheck:companion` checks the DOM-only extension graph. Browser
   entries must not import Node/Electron code. The native host is a separate
   entry in `build:main` and runs with the bundled Electron Node runtime.
-- Packaging commands build and copy the Dev extension to `companion-dev` in app
-  resources. No production extension ID or Web Store registration is supplied.
+- Production packaging copies `build/companion` to `companion` in app resources;
+  Dev packaging copies `build/companion-dev` to `companion-dev`. Each channel uses
+  its own extension identity and native host registration.
 
 ## Setup and application verification
 
@@ -89,17 +91,21 @@ The optional leading `--` also works with selectors.
 - `pnpm start`: run Electron after the configured preparation steps.
 - `pnpm run pack:dev`: build an unsigned development app. Close the packaged
   Gristmill Dev app first. This is not a prerequisite for ordinary unit tests.
-- `pnpm run build:mac:arm64:local`: build the production app with an ad-hoc
-  signature using `com.khakhalev.gristmill` for local macOS permission prompts.
-  Close the running app before packaging; this is not a Developer ID release.
-  macOS can require fresh privacy grants after each ad-hoc signed rebuild.
+- `pnpm run build:mac:arm64:local`: build the production app with the persistent
+  self-signed `Gristmill Local Signing` identity from the login keychain, without
+  notarization. Create or import that identity on each build Mac first. Close
+  the running app before packaging; this is not a Developer ID release.
+  The first signed update may require new Keychain and privacy grants.
   The build packages local engine installers but does not download or bundle
   Whisper, llama.cpp or sherpa-onnx engines.
+- `pnpm run update:local`: after quitting Gristmill, build the local production app, install it and launch the installed version. For verification use `--target /temporary/Gristmill.app --user-data-dir /temporary/profile`. To install an already built bundle without launching, use `node scripts/install-macos-local.cts`. It verifies the signature, preserves a ZIP backup, replaces `/Applications/Gristmill.app` and registers that stable path. Never leave renamed `.app` backups such as `previous.app`: macOS may track them in permission lists. The installer refuses a running app and does not reset privacy grants.
 
 ## Command maintenance
 
 [package.json](../../package.json) and
-[run-tests.js](../../scripts/run-tests.js) define executable behavior. Update
+[run-tests.cts](../../scripts/run-tests.cts) define executable behavior. Update
 this reference in the same change when their public semantics change. Confirm
 both successful selection and a nonzero exit on invalid selection when editing
 the runner. Keep documentation examples executable with installed dependencies.
+
+Tooling sources, consumers and runtime boundaries are listed in [script inventory](../../docs/scripts.md).

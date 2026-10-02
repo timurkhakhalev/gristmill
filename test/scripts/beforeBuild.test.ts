@@ -1,3 +1,4 @@
+const { stripTypeScriptTypes }: typeof import("node:module") = require("node:module");
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs: typeof import("node:fs") = require("node:fs");
@@ -7,7 +8,7 @@ const vm: typeof import("node:vm") = require("node:vm");
 test("packaging rebuilds native modules even after Node tests replaced the binary", async () => {
   const calls: Array<Record<string, unknown>> = [];
   const module: { exports: unknown } = { exports: {} };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../../scripts/beforeBuild.js"), "utf8"), {
+  vm.runInNewContext(stripTypeScriptTypes(fs.readFileSync(path.join(__dirname, "../../scripts/beforeBuild.cts"), "utf8")), {
     module,
     require(name: string) {
       if (name === "@electron/rebuild") return { rebuild: async (options: Record<string, unknown>) => calls.push(options) };

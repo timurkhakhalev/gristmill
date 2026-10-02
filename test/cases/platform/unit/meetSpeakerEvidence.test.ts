@@ -43,3 +43,12 @@ test("multi-active observations remain ambiguous instead of choosing a tile", ()
   evidence.observe(binding, context(1, ["alice", "bob"]), mapping(1)); evidence.observe(binding, context(2, ["alice", "bob"]), mapping(2));
   assert.equal(rows.length, 2); assert.ok(rows.every((row) => row.activity === "ambiguous" && row.activeParticipantIds.length === 2));
 });
+
+
+test("shared browser evidence preserves Telemost provenance without inventing activity", () => {
+  const rows: MeetingPlatformObservation[] = []; const evidence = new MeetSpeakerEvidence(row => rows.push(row));
+  const telemost: CompanionBinding = { ...binding, ref: { ...binding.ref, platform: "telemost", callId: "12345678901234" } };
+  evidence.observe(telemost, context(1, []), mapping(1));
+  evidence.observe(telemost, context(2, []), mapping(2));
+  assert.ok(rows.every(row => row.platform === "telemost" && row.activity === "candidate"));
+});

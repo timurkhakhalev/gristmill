@@ -3,7 +3,7 @@ const test: typeof import("node:test") = require("node:test");
 const fs: typeof import("node:fs") = require("node:fs");
 const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
-const { runTests, runCommand, acquireFullRunLock } = require("../../scripts/run-tests");
+const { runTests, runCommand, acquireFullRunLock } = require("../../scripts/run-tests.cts");
 
 type RunnerCall = { prepare: string } | { binary: string; args: string[]; env: Record<string, string | undefined> };
 

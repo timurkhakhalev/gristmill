@@ -18,6 +18,7 @@ const sameCandidate = (a: CompanionCandidateKey, b: CompanionCandidateKey) =>
   a.ref.sessionId === b.ref.sessionId &&
   a.ref.tabId === b.ref.tabId &&
   a.ref.documentId === b.ref.documentId &&
+  a.ref.platform === b.ref.platform &&
   a.ref.callId === b.ref.callId;
 const keyFor = (key: CompanionCandidateKey) =>
   JSON.stringify([
@@ -26,6 +27,7 @@ const keyFor = (key: CompanionCandidateKey) =>
     key.ref.sessionId,
     key.ref.tabId,
     key.ref.documentId,
+    key.ref.platform,
     key.ref.callId,
   ]);
 
@@ -115,6 +117,7 @@ export class CompanionCoordinator {
       binding.ref.installationId === key.ref.installationId &&
       binding.ref.sessionId === key.ref.sessionId &&
       binding.ref.tabId === key.ref.tabId &&
+      binding.ref.platform === key.ref.platform &&
       binding.ref.callId === key.ref.callId &&
       !this.candidates.has(keyFor(binding))
     ) {

@@ -4,6 +4,7 @@ import { companionCallRefSchema, companionContextSchema, companionDesktopMessage
 export const popupStatusSchema = z.object({
   connected: z.boolean(), snapshot: companionDesktopMessageSchema.nullable(), error: z.string(),
   canControlMic: z.boolean(),
+  contextErrors: z.array(z.object({ tabId: z.number().int(), reason: z.string().max(300) }).strict()).max(32),
   contexts: z.array(z.object({ ref: companionCallRefSchema, context: companionContextSchema, receivedAt: z.number() }).strict()).max(32),
 }).strict();
 export type PopupStatus = z.infer<typeof popupStatusSchema>;
@@ -17,7 +18,7 @@ function readPopupState(reply: PopupStatus, activeTabId: number | undefined, now
   const binding = snapshot?.binding;
   const thisCall = !!binding && !!observed && binding.installationId === observed.ref.installationId &&
     binding.sessionId === observed.ref.sessionId && binding.tabId === observed.ref.tabId &&
-    binding.documentId === observed.ref.documentId && binding.callId === observed.ref.callId;
+    binding.documentId === observed.ref.documentId && binding.platform === observed.ref.platform && binding.callId === observed.ref.callId;
   const recording = snapshot?.recordingState === "recording";
   const linked = !!binding;
   return { snapshot, observed, context, binding, thisCall, recording, linked };
@@ -28,15 +29,24 @@ export function popupDiagnostics(reply: PopupStatus, activeTabId: number | undef
   const rows: Array<[string, string]> = [
     ["App connection", snapshot ? "Connected" : "Disconnected"],
     ["Recording", !snapshot ? "Unknown" : recording ? "Recording" : snapshot.recordingState === "paused" ? "Paused" : "Stopped"],
-    ["This Meet tab", !observed ? "No context received" : !context ? "Context is stale" :
+    ["This call tab", !observed ? "No context received" : !context ? "Context is stale" :
       context.health !== "recognized" ? context.health === "unreadable" ? "Cannot read controls" : "Controls not recognized" :
       context.presence === "in-call" ? `In call · ${observed.ref.callId}` : context.presence === "not-in-call" ? "Not in call" : "Unknown"],
     ["Recording link", !snapshot ? "Unknown" : !binding ? "Not linked" : thisCall ? "Linked to this call" : `Linked to another call · ${binding.callId}`],
-    ["Meet microphone", context?.micMuted === true ? "Muted" : context?.micMuted === false ? "On" : "Unknown"],
+    ["Call microphone", context?.micMuted === true ? "Muted" : context?.micMuted === false ? "On" : "Unknown"],
     ["Recorded microphone", !snapshot ? "Unknown" : !recording ? "Not recording" :
       snapshot.manualMuted && snapshot.platformMuted ? "Muted manually and by platform" :
       snapshot.manualMuted ? "Muted manually" : snapshot.platformMuted ? "Muted by platform" : "Recording"],
   ];
+  const rejected = reply.contextErrors.find(value => value.tabId === activeTabId);
+  if (rejected) rows.push(["Last rejected context", rejected.reason]);
+  if (context) {
+    rows.push(["Participants", context.participants.length
+      ? context.participants.map(person => person.name || "Unnamed").join(", ") : "None detected"]);
+    rows.push(["Speaking", context.activeParticipantIds.length
+      ? context.activeParticipantIds.map(id => context.participants.find(person => person.id === id)?.name || id).join(", ") : "None detected"]);
+    if (context.reason) rows.push(["Detection reason", context.reason]);
+  }
   return rows;
 }
 

@@ -306,7 +306,7 @@ export const meetingSummaryArtifactSchema = z.object({
 });
 export type MeetingSummaryArtifact = z.infer<typeof meetingSummaryArtifactSchema>;
 
-export const meetingPlatformSchema = z.enum(["zoom", "google-meet"]);
+export const meetingPlatformSchema = z.enum(["zoom", "google-meet", "telemost"]);
 export type MeetingPlatform = z.infer<typeof meetingPlatformSchema>;
 
 export const meetingSpeakerCorrectionSourceSchema = z.enum(["voice", "platform", "model", "user"]);
@@ -383,7 +383,7 @@ export const meetingAudioClockAnchorSchema = z.object({
 export type MeetingAudioClockAnchor = z.infer<typeof meetingAudioClockAnchorSchema>;
 // A fixed initial heuristic, not a measured calibration or a verified identity.
 export const meetingPlatformTimingPolicySchema = z.object({
-  version: z.enum(["zoom-activity-v1", "google-meet-activity-v1"]),
+  version: z.enum(["zoom-activity-v1", "google-meet-activity-v1", "telemost-activity-v1"]),
   origin: z.literal("initial-lag-hypothesis"),
   indicatorDelaySeconds: z.union([z.literal(0.5), z.literal(0.3)]),
   boundaryGuardSeconds: z.literal(0.5),
@@ -408,3 +408,7 @@ export const meetingPlatformCoverageSchema = z.object({
   state: z.enum(["collecting", "complete", "incomplete"]), reason: z.string().max(100).nullable(),
 });
 export type MeetingPlatformCoverage = z.infer<typeof meetingPlatformCoverageSchema>;
+
+export function meetingPlatformLabel(platform: MeetingPlatform | undefined): string {
+  return platform === "telemost" ? "Yandex Telemost" : platform === "google-meet" ? "Google Meet" : platform === "zoom" ? "Zoom" : "";
+}

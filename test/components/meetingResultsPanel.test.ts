@@ -240,8 +240,8 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   const document = globalThis.document as unknown as Record<string, unknown>;
   const createElement = document.createElement as (name: string) => HTMLElement;
   document.createElement = (name: string) => {
-    const element = createElement(name) as HTMLElement & { pause?(): void };
-    if (name === "audio") element.pause = () => {};
+    const element = createElement(name) as HTMLElement & { pause?(): void; load?(): void };
+    if (name === "audio") { element.pause = () => {}; element.load = () => {}; }
     return element;
   };
   const mocks = globalThis as GlobalWithMocks;

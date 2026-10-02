@@ -264,11 +264,16 @@ export interface RendererServerOptions {
 
 // mockModules maps an import-path suffix (e.g. "/utils/logger") to the ESM
 // source served in its place.
-export async function createRendererServer(t: TestContext, { cachePrefix = "openwhispr-renderer-test-", mockModules = {}, noExternal = false, resolveAlias = {} }: RendererServerOptions = {}): Promise<ViteDevServer> {
-  const { createServer } = await import("vite");
+export async function createRendererServer(t: Pick<TestContext, "after">, { cachePrefix = "openwhispr-renderer-test-", mockModules = {}, noExternal = false, resolveAlias = {} }: RendererServerOptions = {}, createServer?: typeof import("vite").createServer): Promise<ViteDevServer> {
+  createServer ??= (await import("vite")).createServer;
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), cachePrefix));
+  let vite: ViteDevServer | undefined;
+  t.after(async () => {
+    try { await vite?.close(); }
+    finally { fs.rmSync(cacheDir, { recursive: true, force: true }); }
+  });
   const suffixes = Object.keys(mockModules);
-  const vite = await createServer({
+  vite = await createServer({
     root: path.resolve(__dirname, "../../src"),
     cacheDir,
     configFile: false,
@@ -294,10 +299,6 @@ export async function createRendererServer(t: TestContext, { cachePrefix = "open
     ],
     server: { middlewareMode: true },
   });
-  t.after(async () => {
-    await vite.close();
-    fs.rmSync(cacheDir, { recursive: true, force: true });
-  });
   return vite;
 }
 
@@ -310,7 +311,7 @@ export async function reloadSettingsStore(vite: ViteDevServer): Promise<unknown>
 }
 
 // Minimal Web Audio + capture stubs so the mic pipeline can run under Node.
-export function installMicCaptureGlobals(t: TestContext): void {
+export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
   const track = {
     readyState: "live",
     label: "Fake Mic",
@@ -394,17 +395,19 @@ export function installMicCaptureGlobals(t: TestContext): void {
   }
 
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const originalAudioContext = Object.getOwnPropertyDescriptor(globalThis, "AudioContext");
+  const originalAudioWorkletNode = Object.getOwnPropertyDescriptor(globalThis, "AudioWorkletNode");
+  t.after(() => {
+    for (const [name, descriptor] of [["navigator", originalNavigator], ["AudioContext", originalAudioContext], ["AudioWorkletNode", originalAudioWorkletNode]] as const) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete (globalThis as Record<string, unknown>)[name];
+    }
+  });
   Object.defineProperty(globalThis, "navigator", {
     value: { mediaDevices },
     configurable: true,
     writable: true,
   });
-  (globalThis as Record<string, unknown>).AudioContext = FakeAudioContext;
-  (globalThis as Record<string, unknown>).AudioWorkletNode = FakeAudioWorkletNode;
-  t.after(() => {
-    if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
-    else delete (globalThis as Record<string, unknown>).navigator;
-    delete (globalThis as Record<string, unknown>).AudioContext;
-    delete (globalThis as Record<string, unknown>).AudioWorkletNode;
-  });
+  Object.defineProperty(globalThis, "AudioContext", { value: FakeAudioContext, configurable: true, writable: true });
+  Object.defineProperty(globalThis, "AudioWorkletNode", { value: FakeAudioWorkletNode, configurable: true, writable: true });
 }

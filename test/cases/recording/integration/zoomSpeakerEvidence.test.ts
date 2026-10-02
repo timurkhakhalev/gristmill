@@ -272,3 +272,33 @@ test("platform metadata cutover rolls back atomically and preserves historical Z
     assert.deepEqual(reopened.getMeetingRunSpeakerCorrections(runId), before, "second migration does not change revisions");
   } finally { reopened.close(); }
 });
+
+test("Telemost CHECK cutover preserves corrections and rolls back on copy failure", t => {
+  const db = createDb(t); if (!db) return;
+  const { runId } = finished(db);
+  db.setMeetingRunSpeakerCorrection(runId, "system:fixture", null, "Original", "user");
+  const before = db.getMeetingRunSpeakerCorrections(runId);
+  db.db.exec(`ALTER TABLE meeting_run_speaker_corrections DROP COLUMN platform;
+    ALTER TABLE meeting_run_speaker_corrections ADD COLUMN platform TEXT CHECK(platform IN ('zoom', 'google-meet'));`);
+  const { migrateMeetingPlatformEvidence }: typeof import("../../../../src/helpers/meetingPlatformMigration.ts") = require("../../../../src/helpers/meetingPlatformMigration.ts");
+  const sql = db.db;
+  assert.throws(() => migrateMeetingPlatformEvidence({
+    pragma: sql.pragma.bind(sql), prepare: sql.prepare.bind(sql), close: sql.close.bind(sql), transaction: sql.transaction.bind(sql),
+    exec: (statement: string) => {
+      if (statement.includes("CREATE TABLE meeting_run_speaker_corrections_telemost")) {
+        sql.exec(statement.split("INSERT INTO")[0]);
+        throw new Error("injected Telemost copy failure");
+      }
+      return sql.exec(statement);
+    },
+  }), /injected Telemost copy failure/);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(runId), before);
+  assert.equal(sql.prepare("SELECT 1 FROM sqlite_master WHERE name = 'meeting_run_speaker_corrections_telemost'").get(), undefined);
+  migrateMeetingPlatformEvidence(sql);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(runId), before);
+  sql.prepare("UPDATE meeting_run_speaker_corrections SET platform = 'telemost', source = 'platform' WHERE run_id = ?").run(runId);
+  db.close();
+  const reopened = new DatabaseManager(); t.after(() => reopened.close());
+  assert.equal(reopened.getMeetingRunSpeakerCorrections(runId)[0].platform, "telemost");
+  assert.equal(reopened.getMeetingRunSpeakerCorrections(runId)[0].revision, before[0].revision);
+});

@@ -11,7 +11,12 @@ export const ZOOM_SPEAKER_TIMING_POLICY: MeetingPlatformTimingPolicy = {
 export const MEET_SPEAKER_TIMING_POLICY: MeetingPlatformTimingPolicy = {
   ...ZOOM_SPEAKER_TIMING_POLICY, version: "google-meet-activity-v1", indicatorDelaySeconds: 0.3,
 };
-const policyFor = (platform: MeetingPlatformObservation["platform"]) => platform === "zoom" ? ZOOM_SPEAKER_TIMING_POLICY : MEET_SPEAKER_TIMING_POLICY;
+// Telemost renders the server VAD flag directly. Use the same initial 300 ms
+// hypothesis as Meet; this is a working estimate, not a measured audio delay.
+export const TELEMOST_SPEAKER_TIMING_POLICY: MeetingPlatformTimingPolicy = {
+  ...MEET_SPEAKER_TIMING_POLICY, version: "telemost-activity-v1",
+};
+const policyFor = (platform: MeetingPlatformObservation["platform"]) => platform === "zoom" ? ZOOM_SPEAKER_TIMING_POLICY : platform === "telemost" ? TELEMOST_SPEAKER_TIMING_POLICY : MEET_SPEAKER_TIMING_POLICY;
 
 export interface MeetingPlatformMatcherInput {
   transcript: MeetingTranscriptArtifact;
@@ -37,7 +42,7 @@ function union(intervals: Interval[]): Interval[] {
 function mapInterval(input: MeetingPlatformMatcherInput, observation: MeetingPlatformObservation): { interval: Interval; ids: string[]; binding: string } | string {
   const policy = policyFor(observation.platform);
   if (BigInt(observation.clockUncertaintyNs) > 25_000_000n) return "clock-uncertainty";
-  if (observation.platform === "google-meet" && !observation.clockGeneration) return "clock-generation-missing";
+  if (observation.platform !== "zoom" && !observation.clockGeneration) return "clock-generation-missing";
   const part = input.partOffsets.find((item) => item.recordingId === observation.recordingId);
   if (!part) return "clock-outside-audio";
   let cursor = BigInt(observation.readStartHostNs);

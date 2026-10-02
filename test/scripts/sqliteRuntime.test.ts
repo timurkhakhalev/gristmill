@@ -1,7 +1,7 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const test: typeof import("node:test") = require("node:test");
-const { ensureSqliteRuntime, probeSqlite, repairSqlite } = require("../../scripts/ensure-sqlite-runtime");
-const { runElectron } = require("../../scripts/run-electron");
+const { ensureSqliteRuntime, probeSqlite, repairSqlite } = require("../../scripts/ensure-sqlite-runtime.cts");
+const { runElectron } = require("../../scripts/run-electron.cts");
 
 type SpawnCall = [binary: string, args: string[], options: { env: Record<string, string | undefined>; timeout: number }];
 type LaunchCall = [binary: string, args: string[], options: { env: Record<string, string | undefined> }];

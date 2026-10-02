@@ -10,7 +10,7 @@ const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 function launcher() {
   const script = app.isPackaged
     ? path.join(process.resourcesPath, "cli", "gristmill-cli.cjs")
-    : path.join(app.getAppPath(), "scripts", "gristmill-cli.cjs");
+    : path.join(app.getAppPath(), "resources", "cli", "gristmill-cli.cjs");
   const defaultProfile = isDevelopmentChannel() ? "development" : "production";
   const content = `#!/bin/sh\n${MARKER}\nexport GRISTMILL_CLI_DEFAULT_PROFILE=${quote(defaultProfile)}\nELECTRON_RUN_AS_NODE=1 exec ${quote(process.execPath)} ${quote(script)} "$@"\n`;
   return { script, target: path.join(os.homedir(), ".local", "bin", "gristmill"), content };

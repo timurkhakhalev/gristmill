@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8">
+<!-- Sanitized from the connected Telemost DOM on 2026-10-02. Names, room,
+     avatars and generated classes omitted. Semantic structure retained. -->
+<style>
+[data-video-root] > div {display:flex}
+[data-video-root] video {width:200px;height:120px}
+.tile {position:relative;width:200px;height:120px}
+.overlay {position:absolute;inset:0}
+.speaking::after {content:"";position:absolute;inset:0;border:4px solid rgb(29,204,102)}
+</style>
+<div data-video-root="true"><div>
+<div class="tile"><video style="transform:scaleX(-1)"></video><div class="overlay"><div data-testid="participant-video-placeholder"></div><span title="Local">Local</span><svg data-testid="micro-off-icon"></svg></div></div>
+<div class="tile"><video></video><div class="overlay speaking"><div data-testid="participant-video-placeholder"></div><span title="Remote">Remote</span></div></div>
+</div></div>
+<div id="toolbar">
+<div><button data-testid="share-button">Share</button><button data-testid="turn-on-mic-button">Localized mute</button><button data-testid="turn-on-camera-button">Camera</button></div>
+<div></div><div><button data-testid="more-popup-alt-button">More</button><div><div><button data-testid="end-call-alt-button">Leave menu</button></div></div></div>
+</div>
+<!-- Participant list uses inverse mic test IDs; it must not control local mute. -->
+<aside><button data-testid="turn-off-mic-button">Local muted</button><button data-testid="turn-on-mic-button">Remote live</button></aside>
+<button data-testid="end-call-button">Final leave</button>

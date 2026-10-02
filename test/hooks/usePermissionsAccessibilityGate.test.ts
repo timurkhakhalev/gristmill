@@ -99,21 +99,21 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
   assert.equal(activeIntervals.size, 0);
   assert.equal(permissions!.accessibilityTroubleshooting, false);
   await React.act(async () => { await permissions!.requestAccessibilityPermission(); });
-  assert.deepEqual(requests, ["prompt"], "the native prompt opens Settings itself");
+  assert.deepEqual(requests, ["prompt", "settings"], "Settings opens even if macOS suppresses the prompt");
   assert.equal(permissions!.accessibilityTroubleshooting, true);
   assert.equal(permissions!.accessibilityPromptRequested, true);
   await React.act(async () => { await permissions!.requestAccessibilityPermission(); });
-  assert.deepEqual(requests, ["prompt", "settings"], "a later click opens Settings directly");
+  assert.deepEqual(requests, ["prompt", "settings", "settings"], "a later click opens Settings directly");
   assert.equal(permissions!.accessibilityTroubleshooting, true);
 
   await React.act(async () => { await permissions!.requestMicPermission(); });
   assert.equal(permissions!.micPermissionGranted, true);
-  assert.deepEqual(requests, ["prompt", "settings", "mic prompt"]);
+  assert.deepEqual(requests, ["prompt", "settings", "settings", "mic prompt"]);
   micStatus = "denied";
   await React.act(async () => { onFocus?.(); await Promise.resolve(); });
   assert.equal(permissions!.micPermissionGranted, false);
   await React.act(async () => { await permissions!.requestMicPermission(); });
-  assert.deepEqual(requests, ["prompt", "settings", "mic prompt", "mic settings"]);
+  assert.deepEqual(requests, ["prompt", "settings", "settings", "mic prompt", "mic settings"]);
 
   macAccessibilityChecksEnabled = true;
   await render();

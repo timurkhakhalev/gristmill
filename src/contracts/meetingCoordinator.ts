@@ -474,7 +474,7 @@ export const meetingTranscriptSegmentSchema = z
     speakerStatus: z.enum(["provisional", "confirmed", "suggested", "locked"]).optional(),
     speakerLocked: z.boolean().optional(),
     speakerLockSource: z.enum(["user", "diarization", "suggestion", "voice", "platform", "model"]).optional(),
-    speakerPlatform: z.enum(["zoom", "google-meet"]).optional(),
+    speakerPlatform: z.enum(["zoom", "google-meet", "telemost"]).optional(),
   })
   .passthrough();
 export type MeetingTranscriptSegment = z.infer<typeof meetingTranscriptSegmentSchema>;
@@ -530,7 +530,7 @@ export const meetingAutoEndRestartRequestEventSchema = z.object({
 export interface MeetingCoordinatorApi {
   finishPausedMeetRecording?(recordingId: string): Promise<{ success: boolean }>;
   getMeetIntegrationSetup?(): Promise<CompanionSetup>;
-  configureMeetIntegration?(action: "enable" | "disable" | "remove" | "reveal"): Promise<{ success: boolean; error?: string }>;
+  configureMeetIntegration?(action: "enable" | "disable" | "reveal"): Promise<{ success: boolean; error?: string }>;
   respondMeetContextReminder?(request: CompanionRecordingScope & { action: "stop" | "dismiss" }): Promise<{ success: boolean }>;
   claimMeetingAutoEnd?(sessionId: string): Promise<{ success: boolean }>;
   getMeetCompanionStatus?(): Promise<CompanionStatus>;

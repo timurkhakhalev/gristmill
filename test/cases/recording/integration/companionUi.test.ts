@@ -4,7 +4,7 @@ import { createElement, act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createRendererServer, installBrowserGlobals, installHookDom } from "../../../lib/rendererTestHarness.ts";
 import type { CompanionStatus } from "../../../../src/contracts/companion.ts";
-interface UiNode { props?: { children?: unknown; onClick?: () => unknown; [key: string]: unknown } }
+interface UiNode { props?: { children?: unknown; onClick?: () => unknown; onChange?: (checked: boolean) => unknown; [key: string]: unknown } }
 function findUiNode(value: unknown, predicate: (node: UiNode) => boolean): UiNode | undefined {
   if (Array.isArray(value)) { for (const child of value) { const found = findUiNode(child, predicate); if (found) return found; } return; }
   if (!value || typeof value !== "object" || !("props" in value)) return;
@@ -19,6 +19,7 @@ async function mount(t: import("node:test").TestContext, component: string, api:
   const container = installHookDom(t);
   const vite = await createRendererServer(t, { cachePrefix: "meet-ui-", mockModules: {
     "/stores/meetingRecordingStore": `export const state = { manualMicMuted: false, platformMicMuted: true, capturePhase: "recording", recordingId: "${UUID}", isRecording: true }; export const useMeetingRecordingStore = selector => selector(state); export const getActiveRecordingSessionId = () => "${UUID}"; export const setManualMicMuted = async value => { state.manualMicMuted = value; return true; };`,
+    "/ui/toggle": `import React from "react"; export const Toggle = ({checked, disabled, ariaLabel, onChange}) => React.createElement("button", {role:"switch", "aria-checked":checked, "aria-label":ariaLabel, disabled, onClick:()=>onChange(!checked)});`,
     "react-i18next": `export const useTranslation = () => ({ t: key => key });`,
   } });
   const module = await vite.ssrLoadModule(component);
@@ -29,6 +30,7 @@ async function mount(t: import("node:test").TestContext, component: string, api:
   function Harness() { tree = Component(); return tree; }
   await act(async () => { root!.render(createElement(Harness)); await Promise.resolve(); });
   return { text: () => container.textContent, node: (predicate: (node: UiNode) => boolean) => findUiNode(tree, predicate),
+    change: async (node: UiNode | undefined, checked: boolean) => { assert.ok(node?.props?.onChange); await act(async () => { await node.props!.onChange!(checked); }); },
     click: async (node: UiNode | undefined) => { assert.ok(node?.props?.onClick); await act(async () => { await node.props!.onClick!(); }); } };
 }
 
@@ -63,8 +65,9 @@ test("setup failure stays visible and does not report integration enabled", asyn
   const actions: unknown[] = [];
   const ui = await mount(t, "/components/settings/MeetIntegrationSettings.tsx", { getMeetIntegrationSetup: async () => ({ enabled: false, installed: false, extensionPath: "/isolated/extension", channel: "development" }),
     configureMeetIntegration: async (action: unknown) => { actions.push(action); return { success: false, error: "Owned profile mismatch" }; } });
-  await ui.click(ui.node((node) => node.props?.children === "meetIntegration.enable"));
+  const toggle = () => ui.node((node) => node.props?.ariaLabel === "meetIntegration.title");
+  await ui.change(toggle(), true);
   assert.deepEqual(actions, ["enable"]);
   assert.match(ui.text() ?? "", /Owned profile mismatch/);
-  assert.match(ui.text() ?? "", /meetIntegration.disabled/);
+  assert.equal(toggle()?.props?.checked, false);
 });

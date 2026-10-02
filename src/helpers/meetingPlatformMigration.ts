@@ -25,8 +25,29 @@ export function migrateMeetingPlatformEvidence(database: SqliteDatabase): void {
     `);
     const columns = database.pragma("table_info(meeting_run_speaker_corrections)") as Array<{ name: string }>;
     if (!columns.some((column) => column.name === "platform")) {
-      database.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN platform TEXT CHECK(platform IN ('zoom', 'google-meet'))");
+      database.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN platform TEXT CHECK(platform IN ('zoom', 'google-meet', 'telemost'))");
       database.exec("UPDATE meeting_run_speaker_corrections SET platform = 'zoom' WHERE source = 'platform'");
+    }
+    const definition = database.prepare("SELECT sql FROM sqlite_master WHERE name = 'meeting_run_speaker_corrections'").get() as { sql: string };
+    if (!definition.sql.includes("'telemost'")) {
+      database.exec(`
+        CREATE TABLE meeting_run_speaker_corrections_telemost (
+          run_id TEXT NOT NULL REFERENCES meeting_processing_runs(id) ON DELETE CASCADE,
+          speaker_id TEXT NOT NULL,
+          profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
+          display_name TEXT NOT NULL,
+          participant_email TEXT,
+          source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'platform', 'model', 'user')),
+          revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
+          platform TEXT CHECK(platform IN ('zoom', 'google-meet', 'telemost')),
+          PRIMARY KEY (run_id, speaker_id)
+        );
+        INSERT INTO meeting_run_speaker_corrections_telemost
+          SELECT run_id, speaker_id, profile_id, display_name, participant_email, source, revision, platform
+          FROM meeting_run_speaker_corrections;
+        DROP TABLE meeting_run_speaker_corrections;
+        ALTER TABLE meeting_run_speaker_corrections_telemost RENAME TO meeting_run_speaker_corrections;
+      `);
     }
   })();
 }

@@ -983,7 +983,6 @@ export class IPCHandlers {
         isSupported: () => this.audioTapManager?.isSupported(),
         checkAccess: () => this.audioTapManager.checkAccess(),
         requestAccess: () => this.audioTapManager.requestAccess(),
-        getPermissionStatus: () => this.audioTapManager.getPermissionStatus(),
       },
       oauthProtocolRegistered: this.oauthProtocolRegistered,
       oauthProtocol: this.oauthProtocol,
@@ -1553,9 +1552,9 @@ export class IPCHandlers {
       if (event.sender !== this.windowManager.controlPanelWindow?.webContents) return { success: false, error: "Unauthorized window" };
       try {
         if (action === "reveal") { const error = await shell.openPath(companionExtensionPath); return error ? { success: false, error } : { success: true }; }
-        if (action !== "enable" && action !== "disable" && action !== "remove") return { success: false, error: "Invalid action" };
+        if (action !== "enable" && action !== "disable") return { success: false, error: "Invalid action" };
         if (action === "enable") { installCompanionHost(companionInstallation); fs.writeFileSync(companionPreference, "enabled\n", { mode: 0o600 }); }
-        else { if (action === "remove") uninstallCompanionHost(companionInstallation); fs.rmSync(companionPreference, { force: true }); }
+        else { if (companionHostInstalled(companionInstallation)) uninstallCompanionHost(companionInstallation); fs.rmSync(companionPreference, { force: true }); }
         companionEnabled = action === "enable";
         this._meetingCoordinator?.setCompanionEnabled(companionEnabled);
         return { success: true };

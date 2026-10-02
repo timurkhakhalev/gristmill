@@ -26,3 +26,13 @@ test("protocol accepts only the current bounded metadata shape", () => {
   assert.equal(companionDesktopMessageSchema.safeParse(snapshot).success, true);
   assert.equal(companionDesktopMessageSchema.safeParse({ ...snapshot, noteTitle: "Private" }).success, false);
 });
+
+
+test("platform and room shapes remain paired at the protocol boundary", () => {
+  const ref = { platform: "telemost", callId: "12345678901234", installationId: randomUUID(),
+    sessionId: randomUUID(), tabId: 1, documentId: randomUUID().replaceAll("-", "") };
+  const message = { version: 1, type: "clock-probe", sequence: 0, ref, nonce: randomUUID(), sourceSendNs: "1" };
+  assert.equal(companionBrowserMessageSchema.safeParse(message).success, true);
+  for (const patch of [{ platform: "google-meet" }, { callId: "abc-defg-hij" }, { callId: "123" }, { platform: "other" }])
+    assert.equal(companionBrowserMessageSchema.safeParse({ ...message, ref: { ...ref, ...patch } }).success, false);
+});

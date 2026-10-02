@@ -73,7 +73,9 @@ export function useNotesTreeActions() {
         setActiveNoteId(result.note.id);
         // A new note is a recording waiting to happen: start it unless one is already live.
         if (!isTranscribing) void startRecordingForNote(result.note);
+        return result.note;
       }
+      return null;
     },
     [t, isTranscribing, startRecordingForNote]
   );
@@ -84,13 +86,13 @@ export function useNotesTreeActions() {
   );
 
   const handleNewNoteInPrivate = useCallback(() => {
-    if (privateSpaceId == null) return;
-    void handleNewNoteIn(privateSpaceId, null);
+    if (privateSpaceId == null) return Promise.resolve(null);
+    return handleNewNoteIn(privateSpaceId, null);
   }, [privateSpaceId, handleNewNoteIn]);
 
   const handleNewNote = useCallback(() => {
-    if (activeContext) void handleNewNoteIn(activeContext.spaceId, activeContext.folderId);
-    else handleNewNoteInPrivate();
+    if (activeContext) return handleNewNoteIn(activeContext.spaceId, activeContext.folderId);
+    return handleNewNoteInPrivate();
   }, [activeContext, handleNewNoteIn, handleNewNoteInPrivate]);
 
   const handleNotesAdded = useCallback(async () => {

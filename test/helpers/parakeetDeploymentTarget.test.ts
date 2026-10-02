@@ -1,7 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const sherpaDownloader = require("../../scripts/download-sherpa-onnx");
+const sherpaDownloader = require("../../scripts/download-sherpa-onnx.cts");
 
 const UNIVERSAL_VTOOL_OUTPUT = `
 /tmp/libonnxruntime.1.27.0.dylib (architecture x86_64):

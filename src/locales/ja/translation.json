@@ -1124,7 +1124,7 @@
       },
       "notesGroup": "ノート",
       "meetingCompanion": {
-        "label": "録音コンパニオン",
+        "label": "フローティング録音インジケーター",
         "description": "会議の録音中に Gristmill がバックグラウンドにあるとき、声に反応するドラッグ可能な小さなバブルを表示します。クリックするとメモが開きます。"
       }
     },
@@ -2508,15 +2508,11 @@
     "selfLabel": "あなた"
   },
   "meetIntegration": {
-    "title": "Gristmill Companion",
-    "setupDescription": "Chrome Stable. 連携を有効にし、chrome://extensions の「パッケージ化されていない拡張機能を読み込む」でフォルダーを選択してください。ミュート中のマイク音声は破棄され、システム音声の録音は続きます。",
-    "enabled": "有効",
-    "disabled": "無効",
-    "loading": "読み込み中…",
-    "disable": "無効にする",
-    "enable": "有効にする",
-    "openExtension": "拡張機能フォルダーを開く",
-    "remove": "登録を削除",
+    "installInstructions": "Chrome Stable. 連携を有効にし、chrome://extensions の「パッケージ化されていない拡張機能を読み込む」でフォルダーを選択してください。ミュート中のマイク音声は破棄され、システム音声の録音は続きます。",
+    "selectExtension": "選択するフォルダーを表示",
+    "title": "ブラウザー通話連携",
+    "setupDescription": "Google Meet と Yandex Telemost の参加者名を使用し、マイクのミュートと通話の退出を録音に反映します。",
+    "openExtension": "Chrome 拡張機能をインストール",
     "setupFailed": "設定に失敗しました",
     "mute": "マイクをミュート",
     "unmute": "マイクのミュートを解除",

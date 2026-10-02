@@ -5,7 +5,7 @@ import {
   teardownNoteContainers,
 } from "./noteListOps";
 import { findDefaultFolder } from "../components/notes/shared";
-import type { FolderItem, SpaceItem } from "../contracts/containers";
+import type { FolderItem, FolderStyle, SpaceItem } from "../contracts/containers";
 import type { NoteItem } from "../contracts/notes";
 
 export interface ActiveContext {
@@ -489,6 +489,20 @@ export async function renameFolder(
     await loadFolders();
   }
   return result;
+}
+
+export async function updateFolderStyle(
+  id: number,
+  style: FolderStyle
+): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
+  const result = await window.electronAPI.updateFolderStyle(id, style);
+  if (result.success) await loadFolders();
+  return result;
+}
+
+export async function reorderFolders(spaceId: number, folderIds: number[]): Promise<void> {
+  const result = await window.electronAPI.reorderFolders(spaceId, folderIds);
+  if (result.success) await loadFolders();
 }
 
 export async function deleteFolder(id: number): Promise<{ success: boolean; error?: string }> {

@@ -75,6 +75,12 @@ function fakeDb() {
     renameFolder: () => {
       throw new Error("fake db: renameFolder not set");
     },
+    updateFolderStyle: () => {
+      throw new Error("fake db: updateFolderStyle not set");
+    },
+    reorderFolders: () => {
+      throw new Error("fake db: reorderFolders not set");
+    },
     moveFolderToSpace: () => {
       throw new Error("fake db: moveFolderToSpace not set");
     },
@@ -271,6 +277,8 @@ test("wrong-shaped ids reject before the DB is touched", async () => {
     ...fakeDb(),
     deleteFolder: unexpected("deleteFolder"),
     renameFolder: unexpected("renameFolder"),
+    updateFolderStyle: unexpected("updateFolderStyle"),
+    reorderFolders: unexpected("reorderFolders"),
     moveFolderToSpace: unexpected("moveFolderToSpace"),
     updateSpace: unexpected("updateSpace"),
     getFolders: unexpected("getFolders"),

@@ -1481,7 +1481,12 @@
       "timeNow": "Только что",
       "minutesAgo": "{{count}} мин. назад",
       "hoursAgo": "{{count}} ч. назад",
-      "daysAgo": "{{count}} дн. назад"
+      "daysAgo": "{{count}} дн. назад",
+      "ago": {
+        "seconds": "{{count}} с назад",
+        "minutes": "{{count}} мин назад",
+        "hours": "{{count}} ч назад"
+      }
     },
     "editor": {
       "untitled": "Без названия",
@@ -1657,6 +1662,15 @@
       "waitingForMicrophone": "Ожидание микрофона"
     },
     "context": {
+      "folderColor": "Цвет папки",
+      "newNoteInFolder": "Новая заметка в этой папке",
+      "addFolder": "Добавить папку",
+      "collapseAll": "Свернуть всё",
+      "expandAll": "Развернуть всё",
+      "meetingNote": "Встреча",
+      "plainNote": "Заметка",
+      "changeIcon": "Сменить иконку",
+      "removeIcon": "Убрать иконку",
       "moveToFolder": "Переместить в папку",
       "delete": "Удалить",
       "rename": "Переименовать",
@@ -2151,6 +2165,7 @@
     "undock": "Открепить от боковой панели",
     "close": "Закрыть чат",
     "newChat": "Новый чат",
+    "resize": "Изменить высоту чата",
     "conversationSelector": "Сменить беседу",
     "suggestions": {
       "summary": "Кратко перескажи заметку",

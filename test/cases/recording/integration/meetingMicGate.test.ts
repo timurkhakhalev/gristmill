@@ -139,9 +139,11 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
     async resume() {}
     async close() {}
   }
+  const processors: FakeAudioWorkletNode[] = [];
   class FakeAudioWorkletNode {
     port: { onmessage: ((event: { data: unknown }) => void) | null; postMessage(message: unknown): void };
     constructor() {
+      processors.push(this);
       this.port = {
         onmessage: null,
         postMessage: (message) => {
@@ -169,6 +171,7 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
     else delete globals.AudioWorkletNode;
   });
 
+  const sentSequences: number[] = [];
   const intentRequests: Array<{ sequence: number; boundaryFrame: number; sourceGeneration: number; effectiveMuted: boolean }> = [];
   let resolveRecoveryIntent: (() => void) | null = null;
   const recoveryIntent = new Promise<void>((resolve) => { resolveRecoveryIntent = resolve; });
@@ -186,7 +189,10 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
       if (request.sourceGeneration > 1) resolveRecoveryIntent?.();
       return { success: true, sequence: request.sequence, boundaryFrame: request.boundaryFrame, sourceGeneration: request.sourceGeneration, effectiveMuted };
     },
-    meetingTranscriptionSend: async (_buffer: unknown, _source: unknown, _sessionId: unknown, packet: { sequence: number }) => ({ success: true, sequence: packet.sequence }),
+    meetingTranscriptionSend: async (_buffer: unknown, _source: unknown, _sessionId: unknown, packet: { sequence: number }) => {
+      sentSequences.push(packet.sequence);
+      return { success: true, sequence: packet.sequence };
+    },
     meetingTranscriptionStop: async () => ({ success: true, captureState: "incomplete" }),
     onMeetingTranscriptionError: noopListener,
     onMeetingTranscriptionFatalError: noopListener,
@@ -200,6 +206,12 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
   try {
     assert.equal(await store.startRecording({ noteId: 1, noteTitle: "Meeting", folderId: null, autoEndEligible: false }), true);
     assert.equal(acquired, 1);
+    processors[0].port.onmessage?.({ data: {
+      type: "chunk", buffer: new ArrayBuffer(4_800), sequence: 0, sampleOffset: 0,
+      renderStartFrame: audioContextOriginFrame, epochIndex: 0, sourceGeneration: 1,
+    } });
+    await new Promise(setImmediate);
+    assert.deepEqual(sentSequences, [0]);
     assert.equal(await store.setManualMicMuted(true), true);
     assert.equal(tracks[0].stopCount, 0);
     assert.equal(acquired, 1);
@@ -210,13 +222,24 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
     assert.equal(acquired, 1);
     assert.equal(tracks[0].stopCount, 0);
 
-    currentRenderFrame = 96_000;
+    // More than the five-second backlog limit must still reach main after unmute.
+    for (let sequence = 0; sequence < 60; sequence++) {
+      processors[0].port.onmessage?.({ data: {
+        type: "chunk", buffer: new ArrayBuffer(4_800), sequence, sampleOffset: sequence * 2_400,
+        renderStartFrame: currentRenderFrame + sequence * 2_400, epochIndex: 1, sourceGeneration: 1,
+      } });
+      await new Promise(setImmediate);
+    }
+    assert.deepEqual(sentSequences, [0, ...Array.from({ length: 60 }, (_, index) => index)]);
+    assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
+
+    currentRenderFrame = 240_000;
     tracks[0].readyState = "ended";
     tracks[0].dispatch("ended");
     await recoveryIntent;
     assert.equal(acquired, 2);
     assert.equal(intentRequests[2].sourceGeneration, 2);
-    assert.equal(intentRequests[2].boundaryFrame, 48_000, "replacement worklet uses the same AudioContext frame origin");
+    assert.equal(intentRequests[2].boundaryFrame, 192_000, "replacement worklet uses the same AudioContext frame origin");
     assert.equal(tracks[0].stopCount, 1, "old device stops only after its replacement graph is attached");
 
     await store.stopRecording();

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  AudioLines,
   Check,
+  ChevronDown,
   ChevronRight,
   ExternalLink,
   FileText,
@@ -11,9 +13,14 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Smile,
   Trash2,
 } from "../icons";
 import { Button } from "../ui/button";
+import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
+import { EmojiIconGrid } from "./EmojiIconPicker";
+import { FOLDER_COLOR_HEX } from "./folderColors";
+import { InlineRename } from "./InlineRename";
 import { Dropdown, Label, Separator } from "@heroui/react";
 import { MENU_ITEM_CLASS } from "../ui/surfaceStyles";
 import { ConfirmDialog, Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -25,8 +32,11 @@ import { useSettingsStore } from "../../stores/settingsStore";
 import { cn } from "../lib/utils";
 import { treeHorizontalIntent } from "./treeDirection";
 import { defaultFolderDisplayName } from "./shared";
+import { useUiLocale } from "../../hooks/useUiLocale";
+import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
+import { formatNoteDate } from "../../utils/dateFormatting";
 import { stopRecording as storeStopRecording, useMeetingRecordingStore } from "../../stores/meetingRecordingStore";
-import type { FolderItem, SpaceItem } from "../../contracts/containers";
+import type { FolderItem, FolderStyle, SpaceItem } from "../../contracts/containers";
 import type { NoteItem } from "../../contracts/notes";
 import {
   folderContainerKey,
@@ -46,6 +56,8 @@ import {
   toggleContainerExpanded,
   createFolder,
   renameFolder,
+  updateFolderStyle,
+  reorderFolders,
   deleteFolder,
   moveFolderToSpace,
   getNoteFromStore,
@@ -109,33 +121,33 @@ function TreeToggle({
   );
 }
 
-function MoveDialog({
-  open,
-  onOpenChange,
+/** Folder list with search and inline folder creation; shared by the move dialog and popovers. */
+export function MoveFolderPicker({
   note,
   spaces,
   folders,
   onMove,
   onCreateFolderAndMove,
+  onDone,
   t,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   note: NoteItem;
   spaces: SpaceItem[];
   folders: FolderItem[];
   onMove: (target: NoteMoveTarget) => void;
   onCreateFolderAndMove: (id: number, name: string) => void;
+  onDone: () => void;
   t: TFn;
 }) {
   const [search, setSearch] = useState("");
   const [newFolder, setNewFolder] = useState("");
   const options = useMemo(
     () =>
-      spaces.flatMap((space) => [
+      // Same as the sidebar: only the private space exists, and its root reads "Notes".
+      spaces.filter((space) => space.kind === "private").flatMap((space) => [
         {
           key: spaceContainerKey(space.id),
-          label: space.name,
+          label: t("sidebar.notes"),
           target: { spaceId: space.id, folderId: null },
           isSpace: true,
         },
@@ -153,103 +165,192 @@ function MoveDialog({
   const filtered = search
     ? options.filter((option) => option.label.toLowerCase().includes(search.toLowerCase()))
     : options;
-  const close = () => {
-    setSearch("");
-    setNewFolder("");
-    onOpenChange(false);
-  };
   return (
-    <Dialog open={open} onOpenChange={(value) => (value ? onOpenChange(true) : close())}>
+    <div className="flex flex-col gap-3">
+      {options.length > 5 && (
+        <input
+          dir="auto"
+          autoFocus
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("notes.context.searchFolders")}
+          className="h-8 rounded-lg px-2.5 text-sm"
+        />
+      )}
+      <div className="-mx-1 max-h-64 overflow-y-auto">
+        {filtered.map((option) => {
+          const isCurrent =
+            option.target.folderId === note.folder_id &&
+            option.target.spaceId === note.space_id &&
+            note.folder_ids.length <= 1;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              disabled={isCurrent}
+              onClick={() => {
+                onMove(option.target);
+                onDone();
+              }}
+              className={cn(MENU_ITEM_CLASS, "w-full", !option.isSpace && "ps-7")}
+            >
+              {option.isSpace ? (
+                <Folder size={14} className="shrink-0 text-muted" />
+              ) : (
+                <FolderOpen size={14} className="shrink-0 text-muted" />
+              )}
+              <span dir="auto" className={cn("flex-1 truncate text-start", option.isSpace && "font-medium")}>
+                {option.label}
+              </span>
+              {isCurrent && <Check size={14} className="shrink-0 text-primary" />}
+            </button>
+          );
+        })}
+        {search && filtered.length === 0 && (
+          <p className="py-2 text-center text-xs text-muted">{t("notes.context.noResults")}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2 border-t border-border pt-3">
+        <Plus size={14} className="shrink-0 text-muted" />
+        <input
+          dir="auto"
+          value={newFolder}
+          onChange={(e) => setNewFolder(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && newFolder.trim()) {
+              onCreateFolderAndMove(note.id, newFolder.trim());
+              onDone();
+            }
+          }}
+          placeholder={t("notes.context.newFolder")}
+          className="input-inline h-7 flex-1 border-none bg-transparent text-sm outline-none"
+        />
+      </div>
+    </div>
+  );
+}
+
+function MoveDialog({
+  open,
+  onOpenChange,
+  t,
+  ...picker
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  note: NoteItem;
+  spaces: SpaceItem[];
+  folders: FolderItem[];
+  onMove: (target: NoteMoveTarget) => void;
+  onCreateFolderAndMove: (id: number, name: string) => void;
+  t: TFn;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="xs" className="gap-3">
         <DialogHeader>
           <DialogTitle>{t("notes.context.moveToFolder")}</DialogTitle>
         </DialogHeader>
-        {options.length > 5 && (
-          <input
-            dir="auto"
-            autoFocus
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("notes.context.searchFolders")}
-            className="h-8 rounded-lg px-2.5 text-sm"
-          />
-        )}
-        <div className="-mx-1 max-h-64 overflow-y-auto">
-          {filtered.map((option) => {
-            const isCurrent =
-              option.target.folderId === note.folder_id &&
-              option.target.spaceId === note.space_id &&
-              note.folder_ids.length <= 1;
-            return (
-              <button
-                key={option.key}
-                type="button"
-                disabled={isCurrent}
-                onClick={() => {
-                  onMove(option.target);
-                  close();
-                }}
-                className={cn(MENU_ITEM_CLASS, "w-full", !option.isSpace && "ps-7")}
-              >
-                {option.isSpace ? (
-                  <Folder size={14} className="shrink-0 text-muted" />
-                ) : (
-                  <FolderOpen size={14} className="shrink-0 text-muted" />
-                )}
-                <span dir="auto" className={cn("flex-1 truncate text-start", option.isSpace && "font-medium")}>
-                  {option.label}
-                </span>
-                {isCurrent && <Check size={14} className="shrink-0 text-primary" />}
-              </button>
-            );
-          })}
-          {search && filtered.length === 0 && (
-            <p className="py-2 text-center text-xs text-muted">{t("notes.context.noResults")}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 border-t border-border pt-3">
-          <Plus size={14} className="shrink-0 text-muted" />
-          <input
-            dir="auto"
-            value={newFolder}
-            onChange={(e) => setNewFolder(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newFolder.trim()) {
-                onCreateFolderAndMove(note.id, newFolder.trim());
-                close();
-              }
-            }}
-            placeholder={t("notes.context.newFolder")}
-            className="input-inline h-7 flex-1 border-none bg-transparent text-sm outline-none"
-          />
-        </div>
+        <MoveFolderPicker {...picker} t={t} onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
-/** Row "…" menu; swallows clicks so pressing it never activates the row. */
-function RowMenu({
+/** Page point a right-click opened the menu at; the menu then anchors there instead of at the "…". */
+export type ContextPoint = { x: number; y: number };
+
+/** Row "…" menu, also opened by a right-click; swallows clicks so pressing it never activates the row. */
+export function RowMenu({
   label,
   onAction,
   children,
+  contextPoint = null,
+  onContextPointChange,
 }: {
   label: string;
   onAction: (key: string) => void;
   children: React.ReactNode;
+  contextPoint?: ContextPoint | null;
+  onContextPointChange?: (point: ContextPoint | null) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (contextPoint) setOpen(true);
+  }, [contextPoint]);
   return (
     <span className="contents" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-      <Dropdown>
+      {contextPoint && (
+        <span
+          ref={anchorRef}
+          aria-hidden="true"
+          className="pointer-events-none fixed size-0"
+          style={{ left: contextPoint.x, top: contextPoint.y }}
+        />
+      )}
+      <Dropdown
+        isOpen={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) onContextPointChange?.(null);
+        }}
+      >
         <Dropdown.Trigger aria-label={label} className={cn(buttonClass, "flex items-center justify-center")}>
           <MoreHorizontal size={12} />
         </Dropdown.Trigger>
-        <Dropdown.Popover placement="bottom end" className="min-w-44">
+        <Dropdown.Popover
+          placement={contextPoint ? "bottom start" : "bottom end"}
+          triggerRef={contextPoint ? anchorRef : undefined}
+          className="min-w-44"
+        >
           <Dropdown.Menu aria-label={label} onAction={(key) => onAction(String(key))}>
             {children}
           </Dropdown.Menu>
         </Dropdown.Popover>
       </Dropdown>
+    </span>
+  );
+}
+
+/** Right-click menu at the pointer for areas that have no "…" button of their own. */
+function PointMenu({
+  point,
+  onClose,
+  label,
+  onAction,
+  children,
+}: {
+  point: ContextPoint | null;
+  onClose: () => void;
+  label: string;
+  onAction: (key: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className="pointer-events-none fixed size-0"
+      style={{ left: point?.x ?? 0, top: point?.y ?? 0 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Dropdown isOpen={point != null} onOpenChange={(open) => !open && onClose()}>
+        <Dropdown.Trigger aria-label={label} className="pointer-events-none size-0 opacity-0" />
+        <Dropdown.Popover placement="bottom start" className="min-w-44">
+          <Dropdown.Menu aria-label={label} onAction={(key) => onAction(String(key))}>
+            {children}
+          </Dropdown.Menu>
+        </Dropdown.Popover>
+      </Dropdown>
+    </span>
+  );
+}
+
+/** Emoji icon of a note or folder, or the default glyph. */
+function RowGlyph({ icon, fallback }: { icon?: string | null; fallback: React.ReactNode }) {
+  if (!icon) return <>{fallback}</>;
+  return (
+    <span aria-hidden="true" className="flex size-3.5 shrink-0 items-center justify-center text-[13px] leading-none">
+      {icon}
     </span>
   );
 }
@@ -264,6 +365,8 @@ function NoteRow({
   onMove,
   onCreateFolderAndMove,
   onDelete,
+  onRename,
+  onSetIcon,
   a11y,
   t,
   dragState,
@@ -280,6 +383,8 @@ function NoteRow({
   onMove: (target: NoteMoveTarget) => void;
   onCreateFolderAndMove: (id: number, name: string) => void;
   onDelete: (id: number) => void;
+  onRename: (title: string) => void;
+  onSetIcon: (icon: string | null) => void;
   a11y: RowA11y;
   t: TFn;
   dragState: { draggingNoteId: number | null };
@@ -290,10 +395,27 @@ function NoteRow({
     spaceId: number;
   }) => { draggable: true; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
 }) {
+  const locale = useUiLocale();
+  const { dateFormat, timeFormat } = useDateTimePreferences();
+  const isMeeting = note.note_type === "meeting";
+  const tooltip = [
+    note.title || t("notes.list.untitled"),
+    `${isMeeting ? t("notes.context.meetingNote") : t("notes.context.plainNote")} · ${formatNoteDate(note.created_at, locale, dateFormat, timeFormat)}`,
+  ].join("\n");
   const [moveOpen, setMoveOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [iconOpen, setIconOpen] = useState(false);
+  const [contextPoint, setContextPoint] = useState<ContextPoint | null>(null);
   return (
+    <Popover open={iconOpen} onOpenChange={setIconOpen}>
+    <PopoverAnchor>
     <div
-      title={note.title || t("notes.list.untitled")}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextPoint({ x: e.clientX, y: e.clientY });
+      }}
+      title={tooltip}
       role="treeitem"
       aria-selected={selected}
       aria-level={level}
@@ -315,14 +437,30 @@ function NoteRow({
         dragState.draggingNoteId === note.id && "opacity-40"
       )}
     >
-      <FileText size={14} className="shrink-0 text-muted" />
-      <span dir="auto" className="text-ui truncate min-w-0 flex-1 text-foreground/85">
-        {note.title || t("notes.list.untitled")}
-      </span>
+      <RowGlyph icon={note.icon} fallback={isMeeting ? <AudioLines size={14} className="shrink-0 text-muted" /> : <FileText size={14} className="shrink-0 text-muted" />} />
+      {renaming ? (
+        <InlineRename
+          initialValue={note.title}
+          onCancel={() => setRenaming(false)}
+          onCommit={(value) => {
+            setRenaming(false);
+            const title = value.trim();
+            if (title && title !== note.title) onRename(title);
+          }}
+        />
+      ) : (
+        <span dir="auto" className="text-ui truncate min-w-0 flex-1 text-foreground/85">
+          {note.title || t("notes.list.untitled")}
+        </span>
+      )}
       <RowMenu
         label={t("common.actions")}
+        contextPoint={contextPoint}
+        onContextPointChange={setContextPoint}
         onAction={(key) => {
-          if (key === "show") window.electronAPI?.showNoteFile?.(note.id);
+          if (key === "rename") setRenaming(true);
+          else if (key === "icon") setIconOpen(true);
+          else if (key === "show") window.electronAPI?.showNoteFile?.(note.id);
           else if (key === "move") setMoveOpen(true);
           else if (key === "delete") onDelete(note.id);
         }}
@@ -333,6 +471,14 @@ function NoteRow({
             <Label>{t("notes.context.showInFileManager", { manager: managerName() })}</Label>
           </Dropdown.Item>
         )}
+        <Dropdown.Item id="rename" textValue={t("notes.context.rename")}>
+          <Pencil size={14} className="shrink-0 text-muted" />
+          <Label>{t("notes.context.rename")}</Label>
+        </Dropdown.Item>
+        <Dropdown.Item id="icon" textValue={t("notes.context.changeIcon")}>
+          <Smile size={14} className="shrink-0 text-muted" />
+          <Label>{t("notes.context.changeIcon")}</Label>
+        </Dropdown.Item>
         <Dropdown.Item id="move" textValue={t("notes.context.moveToFolder")}>
           <FolderOpen size={14} className="shrink-0 text-muted" />
           <Label>{t("notes.context.moveToFolder")}…</Label>
@@ -354,6 +500,17 @@ function NoteRow({
         t={t}
       />
     </div>
+    </PopoverAnchor>
+      <PopoverContent align="start" className="p-2">
+        <EmojiIconGrid
+          value={note.icon}
+          onSelect={(icon) => {
+            setIconOpen(false);
+            onSetIcon(icon);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -368,6 +525,8 @@ function FolderRow({
   onOpen,
   onNewNote,
   onRename,
+  onSetStyle,
+  reorder,
   onMove,
   onDelete,
   a11y,
@@ -390,18 +549,47 @@ function FolderRow({
   onOpen: () => void;
   onNewNote: () => void;
   onRename: () => void;
+  onSetStyle: (style: FolderStyle) => void;
+  reorder: {
+    hint: "before" | "after" | null;
+    draggable: true;
+    onDragStart: (e: React.DragEvent) => void;
+    onDragEnd: () => void;
+    onDragOver: (e: React.DragEvent) => boolean;
+    onDrop: (e: React.DragEvent) => boolean;
+  };
   onMove: (space: SpaceItem) => void;
   onDelete: () => void;
   a11y: RowA11y;
   t: TFn;
   children: React.ReactNode;
 }) {
+  const [iconOpen, setIconOpen] = useState(false);
+  const [contextPoint, setContextPoint] = useState<ContextPoint | null>(null);
+  // Pastel row background from the folder colour; a hex plus 2-digit alpha.
+  const tint = folder.color ? FOLDER_COLOR_HEX[folder.color] : undefined;
   return (
     <>
+      <Popover open={iconOpen} onOpenChange={setIconOpen}>
+      <PopoverAnchor>
       <div
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setContextPoint({ x: e.clientX, y: e.clientY });
+        }}
         role="treeitem"
         aria-selected={selected}
         {...dropHandlers}
+        draggable={reorder.draggable}
+        onDragStart={reorder.onDragStart}
+        onDragEnd={reorder.onDragEnd}
+        onDragOver={(e) => {
+          if (!reorder.onDragOver(e)) dropHandlers.onDragOver(e);
+        }}
+        onDrop={(e) => {
+          if (!reorder.onDrop(e)) dropHandlers.onDrop(e);
+        }}
         aria-level={level}
         aria-expanded={expanded}
         tabIndex={a11y.tabIndex}
@@ -409,14 +597,17 @@ function FolderRow({
         onKeyDown={a11y.onKeyDown}
         onFocus={a11y.onFocus}
         onClick={onOpen}
+        style={tint ? ({ "--tint": `${tint}26`, "--tint-strong": `${tint}40` } as React.CSSProperties) : undefined}
         className={cn(
           rowClass,
           "ps-2",
-          selected && "bg-default",
-          highlighted && "ring-1 ring-primary bg-primary/10"
+          tint ? (selected ? "bg-(--tint-strong)" : "bg-(--tint) hover:bg-(--tint-strong)") : selected && "bg-default",
+          highlighted && "ring-1 ring-primary bg-primary/10",
+          reorder.hint === "before" && "shadow-[inset_0_2px_0_var(--color-primary)]",
+          reorder.hint === "after" && "shadow-[inset_0_-2px_0_var(--color-primary)]"
         )}
       >
-        <TreeToggle open={expanded} onToggle={onToggle} icon={<Folder size={14} />} />
+        <TreeToggle open={expanded} onToggle={onToggle} icon={<RowGlyph icon={folder.icon} fallback={<Folder size={14} />} />} />
         <span className="text-ui truncate flex-1 text-foreground/85">
           {defaultFolderDisplayName(folder, t)}
           {count > 0 && <span className="ms-1 text-2xs text-muted">{count}</span>}
@@ -424,7 +615,8 @@ function FolderRow({
         <Button
           variant="ghost"
           size="icon"
-          aria-label={t("notes.list.newNote")}
+          aria-label={t("notes.context.newNoteInFolder")}
+          title={t("notes.context.newNoteInFolder")}
           onClick={(e) => {
             e.stopPropagation();
             onNewNote();
@@ -435,8 +627,11 @@ function FolderRow({
         </Button>
         <RowMenu
           label={t("common.actions")}
+          contextPoint={contextPoint}
+          onContextPointChange={setContextPoint}
           onAction={(key) => {
-            if (key === "show") window.electronAPI?.showFolderInExplorer?.(folder.name);
+            if (key === "icon") setIconOpen(true);
+            else if (key === "show") window.electronAPI?.showFolderInExplorer?.(folder.name);
             else if (key === "rename") onRename();
             else if (key === "delete") onDelete();
             else if (key.startsWith("space:")) {
@@ -451,6 +646,10 @@ function FolderRow({
               <Label>{t("notes.context.showInFileManager", { manager: managerName() })}</Label>
             </Dropdown.Item>
           )}
+          <Dropdown.Item id="icon" textValue={t("notes.context.changeIcon")}>
+            <Smile size={14} className="shrink-0 text-muted" />
+            <Label>{t("notes.context.changeIcon")}</Label>
+          </Dropdown.Item>
           <Dropdown.Item id="rename" textValue={t("notes.context.rename")}>
               <Pencil size={14} className="shrink-0 text-muted" />
               <Label>{t("notes.context.rename")}</Label>
@@ -487,6 +686,19 @@ function FolderRow({
             </Dropdown.Item>
         </RowMenu>
       </div>
+      </PopoverAnchor>
+        <PopoverContent align="start" className="p-2">
+          <EmojiIconGrid
+            value={folder.icon}
+            color={folder.color}
+            onSelect={(icon) => {
+              setIconOpen(false);
+              onSetStyle({ icon });
+            }}
+            onColorSelect={(color) => onSetStyle({ color })}
+          />
+        </PopoverContent>
+      </Popover>
       <div
         className={cn(
           "grid transition-[grid-template-rows]",
@@ -526,7 +738,9 @@ export default function SpacesTree({
   const [newFolderSpace, setNewFolderSpace] = useState<number | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [renamingFolder, setRenamingFolder] = useState<number | null>(null);
-  const [renameValue, setRenameValue] = useState("");
+  const folderDragId = useRef<number | null>(null);
+  const [folderHint, setFolderHint] = useState<{ id: number; pos: "before" | "after" } | null>(null);
+  const [treeMenu, setTreeMenu] = useState<{ point: ContextPoint; spaceId: number } | null>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const undoToast = useRef<string | null>(null);
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
@@ -663,11 +877,10 @@ export default function SpacesTree({
         variant: "destructive",
       });
   };
-  const rename = async (folder: FolderItem) => {
-    const name = renameValue.trim();
+  const rename = async (folder: FolderItem, value: string) => {
+    const name = value.trim();
     setRenamingFolder(null);
-    setRenameValue("");
-    if (!name) return;
+    if (!name || name === folder.name) return;
     const result = await renameFolder(folder.id, name);
     if (!result.success && result.error)
       toast({
@@ -719,6 +932,8 @@ export default function SpacesTree({
         void moveNote(note.id, target);
       }}
       onCreateFolderAndMove={onCreateFolderAndMove}
+      onRename={(title) => void window.electronAPI.updateNote(note.id, { title })}
+      onSetIcon={(icon) => void window.electronAPI.updateNote(note.id, { icon })}
       onDelete={() => {
         const activeCapture = recordingNoteId === note.id &&
           ["preparing", "recording", "saving"].includes(capturePhase);
@@ -755,22 +970,68 @@ export default function SpacesTree({
       noteDragHandlers={noteDragHandlers}
     />
   );
+  const FOLDER_DRAG_TYPE = "application/x-gristmill-folder-id";
+  const folderKeys = folders.map((folder) => folderContainerKey(folder.id));
+  const anyFolderExpanded = folderKeys.some((key) => expanded.has(key));
+  const setAllFoldersExpanded = (open: boolean) => {
+    for (const key of folderKeys) setContainerExpanded(key, open);
+  };
+  const dropPosition = (e: React.DragEvent): "before" | "after" => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+  };
+  const reorderHandlers = (folder: FolderItem) => {
+    const sameSpaceDrag = () => {
+      const dragged = folders.find((item) => item.id === folderDragId.current);
+      return dragged && dragged.id !== folder.id && dragged.space_id === folder.space_id ? dragged : null;
+    };
+    return {
+      hint: folderHint?.id === folder.id ? folderHint.pos : null,
+      draggable: true as const,
+      onDragStart: (e: React.DragEvent) => {
+        // Notes dragged out of a folder's children bubble through here too; only the row itself starts a folder drag.
+        if (e.target !== e.currentTarget) return;
+        folderDragId.current = folder.id;
+        e.dataTransfer.setData(FOLDER_DRAG_TYPE, String(folder.id));
+        e.dataTransfer.effectAllowed = "move";
+      },
+      onDragEnd: () => {
+        folderDragId.current = null;
+        setFolderHint(null);
+      },
+      onDragOver: (e: React.DragEvent) => {
+        if (!sameSpaceDrag()) return false;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const pos = dropPosition(e);
+        setFolderHint((hint) => (hint?.id === folder.id && hint.pos === pos ? hint : { id: folder.id, pos }));
+        return true;
+      },
+      onDrop: (e: React.DragEvent) => {
+        const dragged = sameSpaceDrag();
+        if (!dragged) return false;
+        e.preventDefault();
+        const pos = dropPosition(e);
+        const ids = folders
+          .filter((item) => item.space_id === folder.space_id && item.id !== dragged.id)
+          .map((item) => item.id);
+        ids.splice(ids.indexOf(folder.id) + (pos === "after" ? 1 : 0), 0, dragged.id);
+        folderDragId.current = null;
+        setFolderHint(null);
+        void reorderFolders(folder.space_id, ids);
+        return true;
+      },
+    };
+  };
   const renderFolder = (folder: FolderItem, space: SpaceItem) => {
     const key = folderContainerKey(folder.id);
     if (renamingFolder === folder.id)
       return (
-        <div key={folder.id} className="px-2">
-          <input
-            dir="auto"
-            autoFocus
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void rename(folder);
-              if (e.key === "Escape") setRenamingFolder(null);
-            }}
-            onBlur={() => void rename(folder)}
-            className="w-full h-6 px-2 text-xs bg-default rounded"
+        <div key={folder.id} className="flex px-2">
+          <InlineRename
+            initialValue={folder.name}
+            onCancel={() => setRenamingFolder(null)}
+            onCommit={(value) => void rename(folder, value)}
           />
         </div>
       );
@@ -796,10 +1057,9 @@ export default function SpacesTree({
           toggleContainerExpanded(key);
         }}
         onNewNote={() => onNewNote(space.id, folder.id)}
-        onRename={() => {
-          setRenamingFolder(folder.id);
-          setRenameValue(folder.name);
-        }}
+        onRename={() => setRenamingFolder(folder.id)}
+        onSetStyle={(style) => void updateFolderStyle(folder.id, style)}
+        reorder={reorderHandlers(folder)}
         onMove={(target) => {
           void moveFolderToSpace(folder.id, target.id);
         }}
@@ -816,6 +1076,11 @@ export default function SpacesTree({
       <div
         role="tree"
         aria-label={t("notes.list.title")}
+        onContextMenu={(e) => {
+          // Rows handle their own right-click; this catches the header and the empty space.
+          e.preventDefault();
+          if (spaces[0]) setTreeMenu({ point: { x: e.clientX, y: e.clientY }, spaceId: spaces[0].id });
+        }}
         className="scrollbar-hidden flex-1 overflow-y-auto px-1.5 pb-2 space-y-px"
       >
         {spaces.map((space) => {
@@ -838,10 +1103,23 @@ export default function SpacesTree({
                   {t("sidebar.notes")}
                 </span>
                 {count > 0 && <span className="text-2xs text-muted">{count}</span>}
+                {folderKeys.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={anyFolderExpanded ? t("notes.context.collapseAll") : t("notes.context.expandAll")}
+                    title={anyFolderExpanded ? t("notes.context.collapseAll") : t("notes.context.expandAll")}
+                    onClick={() => setAllFoldersExpanded(!anyFolderExpanded)}
+                    className={buttonClass}
+                  >
+                    {anyFolderExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label={t("notes.context.newFolder")}
+                  aria-label={t("notes.context.addFolder")}
+                  title={t("notes.context.addFolder")}
                   onClick={() => setNewFolderSpace(space.id)}
                   className={buttonClass}
                 >
@@ -872,6 +1150,33 @@ export default function SpacesTree({
           );
         })}
       </div>
+      <PointMenu
+        point={treeMenu?.point ?? null}
+        onClose={() => setTreeMenu(null)}
+        label={t("common.actions")}
+        onAction={(key) => {
+          const spaceId = treeMenu?.spaceId;
+          if (spaceId == null) return;
+          if (key === "note") void onNewNote(spaceId, null);
+          else if (key === "folder") setNewFolderSpace(spaceId);
+          else if (key === "toggle") setAllFoldersExpanded(!anyFolderExpanded);
+        }}
+      >
+        <Dropdown.Item id="note" textValue={t("notes.list.newNote")}>
+          <FileText size={14} className="shrink-0 text-muted" />
+          <Label>{t("notes.list.newNote")}</Label>
+        </Dropdown.Item>
+        <Dropdown.Item id="folder" textValue={t("notes.context.addFolder")}>
+          <Plus size={14} className="shrink-0 text-muted" />
+          <Label>{t("notes.context.addFolder")}</Label>
+        </Dropdown.Item>
+        {folderKeys.length > 0 && (
+          <Dropdown.Item id="toggle" textValue={anyFolderExpanded ? t("notes.context.collapseAll") : t("notes.context.expandAll")}>
+            {anyFolderExpanded ? <ChevronDown size={14} className="shrink-0 text-muted" /> : <ChevronRight size={14} className="shrink-0 text-muted" />}
+            <Label>{anyFolderExpanded ? t("notes.context.collapseAll") : t("notes.context.expandAll")}</Label>
+          </Dropdown.Item>
+        )}
+      </PointMenu>
       <ConfirmDialog
         open={confirmDialog.open}
         onOpenChange={(open) => !open && hideConfirmDialog()}

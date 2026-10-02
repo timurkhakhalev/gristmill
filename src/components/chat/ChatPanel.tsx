@@ -13,6 +13,14 @@ import type { ConversationRow } from "../../contracts/chatPersistence";
 import { FLOATING_CHAT_MAX_HEIGHT_CSS } from "../notes/floatingChatLayout";
 
 const FLOATING_CLOSE_MS = 160;
+const FLOATING_DEFAULT_HEIGHT_PX = 576;
+const FLOATING_MIN_HEIGHT_PX = 240;
+const FLOATING_HEIGHT_KEY = "gristmill.floatingChatHeight";
+
+function readStoredHeight(): number | null {
+  const value = Number(localStorage.getItem(FLOATING_HEIGHT_KEY));
+  return Number.isFinite(value) && value >= FLOATING_MIN_HEIGHT_PX ? value : null;
+}
 
 export type ChatPanelMode = "hidden" | "floating" | "sidebar";
 
@@ -92,6 +100,35 @@ export default function ChatPanel({
     return () => clearTimeout(timer);
   }, [closing]);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState<number | null>(readStoredHeight);
+  const resize = useRef<{ startY: number; startHeight: number; cap: number } | null>(null);
+  const heightRef = useRef(height);
+  heightRef.current = height;
+
+  const onResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const startHeight = panel.getBoundingClientRect().height;
+    // The host's max-height is a CSS expression, so measure the tallest the card can be.
+    const inline = panel.style.height;
+    panel.style.height = `min(100vh, ${floatingMaxHeight})`;
+    const cap = panel.getBoundingClientRect().height;
+    panel.style.height = inline;
+    resize.current = { startY: e.clientY, startHeight, cap };
+  };
+  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = resize.current;
+    const panel = panelRef.current;
+    if (!start || !panel) return;
+    // The card is bottom-anchored, so dragging its top edge up grows it, up to the host's cap.
+    setHeight(Math.round(Math.min(start.cap, Math.max(FLOATING_MIN_HEIGHT_PX, start.startHeight + start.startY - e.clientY))));
+  };
+  const onResizeEnd = () => {
+    if (!resize.current) return;
+    resize.current = null;
+    if (heightRef.current != null) localStorage.setItem(FLOATING_HEIGHT_KEY, String(heightRef.current));
+  };
 
   // One node, two owners: the click-outside check here and the host's layout observer.
   const setPanelRef = useCallback(
@@ -234,7 +271,7 @@ export default function ChatPanel({
     return (
       <div
         ref={setPanelRef}
-        style={{ height: `min(36rem, ${floatingMaxHeight})` }}
+        style={{ height: `min(${height ?? FLOATING_DEFAULT_HEIGHT_PX}px, ${floatingMaxHeight})` }}
         className={cn(
           // Geometry keeps the input where the ask bar was: the bar is 600px wide, 20px from the
           // sides and 16px from the bottom; the input sits 12px inside the card.
@@ -252,6 +289,20 @@ export default function ChatPanel({
             : "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"
         )}
       >
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t("embeddedChat.resize")}
+          onPointerDown={onResizeStart}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeEnd}
+          onPointerCancel={onResizeEnd}
+          onDoubleClick={() => {
+            localStorage.removeItem(FLOATING_HEIGHT_KEY);
+            setHeight(null);
+          }}
+          className="absolute inset-x-6 -top-1 z-10 h-3 cursor-ns-resize touch-none"
+        />
         {content}
       </div>
     );

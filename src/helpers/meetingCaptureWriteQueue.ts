@@ -77,8 +77,13 @@ export class MeetingCaptureWriteQueue<T> {
     return promise;
   }
 
-  async drain(): Promise<void> {
+  drain(): Promise<void> {
     this.closed = true;
+    return this.waitForWrites();
+  }
+
+  /** Wait for accepted packets without closing the queue used after unmute. */
+  async waitForWrites(): Promise<void> {
     const outcome = await Promise.race([
       this.tail.then(() => null),
       this.failed,

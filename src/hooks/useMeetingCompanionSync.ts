@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { getMicAnalyser, getSystemAudioLevel, useMeetingRecordingStore } from "../stores/meetingRecordingStore";
+import { getMicAnalyser, getSystemAudioLevel, setManualMicMuted, useMeetingRecordingStore } from "../stores/meetingRecordingStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { INACTIVE_MEETING_COMPANION_STATE } from "../contracts/meetingCompanion";
 
@@ -17,18 +17,30 @@ export function useMeetingCompanionSync(): void {
   const folderId = useMeetingRecordingStore((s) => s.recordingFolderId);
   const title = useMeetingRecordingStore((s) => s.recordingNoteTitle);
   const micCaptureStatus = useMeetingRecordingStore((s) => s.micCaptureStatus);
+  const manualMicMuted = useMeetingRecordingStore((s) => s.manualMicMuted);
+  const platformMicMuted = useMeetingRecordingStore((s) => s.platformMicMuted);
 
   const paused = capturePhase === "paused";
   const active = enabled && (isRecording || paused);
+  const micMuted = manualMicMuted || platformMicMuted;
   const waitingForMic = micCaptureStatus === "reconnecting" || micCaptureStatus === "unavailable";
 
   useEffect(() => {
     window.electronAPI?.updateMeetingCompanion?.(
       active
-        ? { active, paused, waitingForMic, noteId, folderId, title: title ?? "" }
+        ? { active, paused, waitingForMic, micMuted, noteId, folderId, title: title ?? "" }
         : INACTIVE_MEETING_COMPANION_STATE
     );
-  }, [active, paused, waitingForMic, noteId, folderId, title]);
+  }, [active, paused, waitingForMic, micMuted, noteId, folderId, title]);
+
+  useEffect(
+    () =>
+      window.electronAPI?.onMeetingCompanionToggleMic?.(() => {
+        const { manualMicMuted: muted } = useMeetingRecordingStore.getState();
+        void setManualMicMuted(!muted);
+      }),
+    []
+  );
 
   useEffect(
     () => () => window.electronAPI?.updateMeetingCompanion?.(INACTIVE_MEETING_COMPANION_STATE),

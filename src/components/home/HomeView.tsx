@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNotesByContainer } from "../../stores/noteStore";
+import { useNotesTreeActions } from "../../hooks/useNotesTreeActions";
 import { useHomeChat } from "../../hooks/useHomeChat";
 import { useUpcomingEvents } from "../../hooks/useUpcomingEvents";
 import { useTranslation } from "react-i18next";
@@ -29,6 +30,7 @@ interface HomeViewProps {
 export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }: HomeViewProps) {
   const { t } = useTranslation();
   const upcoming = useUpcomingEvents();
+  const { handleMoveNote, handleCreateFolderAndMove, handleDelete } = useNotesTreeActions();
   const notesByContainer = useNotesByContainer();
   const [notes, setNotes] = useState<NoteItem[] | null>(() => cachedRecentNotes);
   // Fade the list in only when it replaces the skeleton, not on cached remounts.
@@ -84,7 +86,13 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
         />
         {notes ? (
           <div className={notesWereLoading ? CONTENT_ENTER_CLASS : undefined}>
-            <RecentNotes notes={notes} onOpenNote={onOpenNote} />
+            <RecentNotes
+              notes={notes}
+              onOpenNote={onOpenNote}
+              onMoveNote={(id, target) => void handleMoveNote(id, target)}
+              onCreateFolderAndMove={(id, name) => void handleCreateFolderAndMove(id, name)}
+              onDeleteNote={(id) => void handleDelete(id)}
+            />
           </div>
         ) : (
           <RecentNotesSkeleton />
@@ -98,6 +106,18 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
             if (chat.messages.length > 0) setChatMode("floating");
           }}
           hideInput={chatMode !== "hidden"}
+          history={{
+            conversations: chat.conversations,
+            activeConversationId: chat.activeConversationId,
+            onSwitchConversation: (id) => {
+              chat.switchConversation(id);
+              setChatMode("floating");
+            },
+            onNewChat: () => {
+              chat.startNewChat();
+              setChatMode("floating");
+            },
+          }}
         />
         <div className="pointer-events-auto">
           <ChatPanel

@@ -1,6 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FileText } from "../icons";
+import { Dropdown, Label, Separator } from "@heroui/react";
+import { FileText, FolderOpen, Trash2 } from "../icons";
+import { MoveFolderPicker, RowMenu } from "../notes/SpacesTree";
+import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
+import { useFolders, useSpaces } from "../../stores/noteStore";
+import type { NoteMoveTarget } from "../../hooks/useNoteDragAndDrop";
 import PersonAvatar from "../ui/PersonAvatar";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import { formatDate, formatTime, normalizeDbDate } from "../../utils/dateFormatting";
@@ -47,8 +52,19 @@ function groupNotesByDay(notes: NoteItem[]): DayGroup[] {
   return groups;
 }
 
-function NoteRow({ note, onOpen }: { note: NoteItem; onOpen: () => void }) {
+interface NoteRowProps {
+  note: NoteItem;
+  onOpen: () => void;
+  onMove: (noteId: number, target: NoteMoveTarget) => void;
+  onCreateFolderAndMove: (noteId: number, name: string) => void;
+  onDelete: (noteId: number) => void;
+}
+
+function NoteRow({ note, onOpen, onMove, onCreateFolderAndMove, onDelete }: NoteRowProps) {
   const { t } = useTranslation();
+  const spaces = useSpaces();
+  const folders = useFolders();
+  const [moveOpen, setMoveOpen] = useState(false);
   const locale = useUiLocale();
   const { timeFormat } = useDateTimePreferences();
   const others = useMemo(
@@ -72,9 +88,12 @@ function NoteRow({ note, onOpen }: { note: NoteItem; onOpen: () => void }) {
   }, timeFormat);
 
   return (
+    <Popover open={moveOpen} onOpenChange={setMoveOpen}>
+    <PopoverAnchor>
+    <div className="group -mx-2 flex w-[calc(100%+1rem)] items-center gap-1 rounded-lg pe-2 transition-colors duration-150 hover:bg-default dark:hover:bg-white/4">
     <button
       onClick={onOpen}
-      className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg px-2 py-2 text-start transition-colors duration-150 hover:bg-default focus:outline-none focus-visible:ring-1 focus-visible:ring-focus dark:hover:bg-white/4"
+      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 text-start focus:outline-none focus-visible:ring-1 focus-visible:ring-focus"
     >
       {lead ? (
         <PersonAvatar
@@ -100,16 +119,50 @@ function NoteRow({ note, onOpen }: { note: NoteItem; onOpen: () => void }) {
       </span>
       <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{time}</span>
     </button>
+      <RowMenu
+        label={t("common.actions")}
+        onAction={(key) => {
+          if (key === "move") setMoveOpen(true);
+          else if (key === "delete") onDelete(note.id);
+        }}
+      >
+        <Dropdown.Item id="move" textValue={t("notes.context.moveToFolder")}>
+          <FolderOpen size={14} className="shrink-0 text-muted" />
+          <Label>{t("notes.context.moveToFolder")}…</Label>
+        </Dropdown.Item>
+        <Separator className="my-1" />
+        <Dropdown.Item id="delete" variant="danger" textValue={t("notes.context.delete")}>
+          <Trash2 size={14} className="shrink-0" />
+          <Label>{t("notes.context.delete")}</Label>
+        </Dropdown.Item>
+      </RowMenu>
+    </div>
+    </PopoverAnchor>
+      <PopoverContent align="end" className="w-64 p-2">
+        <MoveFolderPicker
+          note={note}
+          spaces={spaces}
+          folders={folders}
+          onMove={(target) => onMove(note.id, target)}
+          onCreateFolderAndMove={onCreateFolderAndMove}
+          onDone={() => setMoveOpen(false)}
+          t={t}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
 interface RecentNotesProps {
   notes: NoteItem[];
   onOpenNote: (note: NoteItem) => void;
+  onMoveNote: NoteRowProps["onMove"];
+  onCreateFolderAndMove: NoteRowProps["onCreateFolderAndMove"];
+  onDeleteNote: NoteRowProps["onDelete"];
 }
 
 /** Past notes and meetings across every space, grouped by day. */
-export default function RecentNotes({ notes, onOpenNote }: RecentNotesProps) {
+export default function RecentNotes({ notes, onOpenNote, onMoveNote, onCreateFolderAndMove, onDeleteNote }: RecentNotesProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
   const { dateFormat } = useDateTimePreferences();
@@ -141,7 +194,14 @@ export default function RecentNotes({ notes, onOpenNote }: RecentNotesProps) {
             {dayLabel(group.date)}
           </h3>
           {group.notes.map((note) => (
-            <NoteRow key={note.id} note={note} onOpen={() => onOpenNote(note)} />
+            <NoteRow
+              key={note.id}
+              note={note}
+              onOpen={() => onOpenNote(note)}
+              onMove={onMoveNote}
+              onCreateFolderAndMove={onCreateFolderAndMove}
+              onDelete={onDeleteNote}
+            />
           ))}
         </div>
       ))}

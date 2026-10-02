@@ -1,3 +1,4 @@
+import { useMeetingPlayback } from "../../hooks/useMeetingPlayback";
 import { meetingPlatformLabel } from "../../contracts/meetingRecording";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import ReactMarkdown from "react-markdown";
@@ -128,9 +129,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const [modelOpen, setModelOpen] = useState(false);
   const [popoverTab, setPopoverTab] = useState<"transcript" | "audio">("audio");
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const [audioUrl, setAudioUrl] = useState("");
-  const [isPlaying, setIsPlaying] = useState(false);
   const [message, setMessage] = useState("");
   const toastApi = useContext(ToastContext);
   // Outcomes of one-off actions go to a toast; the inline line is only a fallback outside ToastProvider.
@@ -149,9 +147,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     if (!playback || !previewRecordings?.length) return;
     setPopoverTab("audio");
     setAudioOpen(true);
-    setPlayingId(previewRecordings[0].recording.id);
-    setPlaybackTime(playback.currentTime);
-    setIsPlaying(playback.playing);
   }, [mockPipeline, previewRecordings]);
   const patchMock = useCallback((patch: Partial<MockPipeline>) => setMock((current) => current && { ...current, ...patch }), []);
   const mockTimer = useRef<number | undefined>(undefined);
@@ -206,115 +201,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     return () => { cancelled = true; };
   }, [noteId, previewRecordings, speakerId, notify, t]);
   const [profiles, setProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const playbackLease = useRef<string | null>(null);
-  const playbackRequest = useRef(0);
-  const releasePlayback = useCallback(() => {
-    const lease = playbackLease.current;
-    playbackLease.current = null;
-    if (lease) void window.electronAPI.meetingRecordingReleasePlayback(lease).catch(() => {});
-  }, []);
-  useEffect(() => () => {
-    playbackRequest.current++;
-    audioRef.current?.pause();
-    releasePlayback();
-  }, [noteId, releasePlayback]);
-  const [playbackTime, setPlaybackTime] = useState(0);
-  const [playbackDuration, setPlaybackDuration] = useState(0);
-  const [isSeeking, setIsSeeking] = useState(false);
-  const seekBarRef = useRef<HTMLDivElement>(null);
+  const playbackError = useCallback((error?: string) => notify(error || t("meetingResults.playbackError"), "destructive"), [notify, t]);
+  const { audioRef, seekBarRef, playingId, isPlaying, playbackTime, totalDuration,
+    startAudio, togglePlay, skip, stop: stopPlayback,
+    onSeekBarPointerDown, onSeekBarPointerMove, onSeekBarPointerUp } = useMeetingPlayback({
+    noteId, recordings, preview: Boolean(previewRecordings), previewPlayback: mockPipeline?.audioPlayback, onError: playbackError,
+  });
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const onTime = () => { if (!isSeeking) setPlaybackTime(audio.currentTime); };
-    const onMeta = () => setPlaybackDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
-    const onEnd = () => { releasePlayback(); setPlaybackTime(0); setPlayingId(null); setIsPlaying(false); };
-    const onError = () => { releasePlayback(); setPlayingId(null); setIsPlaying(false); };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("loadedmetadata", onMeta);
-    audio.addEventListener("durationchange", onMeta);
-    audio.addEventListener("ended", onEnd);
-    audio.addEventListener("error", onError);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
-    return () => {
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("loadedmetadata", onMeta);
-      audio.removeEventListener("durationchange", onMeta);
-      audio.removeEventListener("ended", onEnd);
-      audio.removeEventListener("error", onError);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
-    };
-  }, [isSeeking, releasePlayback]);
-
-  // timeupdate fires only ~4 times a second; drive the thumb per frame while playing.
-  useEffect(() => {
-    if (!isPlaying || isSeeking) return;
-    let frame = 0;
-    let last = performance.now();
-    const tick = (now: number) => {
-      const audio = audioRef.current;
-      if (previewRecordings) setPlaybackTime((value) => value + (now - last) / 1000);
-      else if (audio) setPlaybackTime(audio.currentTime);
-      last = now;
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [isPlaying, isSeeking, previewRecordings]);
-
-  const playingRecording = useMemo(
-    () => recordings.find((item) => item.recording.id === playingId) ?? null,
-    [recordings, playingId]
-  );
-
-  const totalDuration = playbackDuration > 0 ? playbackDuration : playingRecording?.recording.durationSeconds ?? 0;
-  const seekTo = (seconds: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const clamped = Math.max(0, Math.min(seconds, totalDuration || seconds));
-    if (!previewRecordings) audio.currentTime = clamped;
-    setPlaybackTime(clamped);
-  };
-  const skip = (delta: number) => seekTo(playbackTime + delta);
-
-  const onSeekBarPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const bar = seekBarRef.current;
-    const audio = audioRef.current;
-    if (!bar || !audio) return;
-    const rect = bar.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    setIsSeeking(true);
-    seekTo(ratio * totalDuration);
-    bar.setPointerCapture(event.pointerId);
-  };
-  const onSeekBarPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isSeeking) return;
-    const bar = seekBarRef.current;
-    const audio = audioRef.current;
-    if (!bar || !audio) return;
-    const rect = bar.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    seekTo(ratio * totalDuration);
-  };
-  const onSeekBarPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    setIsSeeking(false);
-    seekBarRef.current?.releasePointerCapture(event.pointerId);
-  };
-  const togglePlay = () => {
-    if (!audioRef.current || !playingId) return;
-    if (previewRecordings) { setIsPlaying((value) => !value); return; }
-    if (audioRef.current.paused) {
-      void audioRef.current.play().catch(() => notify(t("meetingResults.playbackError"), "destructive"));
-    } else {
-      audioRef.current.pause();
-    }
-  };
 
   const refresh = useCallback(async () => {
     if (previewRecordings) return;
@@ -536,46 +429,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     }
   };
 
-  const startAudio = async (id: string, seek = 0) => {
-    if (playingId === id && audioRef.current && seek === 0) { togglePlay(); return; }
-    if (previewRecordings) { setPlaybackTime(seek); setPlayingId(id); setIsPlaying(true); return; }
-    if (!recordings.some((item) => item.recording.id === id && item.recording.audioState === "available")) return;
-    const request = ++playbackRequest.current;
-    const path = await window.electronAPI.meetingRecordingGetPlaybackPath(id);
-    if (request !== playbackRequest.current) {
-      if (path.leaseId) void window.electronAPI.meetingRecordingReleasePlayback(path.leaseId);
-      return;
-    }
-    if (!path.success || !path.path) { notify(path.error || t("meetingResults.playbackError"), "destructive"); return; }
-    audioRef.current?.pause();
-    releasePlayback();
-    playbackLease.current = path.leaseId ?? null;
-    const url = new URL(path.path, "file://").href;
-    if (audioRef.current) {
-      if (audioUrl !== url) {
-        audioRef.current.src = url;
-        audioRef.current.load();
-      }
-      if (audioRef.current.readyState < HTMLMediaElement.HAVE_METADATA) {
-        await new Promise<void>((resolve) => {
-          audioRef.current?.addEventListener("loadedmetadata", () => resolve(), { once: true });
-          audioRef.current?.addEventListener("error", () => resolve(), { once: true });
-        });
-      }
-      if (request !== playbackRequest.current) return;
-      audioRef.current.currentTime = seek;
-      try { await audioRef.current.play(); }
-      catch {
-        if (request === playbackRequest.current) {
-          releasePlayback();
-          notify(t("meetingResults.playbackError"), "destructive");
-        }
-        return;
-      }
-      if (request === playbackRequest.current) { setPlayingId(id); setAudioUrl(url); }
-    }
-  };
-
   /** Starts a run with the settings-selected providers; no per-run picker. */
   const openRun = (kind: "reprocess" | "summary", target: { partId?: string; generateSummary?: boolean } = {}) => {
     if (kind === "summary" && !previewRecordings && (!selected?.transcript?.text.trim() || captureBlocksAsr)) return;
@@ -636,7 +489,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       title: t("meetingResults.deleteAudioTitle"), description: t("meetingResults.deleteAudioDescription"),
       confirmText: t("meetingResults.deleteAudioConfirm"), variant: "destructive",
       onConfirm: () => void runTask(async () => {
-        audioRef.current?.pause(); releasePlayback(); setPlayingId(null); setIsPlaying(false);
+        stopPlayback();
         if (previewRecordings) { setRecordings((items) => items.map((item) => item.recording.id === id ? { ...item, recording: { ...item.recording, audioState: "deleted" } } : item)); return; }
         const result = await window.electronAPI.meetingRecordingDeleteAudio(id);
         if (!result.success) throw new Error(result.error || t("meetingResults.deleteError"));

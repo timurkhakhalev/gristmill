@@ -2,13 +2,11 @@ import { app, BrowserWindow } from "electron";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 
 const repo = path.resolve(__dirname, "../..");
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "oh-renderer-origin-"));
-const profile = path.join(root, "profile");
-fs.mkdirSync(profile);
+const profile = process.env.GRISTMILL_ELECTRON_FIXTURE_PROFILE;
+if (!profile) throw new Error("Electron fixture profile is required");
 app.setPath("userData", profile);
 app.setPath("sessionData", profile);
 // setAppPath exists at runtime; typed as missing in this Electron version.
@@ -58,7 +56,7 @@ app.whenReady().then(async () => {
 
   await win.loadFile(bridge);
   await win.webContents.executeJavaScript("localStorage.setItem('onboardingCompleted', 'true')");
-  const smoke = path.join(root, "explicit-smoke");
+  const smoke = path.join(profile, "explicit-smoke");
   fs.mkdirSync(smoke);
   app.commandLine.appendSwitch("user-data-dir", smoke);
   assert.equal(app.commandLine.getSwitchValue("user-data-dir"), smoke);

@@ -768,3 +768,22 @@ test("processing can be cancelled during the countdown and after ASR starts", as
     assert.match(panel.text(), /Release on Friday/, "existing summary remains available");
   }
 });
+
+for (const viewMode of ["raw", "enhanced"] as const) {
+for (const platform of ["zoom", "google-meet"] as const) {
+  test(`${platform} ${viewMode} suggestion shows its source and manual rename removes the badge`, async (t: TestContext) => {
+    const run = completeRun();
+    run.speakerCorrections = [{ speakerId: "speaker-1", profileId: null, displayName: "Alice", source: "platform", platform, revision: 1 }];
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], { viewMode });
+    await ui.showTranscriptTab();
+    const label = platform === "google-meet" ? "Google Meet" : "Zoom";
+    assert.match(ui.text(), new RegExp(label));
+    await ui.clickSpeaker("Alice");
+    await ui.changeSpeakerName("Chosen name");
+    await ui.saveSpeaker();
+    assert.match(ui.text(), /Chosen name/);
+    assert.doesNotMatch(ui.text(), new RegExp(label));
+    assert.equal(ui.calls.speaker.length, 1);
+  });
+}
+}

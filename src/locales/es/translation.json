@@ -2187,7 +2187,8 @@
       "body": {
         "micReleased": "Ninguna otra app está usando el micrófono, así que la grabación se detuvo automáticamente. Reiníciala en {{seconds}} s.",
         "silence": "No se detectó audio, así que la grabación se detuvo automáticamente. Reiníciala en {{seconds}} s.",
-        "processExit": "La app de reuniones se cerró, así que la grabación se detuvo automáticamente. Reiníciala en {{seconds}} s."
+        "processExit": "La app de reuniones se cerró, así que la grabación se detuvo automáticamente. Reiníciala en {{seconds}} s.",
+        "platformLeave": "Saliste de Meet. Reinicia la grabación en {{seconds}} s."
       },
       "restart": "Reiniciar grabación"
     }
@@ -2249,8 +2250,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "Nombre identificado en Zoom. Haz clic para cambiarlo.",
-    "platformEvidenceUnavailable": "Los datos del hablante de Zoom están incompletos. El audio y la transcripción se conservan.",
+    "platformNameHint": "Nombre identificado en {{platform}}. Haz clic para cambiarlo.",
+    "platformEvidenceUnavailable": "Los datos del hablante de Zoom / Google Meet están incompletos. El audio y la transcripción se conservan.",
     "partialTranscript": "La transcripción de esta nota está incompleta.",
     "selectedResultTranscript": "Transcripción del resultado seleccionado",
     "participantsLoadError": "No se pudieron cargar los participantes del calendario.",
@@ -2505,5 +2506,29 @@
     "onboardingTitle": "¿Cómo te llamas?",
     "skip": "Omitir",
     "selfLabel": "Tú"
+  },
+  "meetIntegration": {
+    "title": "Gristmill Companion",
+    "setupDescription": "Chrome Stable. Activa la integración y carga la carpeta con «Cargar descomprimida» en chrome://extensions. El audio del micrófono silenciado se descarta; el audio del sistema continúa.",
+    "enabled": "Activada",
+    "disabled": "Desactivada",
+    "loading": "Cargando…",
+    "disable": "Desactivar",
+    "enable": "Activar",
+    "openExtension": "Abrir carpeta de la extensión",
+    "remove": "Eliminar registro",
+    "setupFailed": "Error de configuración",
+    "mute": "Silenciar micrófono",
+    "unmute": "Activar micrófono",
+    "platformMuted": "Micrófono silenciado por Meet o el dispositivo",
+    "muteFailed": "No se pudo cambiar el estado del micrófono",
+    "contextLost": "Se perdió la conexión con Meet. La grabación continúa.",
+    "bound": "Vinculada a Meet {{call}}",
+    "confirmDescription": "¿Vincular esta grabación a una llamada? Sus controles de silencio y salida controlarán esta grabación.",
+    "noCall": "No se reconoce ninguna llamada. La grabación continúa de forma independiente.",
+    "bind": "Vincular {{call}}",
+    "companionMode": "Modo Complemento de Meet",
+    "staleSelection": "La llamada o grabación cambió. Selecciona una llamada actual.",
+    "uiUnrecognized": "No se reconoce la interfaz de Meet. La grabación continúa."
   }
 }

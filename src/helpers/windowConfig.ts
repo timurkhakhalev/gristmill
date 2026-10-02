@@ -164,7 +164,8 @@ export const WINDOW_SIZES = {
 // partial payloads, so every field stays optional — `kind` only selects the
 // auto-end size/timeout path.
 export interface MeetingNotificationPrompt {
-  kind?: "detection" | "auto-end";
+  kind?: "detection" | "auto-end" | "meet-context-lost";
+  recordingId?: string;
   detectionId?: string;
   sessionId?: string;
   expiresAt?: number;

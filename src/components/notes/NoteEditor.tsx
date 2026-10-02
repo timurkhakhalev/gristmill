@@ -1,3 +1,5 @@
+import { MeetingMicButton } from "./MeetingMicButton";
+import { MeetBindingControl } from "./MeetBindingControl";
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
@@ -865,18 +867,21 @@ export default function NoteEditor({
           <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-y-auto agent-chat-scroll">
             <MeetingResultsPanel
               capturePhase={capturePhase}
-              notice={capturePhase === "failed" ? (
-                <NoteNotice
-                  status="danger"
-                  title={t("notes.editor.capture.failed")}
-                  description={t("notes.editor.capture.failedReason")}
-                  actions={<HeroButton size="sm" variant="secondary" onPress={() => openSettings("recording")}>{t("meetingResults.openSettings")}</HeroButton>}
-                />
-              ) : null}
+              notice={<>
+                {(isRecording || capturePhase === "paused") && <MeetBindingControl />}
+                {capturePhase === "failed" ? (
+                  <NoteNotice
+                    status="danger"
+                    title={t("notes.editor.capture.failed")}
+                    description={t("notes.editor.capture.failedReason")}
+                    actions={<HeroButton size="sm" variant="secondary" onPress={() => openSettings("recording")}>{t("meetingResults.openSettings")}</HeroButton>}
+                  />
+                ) : null}
+              </>}
               actions={(summaryAction: SummaryActionState) => {
                 if (summaryAction.isGenerating) return null;
                 const generateSummary = debugPreview ? onGenerateSummary : summaryAction.onGenerate;
-                return <div className="flex flex-wrap items-center gap-1.5">
+                return <div className="flex shrink-0 items-center gap-1.5">
                   {canEditNote && (
                     <NoteRecordControl
                       isRecording={isRecording}
@@ -894,6 +899,7 @@ export default function NoteEditor({
                       onGenerateSummary={generateSummary}
                     />
                   )}
+                  {(isRecording || capturePhase === "paused") && <MeetingMicButton />}
                 </div>;
               }}
               noteId={note.id}

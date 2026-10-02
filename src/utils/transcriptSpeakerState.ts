@@ -12,6 +12,7 @@ const SPEAKER_STATE_FIELDS = [
   "speakerStatus",
   "speakerLocked",
   "speakerLockSource",
+  "speakerPlatform",
 ] as const;
 
 type SpeakerStateField = (typeof SPEAKER_STATE_FIELDS)[number];
@@ -97,6 +98,7 @@ export const lockTranscriptSpeaker = (
     speakerLocked: true,
     speakerStatus: "locked",
     speakerLockSource: "user",
+    speakerPlatform: undefined,
   });
 
 const mergeSpeakerFields = (existing: TranscriptSegment, incoming: TranscriptSegment) => {
@@ -205,6 +207,7 @@ export const serializeTranscriptSegments = (segments: TranscriptSegment[]) =>
       speakerStatus: segment.speakerStatus,
       speakerLocked: segment.speakerLocked,
       speakerLockSource: segment.speakerLockSource,
+      speakerPlatform: segment.speakerPlatform,
     }))
   );
 

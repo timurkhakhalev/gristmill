@@ -1,3 +1,4 @@
+import type { CompanionSetup, CompanionStatus, CompanionCandidateKey, CompanionRecordingScope } from "./companion.js";
 // Single source of truth for the meeting coordinator boundary: recording
 // prepare/start/send/stop/cancel, system-audio availability, recording locks,
 // the mic warm hold, detection preferences, session speaker configuration,
@@ -8,7 +9,7 @@
 // main.js. sessionId, noteId and detectionId are distinct fields and are never
 // interchangeable.
 import { z } from "zod";
-import { meetingRecordingIdSchema } from "./meetingRecording.js";
+import { meetingFrameAlignmentPointSchema, meetingFrameAlignmentSegmentSchema, meetingRecordingIdSchema } from "./meetingRecording.js";
 import type { MeetingProcessingConfig, MeetingProcessingConfigError, MeetingSource } from "./meetingRecording.js";
 
 // ---- channels -----------------------------------------------------------------
@@ -17,6 +18,8 @@ export const meetingCoordinatorChannels = {
   meetingTranscriptionPrepare: "meeting-transcription-prepare",
   meetingTranscriptionStart: "meeting-transcription-start",
   meetingTranscriptionSend: "meeting-transcription-send",
+  meetingTranscriptionSetMicIntent: "meeting-transcription-set-mic-intent",
+  meetingTranscriptionProbeClock: "meeting-transcription-probe-clock",
   meetingTranscriptionStop: "meeting-transcription-stop",
   meetingTranscriptionCancel: "meeting-transcription-cancel",
   meetingTranscriptionSetSystemAudioAvailable: "meeting-transcription-set-system-audio-available",
@@ -79,7 +82,7 @@ export interface PolicyFailureMetadata {
 }
 
 /** Why auto-end concluded the meeting is over. */
-export type MeetingAutoEndReason = "mic-released" | "silence" | "process-exit";
+export type MeetingAutoEndReason = "mic-released" | "silence" | "process-exit" | "platform-leave";
 
 export type MeetingPromptVariant = "detected" | "starting" | "underway";
 
@@ -102,7 +105,8 @@ export interface MeetingAutoEndNotificationData {
 
 export type MeetingNotificationData =
   | MeetingDetectionNotificationData
-  | MeetingAutoEndNotificationData;
+  | MeetingAutoEndNotificationData
+  | { kind: "meet-context-lost"; recordingId: string; sessionId: string };
 
 export interface MeetingAutoEndRequest {
   sessionId: string;
@@ -148,6 +152,8 @@ export const meetingOptionsSchema = z
     noteId: z.number().int().nullable().optional(),
     groupId: meetingRecordingIdSchema.optional(),
     autoEndEligible: z.boolean().optional(),
+    manualMicMuted: z.boolean().optional(),
+    restartSessionId: z.string().uuid().optional(),
     recordingConfig: z.unknown().optional(),
   });
 
@@ -160,6 +166,8 @@ export interface MeetingTranscriptionStartOptions {
   sessionId: string;
   groupId?: string;
   autoEndEligible: boolean;
+  manualMicMuted?: boolean;
+  restartSessionId?: string;
   recordingConfig?: {
     config: MeetingProcessingConfig | null;
     configError?: MeetingProcessingConfigError | null;
@@ -168,24 +176,90 @@ export interface MeetingTranscriptionStartOptions {
 
 export interface MeetingCapturePacket {
   epochIndex: number;
-  epochStartFrame: number;
+  epochSourceStartFrame: number;
+  sourceFrameStart: number;
+  sourceGeneration: number;
   sequence: number;
   sampleOffset: number;
+  alignment: z.infer<typeof meetingFrameAlignmentSegmentSchema> | null;
+  alignmentErrorCode: string;
 }
 
 export const meetingCapturePacketSchema = z.object({
   epochIndex: z.number().int().nonnegative(),
-  epochStartFrame: z.number().int().nonnegative(),
+  epochSourceStartFrame: z.number().int().nonnegative(),
+  sourceFrameStart: z.number().int().nonnegative(),
+  sourceGeneration: z.number().int().positive(),
   sequence: z.number().int().nonnegative(),
   sampleOffset: z.number().int().nonnegative(),
+  alignment: meetingFrameAlignmentSegmentSchema.nullable(),
+  alignmentErrorCode: z.string().regex(/^[a-z0-9-]{1,80}$/),
+});
+
+export interface MeetingMicIntentRequest {
+  sessionId: string;
+  recordingId: string;
+  sequence: number;
+  sourceGeneration: number;
+  manualMuted: boolean;
+  platformMuted: boolean;
+  boundaryFrame: number;
+  boundaryAlignment: z.infer<typeof meetingFrameAlignmentPointSchema> | null;
+}
+
+export const meetingMicIntentRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  recordingId: meetingRecordingIdSchema,
+  sequence: z.number().int().positive(),
+  sourceGeneration: z.number().int().positive(),
+  manualMuted: z.boolean(),
+  platformMuted: z.boolean(),
+  boundaryFrame: z.number().int().nonnegative(),
+  boundaryAlignment: meetingFrameAlignmentPointSchema.nullable(),
+});
+
+export const meetingMicIntentResultSchema = z.object({
+  success: z.boolean(),
+  sequence: z.number().int().positive().optional(),
+  sourceGeneration: z.number().int().positive().optional(),
+  effectiveMuted: z.boolean().optional(),
+  boundaryFrame: z.number().int().nonnegative().optional(),
+  error: z.string().optional(),
+});
+export type MeetingMicIntentResult = z.infer<typeof meetingMicIntentResultSchema>;
+
+export interface MeetingClockProbeRequest {
+  sessionId: string;
+  recordingId: string;
+  nonce: string;
+  sourceSendNs: string;
+}
+
+export const meetingClockProbeRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  recordingId: meetingRecordingIdSchema,
+  nonce: z.string().uuid(),
+  sourceSendNs: z.string().regex(/^\d{1,20}$/),
+});
+
+export const meetingClockProbeResultSchema = z.object({
+  success: z.boolean(),
+  nonce: z.string().uuid().optional(),
+  helperReceiveNs: z.string().regex(/^\d{1,20}$/).optional(),
+  helperSendNs: z.string().regex(/^\d{1,20}$/).optional(),
+  helperGeneration: meetingRecordingIdSchema.optional(),
+  helperFrame: z.number().int().nonnegative().optional(),
+  error: z.string().optional(),
 });
 
 export interface MeetingCaptureStopRequest {
   sessionId: string;
   lastSequence: Partial<Record<MeetingSource, number>>;
+  microphoneBoundary?: { sourceGeneration: number; sourceFrame: number; alignment: z.infer<typeof meetingFrameAlignmentPointSchema> | null };
   incomplete?: boolean;
   errorCode?: string;
   suppressProcessing?: boolean;
+  pause?: boolean;
 }
 
 export const meetingCaptureStopRequestSchema = z.object({
@@ -194,9 +268,11 @@ export const meetingCaptureStopRequestSchema = z.object({
     mic: z.number().int().optional(),
     system: z.number().int().optional(),
   }),
+  microphoneBoundary: z.object({ sourceGeneration: z.number().int().positive(), sourceFrame: z.number().int().nonnegative().safe(), alignment: meetingFrameAlignmentPointSchema.nullable() }).optional(),
   incomplete: z.boolean().optional(),
   errorCode: z.string().optional(),
   suppressProcessing: z.boolean().optional(),
+  pause: z.boolean().optional(),
 });
 
 // ipcMain.handle keeps only the message when a promise rejects, so failures
@@ -208,10 +284,13 @@ export const meetingPrepareResultSchema = failureMetadataSchema.extend({
 export type MeetingPrepareResult = z.infer<typeof meetingPrepareResultSchema>;
 
 export const meetingStartResultSchema = failureMetadataSchema.extend({
+  platformMicMuted: z.boolean().optional(),
   success: z.boolean(),
   sessionId: z.string().optional(),
   recordingId: z.string().uuid().optional(),
   originAt: z.string().optional(),
+  monotonicOriginNs: z.string().regex(/^\d{1,20}$/).nullable().optional(),
+  helperGeneration: meetingRecordingIdSchema.optional(),
   systemAudioMode: z.enum(["native", "loopback", "portal", "unsupported"]).optional(),
   systemAudioStrategy: z
     .enum(["native", "loopback", "pipewire-loopback", "wasapi-loopback", "unsupported"])
@@ -298,6 +377,7 @@ export const meetingAutoEndLifecycleResultSchema = z.object({
 });
 
 export const meetingNotificationDataSchema = z.union([
+  z.object({ kind: z.literal("meet-context-lost"), recordingId: z.string().uuid(), sessionId: z.string().uuid() }),
   z.object({
     kind: z.literal("detection"),
     detectionId: z.string(),
@@ -314,7 +394,7 @@ export const meetingNotificationDataSchema = z.union([
     kind: z.literal("auto-end"),
     sessionId: z.string(),
     expiresAt: z.number(),
-    reason: z.enum(["mic-released", "silence", "process-exit"]).optional(),
+    reason: z.enum(["mic-released", "silence", "process-exit", "platform-leave"]).optional(),
   }),
 ]);
 
@@ -394,6 +474,7 @@ export const meetingTranscriptSegmentSchema = z
     speakerStatus: z.enum(["provisional", "confirmed", "suggested", "locked"]).optional(),
     speakerLocked: z.boolean().optional(),
     speakerLockSource: z.enum(["user", "diarization", "suggestion", "voice", "platform", "model"]).optional(),
+    speakerPlatform: z.enum(["zoom", "google-meet"]).optional(),
   })
   .passthrough();
 export type MeetingTranscriptSegment = z.infer<typeof meetingTranscriptSegmentSchema>;
@@ -430,11 +511,13 @@ export const meetingSystemAudioInterruptedEventSchema = z.object({
 
 export const meetingAutoEndRequestEventSchema = z.object({
   sessionId: z.string(),
-  reason: z.enum(["mic-released", "silence", "process-exit"]).optional(),
+  reason: z.enum(["mic-released", "silence", "process-exit", "platform-leave"]).optional(),
 });
 
 export const meetingStopRequestedEventSchema = z.object({
   sessionId: z.string().min(1),
+  recordingId: z.string().uuid(),
+  reason: z.enum(["quit", "delete-audio", "platform-leave", "context-reminder"]),
   suppressProcessing: z.boolean().optional(),
 });
 
@@ -445,6 +528,16 @@ export const meetingAutoEndRestartRequestEventSchema = z.object({
 // ---- renderer-facing surface ------------------------------------------------------
 
 export interface MeetingCoordinatorApi {
+  finishPausedMeetRecording?(recordingId: string): Promise<{ success: boolean }>;
+  getMeetIntegrationSetup?(): Promise<CompanionSetup>;
+  configureMeetIntegration?(action: "enable" | "disable" | "remove" | "reveal"): Promise<{ success: boolean; error?: string }>;
+  respondMeetContextReminder?(request: CompanionRecordingScope & { action: "stop" | "dismiss" }): Promise<{ success: boolean }>;
+  claimMeetingAutoEnd?(sessionId: string): Promise<{ success: boolean }>;
+  getMeetCompanionStatus?(): Promise<CompanionStatus>;
+  confirmMeetCompanionBinding?(request: { expected: CompanionRecordingScope; candidate: CompanionCandidateKey }): Promise<{ success: boolean }>;
+  onMeetCompanionStatus?(callback: (status: CompanionStatus) => void): () => void;
+  onMeetManualMute?(callback: (request: CompanionRecordingScope & { muted: boolean }) => void): () => void;
+  onMeetPlatformMute?(callback: (request: CompanionRecordingScope & { muted: boolean }) => void): () => void;
   meetingTranscriptionPrepare?(
     options?: MeetingTranscriptionPrepareOptions
   ): Promise<MeetingPrepareResult>;
@@ -457,6 +550,8 @@ export interface MeetingCoordinatorApi {
     sessionId: string,
     packet: MeetingCapturePacket
   ): Promise<MeetingCaptureAck>;
+  meetingTranscriptionSetMicIntent?(request: MeetingMicIntentRequest): Promise<MeetingMicIntentResult>;
+  meetingTranscriptionProbeClock?(request: MeetingClockProbeRequest): Promise<z.infer<typeof meetingClockProbeResultSchema>>;
   meetingTranscriptionStop?(request?: MeetingCaptureStopRequest): Promise<MeetingStopResult>;
   meetingTranscriptionCancel?(): Promise<MeetingCancelResult>;
   meetingTranscriptionSetSystemAudioAvailable?(

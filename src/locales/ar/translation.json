@@ -2223,7 +2223,8 @@
       "body": {
         "micReleased": "لا يستخدم أي تطبيق آخر ميكروفونك، لذا توقف التسجيل تلقائيًا. أعد تشغيل التسجيل خلال {{seconds}} ث.",
         "silence": "لم يُكتشف أي صوت، لذا توقف التسجيل تلقائيًا. أعد تشغيل التسجيل خلال {{seconds}} ث.",
-        "processExit": "أُغلق تطبيق الاجتماع، لذا توقف التسجيل تلقائيًا. أعد تشغيل التسجيل خلال {{seconds}} ث."
+        "processExit": "أُغلق تطبيق الاجتماع، لذا توقف التسجيل تلقائيًا. أعد تشغيل التسجيل خلال {{seconds}} ث.",
+        "platformLeave": "لقد غادرت Meet. أعد بدء التسجيل خلال {{seconds}} ثانية."
       },
       "restart": "إعادة تشغيل التسجيل"
     }
@@ -2276,8 +2277,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "تمت مطابقة الاسم من Zoom. انقر لتغييره.",
-    "platformEvidenceUnavailable": "بيانات المتحدثين في Zoom غير مكتملة. تم الاحتفاظ بالصوت والنص.",
+    "platformNameHint": "تمت مطابقة الاسم من {{platform}}. انقر لتغييره.",
+    "platformEvidenceUnavailable": "بيانات المتحدثين في Zoom / Google Meet غير مكتملة. تم الاحتفاظ بالصوت والنص.",
     "partialTranscript": "النص المفرغ لهذه الملاحظة غير مكتمل.",
     "selectedResultTranscript": "النص المفرغ للنتيجة المحددة",
     "participantsLoadError": "تعذر تحميل المشاركين من التقويم.",
@@ -2545,5 +2546,29 @@
     "onboardingTitle": "ما اسمك؟",
     "skip": "تخطي",
     "selfLabel": "أنت"
+  },
+  "meetIntegration": {
+    "title": "Gristmill Companion",
+    "setupDescription": "Chrome Stable. فعّل التكامل ثم حمّل مجلد الإضافة عبر «تحميل إضافة غير مضغوطة» في chrome://extensions. يُهمل صوت الميكروفون المكتوم ويستمر تسجيل صوت النظام.",
+    "enabled": "مفعّل",
+    "disabled": "معطّل",
+    "loading": "جارٍ التحميل…",
+    "disable": "تعطيل",
+    "enable": "تفعيل",
+    "openExtension": "فتح مجلد الإضافة",
+    "remove": "إزالة التسجيل",
+    "setupFailed": "فشل الإعداد",
+    "mute": "كتم الميكروفون",
+    "unmute": "إلغاء كتم الميكروفون",
+    "platformMuted": "الميكروفون مكتوم بواسطة Meet أو الجهاز",
+    "muteFailed": "تعذّر تغيير حالة الميكروفون",
+    "contextLost": "فُقد الاتصال بـ Meet. يستمر التسجيل.",
+    "bound": "مرتبط بـ Meet {{call}}",
+    "confirmDescription": "ربط التسجيل بمكالمة؟ ستتحكم أوامر الكتم والمغادرة في هذا التسجيل.",
+    "noCall": "لم يتم التعرف على مكالمة. يستمر التسجيل بشكل مستقل.",
+    "bind": "ربط {{call}}",
+    "companionMode": "وضع Companion في Meet",
+    "staleSelection": "تغيّرت المكالمة أو التسجيل. اختر مكالمة حالية.",
+    "uiUnrecognized": "لم يتم التعرف على واجهة Meet. يستمر التسجيل."
   }
 }

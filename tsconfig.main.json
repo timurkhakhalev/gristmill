@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "rootDir": ".",
@@ -13,7 +15,9 @@
     "resolveJsonModule": true,
     "rewriteRelativeImportExtensions": true,
     "noEmitOnError": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "main.ts",
@@ -57,7 +61,16 @@
     "src/helpers/meetingMicHoldback.ts",
     "src/helpers/meetingSystemAudioWatchdog.ts",
     "src/helpers/systemDefaultMicrophone.ts",
-    "src/helpers/whisperVadModel.ts"
+    "src/helpers/whisperVadModel.ts",
+    "src/helpers/companionNativeHost.ts",
+    "src/helpers/companionServer.ts",
+    "src/helpers/installCompanionHost.ts"
   ],
-  "exclude": ["node_modules", "dist", "dist-main", "src/dist", "test"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-main",
+    "src/dist",
+    "test"
+  ]
 }

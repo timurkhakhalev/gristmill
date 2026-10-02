@@ -58,7 +58,7 @@ function dateLabel(value: string, locale: string, options: Intl.DateTimeFormatOp
 }
 
 /** "42 s", "8 min 56 s", "1 h 5 min": readable at a glance, unlike mm:ss. */
-function formatDuration(duration: number, tr: (key: string, fallback: string, values?: Record<string, number>) => string) {
+function formatDuration(duration: number, tr: (key: string, fallback: string, values?: Record<string, string | number>) => string) {
   const total = Math.max(0, Math.round(duration));
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -75,7 +75,7 @@ function AudioPartSummary({ part, index, count, timeLabel, tr }: {
   index: number;
   count: number;
   timeLabel: (value: string) => string;
-  tr: (key: string, fallback: string, values?: Record<string, number>) => string;
+  tr: (key: string, fallback: string, values?: Record<string, string | number>) => string;
 }) {
   const live = part.captureState === "recording";
   const ended = part.endedAt && part.endedAt >= part.startedAt ? part.endedAt : null;
@@ -119,7 +119,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 }) {
   const { t } = useTranslation();
   const { dateFormat, timeFormat } = useDateTimePreferences();
-  const tr = (key: string, fallback: string, values?: Record<string, number>) => t(`meetingResults.${key}`, { defaultValue: fallback, ...values });
+  const tr = (key: string, fallback: string, values?: Record<string, string | number>) => t(`meetingResults.${key}`, { defaultValue: fallback, ...values });
   const [recordings, setRecordings] = useState(previewRecordings ?? []);
   const [sharedTranscript, setSharedTranscript] = useState<NoteTranscript | null>(null);
   const [runId, setRunId] = useState("");
@@ -692,7 +692,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   const platformEvidenceIncomplete = recordings.some((item) => selected?.run.sourceRecordingIds.includes(item.recording.id) &&
     item.recording.platformCoverage?.state === "incomplete");
-  const platformEvidenceNotice = platformEvidenceIncomplete ? <p className="mb-3 text-xs text-muted">{tr("platformEvidenceUnavailable", "Zoom speaker evidence is incomplete. Audio and transcript are preserved.")}</p> : null;
+  const platformEvidenceNotice = platformEvidenceIncomplete ? <p className="mb-3 text-xs text-muted">{tr("platformEvidenceUnavailable", "Meeting platform speaker evidence is incomplete. Audio and transcript are preserved.")}</p> : null;
   const renderSelectedTranscript = () => (selected?.transcript ? <div>
         {platformEvidenceNotice}
         {unlinkedSpeakers.length > 0 && <div className="mb-3 rounded-lg border border-border p-3">
@@ -744,7 +744,7 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
                 }}>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</button>
                 <div>{segment.speaker && <button className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" onClick={() => {
                   editSpeaker(segment.speaker!);
-                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && (selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "model" || mock?.modelSpeakerIds?.includes(segment.speaker)) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}{segment.speaker && selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "platform" && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("platformNameHint", "Name matched from Zoom. Click the name to change it.")}>{tr("platformName", "Zoom")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
+                }}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.displayName ?? speakerLabel(segment.speaker)}</button>}{segment.speaker && (selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "model" || mock?.modelSpeakerIds?.includes(segment.speaker)) && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("autoNameHint", "Suggested from the conversation. Click the name to change it.")}>{tr("autoName", "auto")}</span>}{segment.speaker && selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.source === "platform" && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary" title={tr("platformNameHint", "Name matched from {{platform}}. Click the name to change it.", { platform: selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.platform === "google-meet" ? "Google Meet" : "Zoom" })}>{selected.speakerCorrections.find((item) => item.speakerId === segment.speaker)?.platform === "google-meet" ? "Google Meet" : "Zoom"}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
               </div>
             </div>;
           }), allSegments.length > transcriptLimit && <div key="more" ref={setTranscriptSentinel} className="h-8" aria-hidden="true" />];
@@ -772,13 +772,13 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
             remaining -= duration;
           }
         }}>{ms === null ? "--:--" : `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`}</button>
-        <div><span className="text-xs font-semibold">{speaker?.name ?? speaker?.id ?? ""}</span>{speaker?.name_source === "platform" && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary">{tr("platformName", "Zoom")}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
+        <div><span className="text-xs font-semibold">{speaker?.name ?? speaker?.id ?? ""}</span>{speaker?.name_source === "platform" && <span className="ms-1.5 rounded bg-accent-soft px-1 py-px align-middle text-3xs font-medium text-primary">{speaker.name_platform === "google-meet" ? "Google Meet" : "Zoom"}</span>}<p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-muted">{segment.text}</p></div>
       </div>;
     }), sharedTranscript.segments.length > transcriptLimit && <div key="more" ref={setTranscriptSentinel} className="h-8" aria-hidden="true" />] : <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{sharedTranscript.text}</p>}
     <details className="mt-4"><summary className="cursor-pointer text-xs text-muted">{tr("selectedResultTranscript", "Selected result transcript")}</summary>{renderSelectedTranscript()}</details>
   </div> : renderSelectedTranscript());
 
-  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex items-center justify-between gap-2 bg-background pt-4 pb-3 max-[720px]:flex-wrap">
+  return <div className="@container mx-auto w-full max-w-[880px] px-[clamp(20px,5vw,54px)] max-[720px]:px-5 pt-4 pb-8 max-[720px]:pb-16">    <div className="sticky top-0 z-10 -mt-4 mb-3 flex flex-wrap items-center justify-between gap-2 bg-background pt-4 pb-3">
       <NoteViewSwitch
         value={viewMode}
         onChange={onViewModeChange}
@@ -1020,7 +1020,7 @@ function SummaryTaskNotice({ status, onRetry, disabled, tr }: {
   status: NonNullable<MeetingProcessingResultDto["summary"]>["taskStatus"];
   onRetry: () => void;
   disabled: boolean;
-  tr: (key: string, fallback: string, values?: Record<string, number>) => string;
+  tr: (key: string, fallback: string, values?: Record<string, string | number>) => string;
 }) {
   if (!status || status === "complete" || status === "zero") return null;
   const retry = <Button size="sm" variant="secondary" isDisabled={disabled} onPress={onRetry}>{tr("retryTasks", "Retry tasks")}</Button>;
@@ -1032,7 +1032,7 @@ function SummaryTaskNotice({ status, onRetry, disabled, tr }: {
 
 function RecapNotice({ status, tr }: {
   status: "running" | "provider-error" | "format-error" | "conflict";
-  tr: (key: string, fallback: string, values?: Record<string, number>) => string;
+  tr: (key: string, fallback: string, values?: Record<string, string | number>) => string;
 }) {
   if (status === "running") return <NoteNotice status="accent" busy title={`${tr("recapRunning", "Creating recap")}…`} description={tr("recapRunningReason", "The saved Summary remains unchanged while the recap is prepared.")} />;
   if (status === "conflict") return <NoteNotice status="warning" title={tr("recapConflict", "Recap wasn't applied")} description={tr("recapConflictReason", "The Summary changed while the recap was being prepared. Your edits were kept.")} />;

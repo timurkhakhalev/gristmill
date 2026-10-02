@@ -40,7 +40,7 @@ export interface DetectionCalendarEvent {
   [key: string]: unknown;
 }
 
-export type MeetingAutoEndStopReason = "mic-released" | "silence" | "process-exit";
+export type MeetingAutoEndStopReason = "mic-released" | "silence" | "process-exit" | "platform-leave";
 
 /** The three engine callbacks WindowManager invokes on notification lifecycle. */
 interface EngineNotificationCallbacks {
@@ -84,6 +84,7 @@ interface RecordingSession {
   autoEndEligible: boolean;
   ownerWebContents: WebContents | null;
   systemAudioAvailable: boolean;
+  platformBound?: boolean;
 }
 
 interface NotificationQueueEntry {
@@ -347,7 +348,7 @@ export class MeetingDetectionEngine {
 
   _requestRecordingStop(sessionId: string, reason: MeetingAutoEndStopReason): void {
     const session = this._recordingSession;
-    if (!session || session.sessionId !== sessionId) return;
+    if (!session || session.sessionId !== sessionId || session.platformBound) return;
 
     debugLogger.info(
       "Meeting end detected, requesting automatic stop",
@@ -520,9 +521,25 @@ export class MeetingDetectionEngine {
     );
   }
 
+  preparePlatformLeave(sessionId: string): boolean {
+    const session = this._recordingSession;
+    if (!session || session.sessionId !== sessionId || !session.platformBound || !session.ownerWebContents || session.ownerWebContents.isDestroyed()) return false;
+    this._clearAutoEndRecovery();
+    this._pendingAutoEnd = { sessionId, reason: "platform-leave", ownerWebContents: session.ownerWebContents, expiresAt: null };
+    return true;
+  }
+
+  suppressAutoEndForPlatform(sessionId: string): void {
+    if (this._recordingSession?.sessionId !== sessionId) return;
+    this._recordingSession.platformBound = true;
+    this._deactivateAutoEnd();
+    if (this._pendingAutoEnd?.sessionId === sessionId) this._clearAutoEndRecovery();
+  }
+
   _isAutoEndWanted(): boolean {
     return (
       this._recordingSession?.autoEndEligible === true &&
+      this._recordingSession.platformBound !== true &&
       this._recordingSession.systemAudioAvailable === true
     );
   }

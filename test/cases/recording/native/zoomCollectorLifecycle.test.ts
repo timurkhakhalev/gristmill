@@ -1,5 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import type { ZoomSpeakerObservation, MeetingPlatformCoverage } from "../../../../src/contracts/meetingRecording.js";
+import type { MeetingPlatformObservation, MeetingPlatformCoverage } from "../../../../src/contracts/meetingRecording.js";
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const { EventEmitter }: typeof import("node:events") = require("node:events");
@@ -25,16 +25,16 @@ function fakeChild() {
 function emit(child: ReturnType<typeof fakeChild>, message: unknown) {
   child.stdout.emit("data", Buffer.from(JSON.stringify(message) + "\n"));
 }
-function observation(recordingId: string, sessionId: string, instanceKey: string, nameRevision = 1): ZoomSpeakerObservation {
-  return { id: randomUUID(), recordingId, sessionId, instanceKey, nameRevision, episodeId: randomUUID(), displayName: "Synthetic Name", windowMode: "full", activity: "explicit", readStartHostNs: "100", readEndHostNs: "200", self: "unknown", singleSpeaker: null, provenance: "system-wide", reason: null };
+function observation(recordingId: string, sessionId: string, instanceKey: string, nameRevision = 1): MeetingPlatformObservation {
+  return { platform: "zoom", bindingId: sessionId, activeParticipantIds: [instanceKey], clockGeneration: null, clockUncertaintyNs: "0", id: randomUUID(), recordingId, sessionId, instanceKey, nameRevision, episodeId: randomUUID(), displayName: "Synthetic Name", windowMode: "full", activity: "explicit", readStartHostNs: "100", readEndHostNs: "200", self: "unknown", singleSpeaker: null, provenance: "system-wide", reason: null };
 }
 
 test("recording-scoped collector flushes names/revisions/availability and rejects late retired-helper writes", { skip: process.platform !== "darwin" }, async (t) => {
   const id = randomUUID();
   const child = fakeChild();
-  const saved: ZoomSpeakerObservation[] = [];
+  const saved: MeetingPlatformObservation[] = [];
   const coverages: MeetingPlatformCoverage[] = [];
-  const collector = new ZoomSpeakerCollector(id, { saveMeetingZoomObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, coverage) => coverages.push({ ...coverage }) }, () => child);
+  const collector = new ZoomSpeakerCollector(id, { saveMeetingPlatformObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, coverage) => coverages.push({ ...coverage }) }, () => child);
   t.after(() => collector.stop());
   collector.start();
   const session = randomUUID();
@@ -59,9 +59,9 @@ test("recording-scoped collector flushes names/revisions/availability and reject
 test("permission/helper failure and cross-recording JSON stop only evidence, with no owned process left", { skip: process.platform !== "darwin" }, async (t) => {
   const child = fakeChild();
   const id = randomUUID();
-  const saved: ZoomSpeakerObservation[] = [];
+  const saved: MeetingPlatformObservation[] = [];
   const coverage: MeetingPlatformCoverage[] = [];
-  const collector = new ZoomSpeakerCollector(id, { saveMeetingZoomObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
+  const collector = new ZoomSpeakerCollector(id, { saveMeetingPlatformObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
   t.after(() => collector.stop());
   collector.start();
   emit(child, { type: "observation", observation: observation(randomUUID(), randomUUID(), "wrong-recording") });
@@ -76,9 +76,9 @@ test("permission/helper failure and cross-recording JSON stop only evidence, wit
 test("split Unicode JSONL preserves display names and an incomplete UTF8 tail rejects coverage", { skip: process.platform !== "darwin" }, async (t) => {
   const id = randomUUID();
   const child = fakeChild();
-  const saved: ZoomSpeakerObservation[] = [];
+  const saved: MeetingPlatformObservation[] = [];
   const coverage: MeetingPlatformCoverage[] = [];
-  const collector = new ZoomSpeakerCollector(id, { saveMeetingZoomObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
+  const collector = new ZoomSpeakerCollector(id, { saveMeetingPlatformObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
   t.after(() => collector.stop());
   collector.start();
   const value = { ...observation(id, randomUUID(), "unicode"), displayName: "Анна, 李 🦊" };
@@ -101,7 +101,7 @@ test("failed helper ignoring SIGTERM is killed within the owned cleanup deadline
   };
   const id = randomUUID();
   const coverage: MeetingPlatformCoverage[] = [];
-  const collector = new ZoomSpeakerCollector(id, { saveMeetingZoomObservation() {}, saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
+  const collector = new ZoomSpeakerCollector(id, { saveMeetingPlatformObservation() {}, saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
   t.after(() => collector.stop());
   collector.start();
   collector.invalidate("ax-helper-timeout");
@@ -115,12 +115,12 @@ test("failed helper ignoring SIGTERM is killed within the owned cleanup deadline
 
 test("collector retains native interval confirmations after an AX gap for production matching", { skip: process.platform !== "darwin" }, async (t) => {
   const { zoomSpeakerFixture }: typeof import("../../../lib/zoomSpeakerFixture.ts") = require("../../../lib/zoomSpeakerFixture.ts");
-  const { matchZoomSpeakers }: typeof import("../../../../src/helpers/zoomSpeakerMatcher.ts") = require("../../../../src/helpers/zoomSpeakerMatcher.ts");
+  const { matchMeetingPlatformSpeakers }: typeof import("../../../../src/helpers/meetingPlatformMatcher.ts") = require("../../../../src/helpers/meetingPlatformMatcher.ts");
   const id = randomUUID();
   const child = fakeChild();
-  const saved: ZoomSpeakerObservation[] = [];
+  const saved: MeetingPlatformObservation[] = [];
   const coverage: MeetingPlatformCoverage[] = [];
-  const collector = new ZoomSpeakerCollector(id, { saveMeetingZoomObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
+  const collector = new ZoomSpeakerCollector(id, { saveMeetingPlatformObservation: (value) => saved.push(value), saveMeetingAudioClockAnchor() {}, setMeetingPlatformCoverage: (_id, value) => coverage.push({ ...value }) }, () => child);
   t.after(() => collector.stop());
   collector.start();
   emit(child, { type: "observation", observation: { ...observation(id, randomUUID(), "unavailable"), activity: "unavailable", displayName: "", reason: "ax-incomplete", readStartHostNs: "0", readEndHostNs: "500000000" } });
@@ -131,7 +131,19 @@ test("collector retains native interval confirmations after an AX gap for produc
   await collector.stop();
   assert.equal(saved.length, 16);
   assert.equal(coverage.at(-1)?.state, "incomplete");
-  const decisions = matchZoomSpeakers({ ...fixture, observations: saved, epochs: [{ recordingId: id, source: "system", epochIndex: 0, startFrame: 0, frameCount: 14 * 24_000, state: "finalized" }], partOffsets: [{ recordingId: id, startFrame: 0, frameCount: 14 * 24_000 }] });
+  const decisions = matchMeetingPlatformSpeakers({ ...fixture, observations: saved, epochs: [{  recordingId: id, source: "system", epochIndex: 0, timelineStartFrame: 0, frameCount: 14 * 24_000, state: "finalized" }], partOffsets: [{ recordingId: id, startFrame: 0, frameCount: 14 * 24_000 }] });
   assert.equal(decisions.filter((d) => d.status === "accepted").length, 3);
   assert.equal(decisions[0].reason, "ax-incomplete");
+});
+
+test("AX failure cannot discard native audio clock anchors required by Meet", async () => {
+  const anchors: import("../../../../src/contracts/meetingRecording.js").MeetingAudioClockAnchor[] = [];
+  const collector = new ZoomSpeakerCollector(randomUUID(), { saveMeetingPlatformObservation() {}, saveMeetingAudioClockAnchor: (anchor) => anchors.push(anchor), setMeetingPlatformCoverage() {} });
+  collector.invalidate("accessibility-denied");
+  const generation = randomUUID();
+  collector.bindClock(generation, 0, 0);
+  collector.recordDeliveredFrames(generation, 24_000);
+  collector.recordClock({ type: "clock", generation, startFrame: 0, endFrame: 24_000, hostStartNs: "1000000000", hostEndNs: "2000000000", timebaseNumer: 1, timebaseDenom: 1, conversion: "uncalibrated", reason: null });
+  await collector.stop();
+  assert.equal(anchors.length, 1);
 });

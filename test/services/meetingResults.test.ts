@@ -64,7 +64,7 @@ function createFinishedRecording(
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
   const sources = options.sources ?? [{ source: "mic", startFrame: 0, samples: Buffer.alloc(480_000, 1) }];
   for (const [index, epoch] of sources.entries()) {
-    db.createMeetingRecordingEpoch(recording.id, epoch.source, index, epoch.startFrame);
+    db.createMeetingRecordingEpoch(recording.id, epoch.source, index, 1, epoch.startFrame, epoch.startFrame);
     savePcmEpoch(storage, recording.id, epoch.source, index, epoch.samples);
     db.updateMeetingRecordingEpochRecovery(
       recording.id,
@@ -196,6 +196,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { note, recording, initialRun } = createFinishedRecording(db, storage, {
+    sources: [{ source: "mic", startFrame: 0, samples: Buffer.alloc(480_000, 1) }, { source: "system", startFrame: 0, samples: Buffer.alloc(480_000, 2) }],
     sourceMetadata: { calendarAttendees: [{ name: "Calendar Guess" }], sourceMic: "Computer User" },
   });
   assert.ok(recording.endedAt);

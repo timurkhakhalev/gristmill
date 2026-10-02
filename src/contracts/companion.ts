@@ -6,6 +6,7 @@ const uuid = z.string().uuid();
 export const companionDocumentIdSchema = z.string().regex(/^[A-Fa-f0-9]{32}$/).refine(value => !/^0{32}$/.test(value));
 const ns = z.string().regex(/^\d{1,20}$/);
 const sequence = z.number().int().nonnegative().safe();
+// Browser Companion supports Meet and Telemost; native Zoom capture has no browser call ref.
 export const companionCallRefSchema = z.object({
   platform: z.enum(["google-meet", "telemost"]), installationId: uuid, sessionId: uuid,
   tabId: z.number().int().nonnegative(), documentId: companionDocumentIdSchema,

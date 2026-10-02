@@ -4,9 +4,10 @@ import googleCalendarIcon from "../../assets/icons/google-calendar.svg";
 import microsoftCalendarIcon from "../../assets/icons/microsoft-calendar.svg";
 import appleCalendarIcon from "../../assets/icons/apple-calendar.svg";
 
-type MeetingPlatform = "zoom" | "meet" | "teams" | "webex" | "other";
+// Join-link icon classification includes services without recording evidence support.
+type MeetingLinkPlatform = "zoom" | "meet" | "teams" | "webex" | "other";
 
-function meetingPlatformOf(url: string): MeetingPlatform {
+function meetingPlatformOf(url: string): MeetingLinkPlatform {
   let host = "";
   try {
     host = new URL(url).hostname.toLowerCase();

@@ -10,7 +10,7 @@ import { followsSystemDefaultMic } from "../helpers/micSelectionRecovery";
 import { resolvePreferredMicrophone } from "../helpers/microphoneSelection";
 import { ActiveMicRecoveryController } from "../helpers/activeMicRecovery";
 import { MeetingClockSync } from "../helpers/meetingClockSync";
-import type { MeetingFrameAlignmentPoint, MeetingFrameAlignmentSegment } from "../contracts/meetingRecording";
+import type { MeetingPlatform, MeetingFrameAlignmentPoint, MeetingFrameAlignmentSegment } from "../contracts/meetingRecording";
 import {
   resolveInitialSpeakerCountOverride,
   resolveParticipantSpeakerCountSync,
@@ -65,7 +65,7 @@ export interface TranscriptSegment {
   speakerStatus?: TranscriptSpeakerStatus;
   speakerLocked?: boolean;
   speakerLockSource?: TranscriptSpeakerLockSource;
-  speakerPlatform?: "zoom" | "google-meet" | "telemost";
+  speakerPlatform?: MeetingPlatform;
 }
 
 export const SIDE_PANEL_BREAKPOINT_PX = 1024;

@@ -98,8 +98,7 @@ const PLACEHOLDER_PREFIX: Record<"__detected__" | "__manual__", string> = {
   __manual__: "manual",
 };
 
-function placeholderEvent(calendarId: "__detected__" | "__manual__"): DetectionCalendarEvent {
-  const now = Date.now();
+function placeholderEvent(calendarId: "__detected__" | "__manual__", now: number): DetectionCalendarEvent {
   return {
     id: `${PLACEHOLDER_PREFIX[calendarId]}-${now}`,
     calendar_id: calendarId,
@@ -192,6 +191,8 @@ interface MeetingDetectionEngineOptions {
   now?: () => number;
   setInterval?: (callback: () => void, ms: number) => NodeJS.Timeout | number;
   clearInterval?: (timer: NodeJS.Timeout | number) => void;
+  setTimeout?: (callback: () => void, ms: number) => NodeJS.Timeout | number;
+  clearTimeout?: (timer: NodeJS.Timeout | number) => void;
 }
 
 export class MeetingDetectionEngine {
@@ -209,18 +210,21 @@ export class MeetingDetectionEngine {
   private _userRecording = false;
   private _meetingModeActive = false;
   private _notificationQueue: NotificationQueueEntry[] = [];
-  private _postRecordingCooldown: NodeJS.Timeout | null = null;
+  private _postRecordingCooldown: NodeJS.Timeout | number | null = null;
   private _recordingSession: RecordingSession | null = null;
   private _pendingAutoEnd: PendingAutoEnd | null = null;
   private _autoEndRestartGrace: AutoEndRestartGrace | null = null;
   private readonly _now: () => number;
   private readonly _setInterval: MeetingDetectionEngineOptions["setInterval"];
   private readonly _clearInterval: MeetingDetectionEngineOptions["clearInterval"];
+  private readonly _setTimeout: NonNullable<MeetingDetectionEngineOptions["setTimeout"]>;
+  private readonly _clearTimeout: NonNullable<MeetingDetectionEngineOptions["clearTimeout"]>;
   // True only between controller.beginSession and endSession — meeting audio
   // starts streaming before the session is registered, and chunks fed to the
   // monitor before the controller exists would leave the two out of sync.
   private _autoEndActive = false;
-  private _autoEndTicker: NodeJS.Timeout | number | null = null;  private _autoEndController: MeetingAutoEndController;
+  private _autoEndTicker: NodeJS.Timeout | number | null = null;
+  private _autoEndController: MeetingAutoEndController;
   private readonly _audioActivityMonitor: MeetingAudioActivityMonitor;
 
   constructor(
@@ -236,6 +240,8 @@ export class MeetingDetectionEngine {
       now = Date.now,
       setInterval: setIntervalFn = global.setInterval,
       clearInterval: clearIntervalFn = global.clearInterval,
+      setTimeout: setTimeoutFn = global.setTimeout,
+      clearTimeout: clearTimeoutFn = global.clearTimeout,
     }: MeetingDetectionEngineOptions = {}
   ) {
     this.reminderScheduler = reminderScheduler;
@@ -247,6 +253,8 @@ export class MeetingDetectionEngine {
     this._now = now;
     this._setInterval = setIntervalFn;
     this._clearInterval = clearIntervalFn;
+    this._setTimeout = setTimeoutFn;
+    this._clearTimeout = clearTimeoutFn;
     this._audioActivityMonitor = createAudioActivityMonitor({
       onActivityChanged: (state) => {
         const session = this._recordingSession;
@@ -564,7 +572,7 @@ export class MeetingDetectionEngine {
   }
 
   _startAutoEndTicker(): void {
-    if (this._autoEndTicker) return;
+    if (this._autoEndTicker !== null) return;
     this._autoEndTicker = this._setInterval?.(() => {
       // Monitor first so a fresh activity change reaches the controller before
       // it evaluates its windows for this second.
@@ -577,7 +585,7 @@ export class MeetingDetectionEngine {
   }
 
   _stopAutoEndTicker(): void {
-    if (!this._autoEndTicker) return;
+    if (this._autoEndTicker === null) return;
     this._clearInterval?.(this._autoEndTicker);
     this._autoEndTicker = null;
   }
@@ -713,7 +721,7 @@ export class MeetingDetectionEngine {
   // the recording gates, queueing, cooldowns, and the overlay window.
   handleCalendarReminder(event: DetectionCalendarEvent): void {
     if (this.offeredCalendarEvents.has(event.id)) return;
-    this._handleDetection("calendar", event.id, { event, detectedAt: Date.now() });
+    this._handleDetection("calendar", event.id, { event, detectedAt: this._now() });
   }
 
   private _callMatchesEvent(key: string, service: string, event: DetectionCalendarEvent): boolean {
@@ -767,7 +775,7 @@ export class MeetingDetectionEngine {
     // the recording UI while the tracked recording is still active.
     if (
       this._userRecording ||
-      this._postRecordingCooldown ||
+      this._postRecordingCooldown !== null ||
       this._recordingSession ||
       this._hasLiveAutoEndOffer()
     ) {
@@ -795,7 +803,7 @@ export class MeetingDetectionEngine {
     const calendarState = this.reminderScheduler.getActiveMeetingState();
     if (calendarState.activeMeeting) return calendarState.activeMeeting;
 
-    const now = Date.now();
+    const now = this._now();
     return (
       calendarState.upcomingEvents?.find((evt) => {
         const start = new Date(evt.start_time).getTime();
@@ -811,11 +819,11 @@ export class MeetingDetectionEngine {
     data: DetectionData
   ): void {
     const calendarEvent = data?.event ?? this._findCalendarEvent();
-    const event = calendarEvent ?? placeholderEvent("__detected__");
+    const event = calendarEvent ?? placeholderEvent("__detected__", this._now());
 
     let variant: "detected" | "starting" | "underway" = "detected";
     if (source === "calendar" && calendarEvent) {
-      const started = new Date(calendarEvent.start_time).getTime() <= Date.now();
+      const started = new Date(calendarEvent.start_time).getTime() <= this._now();
       variant = started ? "underway" : "starting";
     }
     const joinUrl = source === "calendar" ? getMeetingJoinUrl(calendarEvent) : null;
@@ -974,7 +982,7 @@ export class MeetingDetectionEngine {
 
     this._meetingModeActive = true;
 
-    const event = placeholderEvent("__manual__");
+    const event = placeholderEvent("__manual__", this._now());
 
     const noteResult = this.databaseManager.saveNote(event.summary ?? "New note", "", "meeting");
 
@@ -1229,13 +1237,12 @@ export class MeetingDetectionEngine {
     this._userRecording = active;
     this.audioActivityDetector.setUserRecording(active);
 
-    if (active) {
-      if (this._postRecordingCooldown) {
-        clearTimeout(this._postRecordingCooldown);
-        this._postRecordingCooldown = null;
-      }
-    } else {
-      this._postRecordingCooldown = setTimeout(() => {
+    if (this._postRecordingCooldown !== null) {
+      this._clearTimeout(this._postRecordingCooldown);
+      this._postRecordingCooldown = null;
+    }
+    if (!active) {
+      this._postRecordingCooldown = this._setTimeout(() => {
         this._postRecordingCooldown = null;
         this._flushNotificationQueue();
       }, 2500);
@@ -1293,8 +1300,8 @@ export class MeetingDetectionEngine {
     this.offeredCalendarEvents.clear();
     this.callCalendarEvents.clear();
     this._meetingModeActive = false;
-    if (this._postRecordingCooldown) {
-      clearTimeout(this._postRecordingCooldown);
+    if (this._postRecordingCooldown !== null) {
+      this._clearTimeout(this._postRecordingCooldown);
       this._postRecordingCooldown = null;
     }
     this._notificationQueue = [];

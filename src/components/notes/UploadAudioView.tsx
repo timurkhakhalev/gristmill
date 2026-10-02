@@ -863,9 +863,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       const newId = String(res.folder.id);
       setSelectedFolderId(newId);
       if (noteId != null) {
-        const moved = await window.electronAPI.updateNote(noteId, { folder_id: res.folder.id });
-        if (!moved.success) {
-          showFolderMoveFailure(moved.error, String(res.folder.id));
+        try {
+          const moved = await window.electronAPI.updateNote(noteId, { folder_id: res.folder.id });
+          if (!moved.success) {
+            showFolderMoveFailure(moved.error, newId);
+          }
+        } catch {
+          showFolderMoveFailure(undefined, newId);
         }
       }
     }

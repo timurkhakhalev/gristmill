@@ -103,6 +103,11 @@ function buildCallbacks(
   };
   const sandbox: Record<string, unknown> = {
     noteId: 42,
+    // The extracted callbacks read the closure variable directly; the getter
+    // mirrors setter updates like React state would.
+    get selectedFolderId() {
+      return state.selectedFolderId;
+    },
     setSelectedFolderId: (value: string) => {
       state.selectedFolderId = value;
     },

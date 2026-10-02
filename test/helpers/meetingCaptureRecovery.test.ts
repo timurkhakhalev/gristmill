@@ -271,6 +271,30 @@ test("write queue waits for delayed disk acknowledgement and rejects late packet
   assert.equal(queue.unacknowledgedFrames, 0);
 });
 
+test("mute waits for accepted writes and unmute can keep writing until Stop closes the queue", async () => {
+  const writeGate = deferred();
+  const writes: number[] = [];
+  const failures: Error[] = [];
+  const queue = new MeetingCaptureWriteQueue<number>({
+    write: async (packet) => { writes.push(packet); if (packet === 0) await writeGate.promise; },
+    onFailure: (error) => failures.push(error),
+  });
+  const pending = queue.write(0, 2_400);
+  const muting = queue.waitForWrites();
+  assert.equal(queue.unacknowledgedFrames, 2_400);
+  writeGate.resolve();
+  await Promise.all([pending, muting]);
+  assert.equal(queue.unacknowledgedFrames, 0);
+  for (let packet = 1; packet <= 60; packet++) await queue.write(packet, 2_400);
+  await queue.waitForWrites();
+  await queue.write(61, 2_400);
+  await queue.drain();
+  await assert.rejects(queue.write(62, 2_400), /closed/);
+  assert.equal(writes.length, 62);
+  assert.equal(queue.unacknowledgedFrames, 0);
+  assert.deepEqual(failures, []);
+});
+
 test("default capture queue preserves audio through a one-second write backlog", async () => {
   const writeGate = deferred();
   const failures: string[] = [];

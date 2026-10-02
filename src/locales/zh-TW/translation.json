@@ -1479,7 +1479,12 @@
       "timeNow": "剛剛",
       "minutesAgo": "{{count}} 分鐘前",
       "hoursAgo": "{{count}} 小時前",
-      "daysAgo": "{{count}} 天前"
+      "daysAgo": "{{count}} 天前",
+      "ago": {
+        "seconds": "{{count}}秒前",
+        "minutes": "{{count}}分鐘前",
+        "hours": "{{count}}小時前"
+      }
     },
     "editor": {
       "untitled": "未命名",
@@ -1661,7 +1666,16 @@
       "searchFolders": "搜尋資料夾...",
       "noResults": "找不到資料夾",
       "newFolder": "新增資料夾",
-      "showInFileManager": "在{{manager}}中顯示"
+      "showInFileManager": "在{{manager}}中顯示",
+      "folderColor": "資料夾顏色",
+      "newNoteInFolder": "在此資料夾新增筆記",
+      "addFolder": "新增資料夾",
+      "collapseAll": "全部摺疊",
+      "expandAll": "全部展開",
+      "meetingNote": "會議",
+      "plainNote": "筆記",
+      "changeIcon": "變更圖示",
+      "removeIcon": "移除圖示"
     },
     "actions": {
       "manage": "管理動作...",
@@ -2154,7 +2168,8 @@
     "homeEmptyState": "詢問關於筆記和會議的任何問題",
     "followUp": "草擬後續訊息",
     "followUpUnavailable": "逐字稿準備完成後即可使用",
-    "followUpError": "無法準備後續訊息，請再試一次。"
+    "followUpError": "無法準備後續訊息，請再試一次。",
+    "resize": "調整聊天大小"
   },
   "transcriptionPreview": {
     "label": "預覽",

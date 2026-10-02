@@ -1479,7 +1479,12 @@
       "timeNow": "刚刚",
       "minutesAgo": "{{count}} 分钟前",
       "hoursAgo": "{{count}} 小时前",
-      "daysAgo": "{{count}} 天前"
+      "daysAgo": "{{count}} 天前",
+      "ago": {
+        "seconds": "{{count}}秒前",
+        "minutes": "{{count}}分钟前",
+        "hours": "{{count}}小时前"
+      }
     },
     "editor": {
       "untitled": "无标题",
@@ -1661,7 +1666,16 @@
       "searchFolders": "搜索文件夹...",
       "noResults": "未找到文件夹",
       "newFolder": "新建文件夹",
-      "showInFileManager": "在{{manager}}中显示"
+      "showInFileManager": "在{{manager}}中显示",
+      "folderColor": "文件夹颜色",
+      "newNoteInFolder": "在此文件夹中新建笔记",
+      "addFolder": "添加文件夹",
+      "collapseAll": "全部折叠",
+      "expandAll": "全部展开",
+      "meetingNote": "会议",
+      "plainNote": "笔记",
+      "changeIcon": "更改图标",
+      "removeIcon": "移除图标"
     },
     "actions": {
       "manage": "管理操作...",
@@ -2154,7 +2168,8 @@
     "homeEmptyState": "询问关于笔记和会议的任何问题",
     "followUp": "起草跟进消息",
     "followUpUnavailable": "转录准备就绪后可用",
-    "followUpError": "无法准备跟进消息，请重试。"
+    "followUpError": "无法准备跟进消息，请重试。",
+    "resize": "调整聊天大小"
   },
   "transcriptionPreview": {
     "label": "预览",

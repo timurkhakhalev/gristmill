@@ -764,7 +764,12 @@
       "timeNow": "الآن",
       "minutesAgo": "منذ {{count}} د",
       "hoursAgo": "منذ {{count}} س",
-      "daysAgo": "منذ {{count}} ي"
+      "daysAgo": "منذ {{count}} ي",
+      "ago": {
+        "seconds": "قبل {{count}} ث",
+        "minutes": "قبل {{count}} د",
+        "hours": "قبل {{count}} س"
+      }
     },
     "editor": {
       "untitled": "بدون عنوان",
@@ -968,7 +973,16 @@
       "searchFolders": "البحث في المجلدات...",
       "noResults": "لم يتم العثور على مجلدات",
       "newFolder": "مجلد جديد",
-      "showInFileManager": "إظهار في {{manager}}"
+      "showInFileManager": "إظهار في {{manager}}",
+      "folderColor": "لون المجلد",
+      "newNoteInFolder": "ملاحظة جديدة في هذا المجلد",
+      "addFolder": "إضافة مجلد",
+      "collapseAll": "طي الكل",
+      "expandAll": "توسيع الكل",
+      "meetingNote": "اجتماع",
+      "plainNote": "ملاحظة",
+      "changeIcon": "تغيير الأيقونة",
+      "removeIcon": "إزالة الأيقونة"
     },
     "actions": {
       "done": "تم",
@@ -2190,7 +2204,8 @@
     "homeEmptyState": "اسأل أي شيء عن ملاحظاتك واجتماعاتك",
     "followUp": "صياغة رسالة متابعة",
     "followUpUnavailable": "متاح بعد جاهزية النص",
-    "followUpError": "تعذر إعداد رسالة المتابعة. حاول مرة أخرى."
+    "followUpError": "تعذر إعداد رسالة المتابعة. حاول مرة أخرى.",
+    "resize": "تغيير حجم الدردشة"
   },
   "transcriptionPreview": {
     "label": "معاينة",

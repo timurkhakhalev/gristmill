@@ -1479,7 +1479,12 @@
       "timeNow": "Agora",
       "minutesAgo": "{{count}}m",
       "hoursAgo": "{{count}}h",
-      "daysAgo": "{{count}}d"
+      "daysAgo": "{{count}}d",
+      "ago": {
+        "seconds": "há {{count}} s",
+        "minutes": "há {{count}} min",
+        "hours": "há {{count}} h"
+      }
     },
     "editor": {
       "untitled": "Sem título",
@@ -1661,7 +1666,16 @@
       "searchFolders": "Pesquisar pastas...",
       "noResults": "Nenhuma pasta encontrada",
       "newFolder": "Nova pasta",
-      "showInFileManager": "Mostrar no {{manager}}"
+      "showInFileManager": "Mostrar no {{manager}}",
+      "folderColor": "Cor da pasta",
+      "newNoteInFolder": "Nova nota nesta pasta",
+      "addFolder": "Adicionar pasta",
+      "collapseAll": "Recolher tudo",
+      "expandAll": "Expandir tudo",
+      "meetingNote": "Reunião",
+      "plainNote": "Nota",
+      "changeIcon": "Alterar ícone",
+      "removeIcon": "Remover ícone"
     },
     "actions": {
       "manage": "Gerenciar ações...",
@@ -2154,7 +2168,8 @@
     "homeEmptyState": "Pergunte qualquer coisa sobre suas notas e reuniões",
     "followUp": "Redigir uma mensagem de acompanhamento",
     "followUpUnavailable": "Disponível quando a transcrição estiver pronta",
-    "followUpError": "Não foi possível preparar a mensagem. Tente novamente."
+    "followUpError": "Não foi possível preparar a mensagem. Tente novamente.",
+    "resize": "Redimensionar chat"
   },
   "transcriptionPreview": {
     "label": "Pré-visualização",

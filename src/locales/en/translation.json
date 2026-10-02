@@ -2187,7 +2187,8 @@
       "body": {
         "micReleased": "No other app is using your microphone, so recording stopped automatically. Restart within {{seconds}}s.",
         "silence": "No audio was detected, so recording stopped automatically. Restart within {{seconds}}s.",
-        "processExit": "Your meeting app closed, so recording stopped automatically. Restart within {{seconds}}s."
+        "processExit": "Your meeting app closed, so recording stopped automatically. Restart within {{seconds}}s.",
+        "platformLeave": "You left Meet. Restart recording within {{seconds}} s."
       },
       "restart": "Restart recording"
     }
@@ -2240,8 +2241,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "Name matched from Zoom. Click the name to change it.",
-    "platformEvidenceUnavailable": "Zoom speaker evidence is incomplete. Audio and transcript are preserved.",
+    "platformNameHint": "Name matched from {{platform}}. Click the name to change it.",
+    "platformEvidenceUnavailable": "Zoom / Google Meet speaker evidence is incomplete. Audio and transcript are preserved.",
     "partialTranscript": "This Note transcript is incomplete.",
     "selectedResultTranscript": "Selected result transcript",
     "speakerNumber": "Speaker {{number}}",
@@ -2505,5 +2506,29 @@
     "onboardingTitle": "What should we call you?",
     "skip": "Skip",
     "selfLabel": "You"
+  },
+  "meetIntegration": {
+    "title": "Gristmill Companion",
+    "setupDescription": "Chrome Stable. Enable integration, then load the extension folder via Load unpacked in chrome://extensions. Muted microphone audio is discarded; system audio continues.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "loading": "Loading…",
+    "disable": "Disable",
+    "enable": "Enable",
+    "openExtension": "Open extension folder",
+    "remove": "Remove registration",
+    "setupFailed": "Setup failed",
+    "mute": "Mute microphone",
+    "unmute": "Unmute microphone",
+    "platformMuted": "Microphone muted by Meet or the device",
+    "muteFailed": "Could not change microphone state",
+    "contextLost": "Connection to Meet lost. Recording continues.",
+    "bound": "Linked to Meet {{call}}",
+    "confirmDescription": "Link this recording to a call? Its mute and Leave controls will affect this recording.",
+    "noCall": "No recognized call. Recording continues independently.",
+    "bind": "Link {{call}}",
+    "companionMode": "Meet Companion mode",
+    "staleSelection": "Call or recording changed. Select a fresh call.",
+    "uiUnrecognized": "Meet UI is not recognized. Recording continues."
   }
 }

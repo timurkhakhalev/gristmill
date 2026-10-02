@@ -96,4 +96,17 @@ module.exports = [
       "no-var": "off",
     },
   },
+  {
+    files: ["extension/src/**/*.ts"],
+    languageOptions: { parser: tseslint.parser, sourceType: "module", globals: globals.browser },
+    plugins: { "@typescript-eslint": tseslint.plugin },
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "no-restricted-imports": ["error", {
+        paths: ["electron", "fs", "path", "net", "crypto", "child_process"],
+        patterns: ["node:*", "**/helpers/**"],
+      }],
+      "no-restricted-globals": ["error", "process", "Buffer", "require", "__dirname"],
+    },
+  },
 ];

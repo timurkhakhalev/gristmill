@@ -13,6 +13,8 @@ import {
   type MeetingProcessingRunDto,
   type MeetingRecordingDto,
   type MeetingRecordingEpochDto,
+  type MeetingIntentionalInterval,
+  type MeetingSource,
   type MeetingSummaryArtifact,
   type MeetingSpeakerCorrection,
   type MeetingTranscriptArtifact,
@@ -38,8 +40,8 @@ import { parseGeminiFileResponse } from "./geminiFileTranscription.js";
 import { parseOpenAIFileResponse } from "./remoteTranscriptionIpcHandler.js";
 import { meetingTranscriptArtifactSchema, meetingSummaryArtifactSchema } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
-import { matchZoomSpeakers } from "./zoomSpeakerMatcher.js";
-import { composeMeetingAudioParts, meetingTimelineFrameCount, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio, type MeetingAudioLayout } from "./meetingAudioMixer.js";
+import { matchMeetingPlatformSpeakers } from "./meetingPlatformMatcher.js";
+import { composeMeetingAudioParts, meetingTimelineFrameCount, meetingSourceIntentionallyEmpty, prepareMeetingAudio, type MeetingAudioMixerDeps, type PreparedMeetingAudio, type MeetingAudioLayout } from "./meetingAudioMixer.js";
 import { formatSpeakerTranscript, mergeSpeakersWithText } from "./speakerMerge.js";
 import { byokFileSizeLimit } from "./transcriptionRoute.js";
 import { supportedMeetingFileProvider } from "./meetingFileTranscription.js";
@@ -68,6 +70,7 @@ export interface MeetingProcessingDatabase {
   getMeetingProcessingRun(id: string): MeetingProcessingRunDto | null;
   getMeetingRecording(id: string): MeetingRecordingDto | null;
   listMeetingRecordingEpochs(id: string): MeetingRecordingEpochDto[];
+  listMeetingIntentionalIntervals(id: string): MeetingIntentionalInterval[];
   getNote(id: number): {
     title: string;
     content: string;
@@ -102,7 +105,7 @@ export interface MeetingProcessingDatabase {
   recoverRunningMeetingProcessingRuns(): number;
   getMeetingRunSpeakerCorrections(runId: string): MeetingSpeakerCorrection[];
   getMeetingRunSpeakerCorrectionRevision(runId: string): number;
-  listMeetingZoomObservations: import("./database.js").DatabaseManager["listMeetingZoomObservations"];
+  listMeetingPlatformObservations: import("./database.js").DatabaseManager["listMeetingPlatformObservations"];
   listMeetingAudioClockAnchors: import("./database.js").DatabaseManager["listMeetingAudioClockAnchors"];
   getMeetingPlatformCoverage: import("./database.js").DatabaseManager["getMeetingPlatformCoverage"];
   applyMeetingPlatformDecisions: import("./database.js").DatabaseManager["applyMeetingPlatformDecisions"];
@@ -163,7 +166,8 @@ export interface MeetingProcessingWorkerDeps {
     runId: string,
     epochs: MeetingRecordingEpochDto[],
     signal: AbortSignal,
-    layout?: MeetingAudioLayout
+    layout?: MeetingAudioLayout,
+    intentionalEmptySources?: MeetingSource[]
   ) => Promise<PreparedMeetingAudio>;
   fileSize?: (path: string) => number;
   now?: () => Date;
@@ -203,7 +207,7 @@ interface MeetingLlmSourceSnapshot {
   manualNotes: string;
   manualNoteRevision: string;
   speakerCorrectionRevision: number;
-  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | "platform" | null; text: string }>;
+  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | "platform" | null; speakerNamePlatform?: "zoom" | "google-meet"; text: string }>;
   promptModel: NonNullable<MeetingProcessingConfig["summary"]>;
 }
 
@@ -221,6 +225,7 @@ const meetingLlmSourceSnapshotSchema = z.object({
     speakerId: z.string().nullable(),
     speakerName: z.string().nullable(),
     speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
+    speakerNamePlatform: z.enum(["zoom", "google-meet"]).optional(),
     text: z.string(),
   }).strict()).min(1),
   promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
@@ -649,13 +654,14 @@ export class MeetingProcessingWorker {
     if (config.transcription.mode === "providers" && !provider) {
       throw new MeetingProcessingFailure("unsupported-provider", "blocked");
     }
-    const { timeline, epochs } = this.sourceTimeline(run, recording, true);
+    const { timeline, epochs, intentionalIntervals } = this.sourceTimeline(run, recording, true);
+    const intentionalEmptySources = this.intentionalEmptySources(timeline, epochs, intentionalIntervals);
     const layouts: MeetingAudioLayout[] = provider === "deepgram" ? ["stereo"] : provider ? ["mic", "system"] : ["mono"];
     const audios: PreparedMeetingAudio[] = [];
     for (const layout of layouts) {
       audios.push(await (this.deps.mixAudio
-        ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout)
-        : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout })));
+        ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout, intentionalEmptySources)
+        : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout, intentionalEmptySources })));
     }
     const audio = audios[0];
     signal.throwIfAborted();
@@ -680,10 +686,11 @@ export class MeetingProcessingWorker {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    const { timeline, epochs } = this.sourceTimeline(run, recording);
+    const { timeline, epochs, intentionalIntervals } = this.sourceTimeline(run, recording);
+    const intentionalEmptySources = this.intentionalEmptySources(timeline, epochs, intentionalIntervals);
     await (this.deps.mixAudio
-      ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout)
-      : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout }));
+      ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout, intentionalEmptySources)
+      : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout, intentionalEmptySources }));
   }
 
   private async transcribe(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
@@ -700,6 +707,8 @@ export class MeetingProcessingWorker {
     }
     if (recording.audioState !== "available") throw new MeetingProcessingFailure("audio-unavailable", "blocked");
     const config = this.requireConfig(run).transcription;
+    const { timeline, epochs, intentionalIntervals } = this.sourceTimeline(run, recording);
+    const intentionalEmptySources = this.intentionalEmptySources(timeline, epochs, intentionalIntervals);
     const layouts: MeetingAudioLayout[] = config.mode === "local" ? ["mono"] : config.provider === "deepgram" ? ["stereo"] : ["mic", "system"];
     for (const layout of layouts) await this.ensureAudio(run, recording, layout, signal);
     const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layouts[layouts.length - 1]);
@@ -730,8 +739,7 @@ export class MeetingProcessingWorker {
     const provider = supportedMeetingFileProvider(config.provider, config.model);
     if (!provider) throw new MeetingProcessingFailure("unsupported-provider", "blocked");
     if (fileSize > byokFileSizeLimit(provider)) throw new MeetingProcessingFailure("provider-limit", "blocked");
-    const timeline = this.sourceTimeline(run, recording).timeline;
-    if (provider === "gemini" && (timeline.endedAt && (Date.parse(timeline.endedAt) - Date.parse(timeline.startedAt)) / 1000 > GEMINI_MAX_SECONDS)) {
+    if (provider === "gemini" && timelineDuration(timeline, epochs) > GEMINI_MAX_SECONDS) {
       throw new MeetingProcessingFailure("gemini-duration-limit", "blocked");
     }
     const apiKey = this.deps.getCredential(config.credentialRef, provider);
@@ -758,6 +766,7 @@ export class MeetingProcessingWorker {
     } else {
       // Each completed source is durable before normalization; retries only pay for the missing source.
       const outcomes = await Promise.allSettled((["mic", "system"] as const).map(async (source) => {
+        if (source === "mic" && intentionalEmptySources.includes("mic")) return;
         const artifact = source === "mic" ? "provider-response-mic" : "provider-response-system";
         if (this.deps.storage.hasRunArtifact(run.id, artifact)) return;
         const filePath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, source);
@@ -782,8 +791,11 @@ export class MeetingProcessingWorker {
       signal.throwIfAborted();
       const failed = outcomes.find((outcome) => outcome.status === "rejected");
       if (failed?.status === "rejected") throw failed.reason;
+      const micResponse = intentionalEmptySources.includes("mic")
+        ? { type: "intentional-empty", source: "mic" }
+        : this.deps.storage.readRunArtifact(run.id, "provider-response-mic");
       this.saveRawResponse(run.id, {
-        mic: this.deps.storage.readRunArtifact(run.id, "provider-response-mic"),
+        mic: micResponse,
         system: this.deps.storage.readRunArtifact(run.id, "provider-response-system"),
       });
       result = { success: true };
@@ -836,7 +848,13 @@ export class MeetingProcessingWorker {
         result = parseDeepgramFileResponse(raw, true, true, recordingDuration);
       } else {
         const sources = z.object({ mic: z.unknown(), system: z.unknown() }).parse(raw);
-        const mic = normalizeProviderResponse(provider, sources.mic, false);
+        const intentionalEmptyMic = z.object({
+          type: z.literal("intentional-empty"),
+          source: z.literal("mic"),
+        }).safeParse(sources.mic).success;
+        const mic = intentionalEmptyMic
+          ? { success: true as const, text: "", segments: [] }
+          : normalizeProviderResponse(provider, sources.mic, false);
         const system = normalizeProviderResponse(provider, sources.system, true);
         for (const source of [mic, system]) {
           if (!source.success || typeof source.text !== "string" || (source.text.trim() && !source.segments?.length)) {
@@ -899,10 +917,10 @@ export class MeetingProcessingWorker {
       const parts = run.sourceRecordingIds.map((id) => database.getMeetingRecording(id)).filter((part): part is MeetingRecordingDto => !!part);
       if (parts.length !== run.sourceRecordingIds.length) return;
       const { partOffsets, epochs } = composeMeetingAudioParts(parts, (id) => database.listMeetingRecordingEpochs(id));
-      const observations = run.sourceRecordingIds.flatMap((id) => database.listMeetingZoomObservations(id));
+      const observations = run.sourceRecordingIds.flatMap((id) => database.listMeetingPlatformObservations(id));
       if (!observations.length) return;
       const anchors = run.sourceRecordingIds.flatMap((id) => database.listMeetingAudioClockAnchors(id));
-      const decisions = matchZoomSpeakers({ transcript, observations, anchors, epochs, partOffsets });
+      const decisions = matchMeetingPlatformSpeakers({ transcript, observations, anchors, epochs, partOffsets });
       const revision = database.getMeetingRunSpeakerCorrectionRevision(run.id);
       if (database.applyMeetingPlatformDecisions(run.id, revision, decisions)) this.publishCurrentSelection(run.id);
     } catch {
@@ -1295,13 +1313,62 @@ export class MeetingProcessingWorker {
   private sourceTimeline(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, requireAudio = false): {
     timeline: MeetingRecordingDto;
     epochs: MeetingRecordingEpochDto[];
+    intentionalIntervals: MeetingIntentionalInterval[];
   } {
     const sources = run.sourceRecordingIds.map((id) => this.deps.database.getMeetingRecording(id));
     if (sources.some((source) => !source || (requireAudio && source.audioState !== "available") || source.noteId !== recording.noteId)) {
       throw new MeetingProcessingFailure("audio-part-unavailable", "blocked");
     }
-    const combined = composeMeetingAudioParts(sources as MeetingRecordingDto[], (id) => this.deps.database.listMeetingRecordingEpochs(id));
-    return { timeline: { ...recording, startedAt: combined.recording.startedAt, endedAt: combined.recording.endedAt }, epochs: combined.epochs };
+    const parts = sources as MeetingRecordingDto[];
+    if (requireAudio) {
+      for (const part of parts) {
+        this.intentionalEmptySources(part, this.deps.database.listMeetingRecordingEpochs(part.id), this.deps.database.listMeetingIntentionalIntervals(part.id));
+      }
+    }
+    const combined = composeMeetingAudioParts(parts, (id) => this.deps.database.listMeetingRecordingEpochs(id));
+    for (const source of ["mic", "system"] as const) {
+      const metadata = combined.recording.sourceMetadata[source];
+      combined.recording.sourceMetadata[source] = {
+        ...(metadata && typeof metadata === "object" ? metadata : {}),
+        intentionallyEmpty: parts.every((part) => meetingSourceIntentionallyEmpty(part,
+          this.deps.database.listMeetingRecordingEpochs(part.id), this.deps.database.listMeetingIntentionalIntervals(part.id), source)),
+      };
+    }
+    const offsets = new Map(combined.partOffsets.map((part) => [part.recordingId, part.startFrame]));
+    const intentionalIntervals = (sources as MeetingRecordingDto[]).flatMap((part) => {
+      const offset = offsets.get(part.id) ?? 0;
+      return this.deps.database.listMeetingIntentionalIntervals(part.id).map((interval) => ({
+        ...interval,
+        timelineStartFrame: interval.timelineStartFrame === null ? null : interval.timelineStartFrame + offset,
+        timelineEndFrame: interval.timelineEndFrame === null ? null : interval.timelineEndFrame + offset,
+      }));
+    });
+    return {
+      timeline: {
+        ...recording,
+        startedAt: combined.recording.startedAt,
+        endedAt: combined.recording.endedAt,
+        sourceMetadata: combined.recording.sourceMetadata,
+      },
+      epochs: combined.epochs,
+      intentionalIntervals,
+    };
+  }
+
+  private intentionalEmptySources(
+    timeline: MeetingRecordingDto,
+    epochs: MeetingRecordingEpochDto[],
+    intervals: MeetingIntentionalInterval[]
+  ): MeetingSource[] {
+    const empty: MeetingSource[] = [];
+    for (const source of ["mic", "system"] as const) {
+      if (epochs.some((epoch) => epoch.source === source && epoch.frameCount > 0)) continue;
+      if (!meetingSourceIntentionallyEmpty(timeline, epochs, intervals, source)) {
+        throw new MeetingProcessingFailure(`${source}-source-unavailable`, "blocked");
+      }
+      empty.push(source);
+    }
+    return empty;
   }
 
   private requireCurrentRun(runId: string): MeetingProcessingRunDto {
@@ -1802,6 +1869,7 @@ function serializeTranscriptProjection(
         speakerStatus: "locked",
         speakerLocked: true,
         speakerLockSource: correction.source,
+        ...(correction.platform ? { speakerPlatform: correction.platform } : {}),
       } : segment.speaker ? {
         speakerIsPlaceholder: true,
         speakerStatus: "provisional",
@@ -1853,11 +1921,7 @@ function validateTranscript(result: RemoteTranscriptionResult, duration: number,
 }
 
 function timelineDuration(recording: MeetingRecordingDto, epochs: ReturnType<MeetingProcessingDatabase["listMeetingRecordingEpochs"]>): number {
-  const frames = Math.max(
-    ...epochs.map((epoch) => epoch.startFrame + epoch.frameCount),
-    recording.endedAt ? Math.round((Date.parse(recording.endedAt) - Date.parse(recording.startedAt)) * 24) : 0
-  );
-  return frames / 24_000;
+  return meetingTimelineFrameCount(recording, epochs) / 24_000;
 }
 
 function isTransientFailure(error: MeetingProcessingFailure): boolean {
@@ -1929,6 +1993,7 @@ function buildLlmTranscriptSegments(
       speakerId,
       speakerName: correction?.displayName ?? null,
       speakerNameSource: correction?.source ?? null,
+      ...(correction?.platform ? { speakerNamePlatform: correction.platform } : {}),
       text: segment.text,
     };
   });

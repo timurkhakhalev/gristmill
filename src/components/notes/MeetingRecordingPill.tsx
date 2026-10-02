@@ -1,3 +1,4 @@
+import { MeetingMicButton } from "./MeetingMicButton";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Square } from "../icons";
@@ -125,6 +126,7 @@ export default function MeetingRecordingPill({
           {status}
         </span>
       </button>
+      <MeetingMicButton />
       <button
         type="button"
         onClick={handleStop}

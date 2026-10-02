@@ -425,3 +425,12 @@ coverage remain unverified. Synthetic Pause/Resume/restart and provider
 normalization checks do not replace those measurements. Issue #122 remains open;
 the user does not need to organize a new test group for source implementation
 or synthetic verification.
+
+### Shared platform implementation (2026-10-01)
+
+Zoom remains an AX adapter. Its observations now enter the shared platform
+schema, persistence and `meetingPlatformMatcher.ts`, also used by Google Meet.
+The Zoom 0.5 s lag policy and conservative episode/clock guards remain unchanged.
+Historical measurements above remain Zoom-only; synthetic Meet cases do not
+establish real-browser attribution quality. Metadata migration and rollback-on-
+failure, provenance consumers, retention and manual priority have focused tests.

@@ -199,25 +199,30 @@ test("PCM arriving before start waits for its epoch; clock messages never reorde
   t.after(() => manager.stop());
   const order: string[] = [];
   const chunks: Buffer[] = [];
+  const frameStarts: number[] = [];
   const clocks: unknown[] = [];
   const generation = "11111111-1111-4111-8111-111111111111";
   const started = manager.start({
     onStart: () => order.push("epoch"),
-    onChunk: (chunk: Buffer) => { order.push("pcm"); chunks.push(chunk); },
-    onClock: (clock: unknown) => clocks.push(clock),
+    onChunk: (chunk: Buffer, frameStart: number) => { order.push("pcm"); chunks.push(chunk); frameStarts.push(frameStart); },
+    onClock: (clock: unknown) => { order.push("clock"); clocks.push(clock); },
   });
   const child = lastChild!;
   child.stdout.emit("data", Buffer.from([1, 2]));
   child.stdout.emit("data", Buffer.from([3, 4]));
+  emitLine(child, { type: "pcm", frameStart: 0, frameCount: 1 });
+  emitLine(child, { type: "pcm", frameStart: 1, frameCount: 1 });
   emitLine(child, { type: "clock", generation, startFrame: 0, endFrame: 2,
     hostStartNs: "100", hostEndNs: "200", timebaseNumer: 1, timebaseDenom: 1,
     conversion: "uncalibrated", reason: null });
   assert.deepEqual(chunks, []);
+  assert.deepEqual(order, ["clock"]);
   assert.equal(clocks.length, 1);
   emitLine(child, { type: "start", generation, sampleRate: 24_000, channels: 1, bitsPerChannel: 16 });
   await started;
-  assert.deepEqual(order, ["epoch", "pcm", "pcm"]);
+  assert.deepEqual(order, ["clock", "epoch", "pcm", "pcm"]);
   assert.deepEqual(Buffer.concat(chunks), Buffer.from([1, 2, 3, 4]));
+  assert.deepEqual(frameStarts, [0, 1]);
 });
 
 test("malformed clock metadata reports coverage warning but preserves PCM and ignores retired helper messages", async (t: import("node:test").TestContext) => {
@@ -225,14 +230,24 @@ test("malformed clock metadata reports coverage warning but preserves PCM and ig
   t.after(() => manager.stop());
   const warnings: Array<{ code?: string }> = [];
   const chunks: Buffer[] = [];
-  const started = manager.start({ onChunk: (chunk: Buffer) => chunks.push(chunk), onWarning: (warning: { code?: string }) => warnings.push(warning) });
+  const frameStarts: number[] = [];
+  const errors: Error[] = [];
+  const started = manager.start({
+    onChunk: (chunk: Buffer, frameStart: number) => { chunks.push(chunk); frameStarts.push(frameStart); },
+    onWarning: (warning: { code?: string }) => warnings.push(warning),
+    onError: (error: Error) => errors.push(error),
+  });
   const retired = lastChild!;
   emitLine(retired, { type: "start" });
   await started;
   emitLine(retired, { type: "clock", startFrame: 10, endFrame: 0 });
+  emitLine(retired, { type: "pcm", frameStart: 0, frameCount: 1 });
   retired.stdout.emit("data", Buffer.from([1, 2]));
   assert.equal(warnings[0].code, "clock_invalid_message");
   assert.equal(chunks.length, 1);
+  assert.deepEqual(chunks[0], Buffer.from([1, 2]));
+  assert.deepEqual(frameStarts, [0]);
+  assert.deepEqual(errors, []);
   await manager.stop();
   const restarted = manager.start({ onChunk: (chunk: Buffer) => chunks.push(chunk) });
   emitLine(lastChild!, { type: "start" });

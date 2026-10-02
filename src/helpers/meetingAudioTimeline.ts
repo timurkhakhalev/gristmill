@@ -1,50 +1,37 @@
-import {
-  frameOffsetFromSessionOrigin,
-  MEETING_AUDIO_SAMPLE_RATE,
-} from "../utils/meetingAudioFrameOffset.js";
-
-export { frameOffsetFromSessionOrigin };
-
 export interface MeetingAudioTimelineOptions {
-  originAt?: number;
-  wallNow?: () => number;
+  originFrame?: number;
 }
 
-export type MeetingAudioTimelineEmitter = (
-  buffer: Buffer,
-  sampleOffset: number,
-  capturedAt: number
-) => void;
+export type MeetingAudioTimelineEmitter = (buffer: Buffer, frameStart: number) => void;
 
 export interface MeetingAudioTimeline {
-  frameAt(at?: number): number;
-  markRestart(at?: number): number;
-  write(buffer: Buffer, emit: MeetingAudioTimelineEmitter): void;
+  lastFrame: number;
+  markRestart(frame: number): number;
+  write(buffer: Buffer, frameStart: number, emit: MeetingAudioTimelineEmitter): void;
 }
 
-/** Tracks source frame positions; delivery jitter never inserts synthetic PCM. */
-export const createMeetingAudioTimeline = ({
-  originAt = Date.now(),
-  wallNow = Date.now,
-}: MeetingAudioTimelineOptions = {}): MeetingAudioTimeline => {
-  let lastPosition = 0;
-
-  const frameAt = (at = wallNow()) => frameOffsetFromSessionOrigin(originAt, at);
+/** Tracks actual frame anchors; callers must provide the source clock mapping. */
+export const createMeetingAudioTimeline = ({ originFrame = 0 }: MeetingAudioTimelineOptions = {}): MeetingAudioTimeline => {
+  if (!Number.isSafeInteger(originFrame) || originFrame < 0) throw new RangeError("Invalid meeting audio origin frame");
+  let lastFrame = originFrame;
 
   return {
-    frameAt,
-    markRestart(at = wallNow()) {
-      lastPosition = Math.max(lastPosition, frameAt(at));
-      return lastPosition;
+    get lastFrame() { return lastFrame; },
+    markRestart(frame) {
+      if (!Number.isSafeInteger(frame) || frame < lastFrame) throw new RangeError("Invalid meeting audio restart frame");
+      lastFrame = frame;
+      return lastFrame;
     },
-    write(buffer, emit) {
-      const capturedAt = originAt + (lastPosition * 1000) / MEETING_AUDIO_SAMPLE_RATE;
-      emit(buffer, lastPosition, capturedAt);
-      lastPosition += buffer.length / 2;
+    write(buffer, frameStart, emit) {
+      if (buffer.length === 0 || buffer.length % 2 !== 0 ||
+          !Number.isSafeInteger(frameStart) || frameStart < lastFrame) {
+        throw new Error("Invalid meeting audio frame range");
+      }
+      emit(buffer, frameStart);
+      lastFrame = frameStart + buffer.length / 2;
     },
   };
 };
 
 module.exports = createMeetingAudioTimeline;
 module.exports.createMeetingAudioTimeline = createMeetingAudioTimeline;
-module.exports.frameOffsetFromSessionOrigin = frameOffsetFromSessionOrigin;

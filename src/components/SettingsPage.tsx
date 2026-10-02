@@ -1,3 +1,4 @@
+import { MeetIntegrationSettings } from "./settings/MeetIntegrationSettings";
 import { ProfileNameField } from "./settings/ProfileNameField";
 import React from "react";
 import { HotkeyListInput } from "./ui/HotkeyListInput";
@@ -453,6 +454,7 @@ function RecordingSettings() {
           <Toggle checked={settings.meetingCompanionEnabled} onChange={settings.setMeetingCompanionEnabled} />
         </Row>
       </Group>
+      <Group><MeetIntegrationSettings /></Group>
       <Group title={t("settingsPage.general.meetingHotkey.title")}>
         <SettingsPanelRow>
           <div className="space-y-2">

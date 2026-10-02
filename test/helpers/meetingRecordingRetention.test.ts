@@ -22,7 +22,7 @@ function createFinishedRecording(db: Database, storage: RecordingStorage, anchor
   assert.ok(note);
   const startedAt = new Date(anchor - (ageDays + 1) * DAY).toISOString();
   const recording = db.createMeetingRecording(note.id, { config }, startedAt);
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
   savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, storage.recoverEpoch(recording.id, "mic", 0));
   db.markMeetingRecordingFinalizing(recording.id);
@@ -121,8 +121,9 @@ test("delete-all safely stops active capture, waits for processing, and removes 
   const context = {
     _meetingCoordinator: {
       isRecording: () => true,
-      requestSafeStop: async (suppressProcessing: unknown) => {
-        assert.equal(suppressProcessing, true);
+      currentRecordingScope: () => ({ recordingId: recording.id, sessionId: "active" }),
+      requestSafeStop: async (options: unknown) => {
+        assert.deepEqual(options, { expected: { recordingId: recording.id, sessionId: "active" }, reason: "delete-audio", suppressProcessing: true });
         safeStop = true;
         return { success: true };
       },
@@ -284,4 +285,29 @@ test("reopened SQLite preserves a failed deletion intent for the next startup sw
   } finally {
     reopened.close();
   }
+});
+
+test("audio retention keeps platform names and observations; Note deletion removes them", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const anchor = Date.parse("2026-10-01T00:00:00Z");
+  withClock(t, anchor);
+  const { note, recording, initialRun } = createFinishedRecording(db, storage, anchor, 10);
+  const { zoomSpeakerFixture }: typeof import("../lib/zoomSpeakerFixture.ts") = require("../lib/zoomSpeakerFixture.ts");
+  const fixture = zoomSpeakerFixture(recording.id);
+  const observation = { ...fixture.observations[0], platform: "google-meet" as const, clockGeneration: fixture.anchors[0].clock.generation };
+  db.saveMeetingPlatformObservation(observation);
+  assert.equal(db.setMeetingRunSpeakerCorrection(initialRun.id, "system:guest", null, "Guest", "platform", undefined, "google-meet").success, true);
+  storeTranscript(db, storage, initialRun, "Saved words");
+  await runCleanup(db, storage, {});
+  assert.equal(db.getMeetingRecording(recording.id)?.audioState, "deleted");
+  assert.deepEqual(db.listMeetingPlatformObservations(recording.id), [observation]);
+  assert.equal(db.getMeetingRunSpeakerCorrections(initialRun.id)[0].platform, "google-meet");
+  assert.equal(db.getNote(note.id)?.content, "Manual note stays");
+  db.beginMeetingNoteDeletion(note.id);
+  await runCleanup(db, storage, {}, { _asyncMirrorDelete: () => {} });
+  assert.equal(db.getNote(note.id), null);
+  assert.deepEqual(db.listMeetingPlatformObservations(recording.id), []);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(initialRun.id), []);
 });

@@ -402,14 +402,20 @@ function initializeCoreManagers(): void {
     oauthProtocolRegistered: protocolRegistered,
     oauthProtocol: OAUTH_PROTOCOL,
   });
+  void ipcHandlers._meetingCoordinator?.startCompanion().catch((error) => {
+    debugLogger.warn("Meet integration transport unavailable", { error: String(error) }, "meeting");
+  });
 }
 
 function registerSidecars(): void {
   registerSidecar("meeting-capture", async () => {
     try {
-      await ipcHandlers?._meetingCoordinator?.requestSafeStop(true);
+      const coordinator = ipcHandlers?._meetingCoordinator;
+      const expected = coordinator?.currentRecordingScope();
+      if (coordinator && expected) await coordinator.requestSafeStop({ expected, reason: "quit", suppressProcessing: true });
     } finally {
       await audioTapManager?.stop();
+      await ipcHandlers?._meetingCoordinator?.disposeCompanion();
     }
   });
   if (whisperManager) {

@@ -44,7 +44,7 @@ test("whisper-vad and diarization scripts skip complete synthetic assets without
 
   const vadOut = execFileSync(
     process.execPath,
-    ["--require", networkGuard, path.join(root, "scripts", "download-whisper-vad-model.js"), "--output-dir", path.join(outDir, "whisper-vad")],
+    ["--require", networkGuard, path.join(root, "scripts", "download-whisper-vad-model.cts"), "--output-dir", path.join(outDir, "whisper-vad")],
     { encoding: "utf8", env }
   );
   assert.match(vadOut, /already exists/);
@@ -54,7 +54,7 @@ test("whisper-vad and diarization scripts skip complete synthetic assets without
     [
       "--require",
       networkGuard,
-      path.join(root, "scripts", "download-diarization-models.js"),
+      path.join(root, "scripts", "download-diarization-models.cts"),
       "--output-dir",
       path.join(outDir, "diarization-models"),
     ],
@@ -70,7 +70,7 @@ test("whisper-cpp detects a complete synthetic install", (t: import("node:test")
     BINARIES: Record<"darwin-arm64", { outputName: string }>;
     WHISPER_CPP_TAG: string;
     isCompleteInstall(markerPath: string, binaryPath: string, config: { outputName: string }): boolean;
-  } = require(path.join(root, "scripts", "download-whisper-cpp.js"));
+  } = require(path.join(root, "scripts", "download-whisper-cpp.cts"));
   const config = BINARIES["darwin-arm64"];
   const marker = path.join(binDir, ".whisper-cpp-darwin-arm64.json");
   const binary = path.join(binDir, config.outputName);

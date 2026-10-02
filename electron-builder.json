@@ -1,7 +1,7 @@
 {
   "appId": "com.khakhalev.gristmill",
-  "beforeBuild": "scripts/beforeBuild.js",
-  "afterPack": "scripts/afterPack.js",
+  "beforeBuild": "scripts/beforeBuild.cts",
+  "afterPack": "scripts/afterPack.cts",
   "productName": "Gristmill",
   "protocols": {
     "name": "Gristmill Protocol",
@@ -102,7 +102,7 @@
       ]
     },
     {
-      "from": "scripts/gristmill-cli.cjs",
+      "from": "resources/cli/gristmill-cli.cjs",
       "to": "cli/gristmill-cli.cjs"
     },
     {

@@ -1,3 +1,10 @@
+# Script tooling cutover
+
+Supported tooling now uses strict TypeScript (`.cts` for native Node CommonJS,
+`.mts` for provider canaries). `build:main` also bundles standalone CJS resources.
+Current sources and commands are in [scripts.md](scripts.md); the stage notes
+below retain their historical filenames and measurements.
+
 # Сборка Electron перед миграцией на TypeScript
 
 Первый шаг [issue #10](https://github.com/timurkhakhalev/gristmill/issues/10).

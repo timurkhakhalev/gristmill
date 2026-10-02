@@ -1,3 +1,4 @@
+const { stripTypeScriptTypes }: typeof import("node:module") = require("node:module");
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const fs: typeof import("node:fs") = require("node:fs");
@@ -13,7 +14,7 @@ test("binary downloads drain redirects and disable the old request timeout", asy
   file.resume();
   const module: { exports: unknown } = { exports: {} };
   vm.runInNewContext(
-    fs.readFileSync(path.join(__dirname, "../../scripts/lib/download-utils.js"), "utf8"),
+    stripTypeScriptTypes(fs.readFileSync(path.join(__dirname, "../../scripts/lib/download-utils.cts"), "utf8")),
     {
       module,
       URL,

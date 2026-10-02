@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessByStdio } from "child_process";
+import { execFile, spawn, type ChildProcessByStdio } from "child_process";
 import { app } from "electron";
 import fs from "fs";
 import { meetingAudioClockMessageSchema, meetingRecordingIdSchema, type MeetingAudioClockMessage } from "../contracts/meetingRecording.js";
@@ -15,6 +15,7 @@ const ARCH_CPU_TYPE: Readonly<Record<string, number>> = {
 const DEFAULT_SAMPLE_RATE = 24000;
 const DEFAULT_CHUNK_MS = 100;
 const START_TIMEOUT_MS = 3000;
+const PERMISSION_CHECK_TIMEOUT_MS = 3000;
 const REQUEST_TIMEOUT_MS = 60000;
 const STOP_TIMEOUT_MS = 5000;
 
@@ -209,7 +210,7 @@ export class AudioTapManager {
     this.onStart = null;
     this.onClock = null;
     this.isStopping = false;
-    this.permissionStatus = this._loadPermissionStatus();
+    this.permissionStatus = "unknown";
     this._requestPromise = null;
   }
 
@@ -266,36 +267,53 @@ export class AudioTapManager {
     });
   }
 
-  checkAccess(): AudioTapAccessResult {
+  async checkAccess(): Promise<AudioTapAccessResult> {
     if (!this.isSupported()) {
       return { granted: false, status: "unsupported" };
     }
-    const status = this.getPermissionStatus();
+    if (this.process) {
+      return { granted: true, status: "granted" };
+    }
+    const status = await this._preflightPermission();
+    this.permissionStatus = status;
     return { granted: status === "granted", status };
   }
 
-  private _statusFilePath(): string {
-    return path.join(app.getPath("userData"), ".system-audio-permission");
+  private _preflightPermission(): Promise<AudioTapPermissionStatus> {
+    let binaryPath: string;
+    try {
+      binaryPath = this._prepareBinary();
+    } catch {
+      return Promise.resolve("unknown");
+    }
+    return new Promise((resolve) => {
+      execFile(
+        binaryPath,
+        ["--check-permission"],
+        { timeout: PERMISSION_CHECK_TIMEOUT_MS },
+        (_error, _stdout, stderr) => {
+          for (const line of String(stderr).split("\n")) {
+            try {
+              const message = JSON.parse(line) as { type?: unknown; status?: unknown };
+              if (
+                message.type === "permission" &&
+                (message.status === "granted" || message.status === "denied")
+              ) {
+                resolve(message.status);
+                return;
+              }
+            } catch {
+              // Ignore non-JSON output.
+            }
+          }
+          resolve("unknown");
+        }
+      );
+    });
   }
 
-  private _loadPermissionStatus(): AudioTapPermissionStatus {
-    try {
-      const status = fs.readFileSync(this._statusFilePath(), "utf8").trim();
-      if (status === "granted" || status === "denied") return status;
-    } catch {
-      // File doesn't exist yet — first launch or reset.
-    }
-    return "unknown";
-  }
-
-  private _persistPermissionStatus(status: AudioTapPermissionStatus): void {
-    if (status !== "granted" && status !== "denied") return;
-    this.permissionStatus = status;
-    try {
-      fs.writeFileSync(this._statusFilePath(), status);
-    } catch {
-      // Non-critical — status is still cached in memory for this session.
-    }
+  private _setPermissionStatus(status: AudioTapPermissionStatus): void {
+    if (status === "granted" || status === "denied") this.permissionStatus = status;
   }
 
   async requestAccess(): Promise<AudioTapAccessResult> {
@@ -303,7 +321,7 @@ export class AudioTapManager {
       return { granted: false, status: "unsupported" };
     }
     if (this.process) {
-      this._persistPermissionStatus("granted");
+      this._setPermissionStatus("granted");
       return { granted: true, status: "granted" };
     }
     if (this._requestPromise) {
@@ -317,7 +335,7 @@ export class AudioTapManager {
           "code" in processError && processError.code === "permission_denied"
             ? "denied"
             : "unknown";
-        this._persistPermissionStatus(status);
+        this._setPermissionStatus(status);
         return { granted: false, status, error: processError.message };
       })
       .finally(() => {
@@ -422,7 +440,7 @@ export class AudioTapManager {
             return;
           }
           if (message.type === "start") {
-            this._persistPermissionStatus("granted");
+            this._setPermissionStatus("granted");
             try {
               this.helperGeneration = message.generation ?? null;
               this.monotonicOriginNs = message.monotonicOriginNs ?? null;
@@ -448,7 +466,7 @@ export class AudioTapManager {
           if (message.type === "error") {
             const error = this._buildProcessError(message);
             if (error.code === "permission_denied") {
-              this._persistPermissionStatus("denied");
+              this._setPermissionStatus("denied");
             }
             if (!settled) {
               if (!settle()) return;
@@ -627,7 +645,7 @@ export class AudioTapManager {
                 continue;
               }
               if (message.type === "start") {
-                this._persistPermissionStatus("granted");
+                this._setPermissionStatus("granted");
                 if (settle()) {
                   stopChild();
                   resolve({ granted: true, status: "granted" });
@@ -637,7 +655,7 @@ export class AudioTapManager {
               if (message.type === "error") {
                 const error = this._buildProcessError(message);
                 if (error.code === "permission_denied") {
-                  this._persistPermissionStatus("denied");
+                  this._setPermissionStatus("denied");
                 }
                 if (settle()) {
                   stopChild();

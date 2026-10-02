@@ -1,3 +1,7 @@
+> Research archive: the standalone tools under `scripts/prototypes/` were removed
+> on 2 October 2026. Commands below describe historical experiments and are no
+> longer executable. Production capture/AX helpers and regression tests remain.
+
 # Zoom speaker attribution prototype (#122)
 
 This document records the research checkpoint from 30 September 2026 and the

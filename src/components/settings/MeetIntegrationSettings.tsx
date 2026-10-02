@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CompanionSetup } from "../../contracts/companion";
 import { Button } from "../ui/button";
+import { Toggle } from "../ui/toggle";
 
 export function MeetIntegrationSettings() {
   const { t } = useTranslation();
@@ -22,7 +23,7 @@ export function MeetIntegrationSettings() {
       active = false;
     };
   }, []);
-  const configure = async (action: "enable" | "disable" | "remove" | "reveal") => {
+  const configure = async (action: "enable" | "disable" | "reveal") => {
     setBusy(true);
     setError(null);
     try {
@@ -37,44 +38,30 @@ export function MeetIntegrationSettings() {
   };
   return (
     <div className="space-y-3 p-4">
-      <h3 className="text-sm font-medium">{t("meetIntegration.title")}{setup?.channel === "development" ? " · Dev" : ""}</h3>
-      <p className="text-xs text-muted-foreground">{t("meetIntegration.setupDescription")}</p>
-      <p className="text-xs">
-        {setup
-          ? t(
-              setup.enabled && setup.installed
-                ? "meetIntegration.enabled"
-                : "meetIntegration.disabled"
-            )
-          : t("meetIntegration.loading")}
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">{t("meetIntegration.title")}</h3>
+          <p className="text-xs text-muted-foreground">{t("meetIntegration.setupDescription")}</p>
+        </div>
+        <Toggle
+          ariaLabel={t("meetIntegration.title")}
+          checked={setup?.enabled === true}
           disabled={busy || !setup}
-          onClick={() => void configure(setup?.enabled ? "disable" : "enable")}
-        >
-          {t(setup?.enabled ? "meetIntegration.disable" : "meetIntegration.enable")}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy || !setup}
-          onClick={() => void configure("reveal")}
-        >
-          {t("meetIntegration.openExtension")}
-        </Button>
-        {setup?.installed && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => void configure("remove")}
-          >
-            {t("meetIntegration.remove")}
-          </Button>
-        )}
+          onChange={(enabled) => void configure(enabled ? "enable" : "disable")}
+        />
       </div>
+      {setup?.enabled && !setup.installed && (
+        <p role="alert" className="text-xs text-destructive">{t("meetIntegration.setupFailed")}</p>
+      )}
+      {setup?.enabled && (
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer">{t("meetIntegration.openExtension")}</summary>
+          <p className="my-2">{t("meetIntegration.installInstructions")}</p>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void configure("reveal")}>
+            {t("meetIntegration.selectExtension")}
+          </Button>
+        </details>
+      )}
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {error}

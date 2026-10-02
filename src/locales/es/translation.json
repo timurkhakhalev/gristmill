@@ -1124,7 +1124,7 @@
       },
       "notesGroup": "Notas",
       "meetingCompanion": {
-        "label": "Compañero de grabación",
+        "label": "Indicador flotante de grabación",
         "description": "Mientras se graba una reunión y Gristmill está en segundo plano, muestra una pequeña burbuja arrastrable que reacciona a tu voz. Haz clic para abrir la nota."
       }
     },
@@ -2508,15 +2508,11 @@
     "selfLabel": "Tú"
   },
   "meetIntegration": {
-    "title": "Gristmill Companion",
-    "setupDescription": "Chrome Stable. Activa la integración y carga la carpeta con «Cargar descomprimida» en chrome://extensions. El audio del micrófono silenciado se descarta; el audio del sistema continúa.",
-    "enabled": "Activada",
-    "disabled": "Desactivada",
-    "loading": "Cargando…",
-    "disable": "Desactivar",
-    "enable": "Activar",
-    "openExtension": "Abrir carpeta de la extensión",
-    "remove": "Eliminar registro",
+    "installInstructions": "Chrome Stable. Activa la integración y carga la carpeta con «Cargar descomprimida» en chrome://extensions. El audio del micrófono silenciado se descarta; el audio del sistema continúa.",
+    "selectExtension": "Mostrar carpeta para seleccionar",
+    "title": "Integración de llamadas del navegador",
+    "setupDescription": "Usar los nombres de participantes y seguir el silencio del micrófono y la salida de Google Meet y Yandex Telemost.",
+    "openExtension": "Instalar extensión de Chrome",
     "setupFailed": "Error de configuración",
     "mute": "Silenciar micrófono",
     "unmute": "Activar micrófono",

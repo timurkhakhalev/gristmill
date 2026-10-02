@@ -1,3 +1,4 @@
+import { meetingPlatformLabel } from "../contracts/meetingRecording.js";
 import type { TranscriptSegment } from "../stores/meetingRecordingStore";
 import type { CalendarAttendee } from "../contracts/calendar";
 import { resolveSegmentSpeakerName } from "./transcriptSpeakerState";
@@ -43,7 +44,7 @@ export function buildLlmTranscript(
   t: Translate
 ): string {
   return segments
-    .map((s) => `${resolveLlmSpeakerLabel(s, speakerMappings, selfLabel, t)}${s.speakerLockSource === "platform" && s.speakerPlatform ? ` [name from ${s.speakerPlatform === "google-meet" ? "Google Meet" : "Zoom"}]` : ""}: ${s.text}`)
+    .map((s) => `${resolveLlmSpeakerLabel(s, speakerMappings, selfLabel, t)}${s.speakerLockSource === "platform" && s.speakerPlatform ? ` [name from ${meetingPlatformLabel(s.speakerPlatform)}]` : ""}: ${s.text}`)
     .join("\n");
 }
 

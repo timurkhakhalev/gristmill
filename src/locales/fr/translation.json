@@ -1165,7 +1165,7 @@
       },
       "notesGroup": "Notes",
       "meetingCompanion": {
-        "label": "Compagnon d'enregistrement",
+        "label": "Indicateur flottant d’enregistrement",
         "description": "Pendant l'enregistrement d'une réunion avec Gristmill en arrière-plan, affiche une petite bulle déplaçable qui réagit à votre voix. Cliquez dessus pour ouvrir la note."
       }
     },
@@ -2508,15 +2508,11 @@
     "selfLabel": "Vous"
   },
   "meetIntegration": {
-    "title": "Gristmill Companion",
-    "setupDescription": "Chrome Stable. Activez l’intégration, puis chargez le dossier via « Charger l’extension non empaquetée » dans chrome://extensions. Le son du micro coupé est ignoré ; le son système continue.",
-    "enabled": "Activée",
-    "disabled": "Désactivée",
-    "loading": "Chargement…",
-    "disable": "Désactiver",
-    "enable": "Activer",
-    "openExtension": "Ouvrir le dossier de l’extension",
-    "remove": "Supprimer l’enregistrement",
+    "installInstructions": "Chrome Stable. Activez l’intégration, puis chargez le dossier via « Charger l’extension non empaquetée » dans chrome://extensions. Le son du micro coupé est ignoré ; le son système continue.",
+    "selectExtension": "Afficher le dossier à sélectionner",
+    "title": "Intégration des appels du navigateur",
+    "setupDescription": "Utiliser les noms des participants et suivre la coupure du micro et la sortie des appels Google Meet et Yandex Telemost.",
+    "openExtension": "Installer l’extension Chrome",
     "setupFailed": "Échec de la configuration",
     "mute": "Couper le micro",
     "unmute": "Activer le micro",

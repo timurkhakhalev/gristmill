@@ -19,8 +19,8 @@ test("installing CLI refreshes owned launchers without overriding an explicit pr
     else delete require.cache[electronPath];
   });
   const { installAgentCli, getAgentCliStatus }: typeof import("../../../../src/helpers/installAgentCli.ts") = require("../../../../src/helpers/installAgentCli.ts");
-  fs.mkdirSync(path.join(directory, "scripts"));
-  fs.writeFileSync(path.join(directory, "scripts", "gristmill-cli.cjs"), 'console.log(JSON.stringify({ defaultProfile: process.env.GRISTMILL_CLI_DEFAULT_PROFILE, profile: process.env.GRISTMILL_PROFILE, args: process.argv.slice(2) }));');
+  fs.mkdirSync(path.join(directory, "resources", "cli"), { recursive: true });
+  fs.writeFileSync(path.join(directory, "resources", "cli", "gristmill-cli.cjs"), 'console.log(JSON.stringify({ defaultProfile: process.env.GRISTMILL_CLI_DEFAULT_PROFILE, profile: process.env.GRISTMILL_PROFILE, args: process.argv.slice(2) }));');
   const channel = process.env.GRISTMILL_CHANNEL;
   t.after(() => {
     if (channel === undefined) delete process.env.GRISTMILL_CHANNEL;

@@ -30,10 +30,10 @@ managed shell launcher uses the bundled Electron runtime with
 The registration belongs under Chrome Stable's user-data root
 `NativeMessagingHosts`, once for all its profiles. Tests use a temporary root;
 they never change the real browser registration. Foreign files and symlinks are
-not overwritten. Reinstall refreshes the owned launcher after app relocation.
+not overwritten. When enabled, startup restores a missing registration or launcher and refreshes paths after an app update. A registration belonging to another profile is left alone. Disabling removes the registration and the saved enabled preference.
 
 Chrome has one registration per host name. Enabling integration in either app
-registers only its channel and reveals only its matching extension folder.
+registers only its channel. Settings has one integration switch; one-time unpacked extension installation is in an expandable setup section. The floating recording indicator is a separate setting.
 Both apps can run together; neither extension tries the other channel when its
 app is unavailable. Within the Dev channel, `pnpm dev` and packaged Dev share
 the development profile. The selected app must stay running to serve its socket.

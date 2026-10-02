@@ -156,13 +156,18 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     return () => dispose?.();
   }, []);
 
-  useEffect(() => {
-    const dispose = window.electronAPI?.onTrayNewNote?.(() => {
-      void handleNewNote();
+  const createAndOpenNote = useCallback(async () => {
+    const note = await handleNewNote();
+    if (note) {
+      setNotesDebugScenario(null);
       setActiveView("personal-notes");
-    });
-    return () => dispose?.();
+    }
   }, [handleNewNote]);
+
+  useEffect(() => {
+    const dispose = window.electronAPI?.onTrayNewNote?.(() => void createAndOpenNote());
+    return () => dispose?.();
+  }, [createAndOpenNote]);
 
   const openNote = useCallback((note: NoteItem) => {
     if (note.folder_id != null) setActiveFolderId(note.folder_id);
@@ -260,8 +265,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           openSettings();
           break;
         case "new-note":
-          void handleNewNote();
-          setActiveView("personal-notes");
+          void createAndOpenNote();
           break;
         case "new-folder":
           if (spaces.length > 0) setNewFolderDialogOpen(true);
@@ -285,7 +289,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [showSettings, openSettings, handleNewNote, spaces.length, goToAdjacentNote]);
+  }, [showSettings, openSettings, createAndOpenNote, spaces.length, goToAdjacentNote]);
 
   const handleExitSidePanel = useCallback(() => {
     if (isMeetingMode) window.electronAPI?.restoreFromMeetingMode?.();
@@ -349,7 +353,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               sidebarOpen={drawerOpen}
               onToggleSidebar={toggleSidebar}
               onOpenSearch={() => setShowSearch(true)}
-              onNewNote={() => void handleNewNote()}
+              onNewNote={() => void createAndOpenNote()}
               isSidePanelLayout={isSidePanelLayout}
               insetTrafficLights={!sidebarInline}
               onExitSidePanel={handleExitSidePanel}

@@ -70,7 +70,7 @@ interface SpacesTreeProps {
   onDeleteNote: (id: number) => void;
   onMoveNote: (noteId: number, target: NoteMoveTarget) => Promise<void>;
   onCreateFolderAndMove: (noteId: number, folderName: string) => void;
-  onNewNote: (spaceId: number, folderId: number | null) => void;
+  onNewNote: (spaceId: number, folderId: number | null) => Promise<NoteItem | null>;
   onShowStructureIntro?: () => void;
   /** Fired when a row opens a note or container, so a non-notes view can yield. */
   onNavigate?: () => void;
@@ -508,9 +508,9 @@ export default function SpacesTree({
 }: SpacesTreeProps) {
   const { t, i18n } = useTranslation();
   const { toast, dismiss } = useToast();
-  const onNewNote = (spaceId: number, folderId: number | null) => {
-    onNewNoteProp(spaceId, folderId);
-    onNavigate?.();
+  const onNewNote = async (spaceId: number, folderId: number | null) => {
+    const note = await onNewNoteProp(spaceId, folderId);
+    if (note) onNavigate?.();
   };
   const spaces = useSpaces().filter((space) => space.kind === "private");
   const folders = useFolders();

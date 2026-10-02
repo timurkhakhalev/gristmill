@@ -231,6 +231,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string>("");
+  const [folderMoveError, setFolderMoveError] = useState<string | null>(null);
   // Batch destination folder, deliberately separate from the single-flow one:
   // handleFolderChange moves the already-saved note when noteId is set.
   const [batchFolderId, setBatchFolderId] = useState<string>("");
@@ -577,6 +578,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     setUrlInput("");
     setDownloadProgress(null);
     setBatchUrlNotice(null);
+    setFolderMoveError(null);
     const personal = findDefaultFolder(folders);
     if (personal) setSelectedFolderId(String(personal.id));
   };
@@ -861,11 +863,23 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       const newId = String(res.folder.id);
       setSelectedFolderId(newId);
       if (noteId != null) {
-        window.electronAPI.updateNote(noteId, { folder_id: res.folder.id });
+        const moved = await window.electronAPI.updateNote(noteId, { folder_id: res.folder.id });
+        if (!moved.success) {
+          showFolderMoveFailure(moved.error, String(res.folder.id));
+        }
       }
     }
     setNewFolderName("");
     setShowNewFolderDialog(false);
+  };
+
+  const showFolderMoveFailure = (error: string | undefined, fallbackSelection: string) => {
+    setFolderMoveError(
+      error === "Folder not found"
+        ? t("notes.mutationErrors.folderNotFound")
+        : t("notes.mutationErrors.generic")
+    );
+    setSelectedFolderId(fallbackSelection);
   };
 
   const handleFolderChange = (val: string) => {
@@ -873,9 +887,17 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       setShowNewFolderDialog(true);
       return;
     }
+    const previous = selectedFolderId;
     setSelectedFolderId(val);
+    setFolderMoveError(null);
     if (noteId != null) {
-      window.electronAPI.updateNote(noteId, { folder_id: Number(val) });
+      // Root is a null folder in the DB, not 0 — Number("") would fail there.
+      void window.electronAPI
+        .updateNote(noteId, { folder_id: val ? Number(val) : null })
+        .then((moved) => {
+          if (!moved.success) showFolderMoveFailure(moved.error, previous);
+        })
+        .catch(() => showFolderMoveFailure(undefined, previous));
     }
   };
 
@@ -1153,6 +1175,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               diarizationWarning={diarizationWarning}
               folders={folders}
               selectedFolderId={selectedFolderId}
+              folderMoveError={folderMoveError}
               handleFolderChange={handleFolderChange}
               noteId={noteId}
               onNoteCreated={onNoteCreated}
@@ -1638,6 +1661,7 @@ interface CompleteViewProps {
   diarizationWarning: boolean;
   folders: FolderItem[];
   selectedFolderId: string;
+  folderMoveError: string | null;
   handleFolderChange: (val: string) => void;
   noteId: number | null;
   onNoteCreated?: (noteId: number, folderId: number | null) => void;
@@ -1651,6 +1675,7 @@ function CompleteView({
   diarizationWarning,
   folders,
   selectedFolderId,
+  folderMoveError,
   handleFolderChange,
   noteId,
   onNoteCreated,
@@ -1708,6 +1733,12 @@ function CompleteView({
         diarizationWarning={diarizationWarning}
         t={t}
       />
+
+      {folderMoveError && (
+        <p className="text-xs text-danger/70 leading-relaxed mb-3" role="alert">
+          {folderMoveError}
+        </p>
+      )}
 
       {folders.length > 0 && (
         <FolderSelect

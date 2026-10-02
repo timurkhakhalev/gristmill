@@ -986,6 +986,12 @@ export default function NoteEditor({
             onInputFocus={handleChatInputFocus}
             hideInput={chatMode !== "hidden"}
             floating
+            history={chatPanelProps.conversations && chatPanelProps.onSwitchConversation ? {
+              conversations: chatPanelProps.conversations,
+              activeConversationId: chatPanelProps.activeConversationId,
+              onSwitchConversation: (id) => { chatPanelProps.onSwitchConversation?.(id); setChatMode("floating"); },
+              onNewChat: chatPanelProps.onNewChat ? () => { chatPanelProps.onNewChat?.(); setChatMode("floating"); } : undefined,
+            } : undefined}
           />
           <ChatPanel
             mode={chatMode === "floating" ? "floating" : "hidden"}

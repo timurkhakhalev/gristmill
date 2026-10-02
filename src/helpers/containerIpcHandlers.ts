@@ -17,6 +17,8 @@ import {
   getSpacesArgsSchema,
   moveFolderToSpaceArgsSchema,
   renameFolderArgsSchema,
+  updateFolderStyleArgsSchema,
+  reorderFoldersArgsSchema,
   spaceListResultSchema,
   spaceMutationResultSchema,
   updateSpaceArgsSchema,
@@ -38,6 +40,8 @@ export interface ContainerHandlerDeps {
     createFolder(name: unknown, spaceId: unknown): unknown;
     deleteFolder(id: unknown): unknown;
     renameFolder(id: unknown, name: unknown): unknown;
+    updateFolderStyle(id: unknown, style: unknown): unknown;
+    reorderFolders(spaceId: unknown, folderIds: unknown): unknown;
     moveFolderToSpace(id: unknown, spaceId: unknown): unknown;
     getFolderNoteCounts(): unknown;
     getSpaces(): unknown;
@@ -142,6 +146,28 @@ export function registerContainerHandlers(
       });
     }
     return result;
+  });
+
+  ipcMain.handle("db-update-folder-style", async (_event, ...args: unknown[]) => {
+    const [id, style] = parseArgs(updateFolderStyleArgsSchema, args);
+    const result = parseResult(
+      folderMutationResultSchema,
+      database.updateFolderStyle(id, style),
+      "folder mutation result"
+    );
+    if (result.success && result.folder) {
+      setImmediate(() => sendFolderSynced(result.folder as FolderItem));
+    }
+    return result;
+  });
+
+  ipcMain.handle("db-reorder-folders", async (_event, ...args: unknown[]) => {
+    const [spaceId, folderIds] = parseArgs(reorderFoldersArgsSchema, args);
+    return parseResult(
+      folderDeleteResultSchema,
+      database.reorderFolders(spaceId, folderIds),
+      "folder reorder result"
+    );
   });
 
   ipcMain.handle("db-move-folder-to-space", async (_event, ...args: unknown[]) => {

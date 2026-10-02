@@ -18,6 +18,7 @@ import {
   spaceMutationResultSchema,
   type ContainersApi,
   type FolderDeletedPayload,
+  type FolderStyle,
 } from "../contracts/containers.js";
 import type { ZodType } from "zod";
 
@@ -65,6 +66,18 @@ export function createContainersBridge(ipcRenderer: IpcRendererLike): Containers
         .invoke(containerChannels.renameFolder, id, name)
         .then((raw) =>
           parseResult(folderMutationResultSchema, raw, containerChannels.renameFolder)
+        ),
+    updateFolderStyle: (id: number, style: FolderStyle) =>
+      ipcRenderer
+        .invoke(containerChannels.updateFolderStyle, id, style)
+        .then((raw) =>
+          parseResult(folderMutationResultSchema, raw, containerChannels.updateFolderStyle)
+        ),
+    reorderFolders: (spaceId: number, folderIds: number[]) =>
+      ipcRenderer
+        .invoke(containerChannels.reorderFolders, spaceId, folderIds)
+        .then((raw) =>
+          parseResult(folderDeleteResultSchema, raw, containerChannels.reorderFolders)
         ),
     moveFolderToSpace: (id: number, spaceId: number) =>
       ipcRenderer

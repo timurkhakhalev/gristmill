@@ -45,9 +45,18 @@ interface EpochInput {
 
 export function meetingTimelineFrameCount(
   recording: Pick<MeetingRecordingDto, "startedAt" | "endedAt" | "sourceMetadata">,
-  epochs: MeetingRecordingEpochDto[]
+  epochs: MeetingRecordingEpochDto[],
+  /** Display callers skip epochs whose alignment is not proven yet instead of failing; processing stays strict. */
+  lenient = false
 ): number {
-  const latestEpochEnd = epochs.flatMap(alignedAudioRanges).reduce(
+  const ranges = lenient ? epochs.flatMap((epoch) => {
+    try { return alignedAudioRanges(epoch); }
+    catch (error) {
+      if ((error as { code?: string }).code === "audio-alignment-unavailable") return [];
+      throw error;
+    }
+  }) : epochs.flatMap(alignedAudioRanges);
+  const latestEpochEnd = ranges.reduce(
     (latest, range) => Math.max(latest, range.timelineStartFrame + Math.round(range.frameCount * range.rate)), 0);
   const anchoredEnd = recording.sourceMetadata.captureEndFrame;
   if (Number.isSafeInteger(anchoredEnd) && (anchoredEnd as number) >= 0) {

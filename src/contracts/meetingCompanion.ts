@@ -13,11 +13,14 @@ export const meetingCompanionChannels = {
   dragMove: "meeting-companion-drag-move",
   open: "meeting-companion-open",
   ready: "meeting-companion-ready",
+  toggleMic: "meeting-companion-toggle-mic",
 } as const;
 
 export const meetingCompanionEventChannels = {
   state: "meeting-companion-state",
   level: "meeting-companion-level-changed",
+  // main → control panel
+  toggleMic: "meeting-companion-toggle-mic-requested",
 } as const;
 
 export const meetingCompanionStateSchema = z.object({
@@ -25,6 +28,8 @@ export const meetingCompanionStateSchema = z.object({
   active: z.boolean(),
   paused: z.boolean(),
   waitingForMic: z.boolean(),
+  /** Manual or call/device mute: the microphone is not being recorded. */
+  micMuted: z.boolean(),
   noteId: z.number().int().nullable(),
   folderId: z.number().int().nullable(),
   title: z.string(),
@@ -38,6 +43,7 @@ export const INACTIVE_MEETING_COMPANION_STATE: MeetingCompanionState = {
   active: false,
   paused: false,
   waitingForMic: false,
+  micMuted: false,
   noteId: null,
   folderId: null,
   title: "",
@@ -50,6 +56,8 @@ export interface MeetingCompanionApi {
   meetingCompanionDragMove(screenX: number, screenY: number): void;
   openMeetingCompanionNote(): void;
   meetingCompanionReady(): void;
+  meetingCompanionToggleMic(): void;
+  onMeetingCompanionToggleMic(callback: () => void): () => void;
   onMeetingCompanionState(callback: (state: MeetingCompanionState) => void): () => void;
   onMeetingCompanionLevel(callback: (level: number) => void): () => void;
 }

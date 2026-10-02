@@ -2,7 +2,7 @@ import { ChevronDown, Clock, Plus } from "../icons";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import type { ConversationRow } from "../../contracts/chatPersistence";
-import { formatShortDate } from "../../utils/dateFormatting";
+import { formatRelativeTime } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { cn } from "../lib/utils";
 import { Dropdown, Label, Separator } from "@heroui/react";
@@ -17,6 +17,7 @@ interface ConversationPickerProps {
   titleClassName?: string;
   /** "history" shows a clock icon instead of the active conversation's title. */
   variant?: "title" | "history";
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ConversationPicker({
@@ -26,6 +27,7 @@ export function ConversationPicker({
   onNewChat,
   titleClassName,
   variant = "title",
+  onOpenChange,
 }: ConversationPickerProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
@@ -33,7 +35,7 @@ export function ConversationPicker({
   const activeConversation = conversations.find((item) => item.id === activeConversationId);
 
   return (
-    <Dropdown>
+    <Dropdown onOpenChange={onOpenChange}>
       <Dropdown.Trigger
         className="-ms-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-sm font-medium text-foreground outline-none transition-colors duration-150 hover:bg-default data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus"
         aria-label={t("embeddedChat.conversationSelector")}
@@ -47,7 +49,7 @@ export function ConversationPicker({
         )}
         <ChevronDown size={12} className="shrink-0 text-muted" />
       </Dropdown.Trigger>
-      <Dropdown.Popover placement="bottom start" className="min-w-52 max-w-64">
+      <Dropdown.Popover placement="bottom start" className="min-w-52 max-w-72">
         <Dropdown.Menu
           aria-label={t("embeddedChat.conversationSelector")}
           selectionMode="single"
@@ -70,7 +72,7 @@ export function ConversationPicker({
             >
               <Label className="min-w-0 flex-1 truncate">{conversation.title || t("embeddedChat.newChat")}</Label>
               <span className="shrink-0 text-2xs text-muted">
-                {formatShortDate(conversation.updated_at, locale, dateFormat)}
+                {formatRelativeTime(conversation.updated_at, t, locale, dateFormat, { ago: true })}
               </span>
               <Dropdown.ItemIndicator />
             </Dropdown.Item>

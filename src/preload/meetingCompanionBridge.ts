@@ -46,6 +46,9 @@ export function createMeetingCompanionBridge(ipcRenderer: IpcRendererLike): Meet
       ipcRenderer.send(meetingCompanionChannels.dragMove, screenX, screenY),
     openMeetingCompanionNote: () => ipcRenderer.send(meetingCompanionChannels.open),
     meetingCompanionReady: () => ipcRenderer.send(meetingCompanionChannels.ready),
+    meetingCompanionToggleMic: () => ipcRenderer.send(meetingCompanionChannels.toggleMic),
+    onMeetingCompanionToggleMic: (callback) =>
+      subscribe(meetingCompanionEventChannels.toggleMic, () => true, () => callback()),
     onMeetingCompanionState: (callback) =>
       subscribe(
         meetingCompanionEventChannels.state,

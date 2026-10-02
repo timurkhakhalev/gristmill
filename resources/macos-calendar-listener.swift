@@ -12,7 +12,7 @@
  * __info_plist in dev, where the manager spawns it via macos-disclaim-exec
  * (see build-macos-calendar-listener.js).
  *
- * Compile: see scripts/build-macos-calendar-listener.js (embeds the Info.plist)
+ * Compile: see scripts/build-native.cts calendar (embeds the Info.plist)
  */
 
 import CoreGraphics

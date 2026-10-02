@@ -1,14 +1,19 @@
 import { companionDesktopMessageSchema } from "../../src/contracts/companion.js";
 import { isMeetLeaveControl, readMeetContext } from "./meetAdapter.js";
+import { isTelemostLeaveControl, readTelemostContext, telemostDocuments } from "./telemostAdapter.js";
+import { callIdentity } from "./callIdentity.js";
 import type { ChromeApi } from "./chrome.js";
 declare const chrome: ChromeApi;
 interface PiPWindow extends Window {
   documentPictureInPicture?: EventTarget & { window?: Window | null };
 }
+const telemost = document.location?.hostname === "telemost.yandex.ru";
 const sourceNs = () => String(BigInt(Math.round(performance.now() * 1e6)));
 let stopped = false;
 let scheduled = false;
 let leaveRequestedUntil = 0;
+let leaveRoom: string | null = null;
+let leaveMenuRequested = false;
 let lastProbe = -Infinity;
 const observed = new Map<Document, MutationObserver>();
 function stop(): void {
@@ -30,10 +35,21 @@ function send(value: unknown): void {
   }
 }
 const onClick = (event: Event) => {
-  if (event.isTrusted && event.target instanceof Element && isMeetLeaveControl(event.target))
-    leaveRequestedUntil = performance.now() + 10_000;
+  const element = event.target as Element | null;
+  // The Telemost control belongs to another Window; instanceof Element would
+  // reject a genuine click from that same-origin iframe.
+  if (!event.isTrusted || element?.nodeType !== 1) return;
+  if (telemost) {
+    const room = callIdentity(document.URL);
+    if (room?.platform === "telemost" && documents().includes(element.ownerDocument) && isTelemostLeaveControl(element)) {
+      leaveRoom = room.callId;
+      leaveMenuRequested = !!element.closest('button[data-testid="end-call-alt-button"]');
+      leaveRequestedUntil = performance.now() + 10_000;
+    }
+  } else if (isMeetLeaveControl(element)) leaveRequestedUntil = performance.now() + 10_000;
 };
 function documents(): Document[] {
+  if (telemost) return telemostDocuments(document);
   const pip = (window as PiPWindow).documentPictureInPicture?.window;
   return pip && !pip.closed ? [document, pip.document] : [document];
 }
@@ -59,7 +75,18 @@ function scan(): void {
       doc.addEventListener("click", onClick, true);
       observed.set(doc, observer);
     }
-  const context = readMeetContext(
+  const room = callIdentity(document.URL);
+  if (telemost && room && room.callId !== leaveRoom) {
+    leaveRoom = null;
+    leaveRequestedUntil = 0;
+  }
+  if (telemost && leaveMenuRequested && docs.some(doc => doc.querySelector('button[data-testid="end-call-button"]'))) {
+    leaveRoom = null;
+    leaveRequestedUntil = 0;
+    leaveMenuRequested = false;
+  }
+  const context = telemost ? readTelemostContext(docs, sourceNs(),
+    leaveRoom !== null && performance.now() <= leaveRequestedUntil) : readMeetContext(
     docs,
     sourceNs(),
     performance.now() <= leaveRequestedUntil && leaveRequestedUntil > 0

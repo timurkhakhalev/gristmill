@@ -1124,7 +1124,7 @@
       },
       "notesGroup": "筆記",
       "meetingCompanion": {
-        "label": "錄音夥伴",
+        "label": "浮動錄音指示器",
         "description": "會議錄音期間且 Gristmill 在背景時，顯示一個可拖曳、會隨聲音變化的小泡泡。點擊即可開啟筆記。"
       }
     },
@@ -2508,15 +2508,11 @@
     "selfLabel": "您"
   },
   "meetIntegration": {
-    "title": "Gristmill Companion",
-    "setupDescription": "Chrome Stable. 啟用整合後，在 chrome://extensions 中透過「載入未封裝項目」選擇擴充功能資料夾。靜音時捨棄麥克風音訊，系統音訊繼續錄製。",
-    "enabled": "已啟用",
-    "disabled": "已停用",
-    "loading": "載入中…",
-    "disable": "停用",
-    "enable": "啟用",
-    "openExtension": "開啟擴充功能資料夾",
-    "remove": "移除註冊",
+    "installInstructions": "Chrome Stable. 啟用整合後，在 chrome://extensions 中透過「載入未封裝項目」選擇擴充功能資料夾。靜音時捨棄麥克風音訊，系統音訊繼續錄製。",
+    "selectExtension": "顯示要選取的資料夾",
+    "title": "瀏覽器通話整合",
+    "setupDescription": "使用 Google Meet 和 Yandex Telemost 的參與者姓名，並同步麥克風靜音和離開通話操作。",
+    "openExtension": "安裝 Chrome 擴充功能",
     "setupFailed": "設定失敗",
     "mute": "麥克風靜音",
     "unmute": "取消麥克風靜音",

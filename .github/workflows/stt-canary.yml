@@ -35,7 +35,7 @@ jobs:
           STT_CANARY_GEMINI_KEY: ${{ secrets.STT_CANARY_GEMINI_KEY }}
         run: |
           set -o pipefail
-          node --import tsx scripts/stt-canary.mjs | tee canary-report.md
+          node --import tsx scripts/stt-canary.mts | tee canary-report.md
       - name: File or update failure issue
         if: failure() && steps.canary.outcome == 'failure'
         env:

@@ -23,7 +23,7 @@ export async function ensureLocalEngine(engine: LocalEngine): Promise<void> {
     const name = scripts[engine];
     const scriptPath = app.isPackaged
       ? path.join(process.resourcesPath, "local-engine-installers", `${name}.cjs`)
-      : path.join(app.getAppPath(), "scripts", `${name}.js`);
+      : path.join(app.getAppPath(), "scripts", `${name}.cts`);
     if (!fs.existsSync(scriptPath)) throw new Error(`Local engine installer missing: ${engine}`);
 
     const binDir = getLocalEngineBinDir();

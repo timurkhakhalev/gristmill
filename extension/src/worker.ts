@@ -1,3 +1,4 @@
+import { callIdentity } from "./callIdentity.js";
 import { z } from "zod";
 import { COMPANION_MAX_MESSAGE_BYTES, companionContextSchema, companionDesktopMessageSchema, companionDocumentIdSchema, type CompanionCallRef, type CompanionDesktopMessage, type CompanionContext } from "../../src/contracts/companion.js";
 import type { ChromeApi, ChromePort, ChromeSender } from "./chrome.js";
@@ -20,14 +21,22 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
   let error = "disconnected";
   let updatePending = false;
   const contexts = new Map<number, { ref: CompanionCallRef; context: CompanionContext; receivedAt: number }>();
+  const contextErrors = new Map<number, string>();
   const probes = new Map<string, { tabId: number; documentId: string }>();
   const refFor = (sender: ChromeSender): CompanionCallRef | null => {
     if (sender.id !== api.runtime.id || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || !companionDocumentIdSchema.safeParse(sender.documentId).success) return null;
     try {
       const url = new URL(sender.url ?? "");
-      const match = url.pathname.match(/^\/([a-z]{3}-[a-z]{4}-[a-z]{3})\/?$/);
-      if (url.origin !== "https://meet.google.com" || !match) return null;
-      return { platform: "google-meet", installationId, sessionId, tabId: sender.tab!.id!, documentId: sender.documentId!, callId: match[1] };
+      const identity = callIdentity(url.href);
+      if (identity) return { ...identity, installationId, sessionId, tabId: sender.tab!.id!, documentId: sender.documentId! };
+      // Telemost returns to its home screen without replacing the top document.
+      // Retain only this document's known room for the terminal observation.
+      const previous = contexts.get(sender.tab!.id!);
+      if (url.origin === "https://telemost.yandex.ru" && ["/", "/chats"].includes(url.pathname) &&
+          previous?.ref.platform === "telemost" && previous.ref.documentId === sender.documentId &&
+          previous.ref.installationId === installationId && previous.ref.sessionId === sessionId)
+        return previous.ref;
+      return null;
     } catch { return null; }
   };
   const connect = async () => {
@@ -73,6 +82,7 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
     if (sender.id === api.runtime.id && !sender.tab && sender.url === api.runtime.getURL("popup.html") &&
         value && typeof value === "object" && "type" in value && value.type === "status") {
       respond({ connected: snapshot !== null, snapshot, error, contexts: [...contexts.values()],
+        contextErrors: [...contextErrors].map(([tabId, reason]) => ({ tabId, reason })),
         canControlMic: !!snapshot?.binding && snapshot.recordingState === "recording" && snapshot.contextState !== "disabled" &&
           snapshot.binding.installationId === installationId && snapshot.binding.sessionId === sessionId });
       return;
@@ -90,12 +100,23 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
       } catch { port.disconnect(); respond({ accepted: false }); }
       return;
     }
+    const reject = (reason: string) => {
+      if (sender.id === api.runtime.id && sender.frameId === 0 && Number.isInteger(sender.tab?.id) &&
+          value && typeof value === "object" && "type" in value && value.type === "context") {
+        if (contextErrors.size >= 32) contextErrors.delete(contextErrors.keys().next().value!);
+        contextErrors.set(sender.tab!.id!, reason);
+      }
+      respond({ accepted: false });
+    };
     const parsed = contentMessage.safeParse(value);
-    if (!parsed.success || !installationId || !sessionId) { respond({ accepted: false }); return; }
+    if (!parsed.success) { reject(`Invalid context: ${parsed.error.issues.map(issue => issue.path.join(".")).join(", ").slice(0, 200)}`); return; }
+    if (!installationId || !sessionId) { reject("Extension is initializing"); return; }
     const ref = refFor(sender);
-    if (!ref) { respond({ accepted: false }); return; }
+    if (!ref) { reject(!companionDocumentIdSchema.safeParse(sender.documentId).success
+      ? "Invalid Chrome document ID" : "Unsupported sender frame or call URL"); return; }
     const message = parsed.data;
     if (message.type === "context") {
+      contextErrors.delete(ref.tabId);
       if (contexts.size >= 32 && !contexts.has(ref.tabId)) contexts.delete(contexts.keys().next().value!);
       contexts.set(ref.tabId, { ref, context: message.context, receivedAt: Date.now() });
     }

@@ -7,10 +7,12 @@ export const companionDocumentIdSchema = z.string().regex(/^[A-Fa-f0-9]{32}$/).r
 const ns = z.string().regex(/^\d{1,20}$/);
 const sequence = z.number().int().nonnegative().safe();
 export const companionCallRefSchema = z.object({
-  platform: z.literal("google-meet"), installationId: uuid, sessionId: uuid,
+  platform: z.enum(["google-meet", "telemost"]), installationId: uuid, sessionId: uuid,
   tabId: z.number().int().nonnegative(), documentId: companionDocumentIdSchema,
-  callId: z.string().regex(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/),
-}).strict();
+  callId: z.string().max(32),
+}).strict().refine(ref => ref.platform === "google-meet"
+  ? /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(ref.callId)
+  : /^\d{14}$/.test(ref.callId));
 export type CompanionCallRef = z.infer<typeof companionCallRefSchema>;
 export const companionParticipantSchema = z.object({
   id: z.string().min(1).max(100), name: z.string().max(200),

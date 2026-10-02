@@ -634,7 +634,7 @@ const createAudioPipeline = async ({
     });
     const ack = await acknowledgement;
     pipelineGateClosed = effectiveMuted;
-    if (effectiveMuted) await queue.drain();
+    if (effectiveMuted) await queue.waitForWrites();
     return {
       ack,
       commit: () => {

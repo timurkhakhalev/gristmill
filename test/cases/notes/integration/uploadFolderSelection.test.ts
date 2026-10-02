@@ -69,7 +69,7 @@ interface ViewCallbacks {
 // exactly like the preload does.
 function buildCallbacks(
   db: NonNullable<ReturnType<typeof createDb>>,
-  { failFolderWrites = false }: { failFolderWrites?: boolean } = {}
+  { failFolderWrites = false, noteId }: { failFolderWrites?: boolean; noteId: number }
 ): ViewCallbacks {
   const source = fs.readFileSync(
     path.join(__dirname, "../../../../src/components/notes/UploadAudioView.tsx"),
@@ -102,7 +102,7 @@ function buildCallbacks(
     folderMoveError: null,
   };
   const sandbox: Record<string, unknown> = {
-    noteId: 42,
+    noteId,
     // The extracted callbacks read the closure variable directly; the getter
     // mirrors setter updates like React state would.
     get selectedFolderId() {
@@ -150,7 +150,7 @@ test("choosing No folder after upload saves folder_id null in the database", asy
   const spaceId = db.getPrivateSpaceId();
   const meetingsId = db.createFolder("Meetings", spaceId).folder!.id;
   const noteId = db.saveNote("Uploaded", "", "upload", null, null, meetingsId, null).note!.id;
-  const callbacks = buildCallbacks(db);
+  const callbacks = buildCallbacks(db, { noteId });
 
   callbacks.handleFolderChange(String(meetingsId));
   await tick();
@@ -172,7 +172,7 @@ test("a failed folder move reports the failure and rolls the selection back", as
   const meetingsId = db.createFolder("Meetings", spaceId).folder!.id;
   const noteId = db.saveNote("Uploaded", "", "upload", null, null, null, null).note!.id;
   db.updateNote(noteId, { folder_id: meetingsId });
-  const callbacks = buildCallbacks(db, { failFolderWrites: true });
+  const callbacks = buildCallbacks(db, { failFolderWrites: true, noteId });
 
   // The optimistic selection flips to "" before the write; the failure must
   // restore the confirmed value instead of leaving the root lie on screen.
@@ -195,7 +195,7 @@ test("a rejected folder_id 0 patch never reaches the database", async (t) => {
   const spaceId = db.getPrivateSpaceId();
   const meetingsId = db.createFolder("Meetings", spaceId).folder!.id;
   const noteId = db.saveNote("Uploaded", "", "upload", null, null, meetingsId, null).note!.id;
-  const callbacks = buildCallbacks(db, { failFolderWrites: true });
+  const callbacks = buildCallbacks(db, { failFolderWrites: true, noteId });
 
   // The pre-fix regression: "" through Number() reached the DB as 0 and the
   // failure was never shown. With the failure surfaced, the selection rolls

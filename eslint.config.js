@@ -6,6 +6,7 @@ module.exports = [
   {
     ignores: [
       "dist/**",
+      "dist-dev/**",
       "dist-main/**",
       "node_modules/**",
       "src/dist/**",
@@ -94,6 +95,21 @@ module.exports = [
       "no-async-promise-executor": "off",
       "prefer-const": "off",
       "no-var": "off",
+    },
+  },
+  {
+    files: ["scripts/**/*.{cts,mts}"],
+    languageOptions: { parser: tseslint.parser, sourceType: "module", globals: globals.node },
+    plugins: { "@typescript-eslint": tseslint.plugin },
+    rules: {
+      ...js.configs.recommended.rules,
+      // The strict script program checks names and declarations, including types.
+      "no-undef": "off",
+      "no-redeclare": "off",
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      "no-control-regex": "off",
     },
   },
   {

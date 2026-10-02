@@ -48,7 +48,7 @@ async function refresh() {
     render(describePopup(value, tabs[0]?.id, now));
     if (COMPANION_DEV) renderDiagnostics(popupDiagnostics(value, tabs[0]?.id, now));
   } catch {
-    const unavailable = { connected: false, snapshot: null, error: "unavailable", contexts: [], canControlMic: false };
+    const unavailable = { connected: false, snapshot: null, error: "unavailable", contexts: [], contextErrors: [], canControlMic: false };
     render(describePopup(unavailable, undefined, Date.now()));
     if (COMPANION_DEV) renderDiagnostics(popupDiagnostics(unavailable, undefined, Date.now()));
   }

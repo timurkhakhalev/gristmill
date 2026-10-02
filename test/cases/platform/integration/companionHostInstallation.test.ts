@@ -16,7 +16,8 @@ test("Dev registration uses one Chrome root and a quoted bundled-runtime launche
   const hostScriptPath = path.join(root, "host's entry.cjs");
   fs.writeFileSync(hostScriptPath, "process.stdout.write(JSON.stringify(process.argv.slice(2)))");
   const options = { channel: "development" as const, chromeRoot: path.join(root, "Chrome User Data"), profilePath: path.join(root, "App's profile"), runtimePath: process.execPath, hostScriptPath };
-  assert.equal(refreshCompanionHost(options), false);
+  assert.equal(refreshCompanionHost(options), true);
+  assert.equal(companionHostInstalled(options), true);
   const manifestPath = installCompanionHost(options);
   assert.equal(path.relative(options.chromeRoot, manifestPath), `NativeMessagingHosts/${identity.hostName}.json`);
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
@@ -29,6 +30,9 @@ test("Dev registration uses one Chrome root and a quoted bundled-runtime launche
   const relocated = { ...options, hostScriptPath: path.join(root, "relocated.cjs") };
   fs.copyFileSync(hostScriptPath, relocated.hostScriptPath);
   assert.equal(refreshCompanionHost({ ...relocated, profilePath: path.join(root, "other-profile") }), false);
+  assert.equal(refreshCompanionHost(relocated), true);
+  assert.equal(companionHostInstalled(relocated), true);
+  fs.unlinkSync(manifest.path);
   assert.equal(refreshCompanionHost(relocated), true);
   assert.equal(companionHostInstalled(relocated), true);
   assert.equal(companionHostInstalled(options), false);

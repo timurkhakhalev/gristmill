@@ -1165,7 +1165,7 @@
       },
       "notesGroup": "Notes",
       "meetingCompanion": {
-        "label": "Recording companion",
+        "label": "Floating recording indicator",
         "description": "While a meeting records and Gristmill is in the background, show a small draggable bubble that reacts to your voice. Click it to open the note."
       }
     },
@@ -2188,7 +2188,7 @@
         "micReleased": "No other app is using your microphone, so recording stopped automatically. Restart within {{seconds}}s.",
         "silence": "No audio was detected, so recording stopped automatically. Restart within {{seconds}}s.",
         "processExit": "Your meeting app closed, so recording stopped automatically. Restart within {{seconds}}s.",
-        "platformLeave": "You left Meet. Restart recording within {{seconds}} s."
+        "platformLeave": "You left the call. Restart recording within {{seconds}} s."
       },
       "restart": "Restart recording"
     }
@@ -2242,7 +2242,7 @@
   "meetingResults": {
     "platformName": "Zoom",
     "platformNameHint": "Name matched from {{platform}}. Click the name to change it.",
-    "platformEvidenceUnavailable": "Zoom / Google Meet speaker evidence is incomplete. Audio and transcript are preserved.",
+    "platformEvidenceUnavailable": "Call speaker evidence is incomplete. Audio and transcript are preserved.",
     "partialTranscript": "This Note transcript is incomplete.",
     "selectedResultTranscript": "Selected result transcript",
     "speakerNumber": "Speaker {{number}}",
@@ -2380,7 +2380,7 @@
     "openSettings": "Open system settings",
     "systemAudio": "System audio",
     "accessibilityDetection": "For detecting calls and reading Zoom participant names and active speaker indicators.",
-    "accessibilityHelp": "Turn on Gristmill in macOS Accessibility. If it is missing, click + and select the installed Gristmill.app.",
+    "accessibilityHelp": "Turn on Gristmill in macOS Accessibility. After a local update, remove the old Gristmill entry and add /Applications/Gristmill.app with + if access still does not work.",
     "configureLater": "Configure a provider later",
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
@@ -2508,27 +2508,23 @@
     "selfLabel": "You"
   },
   "meetIntegration": {
-    "title": "Gristmill Companion",
-    "setupDescription": "Chrome Stable. Enable integration, then load the extension folder via Load unpacked in chrome://extensions. Muted microphone audio is discarded; system audio continues.",
-    "enabled": "Enabled",
-    "disabled": "Disabled",
-    "loading": "Loading…",
-    "disable": "Disable",
-    "enable": "Enable",
-    "openExtension": "Open extension folder",
-    "remove": "Remove registration",
+    "installInstructions": "One-time setup: open chrome://extensions, enable Developer mode, choose Load unpacked and select the folder shown below. An already installed extension does not need reinstalling after each app update.",
+    "selectExtension": "Show folder to select",
+    "title": "Browser call integration",
+    "setupDescription": "Use call participant names and follow microphone mute and Leave in Google Meet and Yandex Telemost.",
+    "openExtension": "Install Chrome extension",
     "setupFailed": "Setup failed",
     "mute": "Mute microphone",
     "unmute": "Unmute microphone",
-    "platformMuted": "Microphone muted by Meet or the device",
+    "platformMuted": "Microphone muted by the call or the device",
     "muteFailed": "Could not change microphone state",
-    "contextLost": "Connection to Meet lost. Recording continues.",
-    "bound": "Linked to Meet {{call}}",
+    "contextLost": "Connection to the call lost. Recording continues.",
+    "bound": "Linked to {{call}}",
     "confirmDescription": "Link this recording to a call? Its mute and Leave controls will affect this recording.",
     "noCall": "No recognized call. Recording continues independently.",
     "bind": "Link {{call}}",
     "companionMode": "Meet Companion mode",
     "staleSelection": "Call or recording changed. Select a fresh call.",
-    "uiUnrecognized": "Meet UI is not recognized. Recording continues."
+    "uiUnrecognized": "Call UI is not recognized. Recording continues."
   }
 }

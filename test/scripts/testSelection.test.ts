@@ -3,7 +3,7 @@ const test: typeof import("node:test") = require("node:test");
 const fs: typeof import("node:fs") = require("node:fs");
 const os: typeof import("node:os") = require("node:os");
 const path: typeof import("node:path") = require("node:path");
-const { validateRegistry, parseArgs, selectTests, createPlan } = require("../../scripts/test-selection");
+const { validateRegistry, parseArgs, selectTests, createPlan } = require("../../scripts/test-selection.cts");
 
 interface Entry { file: string; domains: string[]; kind: string; buildMain: boolean; serial?: boolean }
 

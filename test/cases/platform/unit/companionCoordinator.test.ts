@@ -97,3 +97,20 @@ test("reload accepts fresh same-call document once; retired document and other r
   assert.equal(s.coordinator.confirm(s.scope, room), true);
   assert.equal(s.coordinator.status().binding?.ref.callId, room.ref.callId);
 });
+
+test("Telemost uses the same Start, explicit late Link, unknown mute and exact Leave rules", () => {
+  const key = candidate(); key.ref.platform = "telemost"; key.ref.callId = "12345678901234";
+  const s = setup(); s.coordinator.receive(key, context({ micMuted: true })); s.coordinator.start(s.scope);
+  assert.equal(s.coordinator.status().binding?.ref.platform, "telemost");
+  assert.deepEqual(s.effects, ["suppress", "mute:true"]); s.effects.length = 0;
+  s.coordinator.receive(key, context({ health: "unreadable", micMuted: null }));
+  assert.deepEqual(s.effects, []);
+  const other = { ...key, ref: { ...key.ref, callId: "99999999999999" } };
+  s.coordinator.receive(other, context({ presence: "not-in-call", confirmedLeave: true }));
+  assert.deepEqual(s.effects, []);
+  s.coordinator.receive(key, context({ presence: "not-in-call", confirmedLeave: true }));
+  assert.deepEqual(s.effects, ["leave"]);
+  const late = setup(); late.coordinator.start(late.scope); late.coordinator.receive(key, context({ micMuted: true }));
+  assert.equal(late.coordinator.status().binding, null);
+  assert.equal(late.coordinator.confirm(late.scope, key), true);
+});

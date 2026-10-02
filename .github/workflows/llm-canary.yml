@@ -37,7 +37,7 @@ jobs:
           LLM_CANARY_CEREBRAS_KEY: ${{ secrets.LLM_CANARY_CEREBRAS_KEY }}
         run: |
           set -o pipefail
-          node --import tsx scripts/llm-canary.mjs | tee canary-report.md
+          node --import tsx scripts/llm-canary.mts | tee canary-report.md
       - name: File or update failure issue
         if: failure() && steps.canary.outcome == 'failure'
         env:

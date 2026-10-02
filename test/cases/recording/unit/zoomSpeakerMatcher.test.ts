@@ -190,18 +190,18 @@ test("unknown or missing clock inside one turn cannot poison three usable later 
   }
 });
 
-test("Meet uses the common matcher with its own lag policy and bounded full active set", () => {
+for (const platform of ["google-meet", "telemost"] as const) test(`${platform} uses the common matcher with its own lag policy and bounded full active set`, () => {
   const input = fixture();
   input.observations.forEach((observation) => {
-    observation.platform = "google-meet";
+    observation.platform = platform;
     observation.clockGeneration = generation;
     observation.clockUncertaintyNs = "1000000";
   });
   const decisions = matchMeetingPlatformSpeakers(input);
   assert.equal(decisions.length, 3);
-  assert.ok(decisions.every((decision) => decision.status === "accepted" && decision.platform === "google-meet"));
+  assert.ok(decisions.every((decision) => decision.status === "accepted" && decision.platform === platform));
   assert.equal(decisions[0].timingPolicy?.indicatorDelaySeconds, 0.3);
-  assert.equal(decisions[0].timingPolicy?.version, "google-meet-activity-v1");
+  assert.equal(decisions[0].timingPolicy?.version, `${platform}-activity-v1`);
   for (const invalid of ["multiple-active", "unknown-clock", "uncertain-clock", "wrong-generation"] as const) {
     const changed = structuredClone(input);
     for (const observation of changed.observations) {

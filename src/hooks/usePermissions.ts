@@ -196,13 +196,14 @@ export const usePermissions = (
 
     setAccessibilityTroubleshooting(false);
     setAccessibilityPromptRequested(true);
-    // The native prompt offers its own System Settings button.
+    // macOS may suppress a repeated prompt after an unsigned app update.
     const granted = await window.electronAPI?.promptAccessibilityPermission?.();
     if (granted) {
       setAccessibilityPermissionGranted(true);
       return;
     }
     setAccessibilityTroubleshooting(true);
+    await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
   }, [accessibilityPromptRequested, openSystemSettings, setAccessibilityPermissionGranted]);
 
   // On macOS, re-validate microphone permission on mount to override stale

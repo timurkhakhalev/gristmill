@@ -6,8 +6,8 @@ const path: typeof import("node:path") = require("node:path");
 const http: typeof import("node:http") = require("node:http");
 const { spawnSync, spawn }: typeof import("node:child_process") = require("node:child_process");
 
-const cli = path.resolve("scripts/gristmill-cli.cjs");
-const { formatHuman }: { formatHuman: (resource: string, value: unknown, title?: string) => string } = require("../../scripts/gristmill-cli.cjs");
+const cli = path.resolve("scripts/gristmill-cli.cts");
+const { formatHuman }: { formatHuman: (resource: string, value: unknown, title?: string) => string } = require("../../scripts/gristmill-cli.cts");
 
 test("CLI help and argument errors have distinct output contracts", () => {
   const help = spawnSync(process.execPath, [cli, "notes", "transcript", "show", "--help"], { encoding: "utf8", cwd: os.tmpdir() });

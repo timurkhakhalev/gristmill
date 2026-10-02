@@ -186,6 +186,8 @@ function buildHarness({ failWrite = false, audioTapManager = null }: {
   const databaseManager = createDatabaseFake(events);
   const meetingRecordingStorage = createStorageFake(events, { failWrite });
   const engine = createEngineFake();
+  const ownershipEvents: unknown[] = [];
+  const speakerLimits: number[] = [];
   const coordinator = loadCoordinator();
   const runtime = coordinator.registerMeetingCoordinatorHandlers(
     {
@@ -199,15 +201,17 @@ function buildHarness({ failWrite = false, audioTapManager = null }: {
       audioTapManager,
       liveSpeakerIdentifier: {
         setEnabled: () => {},
-        setMaxSpeakers() {},
+        setMaxSpeakers(count: number) { speakerLimits.push(count); },
       },
+      onCaptureStopped: () => ownershipEvents.push({ scope: runtime.currentRecordingScope(), recording: runtime.isRecording() }),
+      setMeetingCaptureState: (active: boolean) => ownershipEvents.push(active),
       getControlPanelWindow: () => currentWindow,
       getMeetingNotificationData: () => null,
       consumePendingMeetingNoteNavigation: () => null,
       showNotificationWindow: () => {},
     }
   );
-  return { runtime, handlers, listeners, events, databaseManager, meetingRecordingStorage, engine };
+  return { runtime, handlers, listeners, events, ownershipEvents, speakerLimits, databaseManager, meetingRecordingStorage, engine };
 }
 
 const invoke = (harness: ReturnType<typeof buildHarness>, channel: string, ...args: unknown[]) => harness.handlers.get(channel)(...args);
@@ -411,4 +415,83 @@ test("safe Stop rejects a stale recording scope and cannot reuse another session
   await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} });
   assert.equal((await stopping).success, true);
   assert.equal(harness.runtime.currentRecordingScope(), null);
+});
+
+for (const failure of ["start", "finalization"] as const) {
+  test(`${failure} failure releases capture and note ownership before a new session starts`, async () => {
+    const harness = buildHarness();
+    await invoke(harness, "meeting-set-session-speaker-config", START_EVENT(), { expectedCount: 2 });
+    const begin = harness.engine.beginRecordingSession;
+    const finalize = harness.databaseManager.finalizeMeetingRecording;
+    if (failure === "start") harness.engine.beginRecordingSession = async () => { throw new Error("start failed"); };
+    const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+    if (failure === "start") {
+      assert.equal(started.success, false);
+      assert.equal(started.error, "start failed");
+      assert.equal(harness.databaseManager.finalized[0].input.errorCode, "capture-start-failed");
+    } else {
+      assert.equal(started.success, true);
+      harness.databaseManager.finalizeMeetingRecording = () => { throw new Error("finalization failed"); };
+      const stopped = await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} });
+      assert.deepEqual(stopped, { success: false, error: "finalization failed" });
+    }
+    assert.equal(harness.runtime.currentRecordingScope(), null);
+    assert.equal(harness.runtime.isRecording(), false);
+    assert.equal(harness.engine.activeSessionId, null);
+    assert.deepEqual(harness.ownershipEvents.at(-2), { scope: null, recording: false });
+    assert.equal(harness.ownershipEvents.at(-1), false);
+    const limitsBefore = harness.speakerLimits.length;
+    harness.runtime.refreshMeetingSpeakerConfigFromNote(START.noteId, { expected_speaker_count: 5 });
+    assert.equal(harness.speakerLimits.length, limitsBefore, "released Note must no longer update capture speaker limits");
+
+    harness.engine.beginRecordingSession = begin;
+    harness.databaseManager.finalizeMeetingRecording = finalize;
+    const next = { ...START, sessionId: "after-failure", noteId: 12 };
+    const nextStart = await invoke(harness, "meeting-transcription-start", START_EVENT(), next);
+    assert.equal(nextStart.success, true);
+    assert.deepEqual(await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} }), { success: false, reason: "stale-session" });
+    assert.deepEqual(harness.runtime.currentRecordingScope(), { recordingId: nextStart.recordingId, sessionId: next.sessionId });
+    await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: next.sessionId, lastSequence: {} });
+  });
+}
+
+test("Pause drains both tracks before releasing ownership and Resume rejects the retired session", async () => {
+  const generation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const origin = "1000000000000000";
+  const order: string[] = [];
+  let callbacks: import("../../src/helpers/audioTapManager.js").AudioTapStartOptions = {};
+  const harness = buildHarness({ audioTapManager: {
+    isSupported: () => true,
+    getClockOrigin: () => ({ helperGeneration: generation, monotonicOriginNs: origin }),
+    probeClock: async nonce => ({ type: "probe", nonce, helperReceiveNs: origin, helperSendNs: origin, helperGeneration: generation, helperFrame: 0 }),
+    start: async (options = {}) => {
+      callbacks = options;
+      options.onStart?.({ type: "start", generation, sampleRate: 24_000, channels: 1, bitsPerChannel: 16, monotonicOriginNs: origin, originFrame: 0 });
+    },
+    stop: async () => { order.push("system-drained"); callbacks.onChunk?.(Buffer.alloc(4800), 0); },
+  } });
+  const finalize = harness.databaseManager.finalizeMeetingRecording;
+  harness.databaseManager.finalizeMeetingRecording = function (...args) {
+    order.push("finalized");
+    assert.equal(harness.runtime.isRecording(), true);
+    return finalize.apply(this, args);
+  };
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  assert.equal(started.success, true);
+  try {
+    await invoke(harness, "meeting-transcription-send", START_EVENT(), Buffer.alloc(4800), "mic", START.sessionId,
+      { epochIndex: 0, epochSourceStartFrame: 0, sourceFrameStart: 0, alignment: null, alignmentErrorCode: "clock-unavailable", sourceGeneration: 1, sequence: 0, sampleOffset: 0 });
+    const stopped = await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: { mic: 0 }, pause: true, suppressProcessing: true });
+    assert.equal(stopped.success, true);
+    assert.equal(stopped.captureState, "ready");
+    assert.deepEqual(order, ["system-drained", "finalized"]);
+    assert.deepEqual(harness.ownershipEvents.slice(-2), [{ scope: null, recording: false }, false]);
+    const resumed = await invoke(harness, "meeting-transcription-start", START_EVENT(), { ...START, sessionId: "resumed", groupId: started.recordingId });
+    assert.equal(resumed.success, true);
+    assert.equal(harness.databaseManager.recordings.get(resumed.recordingId)?.groupId, started.recordingId);
+    assert.deepEqual(await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} }), { success: false, reason: "stale-session" });
+    assert.equal(harness.runtime.currentRecordingScope()?.sessionId, "resumed");
+  } finally {
+    await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: harness.runtime.currentRecordingScope()?.sessionId ?? START.sessionId, lastSequence: {} });
+  }
 });

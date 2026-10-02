@@ -4,6 +4,8 @@ const Module = require("node:module");
 const { EventEmitter } = require("node:events");
 import type { MeetingNotificationData } from "../../src/contracts/meetingCoordinator";
 
+const { createMeetingDetectionClock }: typeof import("../lib/meetingDetectionClock.ts") = require("../lib/meetingDetectionClock.ts");
+
 const enginePath = require.resolve("../../src/helpers/meetingDetectionEngine");
 const originalLoad = Module._load;
 
@@ -37,6 +39,7 @@ function loadEngine() {
 
 function createEngine() {
   const MeetingDetectionEngine = loadEngine();
+  const clock = createMeetingDetectionClock();
 
   const reminderScheduler: { getActiveMeetingState: () => {
     activeMeeting: Record<string, unknown> | null;
@@ -77,10 +80,10 @@ function createEngine() {
     audioDetector,
     windowManager,
     {},
-    { callDetector }
+    { callDetector, ...clock }
   );
 
-  return { engine, audioDetector, callDetector, processDetector, shown, reminderScheduler };
+  return { clock, engine, audioDetector, callDetector, processDetector, shown, reminderScheduler };
 }
 
 function detectionAt(shown: MeetingNotificationData[], index: number) {
@@ -159,10 +162,10 @@ test("a confirmed new call can prompt after the previous one ends", () => {
 });
 
 test("calendar reminder and confirmed Meet call share one offer", () => {
-  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const { clock, engine, callDetector, reminderScheduler, shown } = createEngine();
   const { createHash }: typeof import("node:crypto") = require("node:crypto");
   const event = {
-    id: "calendar-1", start_time: new Date(Date.now() + 60_000).toISOString(),
+    id: "calendar-1", start_time: new Date(clock.now() + 60_000).toISOString(),
     hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-1",
   };
   reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
@@ -173,10 +176,10 @@ test("calendar reminder and confirmed Meet call share one offer", () => {
 });
 
 test("a later call can prompt after the call tied to a calendar offer ends", () => {
-  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const { clock, engine, callDetector, reminderScheduler, shown } = createEngine();
   const { createHash }: typeof import("node:crypto") = require("node:crypto");
   const event = {
-    id: "calendar-rejoin", start_time: new Date(Date.now() + 60_000).toISOString(),
+    id: "calendar-rejoin", start_time: new Date(clock.now() + 60_000).toISOString(),
     hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-rejoin",
   };
   reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
@@ -192,9 +195,9 @@ test("a later call can prompt after the call tied to a calendar offer ends", () 
 });
 
 test("a calendar offer without a join link does not hide an unrelated call", () => {
-  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const { clock, engine, callDetector, reminderScheduler, shown } = createEngine();
   const event = {
-    id: "calendar-unlinked", start_time: new Date(Date.now() + 60_000).toISOString(),
+    id: "calendar-unlinked", start_time: new Date(clock.now() + 60_000).toISOString(),
     calendar_id: "calendar-unlinked", attendees: [{ email: "teammate@example.com" }],
   };
   reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
@@ -207,10 +210,10 @@ test("a calendar offer without a join link does not hide an unrelated call", () 
 });
 
 test("a confirmed Meet call suppresses its later calendar reminder", () => {
-  const { engine, callDetector, reminderScheduler, shown } = createEngine();
+  const { clock, engine, callDetector, reminderScheduler, shown } = createEngine();
   const { createHash }: typeof import("node:crypto") = require("node:crypto");
   const event = {
-    id: "calendar-2", start_time: new Date(Date.now() + 60_000).toISOString(),
+    id: "calendar-2", start_time: new Date(clock.now() + 60_000).toISOString(),
     hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-2",
   };
   reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
@@ -340,4 +343,42 @@ test("an event's note stores attendees under their best-known names", () => {
     { email: "k@x.com", displayName: "Kostya" },
     { email: "unknown@x.com", displayName: null },
   ]);
+});
+
+test("calendar matching uses the injected five-minute window and scheduled variant", () => {
+  const { clock, engine, reminderScheduler, shown } = createEngine();
+  const event = { id: "clock-event", start_time: new Date(clock.now() + 300_001).toISOString() };
+  reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: null, upcomingEvents: [event] });
+  assert.equal(engine._findCalendarEvent(), null);
+  clock.advance(1);
+  assert.equal(engine._findCalendarEvent(), event);
+  engine.handleCalendarReminder(event);
+  assert.equal(detectionAt(shown, 0).variant, "starting");
+  assert.equal(engine.activeDetections.get("calendar:clock-event").data.detectedAt, clock.now());
+  clock.advance(300_000);
+  assert.equal(engine._findCalendarEvent(), null);
+  engine.handleCalendarReminder({ ...event, id: "started-event" });
+  assert.equal(detectionAt(shown, 1).variant, "underway");
+  engine.stop();
+});
+
+test("detected and manual placeholder events use the injected timestamp", async () => {
+  const { clock, engine, callDetector, shown } = createEngine();
+  callDetector.emit("call-active", { key: "zoom:clock", service: "zoom" });
+  const detected = detectionAt(shown, 0).event;
+  assert.ok(detected && "id" in detected && "start_time" in detected && "end_time" in detected);
+  assert.equal(detected.id, `detected-${clock.now()}`);
+  assert.equal(detected.start_time, new Date(clock.now()).toISOString());
+  assert.equal(detected.end_time, new Date(clock.now() + 3_600_000).toISOString());
+  const navigations: Array<{ event: { id: string; start_time: string } }> = [];
+  engine.databaseManager.getActiveEvents = () => [];
+  engine.databaseManager.saveNote = () => ({ note: { id: 42, folder_id: null } });
+  engine.windowManager.queueMeetingNoteNavigation = async (data: { event: { id: string; start_time: string } }) => { navigations.push(data); };
+  clock.advance(500);
+  await engine.startManualMeeting();
+  const navigation = navigations[0];
+  assert.ok(navigation);
+  assert.equal(navigation.event.id, `manual-${clock.now()}`);
+  assert.equal(navigation.event.start_time, new Date(clock.now()).toISOString());
+  engine.stop();
 });

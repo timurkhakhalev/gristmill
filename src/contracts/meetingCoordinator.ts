@@ -9,7 +9,7 @@ import type { CompanionSetup, CompanionStatus, CompanionCandidateKey, CompanionR
 // main.js. sessionId, noteId and detectionId are distinct fields and are never
 // interchangeable.
 import { z } from "zod";
-import { meetingFrameAlignmentPointSchema, meetingFrameAlignmentSegmentSchema, meetingRecordingIdSchema } from "./meetingRecording.js";
+import { meetingPlatformSchema, meetingFrameAlignmentPointSchema, meetingFrameAlignmentSegmentSchema, meetingRecordingIdSchema } from "./meetingRecording.js";
 import type { MeetingProcessingConfig, MeetingProcessingConfigError, MeetingSource } from "./meetingRecording.js";
 
 // ---- channels -----------------------------------------------------------------
@@ -474,7 +474,7 @@ export const meetingTranscriptSegmentSchema = z
     speakerStatus: z.enum(["provisional", "confirmed", "suggested", "locked"]).optional(),
     speakerLocked: z.boolean().optional(),
     speakerLockSource: z.enum(["user", "diarization", "suggestion", "voice", "platform", "model"]).optional(),
-    speakerPlatform: z.enum(["zoom", "google-meet", "telemost"]).optional(),
+    speakerPlatform: meetingPlatformSchema.optional(),
   })
   .passthrough();
 export type MeetingTranscriptSegment = z.infer<typeof meetingTranscriptSegmentSchema>;

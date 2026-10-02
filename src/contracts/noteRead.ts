@@ -1,6 +1,7 @@
 // Public read contract for Notes (agent CLI, bridge routes and search).
 // Internal runs, recordings and artifacts never appear here.
 import { z } from "zod";
+import { meetingPlatformSchema, type MeetingPlatform } from "./meetingRecording.js";
 
 export type NoteTranscriptStatus = "ready" | "absent" | "pending" | "error" | "partial";
 
@@ -8,7 +9,7 @@ export interface NoteTranscriptSpeaker {
   id: string;
   name: string | null;
   name_source?: "user" | "voice" | "platform" | "model";
-  name_platform?: "zoom" | "google-meet" | "telemost";
+  name_platform?: MeetingPlatform;
   email: string | null;
   source: "microphone" | "system" | null;
 }
@@ -46,7 +47,7 @@ export const noteTranscriptSchema: z.ZodType<NoteTranscript> = z.object({
   speakers: z.array(z.object({
     id: z.string(), name: z.string().nullable(), email: z.string().nullable(),
     name_source: z.enum(["user", "voice", "platform", "model"]).optional(),
-    name_platform: z.enum(["zoom", "google-meet", "telemost"]).optional(),
+    name_platform: meetingPlatformSchema.optional(),
     source: z.enum(["microphone", "system"]).nullable(),
   })),
   text: z.string().nullable(),

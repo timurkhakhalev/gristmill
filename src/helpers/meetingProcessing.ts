@@ -6,6 +6,8 @@ import debugLogger from "./debugLogger.js";
 import { createHash } from "crypto";
 import { z } from "zod";
 import {
+  meetingPlatformSchema,
+  type MeetingPlatform,
   meetingProcessingConfigSchema,
   meetingProcessingResultDtoSchema,
   type MeetingProcessingConfig,
@@ -207,7 +209,7 @@ interface MeetingLlmSourceSnapshot {
   manualNotes: string;
   manualNoteRevision: string;
   speakerCorrectionRevision: number;
-  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | "platform" | null; speakerNamePlatform?: "zoom" | "google-meet" | "telemost"; text: string }>;
+  transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | "platform" | null; speakerNamePlatform?: MeetingPlatform; text: string }>;
   promptModel: NonNullable<MeetingProcessingConfig["summary"]>;
 }
 
@@ -225,7 +227,7 @@ const meetingLlmSourceSnapshotSchema = z.object({
     speakerId: z.string().nullable(),
     speakerName: z.string().nullable(),
     speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
-    speakerNamePlatform: z.enum(["zoom", "google-meet", "telemost"]).optional(),
+    speakerNamePlatform: meetingPlatformSchema.optional(),
     text: z.string(),
   }).strict()).min(1),
   promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),

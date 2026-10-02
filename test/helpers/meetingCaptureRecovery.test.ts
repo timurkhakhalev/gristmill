@@ -18,15 +18,18 @@ function createCaptureFakes({ failWrite = false } = {}) {
     recordings: [] as Recording[],
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
     recoveries: [] as unknown[],
+    intentionalIntervals: [] as Array<{ id: string; recordingId: string; source: string; startFrame: number; endFrame: number | null; reason: string }>,
     finalizations: [] as { recordingId: string; input: { captureState: string; endedAt: string; errorCode?: string | null } }[],
     createMeetingRecording(noteId: number, config: unknown, startedAt: string, id: string) {
       const recording = { id, noteId, config, startedAt, captureState: "recording" };
       this.recordings.push(recording);
       return recording;
     },
-    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, startFrame: number) {
+    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, sourceGeneration: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
+    addMeetingRecordingEpochAlignment() {},
+    markMeetingRecordingEpochAlignmentUnknown() {},
     updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: Record<string, unknown>) {
       this.recoveries.push({ recordingId, source, epochIndex, ...result });
     },
@@ -42,6 +45,20 @@ function createCaptureFakes({ failWrite = false } = {}) {
       recording.captureState = input.captureState;
       recording.captureErrorCode = input.errorCode ?? null;
       return { recording, initialRun: { id: RUN_ID } };
+    },
+    openMeetingIntentionalInterval(recordingId: string, source: string, sourceGeneration: number, startFrame: number, reason: string) {
+      const interval = { id: `${recordingId}:${source}:${reason}:${startFrame}`, recordingId, source, startFrame, endFrame: null, reason };
+      this.intentionalIntervals.push(interval);
+      return interval;
+    },
+    closeMeetingIntentionalInterval(recordingId: string, source: string, sourceGeneration: number, endFrame: number, reason: string) {
+      const interval = [...this.intentionalIntervals].reverse().find((item) => item.recordingId === recordingId && item.source === source && item.reason === reason && item.endFrame === null);
+      if (!interval) return null;
+      interval.endFrame = endFrame;
+      return interval;
+    },
+    listMeetingIntentionalIntervals(recordingId: string) {
+      return this.intentionalIntervals.filter((item) => item.recordingId === recordingId);
     },
   };
   const storage = {
@@ -70,7 +87,10 @@ function createCaptureFakes({ failWrite = false } = {}) {
 
 const packet = (epochIndex: number, epochStartFrame: unknown, sequence: unknown, sampleOffset: number) => ({
   epochIndex,
-  epochStartFrame,
+  epochSourceStartFrame: epochStartFrame,
+  alignment: null, alignmentErrorCode: "clock-unavailable",
+  sourceFrameStart: typeof epochStartFrame === "number" ? epochStartFrame + sampleOffset : epochStartFrame,
+  sourceGeneration: 1,
   sequence,
   sampleOffset,
 });
@@ -85,7 +105,7 @@ test("killed encoders recover complete Ogg pages at several write positions", as
   for (const targetPages of [3, 5, 8]) {
     const note = db.saveNote(`Crash ${targetPages}`, "", "meeting").note!;
     const recording = db.createMeetingRecording(note.id, { config: null });
-    db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
     const file = storage.createEpochFile(recording.id, "mic", 0);
     const child = spawn(getFFmpegPath()!, ["-hide_banner", "-loglevel", "error", "-re", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", "pipe:0", ...MEETING_OPUS_ARGS, "-flush_packets", "1", "-f", "ogg", "pipe:1"], { stdio: ["pipe", "pipe", "ignore"] });
     const pages = new OpusPages();
@@ -163,7 +183,7 @@ test("owner loss records the last saved audio time instead of a later finalizati
   const origin = new Date("2026-09-24T10:00:00.000Z");
   const capture = MeetingCaptureSession.create(database, storage, 12, null, origin, RECORDING_ID);
   capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.alloc(4_800, 1));
-  capture.appendNativeSamples("system", Buffer.alloc(4_800, 2), new Date(origin.getTime() + 250));
+  capture.appendNativeSamples("system", 1, Buffer.alloc(4_800, 2), 6_000, 6_000);
   capture.markCaptureFailure("renderer-lost");
 
   const result = await capture.stop({ lastSequence: {} });
@@ -177,7 +197,7 @@ test("main-owned native system audio drains without a renderer sequence", async 
   const capture = MeetingCaptureSession.create(database, storage, 12, null, origin, RECORDING_ID);
 
   capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.alloc(4_800, 1));
-  capture.appendNativeSamples("system", Buffer.alloc(48_000, 2), new Date(origin.getTime() + 100));
+  capture.appendNativeSamples("system", 1, Buffer.alloc(48_000, 2), 2_400, 2_400);
   const result = await capture.stop({ lastSequence: { mic: 0, system: -1 } });
 
   assert.equal(result.captureState, "ready");

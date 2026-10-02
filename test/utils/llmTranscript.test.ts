@@ -118,3 +118,10 @@ test("collectKnownPeople merges owner, participants, mappings, and named segment
     { name: "Ada", email: null },
   ]);
 });
+
+test("LLM transcript includes the concrete platform only for an accepted platform name", async () => {
+  const { buildLlmTranscript } = await load();
+  const segment = seg({ speaker: "system:guest", speakerName: "Guest", speakerLocked: true, speakerLockSource: "platform", speakerPlatform: "google-meet" });
+  assert.equal(buildLlmTranscript([segment], {}, "You", t), "Guest [name from Google Meet]: hi");
+  assert.equal(buildLlmTranscript([{ ...segment, speakerLockSource: "user" }], {}, "You", t), "Guest: hi");
+});

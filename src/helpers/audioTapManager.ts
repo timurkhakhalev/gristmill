@@ -3,7 +3,7 @@ import { app } from "electron";
 import fs from "fs";
 import { meetingAudioClockMessageSchema, meetingRecordingIdSchema, type MeetingAudioClockMessage } from "../contracts/meetingRecording.js";
 import path from "path";
-import type { Readable } from "stream";
+import type { Readable, Writable } from "stream";
 const debugLogger = require("./debugLogger");
 import { compareVersions } from "./parakeetCapability.js";
 
@@ -18,7 +18,7 @@ const START_TIMEOUT_MS = 3000;
 const REQUEST_TIMEOUT_MS = 60000;
 const STOP_TIMEOUT_MS = 5000;
 
-type AudioTapChild = ChildProcessByStdio<null, Readable, Readable>;
+type AudioTapChild = ChildProcessByStdio<Writable, Readable, Readable>;
 
 export type AudioTapPermissionStatus = "granted" | "denied" | "unknown";
 export type AudioTapAccessStatus = AudioTapPermissionStatus | "unsupported";
@@ -35,6 +35,23 @@ export interface AudioTapStartMessage {
   sampleRate?: number;
   channels?: number;
   bitsPerChannel?: number;
+  monotonicOriginNs?: string;
+  originFrame?: number;
+}
+
+export interface AudioTapPcmMessage {
+  type: "pcm";
+  frameStart: number;
+  frameCount: number;
+}
+
+export interface AudioTapProbeMessage {
+  type: "probe";
+  nonce: string;
+  helperReceiveNs: string;
+  helperSendNs: string;
+  helperGeneration: string;
+  helperFrame: number;
 }
 
 export interface AudioTapWarningMessage {
@@ -55,6 +72,8 @@ export interface AudioTapErrorMessage {
 export type AudioTapMessage =
   | MeetingAudioClockMessage
   | AudioTapStartMessage
+  | AudioTapPcmMessage
+  | AudioTapProbeMessage
   | AudioTapWarningMessage
   | AudioTapErrorMessage;
 
@@ -67,7 +86,7 @@ export interface AudioTapProcessError extends Error {
 export interface AudioTapStartOptions {
   onStart?: (message: AudioTapStartMessage) => void;
   onClock?: (message: MeetingAudioClockMessage) => void;
-  onChunk?: (chunk: Buffer) => void;
+  onChunk?: (chunk: Buffer, frameStart: number) => void;
   onError?: (error: Error) => void;
   onWarning?: (warning: AudioTapWarningMessage) => void;
 }
@@ -86,7 +105,9 @@ export function parseAudioTapMessage(value: unknown): AudioTapMessage | null {
       ("generation" in value && (!meetingRecordingIdSchema.safeParse(value.generation).success)) ||
       ("sampleRate" in value && typeof value.sampleRate !== "number") ||
       ("channels" in value && typeof value.channels !== "number") ||
-      ("bitsPerChannel" in value && typeof value.bitsPerChannel !== "number")
+      ("bitsPerChannel" in value && typeof value.bitsPerChannel !== "number") ||
+      ("monotonicOriginNs" in value && (typeof value.monotonicOriginNs !== "string" || !/^\d{1,20}$/.test(value.monotonicOriginNs))) ||
+      ("originFrame" in value && (!Number.isSafeInteger(value.originFrame) || (value.originFrame as number) < 0))
     ) {
       return null;
     }
@@ -97,6 +118,30 @@ export function parseAudioTapMessage(value: unknown): AudioTapMessage | null {
       channels: typeof value.channels === "number" ? value.channels : undefined,
       bitsPerChannel:
         typeof value.bitsPerChannel === "number" ? value.bitsPerChannel : undefined,
+      monotonicOriginNs:
+        typeof value.monotonicOriginNs === "string" && /^\d{1,20}$/.test(value.monotonicOriginNs)
+          ? value.monotonicOriginNs
+          : undefined,
+      originFrame: typeof value.originFrame === "number" && Number.isSafeInteger(value.originFrame) && value.originFrame >= 0
+        ? value.originFrame
+        : undefined,
+    };
+  }
+  if (value.type === "pcm") {
+    if (!Number.isSafeInteger(value.frameStart) || (value.frameStart as number) < 0 ||
+        !Number.isSafeInteger(value.frameCount) || (value.frameCount as number) < 1) return null;
+    return { type: "pcm", frameStart: value.frameStart as number, frameCount: value.frameCount as number };
+  }
+  if (value.type === "probe") {
+    if (typeof value.nonce !== "string" || value.nonce.length > 64 ||
+        typeof value.helperReceiveNs !== "string" || !/^\d{1,20}$/.test(value.helperReceiveNs) ||
+        typeof value.helperSendNs !== "string" || !/^\d{1,20}$/.test(value.helperSendNs) ||
+        typeof value.helperGeneration !== "string" || !meetingRecordingIdSchema.safeParse(value.helperGeneration).success ||
+        !Number.isSafeInteger(value.helperFrame) || (value.helperFrame as number) < 0) return null;
+    return {
+      type: "probe", nonce: value.nonce, helperReceiveNs: value.helperReceiveNs,
+      helperSendNs: value.helperSendNs, helperGeneration: value.helperGeneration,
+      helperFrame: value.helperFrame as number,
     };
   }
   if (value.type === "warning") {
@@ -137,11 +182,20 @@ export function parseAudioTapMessage(value: unknown): AudioTapMessage | null {
 export class AudioTapManager {
   process: AudioTapChild | null;
   stderrBuffer: string;
-  onChunk: ((chunk: Buffer) => void) | null;
+  onChunk: ((chunk: Buffer, frameStart: number) => void) | null;
   onError: ((error: Error) => void) | null;
   onWarning: ((warning: AudioTapWarningMessage) => void) | null;
   onStart: ((message: AudioTapStartMessage) => void) | null;
   private onClock: ((message: MeetingAudioClockMessage) => void) | null = null;
+  private stdoutPCM = Buffer.alloc(0);
+  private readonly pendingPcmMetadata: AudioTapPcmMessage[] = [];
+  private readonly pendingProbes = new Map<string, {
+    resolve(reply: AudioTapProbeMessage): void;
+    reject(error: Error): void;
+    timeout: ReturnType<typeof setTimeout>;
+  }>();
+  private helperGeneration: string | null = null;
+  private monotonicOriginNs: string | null = null;
   isStopping: boolean;
   permissionStatus: AudioTapPermissionStatus;
   private _requestPromise: Promise<AudioTapAccessResult> | null;
@@ -181,6 +235,35 @@ export class AudioTapManager {
       return "granted";
     }
     return this.permissionStatus;
+  }
+
+  getClockOrigin(): { helperGeneration: string; monotonicOriginNs: string } | null {
+    return this.helperGeneration && this.monotonicOriginNs
+      ? { helperGeneration: this.helperGeneration, monotonicOriginNs: this.monotonicOriginNs }
+      : null;
+  }
+
+  probeClock(nonce: string): Promise<AudioTapProbeMessage> {
+    const child = this.process;
+    if (!child || !this.helperGeneration || !meetingRecordingIdSchema.safeParse(nonce).success) {
+      return Promise.reject(new Error("Native audio clock is unavailable"));
+    }
+    if (this.pendingProbes.size >= 8 || this.pendingProbes.has(nonce)) {
+      return Promise.reject(new Error("Native audio clock probe queue is full"));
+    }
+    return new Promise<AudioTapProbeMessage>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingProbes.delete(nonce);
+        reject(new Error("Native audio clock probe timed out"));
+      }, 2000);
+      this.pendingProbes.set(nonce, { resolve, reject, timeout });
+      child.stdin.write(`${JSON.stringify({ type: "probe", nonce })}\n`, (error) => {
+        if (!error) return;
+        clearTimeout(timeout);
+        this.pendingProbes.delete(nonce);
+        reject(error);
+      });
+    });
   }
 
   checkAccess(): AudioTapAccessResult {
@@ -254,7 +337,7 @@ export class AudioTapManager {
       this.onError = onError || null;
       this.onWarning = onWarning || null;
       this.onStart = onStart || null;
-    this.onClock = onClock || null;
+      this.onClock = onClock || null;
       return;
     }
     if (this._requestPromise) {
@@ -273,14 +356,13 @@ export class AudioTapManager {
     const child = spawn(
       binaryPath,
       ["--sample-rate", String(DEFAULT_SAMPLE_RATE), "--chunk-ms", String(DEFAULT_CHUNK_MS)],
-      { stdio: ["ignore", "pipe", "pipe"] }
+      { stdio: ["pipe", "pipe", "pipe"] }
     );
     this.process = child;
 
     await new Promise<void>((resolve, reject) => {
       let started = false;
       const startupPCM: Buffer[] = [];
-      let startupBytes = 0;
       let settled = false;
       const timeout = setTimeout(() => {
         if (!settle()) return;
@@ -299,18 +381,18 @@ export class AudioTapManager {
         if (this.process !== child) {
           return;
         }
-        if (!started) {
-          startupPCM.push(chunk);
-          startupBytes += chunk.length;
-          // stdout/stderr can arrive in either order. Open the real source epoch
-          // from start before delivering any PCM, without changing frame order.
-          if (startupBytes > DEFAULT_SAMPLE_RATE * 2 * START_TIMEOUT_MS / 1000) {
-            if (settle()) reject(new Error("Audio tap did not provide its start contract before PCM"));
-            void this.stop();
-          }
+        startupPCM.push(chunk);
+        const bytes = startupPCM.reduce((sum, part) => sum + part.length, 0);
+        if (bytes > DEFAULT_SAMPLE_RATE * 2 * START_TIMEOUT_MS / 1000) {
+          if (settle()) reject(new Error("Audio tap did not provide its start contract before PCM"));
+          void this.stop();
           return;
         }
-        this.onChunk?.(chunk);
+        if (started) {
+          this.stdoutPCM = Buffer.concat([this.stdoutPCM, ...startupPCM]);
+          startupPCM.length = 0;
+          this.flushPcmQueue();
+        }
       });
 
       child.stderr.on("data", (chunk) => {
@@ -319,13 +401,36 @@ export class AudioTapManager {
         }
         this._consumeStderr(chunk, (message) => {
           if (message.type === "clock") { this.onClock?.(message); return; }
+          if (message.type === "probe") {
+            if (message.helperGeneration !== this.helperGeneration) return;
+            const pending = this.pendingProbes.get(message.nonce);
+            this.pendingProbes.delete(message.nonce);
+            if (pending) {
+              clearTimeout(pending.timeout);
+              pending.resolve(message);
+            }
+            return;
+          }
+          if (message.type === "pcm") {
+            if (this.pendingPcmMetadata.length >= 64) {
+              this.onError?.(new Error("Native audio frame metadata queue overflowed"));
+              void this.stop();
+              return;
+            }
+            this.pendingPcmMetadata.push(message);
+            this.flushPcmQueue();
+            return;
+          }
           if (message.type === "start") {
             this._persistPermissionStatus("granted");
             try {
+              this.helperGeneration = message.generation ?? null;
+              this.monotonicOriginNs = message.monotonicOriginNs ?? null;
               this.onStart?.(message);
               started = true;
-              for (const chunk of startupPCM) this.onChunk?.(chunk);
+              this.stdoutPCM = Buffer.concat(startupPCM);
               startupPCM.length = 0;
+              this.flushPcmQueue();
             } catch (error) {
               if (settle()) reject(error);
               void this.stop();
@@ -389,6 +494,15 @@ export class AudioTapManager {
         this.onError = null;
         this.onWarning = null;
         this.onStart = null;
+        this.stdoutPCM = Buffer.alloc(0);
+        this.pendingPcmMetadata.length = 0;
+        for (const pending of this.pendingProbes.values()) {
+          clearTimeout(pending.timeout);
+          pending.reject(new Error("Native audio clock stopped"));
+        }
+        this.pendingProbes.clear();
+        this.helperGeneration = null;
+        this.monotonicOriginNs = null;
       });
     });
   }
@@ -427,12 +541,44 @@ export class AudioTapManager {
       this.process = null;
     }
     this.stderrBuffer = "";
+    for (const pending of this.pendingProbes.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error("Native audio clock stopped"));
+    }
+    this.pendingProbes.clear();
+    this.pendingPcmMetadata.length = 0;
+    this.stdoutPCM = Buffer.alloc(0);
+    this.helperGeneration = null;
+    this.monotonicOriginNs = null;
     this.onChunk = null;
     this.onError = null;
     this.onWarning = null;
     this.onStart = null;
     this.onClock = null;
     this.isStopping = false;
+  }
+
+  private flushPcmQueue(): void {
+    if (this.stdoutPCM.length > 2 * 1024 * 1024) {
+      this.onError?.(new Error("Native audio PCM queue overflowed"));
+      void this.stop();
+      return;
+    }
+    while (this.pendingPcmMetadata.length > 0) {
+      const metadata = this.pendingPcmMetadata[0];
+      const byteLength = metadata.frameCount * 2;
+      if (!Number.isSafeInteger(byteLength) || byteLength > this.stdoutPCM.length) return;
+      const chunk = Buffer.from(this.stdoutPCM.subarray(0, byteLength));
+      this.stdoutPCM = this.stdoutPCM.subarray(byteLength);
+      this.pendingPcmMetadata.shift();
+      try {
+        this.onChunk?.(chunk, metadata.frameStart);
+      } catch (error) {
+        this.onError?.(error instanceof Error ? error : new Error(String(error)));
+        void this.stop();
+        return;
+      }
+    }
   }
 
   private async _probeForAccess(): Promise<AudioTapAccessResult> {

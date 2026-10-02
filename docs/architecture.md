@@ -14,7 +14,7 @@ the renderer requests operations through typed IPC. No replacement dashboard,
 second sweeper, or compatibility path was added.
 
 SQLite stores `meeting_recordings`, `meeting_recording_epochs`,
-`meeting_processing_runs`, `meeting_deletion_intents`, and
+`meeting_recording_intentional_intervals`, `meeting_recording_epoch_alignments`, `meeting_processing_runs`, `meeting_deletion_intents`, and
 `meeting_run_speaker_corrections`. The recording row holds the pre-capture
 configuration snapshot, capture/audio states, end time, and selected run.
 Epoch rows store source, sample offset, byte/frame recovery information, and
@@ -22,11 +22,24 @@ the managed relative path. Each processing run stores its source/provider/model,
 configuration, stage, status, error, and artifact paths. Speaker corrections
 are scoped by `(run_id, speaker_id)`; profile rows remain shared.
 
+Intentional intervals store the source, start/end frame, and `manual-muted` or
+`platform-muted` reason. An open interval has a null end frame and closes at the
+acknowledged render-frame boundary on unmute or at Stop. The first accepted mic
+packet is checked against that boundary; a missing tail remains incomplete. A
+mic recording with no epochs is intentionally empty when aligned intervals cover
+the whole recording, or main retained mute intent throughout capture. The latter
+proof does not require inventing a clock offset for a source that produced no audio.
+
 Under Electron `userData`, original mono Ogg/Opus is stored at
 `audio/meetings/{recordingId}/{mic|system}/epoch-000000.opus` (32 kbit/s VBR,
 complexity 0, voice mode). PCM16LE at 24 kHz exists only in capture memory. Derived full
 timeline WAVs live at `audio/meetings/{recordingId}/derived/{runId}.wav` and
 are rebuilt from the original epochs and removed after ASR/normalization consumers finish.
+The mic Worklet counts render frames continuously through mute, but discards
+gated samples before transfer, analysis, encoding, or storage. It keeps the
+healthy mic stream, AudioContext, and Worklet alive; system capture continues.
+Pause and Stop release both audio devices. Manual mute intent survives Pause,
+Resume, reopen, and Restart; a separate Start begins with a clear intent.
 Playback/export use separate temporary IDs; playback releases its file when the player
 ends or unmounts. Startup removes abandoned derived files. Per-run artifacts live at
 `meeting-results/{runId}/raw-provider-response.json`, `transcript.json`, and
@@ -45,6 +58,23 @@ deadline, including after restart. Pause does not queue work; Resume invalidates
 pending work for the earlier Note audio version, and the worker rechecks eligibility
 at claim and before ASR.
 
+New source positions come from actual frame anchors: the renderer uses the
+AudioWorklet render-frame counter and a shared renderer/native clock mapping;
+the native helper answers bounded stdin clock probes and keeps raw PCM on
+stdout. The mapping records rate, uncertainty, helper generation, and
+freshness. Raw source frames stay continuous independently of calibration, including
+frames discarded while muted. Source-generation coordinates and nullable timeline
+coordinates are stored separately. Late valid calibration can cover earlier frames
+in the same continuous generation without changing the source audio. Unknown
+alignment never stops healthy capture; prepare fails with
+`audio-alignment-unavailable` if any required frames lack bounded alignment.
+The solver uses up to eight probes, at least 250 ms span, rate bounds 0.999–1.001,
+and at most five seconds of freshness/continuation. Prepare accepts at most
+25 ms endpoint uncertainty. Persisted capture-time bounds do not expire at
+processing time. IPC receipt time and `Date.now()` are not exact audio positions.
+Gaps remain between epochs, and older recordings without the anchor metadata
+keep their stored offsets and UTC-derived duration.
+
 After the gate, the worker creates the selected route’s full-timeline WAV input
 (stereo for Deepgram, separate mono mic/system for other cloud routes, mono for Local),
 sends it through the selected supported route, and persists the raw provider
@@ -52,6 +82,11 @@ response before normalization. Supported file routes are ElevenLabs,
 Deepgram, Gemini, and OpenAI; the existing Local meeting path remains. There is
 no new Self-Hosted meeting route, provider fallback, or hidden audio split.
 Capability and size errors belong to the selected route.
+When closed manual/platform intervals prove that mic was intentionally empty
+for the whole recording, Deepgram keeps a silent mic channel beside system
+audio; ElevenLabs, Gemini, and OpenAI save a canonical empty mic outcome and
+skip that source request; Local continues to process the available system
+track. A missing source without full intentional coverage remains an error.
 
 ## Run ownership and Summary consumers
 
@@ -350,3 +385,22 @@ The revision and processing-run model makes evaluation a natural extension:
 - attach a manually corrected reference transcript;
 - calculate WER/CER for Russian and mixed Russian/English speech;
 - evaluate speaker attribution and summary facts separately.
+
+## Meeting platform evidence
+
+`meeting_platform_observations` stores a platform discriminator, recording/binding/
+participant identity, full active set, bounded host-time interval and uncertainty.
+Zoom AX and Google Meet observations share `meetingPlatformMatcher.ts`; each
+platform keeps its explicit timing policy (initial indicator delay: Zoom 0.5 s,
+Meet 0.3 s). These values are hypotheses, not measured identity guarantees.
+The matcher requires three independent speech episodes of at least one second,
+system-only speech, bounded clocks and unambiguous participants. Missing or
+contradictory evidence leaves the transcript alias intact.
+
+The one-way metadata migration preserves Zoom IDs, decisions and revisions in a
+transaction. Corrections include the concrete platform; user and voice matches
+win over platform suggestions. Audio retention keeps names and evidence; deleting
+the Note removes them. Exports use final names, without raw roster data. Before
+upgrading an isolated develop profile, close the app and copy the profile. To
+roll back the application version, restore that copy; do not open the migrated
+profile with the older binary.

@@ -1,49 +1,30 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const {
-  createMeetingAudioTimeline,
-  frameOffsetFromSessionOrigin,
-}: typeof import("../../src/helpers/meetingAudioTimeline.ts") = require("../../src/helpers/meetingAudioTimeline.ts");
+const { createMeetingAudioTimeline }: typeof import("../../src/helpers/meetingAudioTimeline.ts") = require("../../src/helpers/meetingAudioTimeline.ts");
 
-test("audio timeline records only received PCM and preserves delivery gaps as offsets", () => {
-  const originAt = 10_000;
-  let wallNow = originAt + 500;
-  const timeline = createMeetingAudioTimeline({ originAt, wallNow: () => wallNow });
-  const writes: { buffer: Buffer; sampleOffset: number; capturedAt: number }[] = [];
-  const first = Buffer.alloc(4_800, 1); // 100 ms at 24 kHz, mono PCM16
+test("audio timeline writes only PCM at its supplied actual frame anchors", () => {
+  const timeline = createMeetingAudioTimeline();
+  const writes: { buffer: Buffer; frameStart: number }[] = [];
+  const first = Buffer.alloc(4_800, 1);
   const second = Buffer.alloc(4_800, 2);
 
-  timeline.write(first, (buffer: Buffer, sampleOffset: number, capturedAt: number) => {
-    writes.push({ buffer, sampleOffset, capturedAt });
-  });
-  wallNow += 2_000; // IPC delivery jitter does not synthesize silence.
-  timeline.write(second, (buffer: Buffer, sampleOffset: number, capturedAt: number) => {
-    writes.push({ buffer, sampleOffset, capturedAt });
-  });
+  timeline.write(first, 0, (buffer, frameStart) => writes.push({ buffer, frameStart }));
+  // Delivery delay does not change the source's actual frame position.
+  timeline.write(second, 24_000, (buffer, frameStart) => writes.push({ buffer, frameStart }));
 
-  assert.equal(writes.length, 2);
-  assert.deepEqual(writes.map(({ sampleOffset }) => sampleOffset), [0, 2_400]);
+  assert.equal(timeline.lastFrame, 26_400);
+  assert.deepEqual(writes.map(({ frameStart }) => frameStart), [0, 24_000]);
   assert.deepEqual(writes.map(({ buffer }) => buffer.length), [4_800, 4_800]);
-  assert.equal(writes[1].capturedAt, originAt + 100);
 });
 
-test("a restarted source begins at the later of its wall-clock offset and prior end", () => {
-  const originAt = 50_000;
-  let wallNow = originAt + 100;
-  const timeline = createMeetingAudioTimeline({ originAt, wallNow: () => wallNow });
-  const writes: { buffer: Buffer; sampleOffset: number }[] = [];
-  timeline.write(Buffer.alloc(4_800), (buffer: Buffer, sampleOffset: number) => {
-    writes.push({ buffer, sampleOffset });
-  });
-
-  wallNow = originAt + 1_000;
-  const restartOffset = timeline.markRestart();
-  timeline.write(Buffer.alloc(2_400), (buffer: Buffer, sampleOffset: number) => {
-    writes.push({ buffer, sampleOffset });
-  });
+test("a restarted source keeps the actual gap and rejects overlapping frame anchors", () => {
+  const timeline = createMeetingAudioTimeline();
+  const writes: number[] = [];
+  timeline.write(Buffer.alloc(4_800), 0, (_buffer, frameStart) => writes.push(frameStart));
+  const restartOffset = timeline.markRestart(24_000);
+  timeline.write(Buffer.alloc(2_400), restartOffset, (_buffer, frameStart) => writes.push(frameStart));
 
   assert.equal(restartOffset, 24_000);
-  assert.deepEqual(writes.map(({ sampleOffset }) => sampleOffset), [0, 24_000]);
-  assert.equal(writes.reduce((total, write) => total + write.buffer.length, 0), 7_200);
-  assert.equal(frameOffsetFromSessionOrigin(originAt, originAt + 1_250), 30_000);
+  assert.deepEqual(writes, [0, 24_000]);
+  assert.throws(() => timeline.write(Buffer.alloc(2_400), 1_000, () => undefined), /frame range/);
 });

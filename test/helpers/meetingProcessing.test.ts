@@ -16,7 +16,7 @@ const { getFFmpegPath }: typeof import("../../src/helpers/ffmpegUtils.ts") = req
 const { BUILTIN_ACTIONS, RECAP_KEY }: typeof import("../../src/helpers/builtinActions.ts") = require("../../src/helpers/builtinActions.ts");
 const { MEETING_SPEAKER_NAMING_INSTRUCTION, meetingSpeakerNamingInputSchema }: typeof import("../../src/helpers/meetingSpeakerNaming.ts") = require("../../src/helpers/meetingSpeakerNaming.ts");
 const { MEETING_TASKS_INSTRUCTION }: typeof import("../../src/helpers/meetingSummarySections.ts") = require("../../src/helpers/meetingSummarySections.ts");
-import type { MeetingProcessingConfig } from "../../src/contracts/meetingRecording";
+import type { MeetingIntentionalInterval, MeetingProcessingConfig, MeetingRecordingEpochDto } from "../../src/contracts/meetingRecording";
 import type { MeetingProcessingWorkerDeps } from "../../src/helpers/meetingProcessing";
 import type { MeetingRecordingStorage as RecordingStorage } from "../../src/helpers/meetingRecordingStorage";
 import type { DatabaseManager } from "./harness/db";
@@ -56,14 +56,23 @@ function createFinishedRecording(
   noteText = "",
   keepGate = false,
   durationSeconds = 1,
+  includeSystemSource = true,
 ) {
   const note = db.saveNote("Meeting", noteText, "meeting").note;
   assert.ok(note);
   const recording = db.createMeetingRecording(note.id, { config });
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
   savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   const recovered = storage.recoverEpoch(recording.id, "mic", 0);
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, recovered);
+  if (includeSystemSource) {
+    db.createMeetingRecordingEpoch(recording.id, "system", 0, 1, 0, 0);
+    savePcmEpoch(storage, recording.id, "system", 0, Buffer.alloc(4));
+    db.updateMeetingRecordingEpochRecovery(recording.id, "system", 0, {
+      frameCount: 2,
+      ignoredTrailingBytes: 0,
+    });
+  }
   db.markMeetingRecordingFinalizing(recording.id);
   const finalized = db.finalizeMeetingRecording(recording.id, {
     captureState: "ready",
@@ -77,6 +86,44 @@ function createFinishedRecording(
     recording: finalized.recording,
     run: db.getMeetingProcessingRun(finalized.initialRun.id) as NonNullable<ReturnType<DatabaseManager["getMeetingProcessingRun"]>>,
   };
+}
+
+function muteAlignment(frame: number): import("../../src/contracts/meetingRecording.ts").MeetingFrameAlignmentPoint {
+  return { sourceGeneration: 1, sourceFrame: frame, timelineFrame: frame, rate: 1, uncertaintyFrames: 1,
+    helperGeneration: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", sourceNs: String(1_000_000_000 + Math.round(frame / 24_000 * 1e9)),
+    helperNs: String(1_000_000_000 + Math.round(frame / 24_000 * 1e9)), sampledSourceStartNs: "1000000000",
+    sampledSourceEndNs: "2000000000", freshnessSourceNs: "2000000000" };
+}
+
+function createSystemOnlyIntentionalRecording(
+  db: DatabaseManager,
+  storage: RecordingStorage,
+  config: MeetingProcessingConfig
+) {
+  const note = db.saveNote("Muted microphone", "", "meeting").note;
+  assert.ok(note);
+  const recording = db.createMeetingRecording(note.id, { config });
+  const endFrame = 24_000;
+  db.openMeetingIntentionalInterval(recording.id, "mic", 1, 0, "manual-muted", muteAlignment(0));
+  db.closeMeetingIntentionalInterval(recording.id, "mic", 1, endFrame, "manual-muted", muteAlignment(endFrame));
+  db.createMeetingRecordingEpoch(recording.id, "system", 0, 1, 0, 0);
+  const pcm = Buffer.alloc(endFrame * 2);
+  for (let frame = 0; frame < endFrame; frame += 1) pcm.writeInt16LE(1_000, frame * 2);
+  savePcmEpoch(storage, recording.id, "system", 0, pcm);
+  db.updateMeetingRecordingEpochRecovery(recording.id, "system", 0, {
+    frameCount: endFrame,
+    ignoredTrailingBytes: 0,
+  });
+  db.markMeetingRecordingFinalizing(recording.id);
+  const finalized = db.finalizeMeetingRecording(recording.id, {
+    captureState: "ready",
+    endedAt: new Date(Date.parse(recording.startedAt) + 1_000).toISOString(),
+    sourceMetadata: { captureEndFrame: endFrame },
+  });
+  db.setMeetingProcessingRunState(finalized.initialRun.id, {
+    stage: "prepare", status: "pending", retryAt: null,
+  });
+  return { recording: finalized.recording, run: finalized.initialRun };
 }
 
 function longTranscriptResponse(length = 2500, prefix = "") {
@@ -151,6 +198,159 @@ function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Pa
   };
   return new MeetingProcessingWorker(deps);
 }
+
+for (const provider of ["elevenlabs", "openai", "gemini"] as const) {
+  test(`${provider} records an intentional-empty mic stage without sending an empty-mic request`, async (t: import("node:test").TestContext) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const config: MeetingProcessingConfig = {
+      ...validConfig,
+      transcription: { mode: "providers", provider, language: "en" },
+    };
+    const { recording, run } = createSystemOnlyIntentionalRecording(db, storage, config);
+    const requests: import("../../src/contracts/uploadTranscription").RemoteTranscriptionRequest[] = [];
+    const mixLayouts: string[] = [];
+    const systemResponse = provider === "openai"
+      ? { text: "System speech", segments: [{ text: "System speech", start: 0.1, end: 0.5, speaker: "speaker_0" }] }
+      : provider === "elevenlabs"
+        ? elevenResponse
+        : { status: "completed", output_text: "System speech", steps: [{ content: [{ annotations: [
+          { type: "word_info", text: "System speech", speaker: "speaker_0", start_offset: "0.1s", end_offset: "0.5s" },
+        ] }] }] };
+    const worker = workerFor(db, storage, {
+      mixAudio: async (timeline, runId, epochs, _signal, layout, intentionalEmptySources) => {
+        const selectedLayout = layout ?? "mono";
+        mixLayouts.push(selectedLayout);
+        assert.equal(timeline.id, recording.id);
+        assert.deepEqual(epochs.map((epoch) => epoch.source), ["system"]);
+        assert.deepEqual(intentionalEmptySources, ["mic"]);
+        return {
+          path: storage.getDerivedAudioPath(recording.id, runId, selectedLayout),
+          frameCount: 24_000,
+          durationSeconds: 1,
+          sizeBytes: 1,
+        };
+      },
+      fileSize: () => 1,
+      transcribeRemote: async (request, saveRaw) => {
+        requests.push(request);
+        assert.ok(request.filePath.endsWith("-system.wav"));
+        await saveRaw(systemResponse);
+        return { success: true };
+      },
+    }, false);
+    t.after(() => worker.stop());
+    worker.onRetentionReady();
+    await worker.waitForIdle();
+
+    assert.equal(db.getMeetingProcessingRun(run.id)?.status, "complete");
+    assert.deepEqual(requests.map((request) => request.diarize), [true]);
+    assert.ok(mixLayouts.includes("mic"));
+    assert.ok(mixLayouts.includes("system"));
+    assert.equal(storage.hasRunArtifact(run.id, "provider-response-mic"), false);
+    assert.deepEqual(storage.readRunArtifact(run.id, "provider-response")?.mic, {
+      type: "intentional-empty", source: "mic",
+    });
+    const transcript = storage.readRunArtifact(run.id, "transcript");
+    assert.ok(transcript.segments?.length);
+    assert.ok(transcript.segments.every((segment: { speaker: string }) => segment.speaker.startsWith("system:")));
+  });
+}
+
+test("Deepgram prepares an intentional-empty microphone as stereo silence beside system audio", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const config: MeetingProcessingConfig = {
+    ...validConfig,
+    transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "en" },
+  };
+  const { recording, run } = createSystemOnlyIntentionalRecording(db, storage, config);
+  const layouts: string[] = [];
+  let requestCount = 0;
+  const worker = workerFor(db, storage, {
+    mixAudio: async (_timeline, runId, epochs, _signal, layout, intentionalEmptySources) => {
+      const selectedLayout = layout ?? "mono";
+      layouts.push(selectedLayout);
+      assert.deepEqual(epochs.map((epoch) => epoch.source), ["system"]);
+      assert.deepEqual(intentionalEmptySources, ["mic"]);
+      return { path: storage.getDerivedAudioPath(recording.id, runId, selectedLayout), frameCount: 24_000, durationSeconds: 1, sizeBytes: 1 };
+    },
+    fileSize: () => 1,
+    transcribeRemote: async (request, saveRaw) => {
+      requestCount += 1;
+      assert.equal(request.multichannel, true);
+      assert.ok(request.filePath.endsWith("-stereo.wav"));
+      await saveRaw({ results: {
+        channels: [{ alternatives: [{ transcript: "" }] }, { alternatives: [{ transcript: "System speech" }] }],
+        utterances: [{ channel: 1, speaker: 0, transcript: "System speech", start: 0.1, end: 0.5 }],
+      } });
+      return { success: true };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)?.status, "complete");
+  assert.equal(requestCount, 1);
+  assert.deepEqual(layouts, ["stereo"]);
+  assert.equal(storage.readRunArtifact(run.id, "transcript")?.segments?.[0]?.speaker, "system:Speaker 1");
+});
+
+test("local mono preparation retains system audio when mic is intentionally empty", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const config: MeetingProcessingConfig = {
+    transcription: { mode: "local", language: "en", local: { provider: "whisper", model: "base", options: { diarize: false } } },
+    summary: validConfig.summary,
+  };
+  const { recording, run } = createSystemOnlyIntentionalRecording(db, storage, config);
+  const layouts: string[] = [];
+  let localCalls = 0;
+  const worker = workerFor(db, storage, {
+    mixAudio: async (_timeline, runId, epochs, _signal, layout, intentionalEmptySources) => {
+      const selectedLayout = layout ?? "mono";
+      layouts.push(selectedLayout);
+      assert.equal(selectedLayout, "mono");
+      assert.deepEqual(epochs.map((epoch) => epoch.source), ["system"]);
+      assert.deepEqual(intentionalEmptySources, ["mic"]);
+      return { path: storage.getDerivedAudioPath(recording.id, runId, selectedLayout), frameCount: 24_000, durationSeconds: 1, sizeBytes: 1 };
+    },
+    fileSize: () => 1,
+    transcribeLocal: async (filePath) => {
+      localCalls += 1;
+      assert.equal(filePath, storage.getDerivedAudioPath(recording.id, run.id, "mono"));
+      return { success: true, text: "System speech" };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  const localRun = db.getMeetingProcessingRun(run.id);
+  assert.equal(localRun?.status, "complete", `local intentional-empty run failed at ${localRun?.stage}: ${localRun?.errorCode}`);
+  assert.equal(localCalls, 1);
+  assert.deepEqual(layouts, ["mono"]);
+});
+
+test("a missing system source without persisted intentional coverage stays blocked", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage, validConfig, "", false, 1, false);
+  let requests = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async () => { requests += 1; return { success: true }; },
+  }, false);
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  const saved = db.getMeetingProcessingRun(run.id);
+  assert.equal(saved?.status, "blocked");
+  assert.equal(saved?.errorCode, "system-source-unavailable");
+  assert.equal(requests, 0);
+});
 
 test("meeting prompts keep naming evidence, absent owner fields, and task priorities narrow", () => {
   assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /self-introduction/);
@@ -258,7 +458,9 @@ test("audio parts from separate sessions of one note produce one persisted run a
   const second = db.createMeetingRecording(first.note.id, { config: validConfig },
     new Date(Date.parse(first.recording.endedAt) + 5 * 60_000).toISOString());
   assert.notEqual(second.groupId, first.recording.groupId);
-  db.createMeetingRecordingEpoch(second.id, "system", 0, 0);
+  db.openMeetingIntentionalInterval(second.id, "mic", 1, 0, "manual-muted", muteAlignment(0));
+  db.closeMeetingIntentionalInterval(second.id, "mic", 1, 24_000, "manual-muted", muteAlignment(24_000));
+  db.createMeetingRecordingEpoch(second.id, "system", 0, 1, 0, 0);
   savePcmEpoch(storage, second.id, "system", 0, Buffer.from([1, 2, 3, 4]));
   db.updateMeetingRecordingEpochRecovery(second.id, "system", 0, storage.recoverEpoch(second.id, "system", 0));
   db.markMeetingRecordingFinalizing(second.id);
@@ -290,7 +492,15 @@ test("audio parts from separate sessions of one note produce one persisted run a
   assert.equal(asrCalls, 1);
   assert.ok(mixed);
   assert.equal(mixed.recording.endedAt, new Date(Date.parse(first.recording.startedAt) + 2000).toISOString());
-  assert.deepEqual(mixed.epochs.map((epoch) => epoch.recordingId), [first.recording.id, second.id]);
+  assert.deepEqual(mixed.epochs.map(({ recordingId, source }) => ({ recordingId, source })), [
+    { recordingId: first.recording.id, source: "mic" },
+    { recordingId: first.recording.id, source: "system" },
+    { recordingId: second.id, source: "system" },
+  ]);
+  assert.deepEqual(db.listMeetingRecordingEpochs(second.id).map(({ source }: MeetingRecordingEpochDto) => source), ["system"]);
+  assert.deepEqual(db.listMeetingIntentionalIntervals(second.id).map(({ source, reason, timelineStartFrame, timelineEndFrame }: MeetingIntentionalInterval) => ({ source, reason, timelineStartFrame, timelineEndFrame })), [
+    { source: "mic", reason: "manual-muted", timelineStartFrame: 0, timelineEndFrame: 24_000 },
+  ]);
   assert.equal(db.getNote(first.note.id).content, "Manual notes stay here.");
   assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
 });
@@ -1878,7 +2088,7 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
     { source: "mic", index: 1, offset: 6, bytes: Buffer.from([5, 0, 6, 0]) },
   ];
   for (const epoch of epochs) {
-    db.createMeetingRecordingEpoch(recording.id, epoch.source, epoch.index, epoch.offset);
+    db.createMeetingRecordingEpoch(recording.id, epoch.source, epoch.index, 1, epoch.offset, epoch.offset);
     savePcmEpoch(storage, recording.id, epoch.source, epoch.index, epoch.bytes);
     db.updateMeetingRecordingEpochRecovery(recording.id, epoch.source, epoch.index, {
       frameCount: epoch.bytes.length / 2,
@@ -1957,7 +2167,7 @@ test("ffmpeg output preserves audible source offsets, a silent gap, and full tim
     { source: "system", offset: 480, values: [[5, 6_000], [6, 6_000]] },
   ];
   for (const [index, epoch] of sourceEpochs.entries()) {
-    db.createMeetingRecordingEpoch(recording.id, epoch.source, 0, epoch.offset);
+    db.createMeetingRecordingEpoch(recording.id, epoch.source, 0, 1, epoch.offset, epoch.offset);
     const raw = Buffer.alloc(960 * 2);
     for (const [frame, sample] of epoch.values) raw.writeInt16LE(sample, frame * 2);
     savePcmEpoch(storage, recording.id, epoch.source as "mic" | "system", 0, raw);
@@ -2434,11 +2644,11 @@ for (const failure of ["observation-lookup", "part-map"] as const) {
     const { run } = createFinishedRecording(db, storage, { ...validConfig, generateSummary: false });
     saveTranscriptArtifact(db, storage, run.id, "Synthetic speaker introduces herself.", "system:fixture");
     db.setMeetingProcessingRunState(run.id, { stage: "normalize", status: "pending", retryAt: null });
-    const originalObservations = db.listMeetingZoomObservations;
+    const originalObservations = db.listMeetingPlatformObservations;
     const originalEpochs = db.listMeetingRecordingEpochs;
-    t.after(() => { db.listMeetingZoomObservations = originalObservations; db.listMeetingRecordingEpochs = originalEpochs; });
+    t.after(() => { db.listMeetingPlatformObservations = originalObservations; db.listMeetingRecordingEpochs = originalEpochs; });
     const failLookup = () => { throw new Error("Synthetic metadata unavailable"); };
-    if (failure === "observation-lookup") db.listMeetingZoomObservations = failLookup;
+    if (failure === "observation-lookup") db.listMeetingPlatformObservations = failLookup;
     else db.listMeetingRecordingEpochs = failLookup;
     let namingCalls = 0;
     const worker = workerFor(db, storage, {
@@ -2463,14 +2673,14 @@ test("native-shaped Zoom intervals resume through production naming into the Not
   const note = db.saveNote("Zoom fixture", "", "meeting").note!;
   const recording = db.createMeetingRecording(note.id, { config: { ...validConfig, generateSummary: false } });
   for (const source of ["mic", "system"] as const) {
-    db.createMeetingRecordingEpoch(recording.id, source, 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, source, 0, 1, 0, 0);
     savePcmEpoch(storage, recording.id, source, 0, Buffer.alloc(14 * 24_000 * 2));
     db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, storage.recoverEpoch(recording.id, source, 0));
   }
   db.markMeetingRecordingFinalizing(recording.id);
   const { initialRun } = db.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: new Date(Date.parse(recording.startedAt) + 14_000).toISOString() });
   const fixture = zoomSpeakerFixture(recording.id);
-  fixture.observations.forEach((o) => db.saveMeetingZoomObservation(o));
+  fixture.observations.forEach((o) => db.saveMeetingPlatformObservation(o));
   fixture.anchors.forEach((a) => db.saveMeetingAudioClockAnchor(a));
   // An earlier AX gap does not disable the usable episodes that follow.
   db.setMeetingPlatformCoverage(recording.id, { reads: 28, samples: fixture.observations.length, state: "incomplete", reason: "accessibility" });
@@ -2507,7 +2717,7 @@ test("native-shaped Zoom intervals resume through production naming into the Not
     const projection = JSON.parse(db.getNote(note.id).transcript ?? "[]");
     assert.equal(projection[0].speakerName, "Synthetic Guest");
     assert.equal(projection[0].speakerLockSource, "platform");
-    assert.ok(db.getMeetingRunPlatformDecisions(current.id).every((d: import("../../src/contracts/meetingRecording.ts").ZoomSpeakerDecision) => d.status === "accepted"));
+    assert.ok(db.getMeetingRunPlatformDecisions(current.id).every((d: import("../../src/contracts/meetingRecording.ts").MeetingPlatformDecision) => d.status === "accepted"));
     const view = readNoteTranscript({
       listRecordings: (id) => db.listMeetingRecordingsForNote(id), listEpochs: (id) => db.listMeetingRecordingEpochs(id),
       getRun: (id) => db.getMeetingProcessingRun(id), readTranscript: (id) => transcripts.get(id) ?? null,
@@ -2520,4 +2730,29 @@ test("native-shaped Zoom intervals resume through production naming into the Not
   assert.equal(namingCalls, 2);
   assert.ok(storage.readRunArtifact(initialRun.id, "transcript"));
   assert.equal(db.listMeetingAudioClockAnchors(recording.id).length, 14);
+});
+
+test("unresolved alignment fails prepare before providers and preserves raw audio on retry", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage, validConfig);
+  db.db.prepare("UPDATE meeting_recording_epochs SET timeline_start_frame = NULL WHERE recording_id = ? AND source = 'mic'").run(recording.id);
+  const rawPath = storage.getEpochFilePath(recording.id, "mic", 0);
+  const original = fs.readFileSync(rawPath);
+  let requests = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async () => { requests++; throw new Error("must not reach provider"); },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)?.stage, "prepare");
+  assert.equal(db.getMeetingProcessingRun(run.id)?.errorCode, "audio-alignment-unavailable");
+  assert.equal(db.getMeetingRecording(recording.id)?.captureState, "ready");
+  worker.retry(run.id);
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)?.errorCode, "audio-alignment-unavailable");
+  assert.equal(requests, 0);
+  assert.deepEqual(fs.readFileSync(rawPath), original);
 });

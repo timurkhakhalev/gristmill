@@ -2187,7 +2187,8 @@
       "body": {
         "micReleased": "Nessun’altra app sta usando il microfono, quindi la registrazione si è interrotta automaticamente. Riavviala entro {{seconds}} s.",
         "silence": "Non è stato rilevato audio, quindi la registrazione si è interrotta automaticamente. Riavviala entro {{seconds}} s.",
-        "processExit": "L’app della riunione è stata chiusa, quindi la registrazione si è interrotta automaticamente. Riavviala entro {{seconds}} s."
+        "processExit": "L’app della riunione è stata chiusa, quindi la registrazione si è interrotta automaticamente. Riavviala entro {{seconds}} s.",
+        "platformLeave": "Hai lasciato Meet. Riavvia la registrazione entro {{seconds}} s."
       },
       "restart": "Riavvia registrazione"
     }
@@ -2249,8 +2250,8 @@
   },
   "meetingResults": {
     "platformName": "Zoom",
-    "platformNameHint": "Nome associato da Zoom. Fai clic per modificarlo.",
-    "platformEvidenceUnavailable": "I dati dei relatori Zoom sono incompleti. Audio e trascrizione sono conservati.",
+    "platformNameHint": "Nome associato da {{platform}}. Fai clic per modificarlo.",
+    "platformEvidenceUnavailable": "I dati dei relatori Zoom / Google Meet sono incompleti. Audio e trascrizione sono conservati.",
     "partialTranscript": "La trascrizione di questa nota è incompleta.",
     "selectedResultTranscript": "Trascrizione del risultato selezionato",
     "participantsLoadError": "Impossibile caricare i partecipanti dal calendario.",
@@ -2505,5 +2506,29 @@
     "onboardingTitle": "Come ti chiami?",
     "skip": "Salta",
     "selfLabel": "Tu"
+  },
+  "meetIntegration": {
+    "title": "Gristmill Companion",
+    "setupDescription": "Chrome Stable. Attiva l’integrazione, poi carica la cartella con «Carica estensione non pacchettizzata» in chrome://extensions. L’audio del microfono disattivato viene scartato; l’audio di sistema continua.",
+    "enabled": "Attiva",
+    "disabled": "Disattivata",
+    "loading": "Caricamento…",
+    "disable": "Disattiva",
+    "enable": "Attiva",
+    "openExtension": "Apri cartella estensione",
+    "remove": "Rimuovi registrazione",
+    "setupFailed": "Configurazione non riuscita",
+    "mute": "Disattiva microfono",
+    "unmute": "Attiva microfono",
+    "platformMuted": "Microfono disattivato da Meet o dal dispositivo",
+    "muteFailed": "Impossibile cambiare lo stato del microfono",
+    "contextLost": "Connessione a Meet persa. La registrazione continua.",
+    "bound": "Collegata a Meet {{call}}",
+    "confirmDescription": "Collegare questa registrazione a una chiamata? I comandi microfono e uscita controlleranno questa registrazione.",
+    "noCall": "Nessuna chiamata riconosciuta. La registrazione continua autonomamente.",
+    "bind": "Collega {{call}}",
+    "companionMode": "Modalità complementare di Meet",
+    "staleSelection": "Chiamata o registrazione cambiata. Seleziona una chiamata attuale.",
+    "uiUnrecognized": "Interfaccia Meet non riconosciuta. La registrazione continua."
   }
 }

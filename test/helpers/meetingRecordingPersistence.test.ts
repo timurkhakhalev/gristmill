@@ -38,7 +38,7 @@ function saveMeetingNote(db: any, title = "Meeting") {
 
 function createFinishedRecording(db: any, storage: any, note: any, config: typeof validConfig | null = validConfig) {
   const recording = db.createMeetingRecording(note.id, { config });
-  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 0);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
   savePcmEpoch(storage, recording.id, "mic", 0, Buffer.from([1, 2, 3, 4]));
   const epoch = storage.recoverEpoch(recording.id, "mic", 0);
   db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, epoch);
@@ -91,7 +91,7 @@ test("missing or invalid processing config records a blocked initial run but pre
     },
   });
   for (const recording of [missing, invalid]) {
-    db.createMeetingRecordingEpoch(recording.id, "system", 0, 0);
+    db.createMeetingRecordingEpoch(recording.id, "system", 0, 1, 0, 0);
     db.updateMeetingRecordingEpochRecovery(recording.id, "system", 0, {
       frameCount: 1,
       ignoredTrailingBytes: 0,

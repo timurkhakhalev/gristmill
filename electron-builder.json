@@ -97,11 +97,20 @@
     {
       "from": "resources/local-engine-installers/",
       "to": "local-engine-installers/",
-      "filter": ["*.cjs"]
+      "filter": [
+        "*.cjs"
+      ]
     },
     {
       "from": "scripts/gristmill-cli.cjs",
       "to": "cli/gristmill-cli.cjs"
+    },
+    {
+      "from": "build/companion",
+      "to": "companion",
+      "filter": [
+        "**/*"
+      ]
     }
   ],
   "mac": {

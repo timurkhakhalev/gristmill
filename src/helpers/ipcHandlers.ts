@@ -1,3 +1,6 @@
+import os from "node:os";
+import { isDevelopmentChannel } from "./appChannel.js";
+import { installCompanionHost, uninstallCompanionHost, companionHostInstalled, refreshCompanionHost } from "./installCompanionHost.js";
 import { app, BrowserWindow, dialog, ipcMain, net, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import path from "path";
 import fs from "fs";
@@ -607,8 +610,9 @@ export class IPCHandlers {
   }
 
   async _deleteAllAudio(): Promise<{ deleted: number; failed: number }> {
-    if (this._meetingCoordinator?.isRecording()) {
-      const stopped = await this._meetingCoordinator.requestSafeStop(true);
+    const expected = this._meetingCoordinator?.currentRecordingScope();
+    if (expected) {
+      const stopped = await this._meetingCoordinator!.requestSafeStop({ expected, reason: "delete-audio", suppressProcessing: true });
       if (!stopped.success) throw new Error("Active meeting recording could not be stopped safely");
     }
     const legacy = this.audioStorageManager.deleteAllAudio();
@@ -1529,7 +1533,46 @@ export class IPCHandlers {
     // final diarization publication) lives in the typed module; the JS root
     // only wires its dependencies. The meeting-state callbacks the notes and
     // speaker verticals need come from its runtime handle.
+    const companionPreference = path.join(app.getPath("userData"), "companion-enabled");
+    let companionEnabled = fs.existsSync(companionPreference);
+    const companionIsolated = app.commandLine?.hasSwitch("user-data-dir") === true;
+    const companionInstallation = {
+      channel: isDevelopmentChannel() ? "development" as const : "production" as const,
+      chromeRoot: companionIsolated ? path.join(app.getPath("userData"), "chrome-test") : path.join(os.homedir(), "Library", "Application Support", "Google", "Chrome"),
+      profilePath: app.getPath("userData"), runtimePath: process.execPath,
+      hostScriptPath: path.join(__dirname, "companionNativeHost.js"),
+    };
+    if (companionEnabled && !companionIsolated) {
+      try { refreshCompanionHost(companionInstallation); }
+      catch (error) { debugLogger.warn("Meet host registration could not be refreshed", { error: String(error) }, "meeting"); }
+    }
+    const companionFolder = companionInstallation.channel === "development" ? "companion-dev" : "companion";
+    const companionExtensionPath = app.isPackaged ? path.join(process.resourcesPath, companionFolder) : path.join(app.getAppPath(), "build", companionFolder);
+    ipcMain.handle("meet-integration-setup", () => ({ enabled: companionEnabled, installed: companionHostInstalled(companionInstallation), extensionPath: companionExtensionPath, channel: companionInstallation.channel }));
+    ipcMain.handle("meet-integration-configure", async (event, action: unknown) => {
+      if (event.sender !== this.windowManager.controlPanelWindow?.webContents) return { success: false, error: "Unauthorized window" };
+      try {
+        if (action === "reveal") { const error = await shell.openPath(companionExtensionPath); return error ? { success: false, error } : { success: true }; }
+        if (action !== "enable" && action !== "disable" && action !== "remove") return { success: false, error: "Invalid action" };
+        if (action === "enable") { installCompanionHost(companionInstallation); fs.writeFileSync(companionPreference, "enabled\n", { mode: 0o600 }); }
+        else { if (action === "remove") uninstallCompanionHost(companionInstallation); fs.rmSync(companionPreference, { force: true }); }
+        companionEnabled = action === "enable";
+        this._meetingCoordinator?.setCompanionEnabled(companionEnabled);
+        return { success: true };
+      } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+    });
     this._meetingCoordinator = registerMeetingCoordinatorHandlers(ipcMain, {
+      companionProfilePath: app.getPath("userData"),
+      companionEnabled,
+      showCompanionReminder: (scope) => { void this.windowManager.showMeetingNotification({ kind: "meet-context-lost", ...scope }, { autoDismiss: false }); },
+      dismissCompanionReminder: (scope, sender) => {
+        const current = this.windowManager._pendingNotificationData;
+        if (current?.kind !== "meet-context-lost" || current.recordingId !== scope.recordingId || current.sessionId !== scope.sessionId ||
+            (sender && sender !== this.windowManager.notificationWindow?.webContents)) return false;
+        this.windowManager.dismissMeetingNotification(); return true;
+      },
+      preparePlatformLeave: (sessionId) => this.meetingDetectionEngine?.preparePlatformLeave(sessionId) === true,
+      suppressPlatformAutoEnd: (sessionId) => this.meetingDetectionEngine?.suppressAutoEndForPlatform(sessionId),
       databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase & import("./zoomSpeakerCollector.js").MeetingPlatformEvidenceDatabase,
       meetingRecordingStorage: this.audioStorageManager.meetingRecordings,
       cancelInitialProcessingRun: (runId) => this._meetingProcessing?.cancelRun(runId) ?? false,
@@ -1590,7 +1633,9 @@ export class IPCHandlers {
     this.windowManager.setMeetingCaptureQuitGuard({
       isRecording: () => this._meetingCoordinator?.isRecording() === true,
       stop: async () => {
-        const result = await this._meetingCoordinator?.requestSafeStop();
+        const expected = this._meetingCoordinator?.currentRecordingScope();
+        if (!expected) return { success: true };
+        const result = await this._meetingCoordinator!.requestSafeStop({ expected, reason: "quit" });
         return { success: result?.success === true };
       },
     });

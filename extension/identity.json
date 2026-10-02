@@ -1,0 +1,12 @@
+{
+  "development": {
+    "hostName": "com.khakhalev.gristmill.companion.dev",
+    "extensionId": "dpnegebmhlbkdeahjmefpfohabdihohc",
+    "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAttPX90MkdAQ6agGtVQzpUVuUxBHKBEn/aGU0FDGalFaUvO5Xs5deXq3rfe7tnV689gix3j0bL95MbBZccXDI7myNSkVLCBLgEFfpBi2WIfkQSb1sqYV8fTCy4I90nn720A3O6tA+ybT4NYVuiIt0b9TZstXeGdmsTdYt+SEZ07JsubgPI0YQcxXMpXPOJxPsPa5INenrkAaXcYXNROoGi3YGv6hkhP+mpYwgx3C1QV34Tv0I10TU2SpRnd5YmLKuF0qmfdl/85MW42RXp7C469N/J0OR4reGANIWjE2b2IpkhEpc/GhheXMsuVc3fKKAfFIb5tWt3gZFGe0JaWqR6wIDAQAB"
+  },
+  "production": {
+    "hostName": "com.khakhalev.gristmill.companion",
+    "extensionId": "jjilhdimgekakjbjhfnjlneehcgocppb",
+    "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz3qb8FY1IPh+AzblZjNTo/vvexDp9D0dz2XYObS+vfTkcEIAq98bBBRevycCwJfM/cBJT3mSdHMfA0zR8u5/1sXEvvIhdzmRKDrJXeJ/wx1IPV3VBD7h9W4+dpT+8ppUfF7aWeCc+5dOc58eKVYHIVScdExpUvLgO5ODHGu/k8th+uM8vjP07V9AQR0r3JB9QnV65jAFs6QFjmzWKtpPNzu8zIhOIm0600LLcbOv8EI9ytsa9xMPys6H3iPR5PVScdY0qs5F/3H7Tz9/oDfRZyCLBL1quy0D+abSed51uNWJPPlQYQSlON7B2f6cpiK2T6SLbcKuYuhPV31CqcJypwIDAQAB"
+  }
+}

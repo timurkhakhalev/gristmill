@@ -139,7 +139,7 @@ async function createFixture({ responses = {}, engine }: {
 
   const handlers: Map<string, (...args: unknown[]) => unknown> = registerRealHandlers({
     databaseManager: {
-      saveMeetingZoomObservation() {},
+      saveMeetingPlatformObservation() {},
       saveMeetingAudioClockAnchor() {},
       setMeetingPlatformCoverage() {},
       getGoogleAccounts: () => [],
@@ -152,6 +152,11 @@ async function createFixture({ responses = {}, engine }: {
       createMeetingRecording: unused,
       createMeetingRecordingEpoch: unused,
       updateMeetingRecordingEpochRecovery: unused,
+      addMeetingRecordingEpochAlignment() {},
+      markMeetingRecordingEpochAlignmentUnknown() {},
+      openMeetingIntentionalInterval: () => ({ id: "interval-1", recordingId: "recording-1", source: "mic", sourceGeneration: 1, sourceStartFrame: 0, sourceEndFrame: null, timelineStartFrame: 0, timelineEndFrame: null, startAlignment: null, endAlignment: null, reason: "manual-muted" }),
+      closeMeetingIntentionalInterval: () => null,
+      listMeetingIntentionalIntervals: () => [],
       markMeetingRecordingFinalizing: unused,
       finalizeMeetingRecording: unused,
     },
@@ -278,7 +283,7 @@ test("capture send crosses with source and sequencing metadata and returns its w
   });
   const buffer = new ArrayBuffer(8);
   const sessionId = "capture-session";
-  const packet = { epochIndex: 1, epochStartFrame: 24_000, sequence: 3, sampleOffset: 120 };
+  const packet = { epochIndex: 1, epochSourceStartFrame: 24_000, sourceFrameStart: 24_120, alignment: null, alignmentErrorCode: "audio-alignment-unavailable", sourceGeneration: 1, sequence: 3, sampleOffset: 120 };
 
   assert.deepEqual(plain(await api.meetingTranscriptionSend(buffer, "mic", sessionId, packet)), {
     success: true,

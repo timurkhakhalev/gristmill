@@ -10,6 +10,7 @@ const fakeWindow = () => {
   const win = new EventEmitter();
   win.isDestroyed = () => false;
   win.webContents = new EventEmitter();
+  win.webContents.isDestroyed = () => false;
   win.webContents.messages = [];
   win.webContents.send = (channel: string, payload: unknown) => win.webContents.messages.push({ channel, payload });
   win.messages = win.webContents.messages;
@@ -64,11 +65,12 @@ function loadCoordinator() {
 
 function createDatabaseFake(events: string[]) {
   return {
-    saveMeetingZoomObservation() {},
+    saveMeetingPlatformObservation() {},
     saveMeetingAudioClockAnchor() {},
     setMeetingPlatformCoverage() {},
     recordings: new Map<string, { id: string; groupId: string; noteId: number; config: unknown; startedAt: string; captureState: string; audioState: string; captureErrorCode?: string | null }>(),
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
+    intentionalIntervals: [] as Array<{ id: string; recordingId: string; source: string; startFrame: number; endFrame: number | null; reason: string }>,
     finalized: [] as { recordingId: string; input: { captureState: string; errorCode?: string } }[],
     createMeetingRecording(noteId: number, input: { config: unknown }, startedAt: string, id: string, groupId = id) {
       events.push("recording-created");
@@ -84,9 +86,11 @@ function createDatabaseFake(events: string[]) {
       this.recordings.set(id, recording);
       return recording;
     },
-    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, startFrame: number) {
+    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, sourceGeneration: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
+    addMeetingRecordingEpochAlignment() {},
+    markMeetingRecordingEpochAlignmentUnknown() {},
     updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: unknown) {
       const epoch = this.epochs.find((item) => item.recordingId === recordingId && item.source === source && item.epochIndex === epochIndex);
       if (!epoch) throw new Error("Recording epoch not found");
@@ -105,6 +109,18 @@ function createDatabaseFake(events: string[]) {
       recording.captureErrorCode = input.errorCode ?? null;
       return { recording, initialRun: { id: RUN_ID } };
     },
+    openMeetingIntentionalInterval(recordingId: string, source: string, sourceGeneration: number, startFrame: number, reason: string) {
+      const interval = { id: `${recordingId}:${source}:${reason}:${startFrame}`, recordingId, source, startFrame, endFrame: null, reason };
+      this.intentionalIntervals.push(interval);
+      return interval;
+    },
+    closeMeetingIntentionalInterval(recordingId: string, source: string, sourceGeneration: number, endFrame: number, reason: string) {
+      const interval = [...this.intentionalIntervals].reverse().find((item) => item.recordingId === recordingId && item.source === source && item.reason === reason && item.endFrame === null);
+      if (!interval) return null;
+      interval.endFrame = endFrame;
+      return interval;
+    },
+    listMeetingIntentionalIntervals(recordingId: string) { return this.intentionalIntervals.filter((item) => item.recordingId === recordingId); },
     getGoogleAccounts: () => [],
     getNote: (noteId: unknown) => ({ id: noteId, transcript: "Existing transcript" }),
     getSpeakerMappings: () => [],
@@ -228,12 +244,42 @@ const START = {
 };
 const START_EVENT = () => ({ sender: currentWindow.webContents });
 
+test("initial manual mute is persisted at frame zero before any renderer audio", async () => {
+  const harness = buildHarness();
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), { ...START, manualMicMuted: true });
+  assert.equal(started.success, true);
+  assert.deepEqual(
+    harness.databaseManager.listMeetingIntentionalIntervals(started.recordingId).map(({ source, startFrame, endFrame, reason }: any) => [source, startFrame, endFrame, reason]),
+    [["mic", 0, null, "manual-muted"]]
+  );
+  const stopped = await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} });
+  assert.equal(stopped.success, true);
+});
+
 test("a native helper failure reconnects system audio without ending the meeting or exposing its raw error", async () => {
   let callbacks: import("../../src/helpers/audioTapManager.js").AudioTapStartOptions = {};
   let starts = 0;
+  let helperOriginNs = "1000000000000000";
+  let helperGeneration = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const harness = buildHarness({ audioTapManager: {
     isSupported: () => true,
-    start: async (options = {}) => { starts += 1; callbacks = options; options.onStart?.({ type: "start" }); },
+    getClockOrigin: () => ({ helperGeneration, monotonicOriginNs: helperOriginNs }),
+    probeClock: async (nonce) => ({
+      type: "probe", nonce, helperReceiveNs: helperOriginNs, helperSendNs: helperOriginNs,
+      helperGeneration, helperFrame: 0,
+    }),
+    start: async (options = {}) => {
+      starts += 1;
+      callbacks = options;
+      if (starts > 1) {
+        helperOriginNs = (BigInt(helperOriginNs) + 100_000_000n).toString();
+        helperGeneration = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+      }
+      options.onStart?.({
+        type: "start", generation: helperGeneration, sampleRate: 24_000, channels: 1, bitsPerChannel: 16,
+        monotonicOriginNs: helperOriginNs, originFrame: 0,
+      });
+    },
     stop: async () => {},
   } });
   const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
@@ -245,7 +291,7 @@ test("a native helper failure reconnects system audio without ending the meeting
     assert.equal(starts, 2);
     assert.equal(harness.runtime.isRecording(), true);
     assert.equal(harness.databaseManager.recordings.size, 1);
-    callbacks.onChunk?.(Buffer.alloc(4800));
+    callbacks.onChunk?.(Buffer.alloc(4800), 0);
     assert.ok(currentWindow.messages.some((message: { channel: string }) => message.channel === "meeting-system-audio-resumed"));
     assert.ok(!currentWindow.messages.some((message: { channel: string }) => message.channel === "meeting-transcription-error"));
     assert.equal(harness.databaseManager.finalized.length, 0);
@@ -289,7 +335,7 @@ test("renderer audio is acknowledged only after its raw PCM bytes are written", 
     raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
     "mic",
     START.sessionId,
-    { epochIndex: 0, epochStartFrame: 100, sequence: 0, sampleOffset: 0 }
+    { epochIndex: 0, epochSourceStartFrame: 100, sourceFrameStart: 100, alignment: null, alignmentErrorCode: "clock-unavailable", sourceGeneration: 1, sequence: 0, sampleOffset: 0 }
   );
 
   assert.deepEqual(response, { success: true, sequence: 0 });
@@ -313,7 +359,7 @@ test("disk errors reject acknowledgement and finalize incomplete", async () => {
       raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
       "mic",
       START.sessionId,
-      { epochIndex: 0, epochStartFrame: 0, sequence: 0, sampleOffset: 0 }
+      { epochIndex: 0, epochSourceStartFrame: 0, sourceFrameStart: 0, alignment: null, alignmentErrorCode: "clock-unavailable", sourceGeneration: 1, sequence: 0, sampleOffset: 0 }
     ),
     /disk full/
   );
@@ -358,7 +404,7 @@ test("capture packet validation rejects unknown sources", async () => {
       new ArrayBuffer(4_800),
       "fallback",
       START.sessionId,
-      { epochIndex: 0, epochStartFrame: 0, sequence: 0, sampleOffset: 0 }
+      { epochIndex: 0, epochSourceStartFrame: 0, sequence: 0, sampleOffset: 0 }
     ),
     /source is invalid/
   );
@@ -377,4 +423,20 @@ test("renderer crash finalizes available capture state as incomplete", async () 
   assert.equal(harness.databaseManager.finalized[0].input.captureState, "incomplete");
   assert.equal(harness.databaseManager.finalized[0].input.errorCode, "renderer-lost");
   assert.equal(harness.runtime.isRecording(), false);
+});
+
+test("safe Stop rejects a stale recording scope and cannot reuse another session's pending stop", async () => {
+  const harness = buildHarness();
+  const started = await invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  const expected = { recordingId: started.recordingId, sessionId: START.sessionId };
+  assert.deepEqual(harness.runtime.currentRecordingScope(), expected);
+  assert.deepEqual(await harness.runtime.requestSafeStop({ expected: { ...expected, recordingId: RUN_ID }, reason: "platform-leave" }), { success: false });
+  const stopping = harness.runtime.requestSafeStop({ expected, reason: "quit" });
+  assert.deepEqual(await harness.runtime.requestSafeStop({ expected: { ...expected, sessionId: "other" }, reason: "context-reminder" }), { success: false });
+  const requests = currentWindow.messages.filter((item: { channel: string }) => item.channel === "meeting-transcription-stop-requested");
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].payload, { ...expected, reason: "quit", suppressProcessing: false });
+  await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} });
+  assert.equal((await stopping).success, true);
+  assert.equal(harness.runtime.currentRecordingScope(), null);
 });

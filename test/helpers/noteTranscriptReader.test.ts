@@ -12,6 +12,7 @@ function part(spec: PartSpec) {
     id: spec.id,
     groupId: spec.group,
     noteId: 42,
+    sourceMetadata: {},
     captureState: spec.state ?? "ready",
     startedAt: iso(spec.startMin * MIN),
     endedAt: spec.state === "recording" ? null : iso((spec.startMin + spec.minutes) * MIN),
@@ -24,7 +25,7 @@ function run(id: string, sources: string[], extra: Record<string, unknown> = {})
 function deps(parts: unknown[], runs: unknown[], transcripts: Record<string, unknown>, options: { corrections?: Record<string, unknown[]>; projection?: string | null; epochs?: Record<string, Array<{ startFrame: number; frameCount: number }>> } = {}) {
   return {
     listRecordings: () => parts,
-    listEpochs: (id: string) => options.epochs?.[id] ?? [],
+    listEpochs: (id: string) => (options.epochs?.[id] ?? []).map(({ startFrame, frameCount }) => ({ timelineStartFrame: startFrame, frameCount, sourceGeneration: null, sourceStartFrame: null, alignmentSegments: [], alignmentErrorCode: null })),
     getRun: (id: string) => (runs as Array<{ id: string }>).find((item) => item.id === id) ?? null,
     readTranscript: (id: string) => transcripts[id] ?? null,
     getCorrections: (id: string) => options.corrections?.[id] ?? [],
@@ -188,9 +189,10 @@ test("shared Note transcript preserves platform provenance without creating prof
   const parts = [part({ id: A, group: G1, startMin: 0, minutes: 10, run: "ra" })];
   const result = readNoteTranscript(deps(parts, [run("ra", [A])], {
     ra: { text: "Fixture", segments: [{ speaker: "system:fixture", text: "Fixture", start: 1, end: 2 }] },
-  }, { corrections: { ra: [{ speakerId: "system:fixture", profileId: null, participantEmail: null, displayName: "Synthetic Guest", source: "platform", revision: 1 }] } }), 42);
+  }, { corrections: { ra: [{ speakerId: "system:fixture", profileId: null, participantEmail: null, displayName: "Synthetic Guest", source: "platform", platform: "google-meet", revision: 1 }] } }), 42);
   assert.equal(result.speakers[0].name, "Synthetic Guest");
   assert.equal(result.speakers[0].name_source, "platform");
+  assert.equal(result.speakers[0].name_platform, "google-meet");
   assert.equal(result.speakers[0].email, null);
   assert.equal(result.speakers[0].source, "system");
 });

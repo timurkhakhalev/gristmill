@@ -1,3 +1,4 @@
+import type { MeetingCaptureStopRequest } from "../contracts/meetingCoordinator.js";
 import type { WebContents } from "electron";
 
 export interface MeetingTranscriptionSessionOptions {
@@ -36,6 +37,8 @@ export interface MeetingLifecycleSession {
   startSucceeded: boolean;
   stopRequested: boolean;
   incomplete: boolean;
+  microphoneBoundary?: MeetingCaptureStopRequest["microphoneBoundary"];
+  pause?: boolean;
   lastSequence?: Partial<Record<"mic" | "system", number>>;
   errorCode?: string;
   suppressProcessing: boolean;
@@ -54,6 +57,8 @@ export interface MeetingTranscriptionLifecycle {
     expectedSessionId?: string | null,
     options?: {
       incomplete?: boolean;
+      microphoneBoundary?: MeetingCaptureStopRequest["microphoneBoundary"];
+      pause?: boolean;
       lastSequence?: Partial<Record<"mic" | "system", number>>;
       errorCode?: string;
       suppressProcessing?: boolean;
@@ -71,6 +76,8 @@ export function createMeetingTranscriptionLifecycle({
     sessionId: string,
     options?: {
       incomplete?: boolean;
+      microphoneBoundary?: MeetingCaptureStopRequest["microphoneBoundary"];
+      pause?: boolean;
       lastSequence?: Partial<Record<"mic" | "system", number>>;
       errorCode?: string;
       suppressProcessing?: boolean;
@@ -121,6 +128,8 @@ export function createMeetingTranscriptionLifecycle({
     expectedSessionId?: string | null,
     options: {
       incomplete?: boolean;
+      microphoneBoundary?: MeetingCaptureStopRequest["microphoneBoundary"];
+      pause?: boolean;
       lastSequence?: Partial<Record<"mic" | "system", number>>;
       errorCode?: string;
       suppressProcessing?: boolean;
@@ -133,6 +142,8 @@ export function createMeetingTranscriptionLifecycle({
     if (session.stopPromise) {
       session.incomplete ||= options.incomplete === true;
       session.lastSequence ??= options.lastSequence;
+      session.microphoneBoundary ??= options.microphoneBoundary;
+      session.pause ||= options.pause === true;
       session.errorCode ??= options.errorCode;
       session.suppressProcessing ||= options.suppressProcessing === true;
       return session.stopPromise;
@@ -141,6 +152,8 @@ export function createMeetingTranscriptionLifecycle({
     session.stopRequested = true;
     session.incomplete = options.incomplete === true;
     session.lastSequence = options.lastSequence;
+    session.microphoneBoundary = options.microphoneBoundary;
+    session.pause = options.pause === true;
     session.errorCode = options.errorCode;
     session.suppressProcessing = options.suppressProcessing === true;
     session.state = "stopping";
@@ -150,6 +163,8 @@ export function createMeetingTranscriptionLifecycle({
         return await stop(session.sessionId, {
           incomplete: session.incomplete,
           lastSequence: session.lastSequence,
+          ...(session.microphoneBoundary ? { microphoneBoundary: session.microphoneBoundary } : {}),
+          ...(session.pause ? { pause: true } : {}),
           errorCode: session.errorCode,
           suppressProcessing: session.suppressProcessing,
         });

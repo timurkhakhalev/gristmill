@@ -88,7 +88,6 @@ export interface MeetingSpeakerRosterNote {
   participants?: string | null;
   diarization_enabled?: number | boolean | null;
   expected_speaker_count?: unknown;
-  [key: string]: unknown;
 }
 
 export interface MeetingSessionSpeakerConfig {
@@ -116,7 +115,7 @@ export interface DiarizationPublicationDeps {
 // ---- speaker roster projections (shared with notes/speaker verticals) ---------
 
 export function parseNonSelfParticipants(
-  deps: Pick<DiarizationPublicationDeps, "databaseManager">,
+  deps: { databaseManager: Pick<DiarizationPublicationDatabase, "getNote" | "getGoogleAccounts"> },
   participantsJson: string | null | undefined
 ): MeetingParticipant[] {
   if (!participantsJson) return [];
@@ -136,7 +135,7 @@ export function parseNonSelfParticipants(
 }
 
 export function getNoteNonSelfParticipants(
-  deps: Pick<DiarizationPublicationDeps, "databaseManager">,
+  deps: { databaseManager: Pick<DiarizationPublicationDatabase, "getNote" | "getGoogleAccounts"> },
   noteId: number | null | undefined
 ): MeetingParticipant[] {
   if (!noteId) return [];
@@ -149,7 +148,7 @@ export function getNoteNonSelfParticipants(
 }
 
 export function resolveOneOnOneOtherParticipant(
-  deps: Pick<DiarizationPublicationDeps, "databaseManager">,
+  deps: { databaseManager: Pick<DiarizationPublicationDatabase, "getNote" | "getGoogleAccounts"> },
   participantsJson: string | null | undefined
 ): { displayName: string; email: string | null } | null {
   const others = parseNonSelfParticipants(deps, participantsJson);
@@ -161,7 +160,7 @@ export function resolveOneOnOneOtherParticipant(
 }
 
 export function noteExpectedSpeakerCountOrNull(
-  deps: Pick<DiarizationPublicationDeps, "databaseManager">,
+  deps: { databaseManager: Pick<DiarizationPublicationDatabase, "getNote" | "getGoogleAccounts"> },
   note: MeetingSpeakerRosterNote | null | undefined
 ): number | null {
   const stored = normalizeStoredSpeakerCount(note?.expected_speaker_count);
@@ -176,7 +175,7 @@ export function noteExpectedSpeakerCountOrNull(
 }
 
 export function resolveNoteExpectedSpeakerCount(
-  deps: Pick<DiarizationPublicationDeps, "databaseManager">,
+  deps: { databaseManager: Pick<DiarizationPublicationDatabase, "getNote" | "getGoogleAccounts"> },
   note: MeetingSpeakerRosterNote | null | undefined
 ): number {
   return noteExpectedSpeakerCountOrNull(deps, note) ?? DEFAULT_EXPECTED_SPEAKER_COUNT;

@@ -47,6 +47,7 @@ const electronStub = {
 function loadCoordinator() {
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") return electronStub;
+    if (request === "./meetingStreamingProviders.js") throw new Error("Capture must not load realtime ASR providers");
     if (request === "./zoomSpeakerCollector.js") return { ZoomSpeakerCollector: class {
       start() {} stop() { return Promise.resolve(); } invalidate() {}
       bindClock() {} recordClock() {} recordDeliveredFrames() {}
@@ -123,11 +124,6 @@ function createDatabaseFake(events: string[]) {
     listMeetingIntentionalIntervals(recordingId: string) { return this.intentionalIntervals.filter((item) => item.recordingId === recordingId); },
     getGoogleAccounts: () => [],
     getNote: (noteId: unknown) => ({ id: noteId, transcript: "Existing transcript" }),
-    getSpeakerMappings: () => [],
-    setSpeakerMapping: () => {},
-    removeSpeakerMapping: () => {},
-    getSpeakerProfiles: () => [],
-    upsertSpeakerProfile: () => ({ id: 1 }),
   };
 }
 
@@ -190,8 +186,6 @@ function buildHarness({ failWrite = false, audioTapManager = null }: {
   const databaseManager = createDatabaseFake(events);
   const meetingRecordingStorage = createStorageFake(events, { failWrite });
   const engine = createEngineFake();
-  let tokenCalls = 0;
-  let asrCalls = 0;
   const coordinator = loadCoordinator();
   const runtime = coordinator.registerMeetingCoordinatorHandlers(
     {
@@ -201,39 +195,19 @@ function buildHarness({ failWrite = false, audioTapManager = null }: {
     {
       databaseManager,
       meetingRecordingStorage,
-      diarizationManager: {
-        isAvailable: () => false,
-        async convertRawPcmToWav() { return "/tmp/fake.wav"; },
-        async diarize() { return []; },
-        capSpeakerClusters: (segments: unknown) => segments,
-        mergeWithTranscript: (segments: unknown) => segments,
-      },
       meetingDetectionEngine: engine,
       audioTapManager,
-      whisperManager: { transcribeLocalWhisper: async () => { asrCalls += 1; return { success: true, text: "" }; } },
-      parakeetManager: { transcribeLocalParakeet: async () => { asrCalls += 1; return { success: true, text: "" }; } },
       liveSpeakerIdentifier: {
-        isAvailable: () => false,
-        start: async () => false,
-        stop: async () => ({}),
-        feedAudio: async () => undefined,
-        recluster: async () => [],
         setEnabled: () => {},
-        maxSpeakers: 0,
         setMaxSpeakers() {},
-        getSpeakerEmbedding: () => null,
-        mapSpeaker: () => {},
       },
-      fetchRealtimeToken: async () => { tokenCalls += 1; return "unused-token"; },
-      resolveWhisperVadOptions: () => ({}),
-      speakerEmbeddings: () => ({ cosineSimilarity: () => 0.9 }),
       getControlPanelWindow: () => currentWindow,
       getMeetingNotificationData: () => null,
       consumePendingMeetingNoteNavigation: () => null,
       showNotificationWindow: () => {},
     }
   );
-  return { runtime, handlers, listeners, events, databaseManager, meetingRecordingStorage, tokenCalls: () => tokenCalls, asrCalls: () => asrCalls, engine };
+  return { runtime, handlers, listeners, events, databaseManager, meetingRecordingStorage, engine };
 }
 
 const invoke = (harness: ReturnType<typeof buildHarness>, channel: string, ...args: unknown[]) => harness.handlers.get(channel)(...args);
@@ -311,8 +285,6 @@ test("prepare and start need no credentials or model connection and create durab
   assert.match(started.recordingId, /^[0-9a-f-]{36}$/);
   assert.equal(harness.databaseManager.recordings.has(started.recordingId), true);
   assert.equal(harness.events[0], "recording-created");
-  assert.equal(harness.tokenCalls(), 0);
-  assert.equal(harness.asrCalls(), 0);
   assert.equal(harness.runtime.isRecording(), true);
 });
 

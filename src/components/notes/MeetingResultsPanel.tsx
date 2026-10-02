@@ -443,16 +443,6 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     ?? combinedCurrent
     ?? [...allRuns].reverse().find((item) => parts.some((part) => part.recording.currentRunId === item.run.id));
   const availableParts = parts.filter((part) => part.recording.audioState === "available");
-  const autoTaskRuns = useRef(new Set<string>());
-  useEffect(() => {
-    const run = selected?.run;
-    if (
-      previewRecordings || !run || !selected.summary || !run.hasSummary || run.status !== "complete" ||
-      selected.summary.taskStatus !== undefined || autoTaskRuns.current.has(run.id)
-    ) return;
-    autoTaskRuns.current.add(run.id);
-    void window.electronAPI.meetingProcessingRunSummaryAction({ runId: run.id, action: "tasks" }).then(() => refresh());
-  }, [previewRecordings, refresh, selected?.run, selected?.summary]);
   useEffect(() => setRecapStatus(null), [selectedId]);
   const [countdownNow, setCountdownNow] = useState(Date.now());
   const gateDeadline = !previewRecordings && latestRun?.run.status === "pending" &&
@@ -1025,7 +1015,7 @@ function SummaryTaskNotice({ status, onRetry, disabled, tr }: {
 }) {
   if (!status || status === "complete" || status === "zero") return null;
   const retry = <Button size="sm" variant="secondary" isDisabled={disabled} onPress={onRetry}>{tr("retryTasks", "Retry tasks")}</Button>;
-  if (status === "running") return <NoteNotice status="accent" busy title={`${tr("tasksRunning", "Prioritizing action items")}…`} description={tr("tasksRunningReason", "The Summary above is ready. Tasks will be sorted by priority.")} />;
+  if (status === "pending" || status === "running") return <NoteNotice status="accent" busy title={`${tr("tasksRunning", "Prioritizing action items")}…`} description={tr("tasksRunningReason", "The Summary above is ready. Tasks will be sorted by priority.")} />;
   if (status === "section-error") return <NoteNotice status="warning" title={tr("tasksFormat", "Action items were found but not added")} description={tr("tasksFormatReason", "This Summary has no single “## Action Items” section, likely because of a custom prompt. The text is unchanged.")} actions={retry} />;
   if (status === "conflict") return <NoteNotice status="warning" title={tr("tasksConflict", "Action items weren't applied")} description={tr("tasksConflictReason", "You edited this section while tasks were being prepared, so your text was kept.")} actions={retry} />;
   return <NoteNotice status="danger" title={tr("tasksFailed", "Couldn't extract action items")} description={tr("tasksFailedReason", "The model reply didn't match the expected format. The Summary is unchanged.")} actions={retry} />;

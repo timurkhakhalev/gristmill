@@ -1555,7 +1555,12 @@
       "timeNow": "Jetzt",
       "minutesAgo": "vor {{count}}m",
       "hoursAgo": "vor {{count}}h",
-      "daysAgo": "vor {{count}}T"
+      "daysAgo": "vor {{count}}T",
+      "ago": {
+        "seconds": "vor {{count}} Sek.",
+        "minutes": "vor {{count}} Min.",
+        "hours": "vor {{count}} Std."
+      }
     },
     "editor": {
       "untitled": "Unbenannt",
@@ -1753,7 +1758,16 @@
       "searchFolders": "Ordner suchen...",
       "noResults": "Keine Ordner gefunden",
       "newFolder": "Neuer Ordner",
-      "showInFileManager": "Im {{manager}} anzeigen"
+      "showInFileManager": "Im {{manager}} anzeigen",
+      "folderColor": "Ordnerfarbe",
+      "newNoteInFolder": "Neue Notiz in diesem Ordner",
+      "addFolder": "Ordner hinzufügen",
+      "collapseAll": "Alle einklappen",
+      "expandAll": "Alle ausklappen",
+      "meetingNote": "Besprechung",
+      "plainNote": "Notiz",
+      "changeIcon": "Symbol ändern",
+      "removeIcon": "Symbol entfernen"
     },
     "actions": {
       "done": "Fertig",
@@ -2154,7 +2168,8 @@
     "homeEmptyState": "Frag alles zu deinen Notizen und Meetings",
     "followUp": "Nachricht zum Nachfassen entwerfen",
     "followUpUnavailable": "Verfügbar, sobald das Transkript bereit ist",
-    "followUpError": "Die Nachricht konnte nicht vorbereitet werden. Bitte versuche es erneut."
+    "followUpError": "Die Nachricht konnte nicht vorbereitet werden. Bitte versuche es erneut.",
+    "resize": "Chatgröße ändern"
   },
   "transcriptionPreview": {
     "label": "Vorschau",

@@ -301,7 +301,7 @@ export const meetingSummaryArtifactSchema = z.object({
   text: z.string(),
   speakerCorrectionRevision: z.number().int().nonnegative().optional(),
   manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-  taskStatus: z.enum(["running", "complete", "zero", "provider-error", "format-error", "section-error", "conflict"]).optional(),
+  taskStatus: z.enum(["pending", "running", "complete", "zero", "provider-error", "format-error", "section-error", "conflict"]).optional(),
   taskErrorCode: z.string().max(128).nullable().optional(),
 });
 export type MeetingSummaryArtifact = z.infer<typeof meetingSummaryArtifactSchema>;

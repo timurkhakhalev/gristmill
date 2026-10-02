@@ -313,7 +313,7 @@ export function registerMeetingCoordinatorHandlers(
   let resolveSafeStop: ((result: { success: boolean; captureState?: "ready" | "incomplete" }) => void) | null = null;
   const micHoldSenders = new Map<number, () => void>();
   const browserClocks = new Map<string, { sync: MeetingClockSync; generation: string; replies: Map<string, MeetingClockProbeReply> }>();
-  const browserClockKey = (connectionId: string, ref: import("../contracts/companion.js").CompanionCallRef) => `${connectionId}/${ref.documentId}/${ref.callId}`;
+  const browserClockKey = (connectionId: string, ref: import("../contracts/companion.js").CompanionCallRef) => `${connectionId}/${ref.platform}/${ref.documentId}/${ref.callId}`;
   let meetCoverage: { reads: number; samples: number; reason: string | null } | null = null;
   const meetEvidence = new MeetSpeakerEvidence((observation) => {
     databaseManager.saveMeetingPlatformObservation(observation);
@@ -360,7 +360,7 @@ export function registerMeetingCoordinatorHandlers(
     onMessage: (connection, message, send) => {
       if (message.type === "context") { companion.receive({ connectionId: connection.id, ref: message.ref }, message.context); return; }
       const binding = companion.status().binding;
-      if (!companion.status().enabled || !binding || binding.connectionId !== connection.id || binding.ref.documentId !== message.ref.documentId || binding.ref.callId !== message.ref.callId) return;
+      if (!companion.status().enabled || !binding || binding.connectionId !== connection.id || binding.ref.documentId !== message.ref.documentId || binding.ref.platform !== message.ref.platform || binding.ref.callId !== message.ref.callId) return;
       if (message.type === "manual-mute") {
         const scope = currentRecordingScope();
         if (!scope || scope.recordingId !== message.recordingId || captureDraining || safeStopPromise) return;

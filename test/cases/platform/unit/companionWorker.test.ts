@@ -50,7 +50,7 @@ const snapshot = (recordingState: "idle" | "recording") => ({ version: 1, type: 
 test("worker trusts validated main state and top-frame Meet senders only; updates wait for Stop", async () => {
   const h = harness(); await h.ready;
   const popup = { id: h.api.runtime.id, url: h.api.runtime.getURL("popup.html") };
-  assert.deepEqual(h.request({ type: "status" }, popup), { connected: false, snapshot: null, error: "disconnected", contexts: [], canControlMic: false });
+  assert.deepEqual(h.request({ type: "status" }, popup), { connected: false, snapshot: null, error: "disconnected", contexts: [], contextErrors: [], canControlMic: false });
   const first = h.ports[0];
   assert.equal(first.messages.length, 1, "only hello is sent before main acknowledges");
   first.receive(snapshot("recording"));
@@ -62,7 +62,10 @@ test("worker trusts validated main state and top-frame Meet senders only; update
     assert.deepEqual(h.request(context, bad), { accepted: false });
   }
   assert.deepEqual(h.request({ ...context, ref: { tabId: 999 } }, sender), { accepted: false });
+  const rejectedStatus = h.request({ type: "status" }, popup) as { contextErrors: Array<{tabId: number; reason: string}> };
+  assert.match(rejectedStatus.contextErrors.find(value => value.tabId === 7)!.reason, /Invalid context/);
   assert.deepEqual(h.request(context, sender), { accepted: true });
+  assert.deepEqual((h.request({ type: "status" }, popup) as { contextErrors: unknown[] }).contextErrors, []);
   assert.equal(first.messages.length, 2);
   const sent = first.messages[1] as { ref: { tabId: number; documentId: string }; sequence: number };
   assert.equal(sent.ref.tabId, 7); assert.equal(sent.ref.documentId, sender.documentId); assert.equal(sent.sequence, 0);
@@ -131,4 +134,23 @@ test("each build connects only to its selected native host, including reconnect"
     for (let turn = 0; turn < 8; turn++) await Promise.resolve();
     assert.deepEqual(h.connectedHosts, [hostName, hostName]);
   }
+});
+
+
+test("Telemost identity is top-document scoped and home cannot invent a previous room", async () => {
+  const h = harness(); await h.ready; h.ports[0].receive(snapshot("idle"));
+  const sender = { id: h.api.runtime.id, frameId: 0, documentId: randomUUID().replaceAll("-", ""),
+    tab: { id: 7 }, url: "https://telemost.yandex.ru/j/12345678901234" };
+  const context = { type: "context", context: { sourceNs: "100", presence: "unknown", health: "unrecognized", reason: "telemost-ui-unrecognized",
+    micMuted: null, mode: "unknown", participants: [], activeParticipantIds: [], rosterComplete: false, confirmedLeave: false } };
+  assert.deepEqual(h.request(context, { ...sender, url: "https://telemost.yandex.ru/" }), { accepted: false });
+  assert.deepEqual(h.request(context, { ...sender, frameId: 1 }), { accepted: false });
+  assert.deepEqual(h.request(context, { ...sender, url: "https://telemost.yandex.ru.evil.test/j/12345678901234" }), { accepted: false });
+  assert.deepEqual(h.request(context, sender), { accepted: true });
+  const outgoing = h.ports[0].messages.at(-1) as { ref: { platform: string; callId: string } };
+  assert.equal(outgoing.ref.platform, "telemost"); assert.equal(outgoing.ref.callId, "12345678901234");
+  assert.deepEqual(h.request(context, { ...sender, url: "https://telemost.yandex.ru/" }), { accepted: true });
+  assert.deepEqual(h.request(context, { ...sender, url: "https://telemost.yandex.ru/chats" }), { accepted: true });
+  assert.deepEqual(h.request(context, { ...sender, url: "https://telemost.yandex.ru/@/j/12345678901234" }), { accepted: true });
+  assert.deepEqual(h.request(context, { ...sender, documentId: randomUUID().replaceAll("-", ""), url: "https://telemost.yandex.ru/" }), { accepted: false });
 });

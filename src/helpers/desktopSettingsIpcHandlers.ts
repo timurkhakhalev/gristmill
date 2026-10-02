@@ -15,6 +15,7 @@ import {
   systemPreferences,
   type WebContents,
 } from "electron";
+import { execFile } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -138,9 +139,8 @@ export interface DesktopSettingsDeps {
   };
   audioTap: {
     isSupported: () => boolean;
-    checkAccess: () => { granted: boolean; status: string };
+    checkAccess: () => Promise<{ granted: boolean; status: string }>;
     requestAccess: () => Promise<{ granted: boolean }>;
-    getPermissionStatus: () => string;
   };
   oauthProtocolRegistered: boolean;
   oauthProtocol: string;
@@ -781,11 +781,11 @@ export function registerDesktopSettingsHandlers(
     return { granted: status === "granted", status };
   });
 
-  const getSystemAudioAccess = () => {
+  const getSystemAudioAccess = async () => {
     if (!deps.audioTap.isSupported()) {
       return buildSystemAudioAccess();
     }
-    const result = deps.audioTap.checkAccess();
+    const result = await deps.audioTap.checkAccess();
     return buildSystemAudioAccess({
       granted: result.granted,
       status: result.status,
@@ -799,34 +799,33 @@ export function registerDesktopSettingsHandlers(
     if (!deps.audioTap.isSupported()) {
       return buildSystemAudioAccess();
     }
-
     try {
-      const result = await deps.audioTap.requestAccess();
-      if (result.granted) {
-        return buildSystemAudioAccess({
-          granted: true,
-          status: "granted",
-          native: true,
-        });
-      }
+      await deps.audioTap.requestAccess();
     } catch {
       // Report the permission state without opening Settings over the native prompt.
     }
-
-    const status = deps.audioTap.getPermissionStatus();
-    return buildSystemAudioAccess({
-      granted: false,
-      status,
-      native: true,
-    });
+    // TCC is the source of truth; the probe can start before the prompt is answered.
+    return getSystemAudioAccess();
   });
 
   ipcMain.handle(desktopSettingsChannels.checkAccessibilityPermission, async () => {
     return systemPreferences.isTrustedAccessibilityClient(false);
   });
 
-  // Passes `true` to isTrustedAccessibilityClient to trigger the macOS system prompt
+  // Passes `true` to isTrustedAccessibilityClient to trigger the macOS system prompt.
+  // An ad-hoc signed rebuild leaves the old TCC entry enabled but bound to the
+  // previous code hash, so reset this app's entry first to get a fresh one.
   ipcMain.handle(desktopSettingsChannels.promptAccessibilityPermission, async () => {
+    if (systemPreferences.isTrustedAccessibilityClient(false)) return true;
+    const bundleId = readBundleIdentifier();
+    if (bundleId) {
+      await new Promise<void>((resolve) => {
+        execFile("/usr/bin/tccutil", ["reset", "Accessibility", bundleId], (error) => {
+          if (error) logger.warn("Failed to reset stale Accessibility entry:", error);
+          resolve();
+        });
+      });
+    }
     return systemPreferences.isTrustedAccessibilityClient(true);
   });
 
@@ -1094,6 +1093,19 @@ export function registerDesktopSettingsHandlers(
 }
 
 const zUrlString = z.string();
+const readBundleIdentifier = (): string | null => {
+  if (process.platform !== "darwin" || !app.isPackaged) return null;
+  try {
+    const plist = fs.readFileSync(
+      path.join(path.dirname(app.getPath("exe")), "..", "Info.plist"),
+      "utf8"
+    );
+    return /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+};
+
 const buildSystemAudioAccess = (
   partial: { granted?: boolean; status?: string; native?: boolean } = {}
 ) => ({

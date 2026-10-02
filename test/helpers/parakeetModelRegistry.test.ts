@@ -2,7 +2,7 @@ const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const modelData = require("../../src/models/modelRegistryData.json");
-const { BINARIES } = require("../../scripts/download-sherpa-onnx");
+const { BINARIES } = require("../../scripts/download-sherpa-onnx.cts");
 const {
   getModelRuntime,
   getModelType,

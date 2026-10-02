@@ -72,7 +72,7 @@ export class MeetSpeakerEvidence {
         participant.name.length > 0;
       this.save({
         id: randomUUID(),
-        platform: "google-meet",
+        platform: binding.ref.platform,
         bindingId: binding.id,
         recordingId: binding.recordingId,
         sessionId: binding.ref.sessionId,

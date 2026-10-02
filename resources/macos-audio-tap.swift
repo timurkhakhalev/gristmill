@@ -678,6 +678,28 @@ func inferErrorCode(status: OSStatus?, operation: String) -> String {
     return operation
 }
 
+// Reads the real TCC grant (attributed to the responsible app) without
+// prompting, so the host never trusts a stale cached answer.
+func preflightAudioCapturePermission() -> String {
+    typealias Preflight = @convention(c) (CFString, CFDictionary?) -> Int
+    guard
+        let handle = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_NOW),
+        let symbol = dlsym(handle, "TCCAccessPreflight")
+    else {
+        return "unknown"
+    }
+    switch unsafeBitCast(symbol, to: Preflight.self)("kTCCServiceAudioCapture" as CFString, nil) {
+    case 0: return "granted"
+    case 1: return "denied"
+    default: return "unknown"
+    }
+}
+
+if CommandLine.arguments.contains("--check-permission") {
+    emit(event: ["type": "permission", "status": preflightAudioCapturePermission()])
+    exit(0)
+}
+
 if #available(macOS 14.2, *) {
     let capture = AudioTapCapture(config: parseConfig())
     DispatchQueue.global(qos: .utility).async { readProbeRequests(capture) }

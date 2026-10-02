@@ -1,5 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "./lib/utils";
 import ControlPanelSidebar from "./ControlPanelSidebar";
 import ControlPanelNavDrawer from "./ControlPanelNavDrawer";
 import ControlPanelTopBar from "./ControlPanelTopBar";
@@ -37,7 +38,18 @@ import { HomeSkeleton } from "./home/HomeSkeleton";
 import NoteSkeleton from "./notes/NoteSkeleton";
 import { localMutationErrorKey } from "../lib/localMutationError";
 
-const SIDEBAR_WIDTH_PX = 192;
+const SIDEBAR_DEFAULT_WIDTH_PX = 192;
+const SIDEBAR_MIN_WIDTH_PX = 176;
+const SIDEBAR_MAX_WIDTH_PX = 320;
+const SIDEBAR_WIDTH_KEY = "gristmill.sidebarWidth";
+
+const clampSidebarWidth = (value: number) =>
+  Math.min(SIDEBAR_MAX_WIDTH_PX, Math.max(SIDEBAR_MIN_WIDTH_PX, Math.round(value)));
+
+function readSidebarWidth(): number {
+  const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+  return Number.isFinite(stored) && stored > 0 ? clampSidebarWidth(stored) : SIDEBAR_DEFAULT_WIDTH_PX;
+}
 
 const SettingsModal = React.lazy(() => import("./SettingsModal"));
 const HomeView = React.lazy(() => import("./home/HomeView"));
@@ -103,6 +115,22 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
         notesDebugScenario !== "empty"));
   const isSidePanelLayout = isMeetingMode || (narrow && noteSurfaceOpen);
   const sidebarInline = !narrow && !isSidePanelLayout;
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+  const sidebarDrag = React.useRef<{ startX: number; startWidth: number } | null>(null);
+  const onSidebarResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = sidebarDrag.current;
+    if (!drag) return;
+    // Mirrored in RTL, where the sidebar sits on the right.
+    const delta = document.dir === "rtl" ? drag.startX - e.clientX : e.clientX - drag.startX;
+    setSidebarWidth(clampSidebarWidth(drag.startWidth + delta));
+  };
+  const onSidebarResizeEnd = () => {
+    if (!sidebarDrag.current) return;
+    sidebarDrag.current = null;
+    setResizingSidebar(false);
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+  };
 
   useEffect(() => {
     if (requestedView !== activeView) setActiveView(activeView);
@@ -315,11 +343,12 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
       <div className="flex flex-1 overflow-hidden relative">
         <div
-          className="shrink-0 overflow-hidden transition-[width] duration-300 ease-out"
-          style={{ width: sidebarInline ? SIDEBAR_WIDTH_PX : 0 }}
+          className={cn("relative shrink-0 overflow-hidden", !resizingSidebar && "transition-[width] duration-300 ease-out")}
+          style={{ width: sidebarInline ? sidebarWidth : 0 }}
         >
           {sidebarInline && (
             <ControlPanelSidebar
+              width={sidebarWidth}
               activeView={activeView}
               onViewChange={(view) => {
                 setEventDraft(null);
@@ -329,6 +358,29 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
             />
           )}
         </div>
+        {sidebarInline && (
+          <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-valuemin={SIDEBAR_MIN_WIDTH_PX}
+              aria-valuemax={SIDEBAR_MAX_WIDTH_PX}
+              aria-valuenow={sidebarWidth}
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                sidebarDrag.current = { startX: e.clientX, startWidth: sidebarWidth };
+                setResizingSidebar(true);
+              }}
+              onPointerMove={onSidebarResizeMove}
+              onPointerUp={onSidebarResizeEnd}
+              onPointerCancel={onSidebarResizeEnd}
+              onDoubleClick={() => {
+                setSidebarWidth(SIDEBAR_DEFAULT_WIDTH_PX);
+                localStorage.removeItem(SIDEBAR_WIDTH_KEY);
+              }}
+              style={{ insetInlineStart: sidebarWidth + 8 - 3 }}
+              className="absolute inset-y-2 z-20 w-1.5 cursor-col-resize touch-none rounded-full transition-colors hover:bg-primary/20 active:bg-primary/30"
+            />
+          )}
         {narrow && !isSidePanelLayout && (
           <ControlPanelNavDrawer open={drawerOpen} onClose={closeSidebarDrawer}>
             <ControlPanelSidebar

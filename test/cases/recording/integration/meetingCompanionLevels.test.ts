@@ -43,7 +43,7 @@ test("quiet system-audio levels move companion bars above rest, while pause stay
     assert.ok(quiet.every((height, i) => height > resting[i]), "quiet captured audio must not disappear below the resting floor");
     await React.act(async () => { onLevel(1); });
     assert.ok(heights().every((height, i) => height > quiet[i] && height <= 100));
-    await React.act(async () => { onState({ active: true, paused: true, waitingForMic: false, noteId: 1, folderId: null, title: "Meeting" }); });
+    await React.act(async () => { onState({ active: true, paused: true, waitingForMic: false, micMuted: false, noteId: 1, folderId: null, title: "Meeting" }); });
     assert.deepEqual(heights(), resting);
     await React.act(async () => { onLevel(0); });
     assert.deepEqual(heights(), resting);

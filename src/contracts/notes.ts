@@ -32,6 +32,7 @@ export const noteItemSchema = z.object({
   participants: z.string().nullable(),
   diarization_enabled: z.number().nullable(),
   expected_speaker_count: z.number().nullable(),
+  icon: z.string().nullable().optional(),
 });
 
 export type NoteItem = z.infer<typeof noteItemSchema>;
@@ -58,6 +59,7 @@ export const noteUpdateSchema = z
     participants: z.string().nullable().optional(),
     diarization_enabled: z.number().nullable().optional(),
     expected_speaker_count: z.number().nullable().optional(),
+    icon: z.string().nullable().optional(),
   })
   .strip();
 

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "./lib/utils";
+import { Mic } from "./icons";
+import { MicSlashIcon } from "./notes/MeetingMicButton";
 import {
   INACTIVE_MEETING_COMPANION_STATE,
   type MeetingCompanionState,
@@ -103,6 +105,8 @@ export default function MeetingCompanion() {
     press.current = null;
   };
 
+  const micLabel = t(state.micMuted ? "meetIntegration.unmute" : "meetIntegration.mute");
+
   const onPointerUp = () => {
     const current = press.current;
     press.current = null;
@@ -110,7 +114,7 @@ export default function MeetingCompanion() {
   };
 
   return (
-    <div className="meeting-companion-window flex h-screen w-screen items-center justify-center select-none">
+    <div className="meeting-companion-window relative flex h-screen w-screen flex-col items-center justify-start gap-1.5 pt-1.5 select-none">
       <button
         type="button"
         title={label}
@@ -140,6 +144,22 @@ export default function MeetingCompanion() {
             />
           ))}
         </span>
+      </button>
+      <button
+        type="button"
+        title={micLabel}
+        aria-label={micLabel}
+        aria-pressed={state.micMuted}
+        onClick={() => window.electronAPI?.meetingCompanionToggleMic?.()}
+        className={cn(
+          "absolute bottom-1.5 flex size-8 items-center justify-center rounded-full outline-none",
+          "border shadow-elevated backdrop-blur-xl focus-visible:ring-2 focus-visible:ring-focus",
+          state.micMuted
+            ? "border-danger/50 bg-danger text-white"
+            : "border-border bg-surface-2/95 text-foreground/85 hover:bg-surface-2"
+        )}
+      >
+        {state.micMuted ? <MicSlashIcon size={16} /> : <Mic size={16} />}
       </button>
     </div>
   );

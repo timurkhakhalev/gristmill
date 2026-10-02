@@ -33,3 +33,23 @@ test("explicit date and time formats override locale order and clock without cha
     else process.env.TZ = previousTimezone;
   }
 });
+
+test("ago style counts seconds, minutes and hours, then Yesterday, then the day and month", async (t: TestContext) => {
+  const previousTimezone = process.env.TZ;
+  process.env.TZ = "UTC";
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-02T14:00:00.000Z") });
+    const { formatRelativeTime } = await load();
+    const tr = (key: string, options?: Record<string, unknown>) => `${key}:${options?.count ?? ""}`;
+    const ago = (iso: string) => formatRelativeTime(iso, tr, "en-GB", "locale", { ago: true });
+
+    assert.equal(ago("2026-10-02T13:59:30.000Z"), "notes.list.ago.seconds:30");
+    assert.equal(ago("2026-10-02T13:55:00.000Z"), "notes.list.ago.minutes:5");
+    assert.equal(ago("2026-10-02T11:00:00.000Z"), "notes.list.ago.hours:3");
+    assert.equal(ago("2026-10-01T23:00:00.000Z"), "notes.dateGroups.yesterday:");
+    assert.equal(ago("2026-09-29T10:00:00.000Z"), "29 September");
+  } finally {
+    if (previousTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimezone;
+  }
+});

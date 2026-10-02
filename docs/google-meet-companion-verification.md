@@ -194,3 +194,39 @@ Verification:
   Chrome still reported the loaded manifest as 0.1.0: its popup reads the rebuilt
   files and displays 0.2.0, but that does not confirm extension Reload. The new
   toolbar icon and loaded manifest version remain pending the user's Reload.
+
+## Reload and packaged channel verification — 2026-10-02
+
+The user reloaded Dev and loaded the production extension unpacked. Chrome
+reported both manifests as 0.2.0 with their distinct pinned IDs. The installed
+Dev popup showed the Gristmill mark, DEV label, closed diagnostics and Connected
+to Gristmill Dev. This completes the Reload check above. Screenshot:
+`/tmp/gristmill-companion-020-reloaded.png`.
+
+`pnpm run pack:dev` and then `pnpm run pack` passed, including packaged SQLite
+and bundled-binary verification. Outputs are unsigned local arm64 Gristmill
+Dev/Gristmill 1.10.2 apps, using Electron 41.10.5. Each bundles only its matching
+0.2.0 extension, four icon sizes and the expected production/Dev diagnostics
+policy. No production profile or installed app was replaced.
+
+Both actual packaged apps ran concurrently with fresh explicit test profiles.
+Their real managed launchers returned authoritative idle/unbound snapshots.
+Both channels rejected the other extension origin at the host and app socket,
+including a socket request with the correct profile credential. Removing either
+registration preserved the other channel's handshake; reinstall restored it.
+Each app was physically moved, its launcher refreshed, and the relocated runtime
+successfully handshook before the app was restored to its build output path.
+Transport/installation smoke result: `/tmp/gristmill-companion-channels-smoke.log`.
+
+The two user-installed Chrome extensions were then connected through temporary
+registrations to separate fresh packaged-app profiles. Production showed
+Connected to Gristmill without diagnostics; Dev showed Connected to Gristmill
+Dev. Stopping only Dev made Dev offline while production stayed connected.
+Restarting Dev and stopping only production made production offline while Dev
+reconnected. Neither extension switched to the other app channel. Screenshots:
+`/tmp/gristmill-companion-production-connected.png`,
+`/tmp/gristmill-companion-dev-offline-prod-running.png`,
+`/tmp/gristmill-companion-production-offline-dev-running.png`.
+The smoke stopped its owned apps and restored the original Chrome registrations.
+The user's loaded extensions remain installed. This check does not extend the
+earlier hardware or multi-speaker evidence.

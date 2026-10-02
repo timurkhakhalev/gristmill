@@ -52,7 +52,6 @@ import {
   sanitizeWhisperVadConfig,
 } from "./whisperVadConfig.js";
 import { DEFAULT_RETENTION_SETTINGS, type RetentionSettings } from "./retentionSettings.js";
-import { fetchRealtimeTokenForProvider } from "./realtimeTokenProviders.js";
 import { registerCalendarAvailabilityHandler } from "./calendarAvailabilityIpcHandler.js";
 import { registerCalendarIntegrationHandlers } from "./calendarIpcHandlers.js";
 import { registerNoteFilesHandlers } from "./noteFilesIpcHandlers.js";
@@ -60,10 +59,8 @@ import { registerLocalModelLifecycleHandlers } from "./localModelLifecycleIpcHan
 import { registerLocalLlmModelHandlers } from "./localLlmModelIpcHandlers.js";
 import {
   registerMeetingCoordinatorHandlers,
-  type CoordinatorLiveSpeakerIdentifier,
   type MeetingCoordinatorRuntime,
 } from "./meetingCoordinatorIpcHandlers.js";
-import type { DiarizationPublicationDatabase } from "./meetingDiarizationPublication.js";
 import { registerSpeakerHandlers, type SpeakerDatabase } from "./speakerIpcHandlers.js";
 import { registerRemoteTranscriptionHandler, transcribeAudioFileByok, type RemoteTranscriptionDeps } from "./remoteTranscriptionIpcHandler.js";
 import { postRawAudioFile } from "./audioFileUpload.js";
@@ -75,14 +72,12 @@ import { NoteReadService } from "./noteReadService.js";
 import { registerFileDiarizationHandlers } from "./fileDiarizationIpcHandlers.js";
 import { registerUploadCancelHandler } from "./uploadCancelIpcHandler.js";
 import { registerTranscriptionExecutionHandlers } from "./transcriptionExecutionIpcHandlers.js";
-import type { MeetingStreamingProvider } from "./meetingStreamingProviders.js";
 import type { LocalModelDownloadState } from "./localModelDownloadStatus.js";
 import type { MergedSpeakerSegment } from "./speakerMerge.js";
 import type { ModelManager } from "./modelManagerBridge.js";
 import type { DiarizationSegment } from "./diarization.js";
 import type { LlmModelManagerLike, LlmDownloadStatusTracker } from "./localLlmModelIpcHandlers.js";
 import type { WhisperManagerLike, ParakeetManagerLike } from "./localModelLifecycleIpcHandlers.js";
-import type { DiarizationPublicationDiarizationManager } from "./meetingDiarizationPublication.js";
 import { registerTranscriptionDataHandlers } from "./transcriptionDataIpcHandlers.js";
 import { MeetingProcessingWorker, registerMeetingProcessingHandlers } from "./meetingProcessing.js";
 import {
@@ -131,15 +126,6 @@ const transcriptionProviderBaseUrls = () => modelRegistryData.transcriptionProvi
 // (same interop note as localReasoningBridge.ts). Eager is fine: the llm
 // lifecycle deps already materialized the manager during setupHandlers.
 const modelManager = (modelManagerBundle as unknown as { default: ModelManager }).default;
-
-// Meeting capture runs at 24 kHz (see meetingRecordingStore AudioContext); realtime
-// streaming providers must be told the true PCM rate or they misread the audio.
-const MEETING_STREAM_SAMPLE_RATE = 24000;
-const MEETING_RECONNECT_BUFFER_MAX_BYTES = MEETING_STREAM_SAMPLE_RATE * 2 * 30;
-// The realtime clients default to a 0.6 server-VAD threshold, raised in #630 to
-// keep mic ambient noise from opening turns. The direct system-audio channel
-// uses a lower threshold so quiet remote speech still opens a turn.
-const MEETING_SYSTEM_VAD_THRESHOLD = 0.3;
 
 interface IPCHandlersManagerOptions {
   environmentManager: EnvironmentManagerWithByok;
@@ -1572,50 +1558,12 @@ export class IPCHandlers {
       },
       preparePlatformLeave: (sessionId) => this.meetingDetectionEngine?.preparePlatformLeave(sessionId) === true,
       suppressPlatformAutoEnd: (sessionId) => this.meetingDetectionEngine?.suppressAutoEndForPlatform(sessionId),
-      databaseManager: this.databaseManager as unknown as DiarizationPublicationDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase & import("./zoomSpeakerCollector.js").MeetingPlatformEvidenceDatabase,
+      databaseManager: this.databaseManager,
       meetingRecordingStorage: this.audioStorageManager.meetingRecordings,
       cancelInitialProcessingRun: (runId) => this._meetingProcessing?.cancelRun(runId) ?? false,
-      diarizationManager: this
-        .diarizationManager as unknown as DiarizationPublicationDiarizationManager,
       meetingDetectionEngine: this.meetingDetectionEngine,
       audioTapManager: this.audioTapManager,
-      whisperManager: {
-        transcribeLocalWhisper: (audio, options) =>
-          this._transcribeLocalWhisper(audio, options) as Promise<
-            | {
-                success?: boolean;
-                text?: string | null;
-              }
-            | null
-            | undefined
-          >,
-      },
-      parakeetManager: {
-        transcribeLocalParakeet: (audio, options) =>
-          this._transcribeLocalParakeet(audio, options) as Promise<
-            | {
-                success?: boolean;
-                text?: string | null;
-              }
-            | null
-            | undefined
-          >,
-      },
-      liveSpeakerIdentifier: liveSpeakerIdentifier as CoordinatorLiveSpeakerIdentifier,
-      fetchRealtimeToken: ((event, options, extra) =>
-        fetchRealtimeTokenForProvider(
-          options.provider as MeetingStreamingProvider,
-          {
-            environmentManager: this.environmentManager,
-            proxyFetch,
-            mintCortiToken: (tokenOptions) => this._mintStoredCortiToken(tokenOptions),
-          },
-          options,
-          extra
-        )) as Parameters<typeof registerMeetingCoordinatorHandlers>[1]["fetchRealtimeToken"],
-      resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
-      speakerEmbeddings: () =>
-        require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings,
+      liveSpeakerIdentifier,
       getControlPanelWindow: () => this.windowManager.controlPanelWindow,
       getMeetingNotificationData: () => this.windowManager._pendingNotificationData ?? null,
       consumePendingMeetingNoteNavigation: () =>

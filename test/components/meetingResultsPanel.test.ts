@@ -787,3 +787,22 @@ for (const platform of ["zoom", "google-meet"] as const) {
   });
 }
 }
+
+for (const taskStatus of [undefined, "pending", "running", "complete", "provider-error"] as const) {
+  test(`opening and reopening Summary with task status ${taskStatus} never schedules tasks`, async (t) => {
+    const run = completeRun();
+    run.summary = { text: "## Summary\nSaved result.\n\n## Action Items\n- Ship release", taskStatus };
+    for (const opening of ["open", "reopen"]) {
+      await t.test(opening, async (mounted) => {
+        const ui = await mountPanel(mounted, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], { viewMode: "enhanced" });
+        await ui.flush(() => {});
+        assert.deepEqual(ui.calls.summaryActions, []);
+        assert.match(ui.text(), /Saved result/);
+        if (taskStatus === "pending" || taskStatus === "running") {
+          assert.match(ui.text(), /Prioritizing action items/);
+          assert.doesNotMatch(ui.text(), /Couldn't extract action items/);
+        }
+      });
+    }
+  });
+}

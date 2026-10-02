@@ -59,6 +59,7 @@
     "src/helpers/meetingEchoLeakDetector.ts",
     "src/helpers/meetingMicGate.ts",
     "src/helpers/meetingMicHoldback.ts",
+    "src/helpers/transcriptText.ts",
     "src/helpers/meetingSystemAudioWatchdog.ts",
     "src/helpers/systemDefaultMicrophone.ts",
     "src/helpers/whisperVadModel.ts",

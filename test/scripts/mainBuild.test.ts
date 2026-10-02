@@ -114,75 +114,13 @@ test("compiled route and ESM constants load in plain Node without a TS loader", 
   assert.deepEqual(JSON.parse(result), { transport: "local" });
 });
 
-test("compiled realtime modules keep their CommonJS consumer shapes", () => {
-  const result = execFileSync(
-    process.execPath,
-    [
-      "-e",
-      `
-    const Module = require('node:module');
-    const originalLoad = Module._load;
-    const logger = { debug() {}, info() {}, warn() {}, error() {} };
-    Module._load = function(request, parent, isMain) {
-      if (request === './debugLogger' || request === './debugLogger.js') return logger;
-      if (request === '../utils/audioUtils' || request === '../utils/audioUtils.js') {
-        return { computePcm16Rms: () => 0 };
-      }
-      if (request === './tinfoilSecureClient' || request === './tinfoilSecureClient.js') {
-        return { createTinfoilRealtimeSocket: async () => ({}) };
-      }
-      return originalLoad.call(this, request, parent, isMain);
-    };
-
-    const OpenAI = require('./dist-main/src/helpers/openaiRealtimeStreaming.js');
-    const AssemblyAI = require('./dist-main/src/helpers/assemblyAiStreaming.js');
-    const Deepgram = require('./dist-main/src/helpers/deepgramStreaming.js');
-    const Corti = require('./dist-main/src/helpers/cortiStreaming.js');
-    const Tinfoil = require('./dist-main/src/helpers/tinfoilRealtimeStreaming.js');
-    const tokens = require('./dist-main/src/helpers/realtimeTokenProviders.js');
-    const registry = require('./dist-main/src/helpers/meetingStreamingProviders.js');
-
-    console.log(JSON.stringify({
-      direct: {
-        openai: OpenAI === OpenAI.OpenAIRealtimeStreaming,
-        assemblyai: AssemblyAI === AssemblyAI.AssemblyAiStreaming,
-        deepgram: Deepgram === Deepgram.DeepgramStreaming,
-        corti: Corti === Corti.CortiStreaming,
-        deepgramStatic: typeof Deepgram.authorizationHeader === 'function',
-      },
-      named: {
-        tinfoil: typeof Tinfoil.TinfoilRealtimeStreaming === 'function',
-        tokenRouter: typeof tokens.fetchRealtimeTokenForProvider === 'function',
-        clientRouter: typeof registry.getMeetingStreamingClient === 'function',
-      },
-      providers: Object.keys(registry.STREAMING_CLIENT_BY_PROVIDER),
-    }));
-  `,
-    ],
-    { cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "" } }
-  );
-
-  assert.deepEqual(JSON.parse(result), {
-    direct: {
-      openai: true,
-      assemblyai: true,
-      deepgram: true,
-      corti: true,
-      deepgramStatic: true,
-    },
-    named: {
-      tinfoil: true,
-      tokenRouter: true,
-      clientRouter: true,
-    },
-    providers: [
-      "openai-realtime",
-      "assemblyai-realtime",
-      "deepgram-realtime",
-      "corti-realtime",
-      "tinfoil-realtime",
-    ],
-  });
+test("record-then-process build excludes unreachable realtime ASR modules", () => {
+  for (const name of [
+    "openaiRealtimeStreaming", "assemblyAiStreaming", "deepgramStreaming",
+    "cortiStreaming", "tinfoilRealtimeStreaming", "realtimeTokenProviders", "meetingStreamingProviders",
+  ]) {
+    assert.equal(fs.existsSync(path.join(output, "src/helpers", `${name}.js`)), false, `${name} has no runtime consumer`);
+  }
 });
 
 test("compiled native audio and PCM modules keep their CommonJS consumer shapes", () => {

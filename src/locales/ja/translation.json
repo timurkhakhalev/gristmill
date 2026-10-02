@@ -1996,6 +1996,8 @@
   "integrations": {
     "title": "連携",
     "description": "サービスを接続してワークフローを強化",
+    "disconnectFailed": "切断に失敗しました",
+    "disconnectFailedDescription": "切断中にエラーが発生しました。アカウントは接続されたままです。もう一度お試しください。",
     "googleCalendar": {
       "title": "Google カレンダー",
       "description": "カレンダーから会議名と参加者を自動で入力します。",

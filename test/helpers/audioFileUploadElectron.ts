@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-audio-upload-"));
+const tempDir = process.env.GRISTMILL_ELECTRON_FIXTURE_PROFILE;
+if (!tempDir) throw new Error("Electron fixture profile is required");
 app.setPath("userData", tempDir);
+app.setPath("sessionData", tempDir);
 
 app
   .whenReady()
@@ -63,7 +64,6 @@ app
       console.log("audio file upload smoke passed");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      fs.rmSync(tempDir, { recursive: true, force: true });
       app.quit();
     }
   })

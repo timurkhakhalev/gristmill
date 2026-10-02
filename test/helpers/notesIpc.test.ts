@@ -280,6 +280,13 @@ test("folder-only update via IPC matches the DB baseline cases", async (t: impor
   assert.deepEqual(failed, { success: false, error: "Folder not found" });
   const after = db.getNote(note.id);
   assert.equal(after.folder_id, folders.Personal);
+
+  // The upload completion screen's "No folder" choice: a null folder_id is a
+  // real destination (the space root), not a rejected value like 0.
+  const cleared = await call("db-update-note", note.id, { folder_id: null });
+  assert.equal(cleared.success, true);
+  assert.equal(cleared.note.folder_id, null);
+  assert.equal(cleared.note.space_id, spaceId);
   await flush();
 });
 

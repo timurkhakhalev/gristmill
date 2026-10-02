@@ -262,7 +262,7 @@ export class MeetingProcessingWorker {
   private stopped = false;
   private readonly activeSummaryActions = new Map<string, Set<AbortController>>();
   private readonly activeTaskRuns = new Set<string>();
-  private readonly backgroundSummaryActions = new Set<Promise<unknown>>();
+  private readonly backgroundSummaryActions = new Map<string, Promise<unknown>>();
   private readonly agentThreadActionTails = new Map<string, Promise<void>>();
   private readonly summaryMutationTails = new Map<number, Promise<void>>();
   private readonly now: () => Date;
@@ -575,7 +575,7 @@ export class MeetingProcessingWorker {
 
   async waitForIdle(): Promise<void> {
     while (this.work || this.backgroundSummaryActions.size > 0) {
-      const pending = [this.work, ...this.backgroundSummaryActions].filter(
+      const pending = [this.work, ...this.backgroundSummaryActions.values()].filter(
         (work): work is Promise<unknown> => work !== null
       );
       await Promise.all(pending);
@@ -583,6 +583,7 @@ export class MeetingProcessingWorker {
   }
 
   private async drainQueue(): Promise<void> {
+    this.schedulePendingSummaryTasks();
     while (!this.stopped && this.retentionReady && !this.isCapturing()) {
       const now = this.now().toISOString();
       const pending = this.deps.database.listAllMeetingProcessingRuns()
@@ -937,7 +938,11 @@ export class MeetingProcessingWorker {
     signal: AbortSignal
   ): Promise<void> {
     const current = this.requireCurrentRun(run.id);
-    if (current.hasSummary) return this.setState(run.id, "summary", "complete", null, null);
+    if (current.hasSummary) {
+      this.setState(run.id, "summary", "complete", null, null);
+      this.schedulePendingSummaryTasks();
+      return;
+    }
     if (this.isCapturing()) return this.pause(run, "normalize");
     const config = this.requireConfig(run);
     const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
@@ -967,7 +972,11 @@ export class MeetingProcessingWorker {
 
   private async summarize(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal): Promise<void> {
     const current = this.requireCurrentRun(run.id);
-    if (current.hasSummary) return this.setState(run.id, "summary", "complete", null, null);
+    if (current.hasSummary) {
+      this.setState(run.id, "summary", "complete", null, null);
+      this.schedulePendingSummaryTasks();
+      return;
+    }
     if (this.isCapturing()) return this.pause(run, "summary");
     const config = this.requireConfig(run);
     const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
@@ -1045,6 +1054,7 @@ export class MeetingProcessingWorker {
       text: generated.trim(),
       speakerCorrectionRevision: snapshot.speakerCorrectionRevision,
       manualNoteRevision: snapshot.manualNoteRevision,
+      ...(this.deps.createActionConversation ? { taskStatus: "pending" } : {}),
     });
     this.deps.storage.writeRunArtifact(run.id, "summary", summary);
     if (!this.deps.database.setMeetingRunArtifact(run.id, "summary").success) {
@@ -1053,10 +1063,21 @@ export class MeetingProcessingWorker {
     }
     this.publishCurrentSelection(run.id);
     this.setState(run.id, "summary", "complete", null, null);
-    if (this.deps.createActionConversation) {
+    this.schedulePendingSummaryTasks();
+  }
+
+  private schedulePendingSummaryTasks(): void {
+    if (this.stopped || !this.retentionReady || this.isCapturing() || !this.deps.createActionConversation) return;
+    for (const run of this.deps.database.listAllMeetingProcessingRuns()) {
+      if (!run.hasSummary || run.status !== "complete" || !this.isSelectedRun(run) ||
+          this.backgroundSummaryActions.has(run.id)) continue;
+      const parsed = meetingSummaryArtifactSchema.safeParse(this.deps.storage.readRunArtifact(run.id, "summary"));
+      // Missing status belongs to old Summaries: opening them must not cause provider calls.
+      // Interrupted running tasks stay retryable errors; only persisted pending work resumes.
+      if (!parsed.success || parsed.data.taskStatus !== "pending") continue;
       const work = this.runSummaryAction({ runId: run.id, action: "tasks" });
-      this.backgroundSummaryActions.add(work);
-      void work.finally(() => this.backgroundSummaryActions.delete(work));
+      this.backgroundSummaryActions.set(run.id, work);
+      void work.finally(() => this.backgroundSummaryActions.delete(run.id));
     }
   }
 

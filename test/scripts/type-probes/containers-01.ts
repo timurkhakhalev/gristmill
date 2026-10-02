@@ -14,6 +14,8 @@ registerContainerHandlers(ipcMain, {
     createFolder: () => ({ success: true, folder: null }),
     deleteFolder: () => ({ success: true }),
     renameFolder: () => ({ success: true, folder: null }),
+    updateFolderStyle: () => ({ success: true, folder: null }),
+    reorderFolders: () => ({ success: true }),
     moveFolderToSpace: () => ({ success: true, folder: null, notes: [] }),
     getFolderNoteCounts: () => [],
     getSpaces: () => [],

@@ -66,6 +66,8 @@ async function renderTree(t: TestContext, direction: string) {
         export const revealContainer = () => {};
         export const createFolder = async () => ({ success: true });
         export const renameFolder = async () => ({ success: true });
+        export const updateFolderStyle = async () => ({ success: true });
+        export const reorderFolders = async () => {};
         export const deleteFolder = async () => ({ success: true });
         export const moveFolderToSpace = async () => ({ success: true });
       `,
@@ -147,7 +149,7 @@ async function renderTree(t: TestContext, direction: string) {
 
 function openingTagForTitle(markup: string, title: string) {
   const encodedTitle = title.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
-  const match = markup.match(new RegExp(`<div[^>]*title="${encodedTitle}"[^>]*>`));
+  const match = markup.match(new RegExp(`<div[^>]*title="${encodedTitle}[^"]*"[^>]*>`));
   assert.ok(match, `rendered note row for ${JSON.stringify(title)}`);
   return match![0];
 }

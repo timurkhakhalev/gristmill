@@ -81,6 +81,14 @@ export class MeetingCompanionWindow {
     void this.deps.openNote({ noteId, folderId });
   }
 
+  /** Relays the bubble's mute button to the control panel, which owns the recording. */
+  requestMicToggle(): void {
+    const panel = this.deps.getControlPanelWindow();
+    if (panel && !panel.isDestroyed()) {
+      panel.webContents.send(meetingCompanionEventChannels.toggleMic);
+    }
+  }
+
   handleReady(): void {
     this.loaded = true;
     this.send(meetingCompanionEventChannels.state, this.state);
@@ -205,6 +213,9 @@ export function registerMeetingCompanionHandlers(
   });
   ipcMain.on(meetingCompanionChannels.open, (event) => {
     if (fromCompanion(event)) companion.open();
+  });
+  ipcMain.on(meetingCompanionChannels.toggleMic, (event) => {
+    if (fromCompanion(event)) companion.requestMicToggle();
   });
   ipcMain.on(meetingCompanionChannels.ready, (event) => {
     if (fromCompanion(event)) companion.handleReady();

@@ -4,6 +4,8 @@ import { cn } from "../lib/utils";
 import { SendIcon } from "../ui/SendIcon";
 import { GLASS_SURFACE } from "../ui/glass";
 import ChatModelPicker from "../chat/ChatModelPicker";
+import { ConversationPicker } from "../chat/ConversationPicker";
+import type { ConversationRow } from "../../contracts/chatPersistence";
 import { prefetchBbCatalog } from "../bb/useBbCatalog";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
@@ -24,6 +26,13 @@ interface NoteBottomBarProps {
   hideInput?: boolean;
   /** Overlay the bar on the content behind it instead of reserving its own row. */
   floating?: boolean;
+  /** Previous chats, offered at the left of the focused input. */
+  history?: {
+    conversations: ConversationRow[];
+    activeConversationId?: number | null;
+    onSwitchConversation: (id: number) => void;
+    onNewChat?: () => void;
+  };
 }
 
 export default function NoteBottomBar({
@@ -34,11 +43,13 @@ export default function NoteBottomBar({
   callout,
   hideInput,
   floating = false,
+  history,
 }: NoteBottomBarProps) {
   const { t } = useTranslation();
   const [inputText, setInputText] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasText = inputText.trim().length > 0;
@@ -82,19 +93,20 @@ export default function NoteBottomBar({
     if (hideInput) {
       setIsExpanded(false);
       setIsModelPickerOpen(false);
+      setIsHistoryOpen(false);
     }
   }, [hideInput]);
 
   useEffect(() => {
     if (!isExpanded) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (!hasText && !isModelPickerOpen && containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (!hasText && !isModelPickerOpen && !isHistoryOpen && containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsExpanded(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isExpanded, hasText, isModelPickerOpen]);
+  }, [isExpanded, hasText, isModelPickerOpen, isHistoryOpen]);
 
   return (
     <div
@@ -137,6 +149,19 @@ export default function NoteBottomBar({
           }}
         >
           <div className="flex min-w-0 flex-1 items-center gap-2">
+            {isExpanded && !hideInput && history && history.conversations.length > 0 && (
+              <ConversationPicker
+                variant="history"
+                conversations={history.conversations}
+                activeConversationId={history.activeConversationId}
+                onSwitchConversation={history.onSwitchConversation}
+                onNewChat={history.onNewChat}
+                onOpenChange={(open) => {
+                  setIsHistoryOpen(open);
+                  if (!open && !hasText) setIsExpanded(false);
+                }}
+              />
+            )}
             <input
               dir="auto"
               ref={inputRef}

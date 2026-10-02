@@ -1555,7 +1555,12 @@
       "timeNow": "now",
       "minutesAgo": "{{count}}m",
       "hoursAgo": "{{count}}h",
-      "daysAgo": "{{count}}d"
+      "daysAgo": "{{count}}d",
+      "ago": {
+        "seconds": "{{count}}s ago",
+        "minutes": "{{count}}m ago",
+        "hours": "{{count}}h ago"
+      }
     },
     "editor": {
       "untitled": "Untitled",
@@ -1747,6 +1752,15 @@
       "noNotesAvailable": "No other notes available"
     },
     "context": {
+      "folderColor": "Folder color",
+      "newNoteInFolder": "New note in this folder",
+      "addFolder": "Add folder",
+      "collapseAll": "Collapse all",
+      "expandAll": "Expand all",
+      "meetingNote": "Meeting",
+      "plainNote": "Note",
+      "changeIcon": "Change icon",
+      "removeIcon": "Remove icon",
       "moveToFolder": "Move to folder",
       "delete": "Delete",
       "rename": "Rename",
@@ -2145,6 +2159,7 @@
     "undock": "Undock from sidebar",
     "close": "Close chat",
     "newChat": "New chat",
+    "resize": "Resize chat",
     "conversationSelector": "Switch conversation",
     "suggestions": {
       "summary": "Summarize this note",

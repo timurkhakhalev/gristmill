@@ -23,6 +23,14 @@ registerContainerHandlers(ipcMain, {
       console.log(id, name);
       return { success: true, folder: null };
     },
+    reorderFolders: (spaceId, folderIds) => {
+      console.log(spaceId, folderIds);
+      return { success: true };
+    },
+    updateFolderStyle: (id, style) => {
+      console.log(id, style);
+      return { success: true, folder: null };
+    },
     moveFolderToSpace: (id, spaceId) => {
       console.log(id, spaceId);
       return { success: true, folder: null, notes: [] };

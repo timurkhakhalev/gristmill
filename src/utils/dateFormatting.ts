@@ -68,7 +68,7 @@ export function formatShortTime(dateStr: string, locale?: string, format: TimeFo
 }
 
 /** Day and full month name, e.g. "28 September"; the numeric formats only choose the day/month order. */
-function formatDayMonthName(dateStr: string, locale: string | undefined, format: DateFormat): string {
+export function formatDayMonthName(dateStr: string, locale: string | undefined, format: DateFormat): string {
   if (!dateStr) return "";
   const date = normalizeDbDate(dateStr);
   if (Number.isNaN(date.getTime())) return "";
@@ -102,17 +102,32 @@ export function formatNoteDate(dateStr: string, locale?: string, dateFormat: Dat
   return `${datePart} \u00b7 ${timePart}`;
 }
 
+/**
+ * Compact age ("5m"), or with `ago` the chat-history form: "12s ago", "3h ago",
+ * "Yesterday", then the full day and month ("28 September") for anything older.
+ */
 export function formatRelativeTime(
   dateStr: string,
   t: (key: string, options?: Record<string, unknown>) => string,
   locale?: string,
-  dateFormat: DateFormat = "locale"
+  dateFormat: DateFormat = "locale",
+  options: { ago?: boolean } = {}
 ): string {
   if (!dateStr) return "";
   const date = normalizeDbDate(dateStr);
   if (Number.isNaN(date.getTime())) return "";
   const diff = Date.now() - date.getTime();
-  if (diff < 0) return formatShortDate(dateStr, locale, dateFormat);
+  if (diff < 0) return options.ago ? formatDayMonthName(dateStr, locale, dateFormat) : formatShortDate(dateStr, locale, dateFormat);
+  if (options.ago) {
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return t("notes.list.ago.seconds", { count: seconds });
+    if (seconds < 3600) return t("notes.list.ago.minutes", { count: Math.floor(seconds / 60) });
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (date.getTime() >= startOfToday) return t("notes.list.ago.hours", { count: Math.floor(seconds / 3600) });
+    if (date.getTime() >= startOfToday - 86400000) return t("notes.dateGroups.yesterday");
+    return formatDayMonthName(dateStr, locale, dateFormat);
+  }
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);

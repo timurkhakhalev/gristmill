@@ -20,6 +20,8 @@ export const folderSchema = z.object({
   is_default: z.number(),
   sort_order: z.number(),
   space_id: nonNegativeInt,
+  icon: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -51,6 +53,13 @@ export const getFoldersArgsSchema = z.tuple([optionalId]);
 export const createFolderArgsSchema = z.tuple([z.unknown().optional(), optionalId]);
 export const deleteFolderArgsSchema = z.tuple([idArg]);
 export const renameFolderArgsSchema = z.tuple([idArg, z.unknown().optional()]);
+export const folderStyleSchema = z.object({
+  icon: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+});
+export type FolderStyle = z.infer<typeof folderStyleSchema>;
+export const updateFolderStyleArgsSchema = z.tuple([idArg, folderStyleSchema]);
+export const reorderFoldersArgsSchema = z.tuple([idArg, z.array(idArg)]);
 export const moveFolderToSpaceArgsSchema = z.tuple([idArg, idArg]);
 export const getFolderNoteCountsArgsSchema = z.tuple([]);
 export const getSpacesArgsSchema = z.tuple([]);
@@ -104,6 +113,8 @@ export interface ContainersApi {
   createFolder(name: string, spaceId?: number | null): Promise<FolderMutationResult>;
   deleteFolder(id: number): Promise<{ success: boolean }>;
   renameFolder(id: number, name: string): Promise<FolderMutationResult>;
+  updateFolderStyle(id: number, style: FolderStyle): Promise<FolderMutationResult>;
+  reorderFolders(spaceId: number, folderIds: number[]): Promise<{ success: boolean }>;
   moveFolderToSpace(id: number, spaceId: number): Promise<FolderMoveResult>;
   getFolderNoteCounts(): Promise<FolderNoteCount[]>;
   getSpaces(): Promise<SpaceItem[]>;
@@ -119,6 +130,8 @@ export const containerChannels = {
   createFolder: "db-create-folder",
   deleteFolder: "db-delete-folder",
   renameFolder: "db-rename-folder",
+  updateFolderStyle: "db-update-folder-style",
+  reorderFolders: "db-reorder-folders",
   moveFolderToSpace: "db-move-folder-to-space",
   getFolderNoteCounts: "db-get-folder-note-counts",
   getSpaces: "db-get-spaces",

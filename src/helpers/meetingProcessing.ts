@@ -548,7 +548,7 @@ export class MeetingProcessingWorker {
           currentRunId: recording.currentRunId,
           startedAt: recording.startedAt,
           endedAt: recording.endedAt,
-          durationSeconds: recording.endedAt ? meetingTimelineFrameCount(recording, this.deps.database.listMeetingRecordingEpochs(recording.id)) / 24_000 : null,
+          durationSeconds: recording.endedAt ? meetingTimelineFrameCount(recording, this.deps.database.listMeetingRecordingEpochs(recording.id), true) / 24_000 : null,
         },
         runs,
       };
@@ -1298,6 +1298,9 @@ export class MeetingProcessingWorker {
     retryAt: string | null,
     retryCount?: number
   ): void {
+    // A user cancel lands while the stage is still running; the aborted stage
+    // must not turn it back into pending/complete on its way out.
+    if (this.deps.database.getMeetingProcessingRun(runId)?.status === "cancelled") return;
     const updated = this.deps.database.setMeetingProcessingRunState(runId, { stage, status, errorCode, retryAt, retryCount });
     if (!updated.success) return;
     const current = this.deps.database.getMeetingProcessingRun(runId);

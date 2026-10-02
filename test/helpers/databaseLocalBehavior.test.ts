@@ -85,3 +85,26 @@ test("Personal can be renamed and deleted without deleting notes or reseeding fo
   assert.equal(reopened.saveNote("Root", "").note.folder_id, null);
   reopened.close();
 });
+
+test("folder and note icons persist, trim and clear", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const spaceId = db.getPrivateSpaceId();
+  const folderId = db.createFolder("Meetings", spaceId).folder.id;
+  const noteId = db.saveNote("Idea", "body", "personal", null, null, folderId, spaceId).note.id;
+
+  assert.equal(db.updateFolderStyle(folderId, { icon: " 🚀 " }).folder.icon, "🚀");
+  assert.equal(db.updateNote(noteId, { icon: "💡" }).note.icon, "💡");
+  assert.equal(db.getFolders().find((folder: any) => folder.id === folderId).icon, "🚀");
+  assert.equal(db.updateFolderStyle(folderId, { icon: null }).folder.icon, null);
+  assert.equal(db.updateNote(noteId, { icon: null }).note.icon, null);
+
+  assert.equal(db.updateFolderStyle(folderId, { color: "blue" }).folder.color, "blue");
+  assert.equal(db.updateFolderStyle(folderId, { color: "not-a-color" }).folder.color, null);
+
+  const second = db.createFolder("Videos", spaceId).folder.id;
+  const third = db.createFolder("Clients", spaceId).folder.id;
+  db.reorderFolders(spaceId, [third, second, folderId]);
+  assert.deepEqual(db.getFolders(spaceId).map((folder: any) => folder.id).filter((id: number) => [folderId, second, third].includes(id)), [third, second, folderId]);
+  db.close();
+});

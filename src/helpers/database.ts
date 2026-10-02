@@ -102,12 +102,19 @@ export interface SpaceRow {
   updated_at: string;
 }
 
+/** Palette names a folder glyph can be tinted with. */
+export const FOLDER_COLORS = ["red", "orange", "amber", "green", "teal", "blue", "violet", "pink"];
+
 export interface FolderRow {
   id: number;
   name: string;
   is_default: number;
   sort_order: number;
   space_id: number;
+  /** Emoji shown instead of the default folder glyph. */
+  icon?: string | null;
+  /** Palette name tinting the folder glyph. */
+  color?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -133,6 +140,8 @@ export interface NoteRow {
   participants: string | null;
   diarization_enabled: number | null;
   expected_speaker_count: number | null;
+  /** Emoji shown instead of the default note glyph. */
+  icon?: string | null;
 }
 
 type RawNoteRow = Omit<NoteRow, "folder_ids"> & { extra_folder_ids_json: string | null };
@@ -1172,6 +1181,12 @@ export class DatabaseManager {
       `);
       migrateMeetingPlatformEvidence(this.sql);
       this.recoverMeetingPlatformCoverage();
+      for (const [table, added] of [["folders", ["icon", "color"]], ["notes", ["icon"]]] as const) {
+        const columns = this.sql.pragma(`table_info(${table})`) as Array<{ name: string }>;
+        for (const name of added) {
+          if (!columns.some((column) => column.name === name)) this.sql.exec(`ALTER TABLE ${table} ADD COLUMN ${name} TEXT`);
+        }
+      }
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
         this.sql.exec("ALTER TABLE calendar_events ADD COLUMN event_url TEXT");
@@ -2513,6 +2528,39 @@ export class DatabaseManager {
     }
   }
 
+  updateFolderStyle(
+    id: number,
+    style: { icon?: unknown; color?: unknown } = {}
+  ): { success: boolean; folder?: FolderRow } {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    if (style.icon !== undefined) {
+      fields.push("icon = ?");
+      values.push(typeof style.icon === "string" && style.icon.trim() ? style.icon.trim() : null);
+    }
+    if (style.color !== undefined) {
+      fields.push("color = ?");
+      values.push(typeof style.color === "string" && FOLDER_COLORS.includes(style.color) ? style.color : null);
+    }
+    if (!fields.length) return { success: false };
+    const result = this.sql
+      .prepare(`UPDATE folders SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(...values, id);
+    return {
+      success: result.changes > 0,
+      folder: this.sql.prepare("SELECT * FROM folders WHERE id = ?").get(id) as FolderRow | undefined,
+    };
+  }
+
+  /** Manual order of one space's folders: position in the list becomes sort_order. */
+  reorderFolders(spaceId: number, folderIds: number[]): { success: boolean } {
+    const update = this.sql.prepare("UPDATE folders SET sort_order = ? WHERE id = ? AND space_id = ?");
+    this.sql.transaction(() => {
+      folderIds.forEach((folderId, index) => update.run(index, folderId, spaceId));
+    })();
+    return { success: true };
+  }
+
   deleteFolder(id: number): { success: boolean } {
     const result = this.sql.transaction(() => {
       // A note whose primary folder goes away keeps living in its next folder.
@@ -2951,6 +2999,7 @@ export class DatabaseManager {
       source_file: string | null;
       audio_duration_seconds: number | null;
       note_type: string;
+      icon: string | null;
     }>
   ): { success: boolean; error?: string; note?: NoteRow | null } {
     const current = this.getNote(id);
@@ -2988,6 +3037,7 @@ export class DatabaseManager {
       "source_file",
       "audio_duration_seconds",
       "note_type",
+      "icon",
     ] as const;
     const fields: string[] = [];
     const values: unknown[] = [];

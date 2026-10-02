@@ -19,6 +19,8 @@ interface ControlPanelSidebarProps {
   activeView: ControlPanelView;
   onViewChange: (view: ControlPanelView) => void;
   onOpenSettings: () => void;
+  /** Inline width in px; the drawer keeps the default. */
+  width?: number;
 }
 
 /** The single app sidebar: Home and the notes tree on top, Upload file and
@@ -27,6 +29,7 @@ export default function ControlPanelSidebar({
   activeView,
   onViewChange,
   onOpenSettings,
+  width = 192,
 }: ControlPanelSidebarProps) {
   const { t } = useTranslation();
   const [showActionManager, setShowActionManager] = useState(false);
@@ -38,7 +41,7 @@ export default function ControlPanelSidebar({
   } = useNotesTreeActions();
 
   return (
-    <div className="flex h-full w-48 shrink-0 flex-col bg-surface-window">
+    <div className="flex h-full shrink-0 flex-col bg-surface-window" style={{ width }}>
       <div
         className="h-11 w-full shrink-0"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}

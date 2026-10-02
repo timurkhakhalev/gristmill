@@ -5,8 +5,8 @@ const path: typeof import("node:path") = require("node:path");
 const vm: typeof import("node:vm") = require("node:vm");
 
 test("microphone gate counts muted render frames without sending, then sends at the real unmute frame", () => {
-  const store = fs.readFileSync(path.join(__dirname, "../../../../src/stores/meetingRecordingStore.ts"), "utf8");
-  const worklet = store.match(/const code = `([\s\S]*?)`;/)?.[1]
+  const pipeline = fs.readFileSync(path.join(__dirname, "../../../../src/helpers/meetingAudioPipeline.ts"), "utf8");
+  const worklet = pipeline.match(/const code = `([\s\S]*?)`;/)?.[1]
     .replace("${MEETING_AUDIO_BUFFER_SIZE}", "2400")
     .replace("${MAX_UNACKNOWLEDGED_CAPTURE_FRAMES}", "120000")
     .replace("${MAX_CAPTURE_ACK_AGE_MS}", "10000");

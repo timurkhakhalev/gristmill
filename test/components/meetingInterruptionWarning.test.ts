@@ -15,6 +15,8 @@ interface MeetingStoreModule {
   };
   startRecording(args: Record<string, unknown>): Promise<boolean>;
   stopRecording(): Promise<{ stopped: boolean }>;
+  getMicAnalyser(): unknown;
+  getActiveRecordingSessionId(): string | null;
 }
 
 type GlobalWithMocks = typeof globalThis & {
@@ -204,10 +206,17 @@ test("hidden and covered warnings wait for a focused visible window", async (t: 
 });
 
 test("unmounted events deliver once on remount and repeated events replace the warning", async (t: TestContext) => {
-  const { render, interrupt } = await setup(t);
+  const { store, render, interrupt } = await setup(t);
+  const analyser = store.getMicAnalyser();
+  const sessionId = store.getActiveRecordingSessionId();
+  assert.ok(analyser);
   await render(false);
+  assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
+  assert.equal(store.getMicAnalyser(), analyser, "unmount keeps the recording-owned graph alive");
   await interrupt();
   await render(true);
+  assert.equal(store.getActiveRecordingSessionId(), sessionId);
+  assert.equal(store.getMicAnalyser(), analyser, "remount uses the same microphone graph");
   assert.equal(mocks.__interruptionToasts!.length, 1);
   await render(true);
   assert.equal(mocks.__interruptionToasts!.length, 1);

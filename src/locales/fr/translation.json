@@ -2037,6 +2037,8 @@
   "integrations": {
     "title": "Intégrations",
     "description": "Connectez des services pour booster votre productivité",
+    "disconnectFailed": "Échec de la déconnexion",
+    "disconnectFailedDescription": "Une erreur est survenue lors de la déconnexion. Le compte reste connecté — veuillez réessayer.",
     "googleCalendar": {
       "title": "Google Calendar",
       "description": "Remplissez automatiquement les titres et participants des réunions depuis votre calendrier.",

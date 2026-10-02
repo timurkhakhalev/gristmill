@@ -1996,6 +1996,8 @@
   "integrations": {
     "title": "Integrações",
     "description": "Conecte serviços para turbinar seu fluxo de trabalho",
+    "disconnectFailed": "Falha ao desconectar",
+    "disconnectFailedDescription": "Ocorreu um erro ao desconectar. A conta permanece conectada — tente novamente.",
     "googleCalendar": {
       "title": "Google Calendar",
       "description": "Preencha automaticamente títulos e participantes das reuniões a partir do seu calendário.",

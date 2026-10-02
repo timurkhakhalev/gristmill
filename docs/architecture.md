@@ -40,6 +40,12 @@ gated samples before transfer, analysis, encoding, or storage. It keeps the
 healthy mic stream, AudioContext, and Worklet alive; system capture continues.
 Pause and Stop release both audio devices. Manual mute intent survives Pause,
 Resume, reopen, and Restart; a separate Start begins with a clear intent.
+`meetingAudioPipeline.ts` owns the Worklet code, per-processor write queue,
+gate acknowledgements, epochs and flush/drain barrier for renderer audio.
+`meetingRecordingStore.ts` owns the session, streams, contexts, analyser,
+device recovery and clock mapping, so capture survives view remounts. The pipeline
+reports the mic flush boundary through a typed callback; the existing session
+stop barrier waits for drain before sending last sequences and that boundary to main.
 Playback/export use separate temporary IDs; playback releases its file when the player
 ends or unmounts. Startup removes abandoned derived files. Per-run artifacts live at
 `meeting-results/{runId}/raw-provider-response.json`, `transcript.json`, and

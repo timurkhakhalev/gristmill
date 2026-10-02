@@ -1,3 +1,4 @@
+import { meetingPlatformSchema } from "../contracts/meetingRecording.js";
 import { formatMeetingMaterial, formatMeetingTranscript, meetingPromptSpeakerIds } from "./meetingPromptMaterial.js";
 import { z } from "zod";
 import type { MeetingTextConversation } from "./meetingSummary.js";
@@ -13,7 +14,7 @@ const segmentSchema = z.object({
   speakerId: z.string().nullable(),
   speakerName: z.string().nullable(),
   speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
-    speakerNamePlatform: z.enum(["zoom", "google-meet", "telemost"]).optional(),
+  speakerNamePlatform: meetingPlatformSchema.optional(),
   text: z.string(),
   start: z.number().nonnegative().optional(),
   end: z.number().nonnegative().optional(),

@@ -295,6 +295,18 @@ export function registerMeetingCoordinatorHandlers(
     activeMeetingNoteId = noteId;
   }
 
+  function releaseCaptureOwnership(capture: MeetingCaptureSession, expectedSessionId: string): void {
+    if (activeCaptureSession !== capture || activeCaptureSessionId !== expectedSessionId) return;
+    activeCaptureSession = null;
+    activeCaptureSessionId = null;
+    activeCaptureOwner = null;
+    platformMuted = false;
+    linkRecordingSessionToNote(null);
+    deps.onCaptureStopped?.();
+    companionServer?.broadcastSnapshot();
+    deps.setMeetingCaptureState?.(false);
+  }
+
   const getMeetingSystemAudioCapabilityMode = (): "native" | "unsupported" => {
     if (audioTapManager?.isSupported()) return "native";
     return "unsupported";
@@ -517,13 +529,7 @@ export function registerMeetingCoordinatorHandlers(
         }, "meeting");
       }
       companion.stop({ recordingId: capture.recordingId, sessionId });
-      activeCaptureSession = null;
-      activeCaptureSessionId = null;
-      activeCaptureOwner = null;
-      platformMuted = false;
-      companionServer?.broadcastSnapshot();
-      deps.onCaptureStopped?.();
-      deps.setMeetingCaptureState?.(false);
+      releaseCaptureOwnership(capture, sessionId);
       meetingDetectionEngine?.endRecordingSession(sessionId);
       meetingDetectionEngine?.setUserRecording(false);
       return { ...meetingFailure(error), recordingId: capture.recordingId };
@@ -743,13 +749,7 @@ export function registerMeetingCoordinatorHandlers(
       });
       if (options.suppressProcessing) deps.cancelInitialProcessingRun?.(result.initialRunId);
       pausedRecording = options.pause && result.captureState === "ready" ? { recordingId: capture.recordingId, manualMuted: capture.getMicIntent().manualMuted } : null;
-      activeCaptureSession = null;
-      activeCaptureSessionId = null;
-      activeCaptureOwner = null;
-      deps.onCaptureStopped?.();
-      companionServer?.broadcastSnapshot();
-      linkRecordingSessionToNote(null);
-      deps.setMeetingCaptureState?.(false);
+      releaseCaptureOwnership(capture, expectedSessionId);
       resolveSafeStop?.({ success: true, captureState: result.captureState });
       return {
         success: true,
@@ -763,13 +763,7 @@ export function registerMeetingCoordinatorHandlers(
         error: error instanceof Error ? error.message : String(error),
         recordingId: capture.recordingId,
       }, "meeting");
-      activeCaptureSession = null;
-      activeCaptureSessionId = null;
-      activeCaptureOwner = null;
-      deps.onCaptureStopped?.();
-      companionServer?.broadcastSnapshot();
-      linkRecordingSessionToNote(null);
-      deps.setMeetingCaptureState?.(false);
+      releaseCaptureOwnership(capture, expectedSessionId);
       resolveSafeStop?.({ success: false });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

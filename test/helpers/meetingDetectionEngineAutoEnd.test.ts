@@ -29,32 +29,7 @@ const {
   AUTO_END_RESTART_CLAIM_MS,
 } = MeetingDetectionEngine;
 
-const createClock = () => {
-  let now = 10_000;
-  const intervals = new Map();
-  let nextIntervalId = 1;
-
-  return {
-    now: () => now,
-    setInterval: (callback: unknown, delay: number) => {
-      const id = nextIntervalId;
-      nextIntervalId += 1;
-      intervals.set(id, { callback, delay });
-      return id;
-    },
-    clearInterval: (id: unknown) => intervals.delete(id),
-    activeIntervals: () => intervals.size,
-    advance: (ms: number) => {
-      let remaining = ms;
-      while (remaining > 0) {
-        const step = Math.min(TICK_MS, remaining);
-        now += step;
-        remaining -= step;
-        for (const { callback } of [...intervals.values()]) callback();
-      }
-    },
-  };
-};
+const { createMeetingDetectionClock: createClock }: typeof import("../lib/meetingDetectionClock.ts") = require("../lib/meetingDetectionClock.ts");
 
 const LOUD_CHUNK = (() => {
   const buffer = Buffer.alloc(1600);
@@ -147,6 +122,8 @@ function createEngine(windowManagerOverrides = {}) {
       now: clock.now,
       setInterval: clock.setInterval,
       clearInterval: clock.clearInterval,
+      setTimeout: clock.setTimeout,
+      clearTimeout: clock.clearTimeout,
     }
   );
 
@@ -619,8 +596,7 @@ const nextMeetingReminder = (clock: any) => ({
   start_time: new Date(clock.now() + 60_000).toISOString(),
 });
 
-test("a detection during a live recording remains queued after the shared recording flag clears", async (t: import("node:test").TestContext) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("a detection during a live recording remains queued after the shared recording flag clears", async () => {
   const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setUserRecording(true);
   await engine.beginRecordingSession({
@@ -631,19 +607,18 @@ test("a detection during a live recording remains queued after the shared record
   });
 
   engine.setUserRecording(false);
-  t.mock.timers.tick(POST_RECORDING_COOLDOWN_MS);
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
   engine.handleCalendarReminder(nextMeetingReminder(clock));
   assert.equal(shownNotifications.length, 0);
 
   engine.endRecordingSession("meeting-1");
   engine.setUserRecording(false);
-  t.mock.timers.tick(POST_RECORDING_COOLDOWN_MS);
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
   assert.equal(shownNotifications.length, 1);
   engine.stop();
 });
 
-test("a post-dictation queue flush holds detections while the meeting session is live", async (t: import("node:test").TestContext) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("a post-dictation queue flush holds detections while the meeting session is live", async () => {
   const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setUserRecording(true);
   await engine.beginRecordingSession({
@@ -655,18 +630,17 @@ test("a post-dictation queue flush holds detections while the meeting session is
 
   engine.handleCalendarReminder(nextMeetingReminder(clock));
   engine.setUserRecording(false);
-  t.mock.timers.tick(POST_RECORDING_COOLDOWN_MS);
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
   assert.equal(shownNotifications.length, 0);
 
   engine.endRecordingSession("meeting-1");
   engine.setUserRecording(false);
-  t.mock.timers.tick(POST_RECORDING_COOLDOWN_MS);
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
   assert.equal(shownNotifications.length, 1);
   engine.stop();
 });
 
-test("a detection-started recording allows a later confirmed call", async (t: import("node:test").TestContext) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("a detection-started recording allows a later confirmed call", async () => {
   const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setMeetingModeActive(true);
   engine.setUserRecording(true);
@@ -679,7 +653,7 @@ test("a detection-started recording allows a later confirmed call", async (t: im
 
   engine.endRecordingSession("meeting-1");
   engine.setUserRecording(false);
-  t.mock.timers.tick(POST_RECORDING_COOLDOWN_MS);
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
   engine._handleDetection("audio", "zoom:later", { detectedAt: clock.now(), service: "zoom" });
 
   assert.equal(shownNotifications.length, 1);
@@ -687,8 +661,7 @@ test("a detection-started recording allows a later confirmed call", async (t: im
   engine.stop();
 });
 
-test("the next reminder prompts after a detection-started recording ends", async (t: import("node:test").TestContext) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("the next reminder prompts after a detection-started recording ends", async () => {
   const { clock, engine, owner, shownNotifications } = createEngine();
   engine.setMeetingModeActive(true);
   engine.setUserRecording(true);
@@ -701,7 +674,7 @@ test("the next reminder prompts after a detection-started recording ends", async
 
   engine.endRecordingSession("meeting-1");
   engine.setUserRecording(false);
-  t.mock.timers.tick(POST_RECORDING_COOLDOWN_MS);
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
   engine.handleCalendarReminder(nextMeetingReminder(clock));
 
   assert.equal(shownNotifications.length, 1);
@@ -709,8 +682,7 @@ test("the next reminder prompts after a detection-started recording ends", async
   engine.stop();
 });
 
-test("meeting mode still suppresses prompts while a detection-started recording is live", async (t: import("node:test").TestContext) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("meeting mode still suppresses prompts while a detection-started recording is live", async () => {
   const { audioActivityDetector, clock, engine, owner, shownNotifications } = createEngine();
   engine.setMeetingModeActive(true);
   engine.setUserRecording(true);
@@ -722,7 +694,7 @@ test("meeting mode still suppresses prompts while a detection-started recording 
   });
 
   engine.setUserRecording(false);
-  t.mock.timers.tick(POST_RECORDING_COOLDOWN_MS);
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
   audioActivityDetector.emit("sustained-audio-detected", {
     durationMs: 2000,
     detectedAt: clock.now(),
@@ -1101,4 +1073,30 @@ test("bound Meet suppresses heuristic stops and prepares exactly the existing Le
   assert.equal(await harness.engine.completeAutoEndSession("meet-bound", owner), false);
   assert.equal(harness.autoEndNotifications.length, 1);
   assert.equal((harness.autoEndNotifications[0] as { reason: string }).reason, "platform-leave");
+});
+
+test("cooldown flushes at exactly 2.5 seconds and cancels on recording or teardown", () => {
+  const { clock, engine, shownNotifications } = createEngine();
+  engine.setUserRecording(true);
+  engine.handleCalendarReminder(nextMeetingReminder(clock));
+  engine.setUserRecording(false);
+  assert.equal(clock.activeTimeouts(), 1);
+  clock.advance(POST_RECORDING_COOLDOWN_MS - 1);
+  assert.equal(shownNotifications.length, 0);
+  clock.advance(1);
+  assert.equal(shownNotifications.length, 1);
+
+  engine.setUserRecording(false);
+  engine.setUserRecording(false);
+  assert.equal(clock.activeTimeouts(), 1);
+  engine.setUserRecording(true);
+  assert.equal(clock.activeTimeouts(), 0);
+  engine.handleCalendarReminder({ ...nextMeetingReminder(clock), id: "after-resume" });
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
+  assert.equal(shownNotifications.length, 1);
+  engine.setUserRecording(false);
+  engine.stop();
+  assert.equal(clock.activeTimeouts(), 0);
+  clock.advance(POST_RECORDING_COOLDOWN_MS);
+  assert.equal(shownNotifications.length, 1);
 });

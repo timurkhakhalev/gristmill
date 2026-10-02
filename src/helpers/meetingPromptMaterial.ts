@@ -1,11 +1,11 @@
-import { meetingPlatformLabel } from "../contracts/meetingRecording.js";
+import { meetingPlatformLabel, type MeetingPlatform } from "../contracts/meetingRecording.js";
 import { formatTimestamp } from "./speakerMerge.js";
 
 export interface PromptTranscriptSegment {
   speakerId: string | null;
   speakerName: string | null;
   speakerNameSource?: "user" | "model" | "voice" | "platform" | null;
-  speakerNamePlatform?: "zoom" | "google-meet" | "telemost";
+  speakerNamePlatform?: MeetingPlatform;
   text: string;
   start?: number;
   startTimestamp?: number;

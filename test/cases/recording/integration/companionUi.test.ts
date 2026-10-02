@@ -23,7 +23,8 @@ async function mount(t: import("node:test").TestContext, component: string, api:
     "react-i18next": `export const useTranslation = () => ({ t: key => key });`,
   } });
   const module = await vite.ssrLoadModule(component);
-  const Component = Object.values(module)[0] as () => ReactNode;
+  const name = component.slice(component.lastIndexOf("/") + 1).replace(/\.tsx$/, "");
+  const Component = module[name] as () => ReactNode;
   // The shared hook fixture implements the DOM methods React uses.
   root = createRoot(container as unknown as Element);
   let tree: ReactNode;

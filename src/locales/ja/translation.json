@@ -1534,7 +1534,16 @@
       "searchFolders": "フォルダを検索...",
       "noResults": "フォルダが見つかりません",
       "newFolder": "新しいフォルダ",
-      "showInFileManager": "{{manager}}で表示"
+      "showInFileManager": "{{manager}}で表示",
+      "folderColor": "フォルダーの色",
+      "newNoteInFolder": "このフォルダーに新しいノート",
+      "addFolder": "フォルダーを追加",
+      "collapseAll": "すべて折りたたむ",
+      "expandAll": "すべて展開",
+      "meetingNote": "会議",
+      "plainNote": "ノート",
+      "changeIcon": "アイコンを変更",
+      "removeIcon": "アイコンを削除"
     },
     "actions": {
       "manage": "アクションを管理...",
@@ -1626,7 +1635,12 @@
       "timeNow": "たった今",
       "minutesAgo": "{{count}}分前",
       "hoursAgo": "{{count}}時間前",
-      "daysAgo": "{{count}}日前"
+      "daysAgo": "{{count}}日前",
+      "ago": {
+        "seconds": "{{count}}秒前",
+        "minutes": "{{count}}分前",
+        "hours": "{{count}}時間前"
+      }
     },
     "upload": {
       "title": "音声をアップロード",
@@ -2154,7 +2168,8 @@
     "homeEmptyState": "メモやミーティングについて何でも質問できます",
     "followUp": "フォローアップ文を作成",
     "followUpUnavailable": "文字起こしの準備後に利用できます",
-    "followUpError": "フォローアップを準備できませんでした。もう一度お試しください。"
+    "followUpError": "フォローアップを準備できませんでした。もう一度お試しください。",
+    "resize": "チャットのサイズを変更"
   },
   "transcriptionPreview": {
     "label": "プレビュー",

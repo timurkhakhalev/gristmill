@@ -1479,7 +1479,12 @@
       "timeNow": "Adesso",
       "minutesAgo": "{{count}}m",
       "hoursAgo": "{{count}}h",
-      "daysAgo": "{{count}}g"
+      "daysAgo": "{{count}}g",
+      "ago": {
+        "seconds": "{{count}} s fa",
+        "minutes": "{{count}} min fa",
+        "hours": "{{count}} h fa"
+      }
     },
     "editor": {
       "untitled": "Senza titolo",
@@ -1661,7 +1666,16 @@
       "searchFolders": "Cerca cartelle...",
       "noResults": "Nessuna cartella trovata",
       "newFolder": "Nuova cartella",
-      "showInFileManager": "Mostra in {{manager}}"
+      "showInFileManager": "Mostra in {{manager}}",
+      "folderColor": "Colore cartella",
+      "newNoteInFolder": "Nuova nota in questa cartella",
+      "addFolder": "Aggiungi cartella",
+      "collapseAll": "Comprimi tutto",
+      "expandAll": "Espandi tutto",
+      "meetingNote": "Riunione",
+      "plainNote": "Nota",
+      "changeIcon": "Cambia icona",
+      "removeIcon": "Rimuovi icona"
     },
     "actions": {
       "manage": "Gestisci azioni...",
@@ -2154,7 +2168,8 @@
     "homeEmptyState": "Chiedi qualsiasi cosa sulle tue note e riunioni",
     "followUp": "Prepara un messaggio di follow-up",
     "followUpUnavailable": "Disponibile quando la trascrizione è pronta",
-    "followUpError": "Impossibile preparare il messaggio. Riprova."
+    "followUpError": "Impossibile preparare il messaggio. Riprova.",
+    "resize": "Ridimensiona chat"
   },
   "transcriptionPreview": {
     "label": "Anteprima",

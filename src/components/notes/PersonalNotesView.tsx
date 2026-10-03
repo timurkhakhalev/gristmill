@@ -20,6 +20,7 @@ import {
   useActiveFolderId,
   initializeNotesTree,
   setActiveNoteId,
+  getNoteFromStore,
 } from "../../stores/noteStore";
 import {
   useMeetingRecordingStore,
@@ -360,21 +361,28 @@ export default function PersonalNotesView({
   // A calendar-event draft becomes this note: fold its full latest draft into
   // the editor draft and persist it through the regular debounced save. The
   // handoff carries everything typed up to this moment, so nothing is lost to
-  // the create round-trip; an already-written note keeps its manual text.
+  // the create round-trip; an already-written note keeps its manual text. The
+  // merge base is the note's current stored row (async-fetched when it is not
+  // in the container cache yet) — never a fabricated empty draft, which would
+  // wipe a processing-generated title and the note's manual text.
   const handleEventDraftHandoff = useCallback(
     (handoff: EventDraftHandoff) => {
-      const current =
-        draftRef.current?.noteId === handoff.noteId
-          ? draftRef.current
-          : {
-              noteId: handoff.noteId,
-              title: "",
-              content: "",
-              enhancedContent: null,
-            };
-      const merged = applyEventDraftHandoff(current, handoff);
-      commitDraft(merged);
-      scheduleDocumentSave(merged);
+      void (async () => {
+        const stored =
+          getNoteFromStore(handoff.noteId) ?? (await window.electronAPI.getNote(handoff.noteId));
+        const current =
+          draftRef.current?.noteId === handoff.noteId
+            ? draftRef.current
+            : {
+                noteId: handoff.noteId,
+                title: stored?.title ?? "",
+                content: stored?.content ?? "",
+                enhancedContent: stored?.enhanced_content ?? null,
+              };
+        const merged = applyEventDraftHandoff(current, handoff);
+        commitDraft(merged);
+        scheduleDocumentSave(merged);
+      })();
     },
     [commitDraft, scheduleDocumentSave]
   );

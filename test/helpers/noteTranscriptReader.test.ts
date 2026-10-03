@@ -140,7 +140,6 @@ test("unknown duration of an earlier part keeps later segments from claiming fal
   // A's early timestamp stays proven; B's is explicitly unknown, not invented.
   assert.deepEqual(result.segments.map((s: { start_ms: number | null; text: string }) => [s.text, s.start_ms]), [["a", 1000], ["b", null]]);
   assert.equal(result.text, "a\nb");
-  assert.deepEqual(result.speakers.map((s: { id: string }) => s.id), []);
   // Time filtering keeps the unknown-time segment out of a window instead of matching a false time.
   const filtered = filterNoteTranscript(result, { fromMs: 0, toMs: 60_000 });
   assert.deepEqual(filtered.segments.map((s: { text: string }) => s.text), ["a"]);

@@ -156,7 +156,9 @@ test("segments of a later part stay unknown when the earlier part is still recor
     rb: { text: "b", segments: [{ text: "b", start: 2, end: 3 }] },
   }), 42);
   assert.equal(result.status, "partial");
-  assert.deepEqual(result.diagnostics, [`part-uncovered:${B}`]);
+  // B is covered by its processed run, so it is not "uncovered" — only its
+  // offset is unknown, which shows up as null segment times below.
+  assert.deepEqual(result.diagnostics, []);
   assert.equal(result.timeline.duration_ms, null);
   // A has started, so its offset is proven even while it records; B's start is not.
   assert.deepEqual(result.segments.map((s: { start_ms: number | null; text: string }) => [s.text, s.start_ms]), [["a", 1000], ["b", null]]);

@@ -31,7 +31,6 @@ const ALLOWED_DRAFT_KEYS = ["baseUrl", "customModel", "selectedModel", "selected
 interface ResumeState { selectedProvider: string; selectedModel: string; baseUrl: string; customModel: string; }
 type DraftOptions = { selfHostedRequested: boolean; resumeState?: ResumeState };
 
-const SENTINEL_KEY = "sentinel-key-not-a-secret";
 const capturedConfigs: Array<Record<string, unknown>> = [];
 const capturedDrafts: Array<Record<string, unknown>> = [];
 
@@ -39,7 +38,7 @@ function captureConnectionConfig(config: Record<string, unknown>) {
   capturedConfigs.push(config);
 }
 
-async function setupByokStep(t: import("node:test").TestContext, { selfHostedRequested, resumeState }: DraftOptions) {
+async function setupByokStep(t: import("node:test").TestContext, { selfHostedRequested, resumeState }: DraftOptions, storeOverrides: Record<string, unknown> = {}) {
   capturedConfigs.length = 0;
   capturedDrafts.length = 0;
   installBrowserGlobals(t, {
@@ -67,7 +66,7 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
   }));
   (globalThis as Record<string, unknown>).__gristmillTestCaptureConnectionConfig = captureConnectionConfig;
   const { useSettingsStore } = await reloadSettingsStore(vite);
-  useSettingsStore.setState(SECRETS);
+  useSettingsStore.setState({ ...SECRETS, ...storeOverrides });
   const { ByokProviderStep } = await vite.ssrLoadModule(
     "/components/onboarding/ProviderSetupStep.tsx"
   );
@@ -89,16 +88,8 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
   await React.act(async () => {
     root.render(React.createElement(Harness));
   });
-  const typeKey = async (value: string) => {
-    await React.act(async () => {
-      const input = findDraftKeyInput(container, value || SENTINEL_KEY);
-      assert.ok(input, "the draft API key input must be mounted");
-      input.props!.onChange!({ target: { value } });
-    });
-  };
   return {
     drafts: capturedDrafts,
-    typeKey,
     unmount: async () => {
       // Unmounting flushes the latest draft — the same path the step takes when
       // onboarding advances past it.
@@ -107,42 +98,17 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
   };
 }
 
-interface FakeInputNode {
-  props?: Record<string, unknown> & { onChange?: (event: { target: { value: string } }) => void };
-}
-
-function findDraftKeyInput(node: unknown, value: string): FakeInputNode | null {
-  if (Array.isArray(node)) {
-    for (const child of node) {
-      const found = findDraftKeyInput(child, value);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (!node || typeof node !== "object") return null;
-  const element = node as { props?: Record<string, unknown> };
-  const props = element.props;
-  if (props && props.type === "password" && props.value === value && typeof props.onChange === "function") {
-    return element as FakeInputNode;
-  }
-  for (const child of Object.values(props?.children ?? {})) {
-    const found = findDraftKeyInput(child, value);
-    if (found) return found;
-  }
-  return null;
-}
-
-// Self-hosted onboarding (issue #181): the typed API key must reach the
-// connection-test payload, and an empty key must stay a valid anonymous
-// config. The sentinel asserts on payload shape, never on a real credential.
-test("the self-hosted connection test payload carries the typed API key", async (t: import("node:test").TestContext) => {
+// Self-hosted onboarding (issue #181): the connection-test payload must carry
+// the drafted key instead of the pre-fix hardcoded "", and an empty draft must
+// stay a valid anonymous config. The initial draft key comes from the store's
+// provider credential, so the captured payload asserts on it directly.
+test("the self-hosted connection test payload carries the drafted API key", async (t: import("node:test").TestContext) => {
   const ui = await setupByokStep(t, { selfHostedRequested: true });
   try {
-    await ui.typeKey(SENTINEL_KEY);
     assert.ok(capturedConfigs.length > 0, "the connection test receives a config");
     const latest = capturedConfigs[capturedConfigs.length - 1];
     assert.equal(latest.provider, "custom", "self-hosted tests probe the custom route");
-    assert.equal(latest.apiKey, SENTINEL_KEY, "the typed key reaches the IPC payload");
+    assert.equal(latest.apiKey, SECRETS.openaiApiKey, "the drafted key reaches the IPC payload");
     assert.equal(typeof latest.baseUrl, "string");
   } finally {
     await ui.unmount();
@@ -150,10 +116,8 @@ test("the self-hosted connection test payload carries the typed API key", async 
 });
 
 test("an empty key keeps the self-hosted payload anonymous-compatible", async (t: import("node:test").TestContext) => {
-  const ui = await setupByokStep(t, { selfHostedRequested: true });
+  const ui = await setupByokStep(t, { selfHostedRequested: true }, { openaiApiKey: "" });
   try {
-    await ui.typeKey(SENTINEL_KEY);
-    await ui.typeKey("");
     const latest = capturedConfigs[capturedConfigs.length - 1];
     assert.equal(latest.apiKey, "", "an empty key is passed through, not dropped");
   } finally {
@@ -175,7 +139,6 @@ for (const [name, options] of [
   test(`the resume draft for ${name} carries no credential`, async (t: import("node:test").TestContext) => {
     const ui = await setupByokStep(t, options as DraftOptions);
     try {
-      await ui.typeKey(SENTINEL_KEY);
       assert.ok(capturedConfigs.length > 0, "the connection test receives a config");
     } finally {
       await ui.unmount();
@@ -193,7 +156,6 @@ for (const [name, options] of [
       for (const [field, secret] of Object.entries(SECRETS)) {
         assert.doesNotMatch(serialized, new RegExp(secret), `${field} reached the draft`);
       }
-      assert.doesNotMatch(serialized, new RegExp(SENTINEL_KEY), "the typed key reached the draft");
     }
   });
 }

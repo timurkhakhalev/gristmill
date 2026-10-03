@@ -274,11 +274,15 @@ export default function IntegrationsView() {
   );
 
   const handleAppleDisconnect = useCallback(async () => {
-    const result = await window.electronAPI?.acalDisconnect?.();
-    if (result?.success) {
-      setAppleCalendarConnected(false);
-      setAppleSourceNames([]);
-    } else {
+    try {
+      const result = await window.electronAPI?.acalDisconnect?.();
+      if (result?.success) {
+        setAppleCalendarConnected(false);
+        setAppleSourceNames([]);
+      } else {
+        setDisconnectFailed(true);
+      }
+    } catch {
       setDisconnectFailed(true);
     }
   }, [setAppleCalendarConnected, setAppleSourceNames]);
@@ -295,6 +299,8 @@ export default function IntegrationsView() {
         } else {
           setDisconnectFailed(true);
         }
+      } catch {
+        setDisconnectFailed(true);
       } finally {
         setDisconnectingEmail(null);
       }
@@ -314,6 +320,8 @@ export default function IntegrationsView() {
         } else {
           setDisconnectFailed(true);
         }
+      } catch {
+        setDisconnectFailed(true);
       } finally {
         setMsDisconnectingEmail(null);
       }

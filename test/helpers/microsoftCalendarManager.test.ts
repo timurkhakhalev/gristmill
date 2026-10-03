@@ -167,7 +167,7 @@ function createManager(MicrosoftCalendarManager: any, upserted: CalendarEventInp
       getCalendarEventById: () => null,
       ...overrides,
     },
-    {}
+    { scheduleNextMeeting: () => {}, reset: () => {} }
   );
 }
 
@@ -291,6 +291,66 @@ test("_syncCalendar shortens the delta token TTL when a master fetch fails", asy
   assert.ok(
     tokenWrites[0].expiresAt <= Date.now() + 10 * 60 * 1000,
     `expected a shortened TTL, got expiry ${tokenWrites[0].expiresAt - Date.now()}ms out`
+  );
+});
+
+// Regression: the manager used to resolve syncEvents() even when every
+// calendar failed, so the runner treated a provider outage as success. The
+// real manager must return an explicit whole-pass outcome.
+test("syncEvents reports a full failure when every selected calendar errors", async () => {
+  const MicrosoftCalendarManager = loadManagerModule();
+  const manager = createManager(MicrosoftCalendarManager, [], [], {
+    getSelectedMicrosoftCalendars: () => [
+      { id: "cal-1", account_email: "me@example.com" },
+      { id: "cal-2", account_email: "me@example.com" },
+    ],
+  });
+  manager._apiGet = async () => {
+    throw new Error("graph down");
+  };
+
+  const outcome = await manager.syncEvents();
+
+  assert.equal(outcome.total, 2);
+  assert.equal(outcome.succeeded, 0);
+  assert.equal(outcome.failed, 2);
+  assert.deepEqual(outcome.errors, ["graph down", "graph down"]);
+});
+
+test("syncEvents keeps successful updates and reports a partial outcome", async () => {
+  const MicrosoftCalendarManager = loadManagerModule();
+  const upserted: CalendarEventInput[] = [];
+  const manager = createManager(MicrosoftCalendarManager, upserted, [], {
+    getSelectedMicrosoftCalendars: () => [
+      { id: "cal-ok", account_email: "me@example.com" },
+      { id: "cal-bad", account_email: "me@example.com" },
+    ],
+  });
+  manager._apiGet = async (url: string) => {
+    if (url.includes("cal-bad")) throw new Error("calendar b failed");
+    return {
+      "@odata.deltaLink": "delta",
+      value: [
+        {
+          id: "evt-ok",
+          subject: "Kept",
+          start: { dateTime: "2026-07-20T17:00:00.0000000" },
+          end: { dateTime: "2026-07-20T17:30:00.0000000" },
+        },
+      ],
+    };
+  };
+
+  const outcome = await manager.syncEvents();
+
+  assert.equal(outcome.total, 2);
+  assert.equal(outcome.succeeded, 1);
+  assert.equal(outcome.failed, 1);
+  assert.deepEqual(outcome.errors, ["calendar b failed"]);
+  assert.deepEqual(
+    upserted.map((event) => event.id),
+    ["evt-ok"],
+    "the successful calendar's update persists"
   );
 });
 

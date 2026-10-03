@@ -1075,9 +1075,9 @@ export class MeetingDetectionEngine {
   createCalendarEventNote(
     eventId: string,
     initial: { title?: string; content?: string } = {}
-  ): { noteId: number; folderId: number | null } | null {
+  ): { noteId: number; folderId: number | null; existing?: boolean } | null {
     const existing = this.findCalendarEventNote(eventId);
-    if (existing) return existing;
+    if (existing) return { ...existing, existing: true };
     const calEvent = this.databaseManager.getCalendarEventById?.(eventId);
     if (!calEvent) {
       debugLogger.error("Calendar event not found", { eventId }, "meeting");

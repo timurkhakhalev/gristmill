@@ -300,7 +300,11 @@ test("an event with a note reuses it and leaves it untouched", () => {
   const { engine, saved } = createEngineWithNotes({ id: 5, folder_id: 3 });
 
   assert.deepEqual(engine.findCalendarEventNote("evt-1"), { noteId: 5, folderId: 3 });
-  assert.deepEqual(engine.createCalendarEventNote("evt-1", { content: "ignored" }), { noteId: 5, folderId: 3 });
+  assert.deepEqual(engine.createCalendarEventNote("evt-1", { content: "ignored" }), {
+    noteId: 5,
+    folderId: 3,
+    existing: true,
+  });
   assert.deepEqual(saved, []);
 });
 
@@ -429,3 +433,4 @@ test("setPreferences re-enables detection after a disable", () => {
   assert.equal(audioDetector.starts, 1);
   engine.stop();
 });
+

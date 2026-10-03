@@ -20,6 +20,7 @@ import {
   useActiveFolderId,
   initializeNotesTree,
   setActiveNoteId,
+  getNoteFromStore,
 } from "../../stores/noteStore";
 import {
   useMeetingRecordingStore,
@@ -38,8 +39,10 @@ import { isMeetingAutoEndEligible } from "../../helpers/meetingRecordingSession"
 import { handleMeetingRecordingRequest } from "../../helpers/meetingRecordingRequest";
 import {
   applyNoteDraftMutation,
+  applyEventDraftHandoff,
   collectPendingNoteWrites,
   planNoteTransition,
+  type EventDraftHandoff,
   type NoteEditorDraft,
   type PendingDocumentSnapshot,
   type PendingEnhancedSnapshot,
@@ -79,6 +82,8 @@ interface PersonalNotesViewProps {
   onMeetingRecordingRequestHandled?: () => void;
   /** Top bar already shows Back when the window is a narrow note surface. */
   chromeProvidesBack?: boolean;
+  /** A calendar-event draft's latest typed revision, consumed once on mount. */
+  eventDraftHandoff?: React.MutableRefObject<EventDraftHandoff | null>;
 }
 
 export default function PersonalNotesView({
@@ -86,6 +91,7 @@ export default function PersonalNotesView({
   meetingRecordingRequest,
   onMeetingRecordingRequestHandled,
   chromeProvidesBack = false,
+  eventDraftHandoff,
 }: PersonalNotesViewProps) {
   const { t } = useTranslation();
   const notes = useNotes();
@@ -351,6 +357,45 @@ export default function PersonalNotesView({
     },
     [commitDraft, scheduleEnhancedSave]
   );
+
+  // A calendar-event draft becomes this note: fold its full latest draft into
+  // the editor draft and persist it through the regular debounced save. The
+  // handoff carries everything typed up to this moment, so nothing is lost to
+  // the create round-trip; an already-written note keeps its manual text. The
+  // merge base is the note's current stored row (async-fetched when it is not
+  // in the container cache yet) — never a fabricated empty draft, which would
+  // wipe a processing-generated title and the note's manual text.
+  const handleEventDraftHandoff = useCallback(
+    (handoff: EventDraftHandoff) => {
+      void (async () => {
+        const stored =
+          getNoteFromStore(handoff.noteId) ?? (await window.electronAPI.getNote(handoff.noteId));
+        const current =
+          draftRef.current?.noteId === handoff.noteId
+            ? draftRef.current
+            : {
+                noteId: handoff.noteId,
+                title: stored?.title ?? "",
+                content: stored?.content ?? "",
+                enhancedContent: stored?.enhanced_content ?? null,
+              };
+        const merged = applyEventDraftHandoff(current, handoff);
+        commitDraft(merged);
+        scheduleDocumentSave(merged);
+      })();
+    },
+    [commitDraft, scheduleDocumentSave]
+  );
+  // The pending handoff arrives before this view mounts (ControlPanel holds
+  // it in a ref while the note is created): drain it once on mount. One-shot
+  // by design — only the mount-time handoff exists.
+  useEffect(() => {
+    const pending = eventDraftHandoff?.current;
+    if (!pending) return;
+    eventDraftHandoff.current = null;
+    handleEventDraftHandoff(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount drain
+  }, []);
 
   useEffect(() => {
     return () => flushPendingSaves("unmount");

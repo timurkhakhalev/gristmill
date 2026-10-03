@@ -395,6 +395,16 @@ export interface SpeakerProfileRow {
   updated_at: string;
 }
 
+// The persisted row always carries the embedding (the column is NOT NULL); the
+// retroactive-mapping pass needs it, so the promoted shape names it required.
+export interface SpeakerProfileWithEmbedding {
+  id: number;
+  display_name: string;
+  email: string | null;
+  embedding: Buffer;
+  sample_count: number;
+}
+
 export interface SpeakerMappingRow {
   note_id: number;
   speaker_id: string;
@@ -3789,23 +3799,27 @@ export class DatabaseManager {
     email: string | null | undefined,
     embeddingBuffer: Buffer,
     profileId: number | null = null
-  ): SpeakerProfileRow | null {
+  ): SpeakerProfileWithEmbedding | null {
     if (profileId != null) {
       this.sql
         .prepare(
           "UPDATE speaker_profiles SET display_name = ?, email = ?, embedding = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         )
         .run(name, email || null, embeddingBuffer, profileId);
-      return (this.sql
-        .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
-        .get(profileId) as SpeakerProfileRow | undefined) ?? null;
+      return (
+        (this.sql
+          .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
+          .get(profileId) as SpeakerProfileWithEmbedding | undefined) ?? null
+      );
     }
     const result = this.sql
       .prepare("INSERT INTO speaker_profiles (display_name, email, embedding) VALUES (?, ?, ?)")
       .run(name, email || null, embeddingBuffer);
-    return (this.sql
-      .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
-      .get(result.lastInsertRowid) as SpeakerProfileRow | undefined) ?? null;
+    return (
+      (this.sql
+        .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
+        .get(result.lastInsertRowid) as SpeakerProfileWithEmbedding | undefined) ?? null
+    );
   }
   getSpeakerProfiles(includeEmbedding = false): SpeakerProfileRow[] {
     return this.sql
@@ -3814,11 +3828,16 @@ export class DatabaseManager {
       )
       .all() as SpeakerProfileRow[];
   }
-  attachEmailToProfile(profileId: number, email: string): { success: boolean } {
-    this.sql
+  attachEmailToProfile(profileId: number, email: string | null): SpeakerProfileWithEmbedding | null {
+    const result = this.sql
       .prepare("UPDATE speaker_profiles SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
       .run(email, profileId);
-    return { success: true };
+    if (result.changes === 0) return null;
+    return (
+      (this.sql
+        .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
+        .get(profileId) as SpeakerProfileWithEmbedding | undefined) ?? null
+    );
   }
   mergeSpeakerProfiles(a: number, b: number): { success: boolean } {
     this.sql.prepare("UPDATE speaker_mappings SET profile_id = ? WHERE profile_id = ?").run(a, b);

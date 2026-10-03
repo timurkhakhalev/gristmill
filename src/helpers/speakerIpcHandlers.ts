@@ -6,8 +6,8 @@
 import {
   speakerChannels,
   type DiarizationDownloadProgressEvent,
-  type SpeakerMappingEntry,
 } from "../contracts/speakerProfiles.js";
+import type { SpeakerMappingRow, SpeakerProfileWithEmbedding } from "./database.js";
 
 type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
 
@@ -30,14 +30,8 @@ export interface SpeakerDatabase {
     email: string | null,
     embedding: Buffer,
     profileId: number | null
-  ): {
-    id: number;
-    display_name: string;
-    email: string | null;
-    embedding?: Buffer;
-    sample_count: number;
-  };
-  getSpeakerMappings(noteId: number): SpeakerMappingEntry[];
+  ): SpeakerProfileWithEmbedding | null;
+  getSpeakerMappings(noteId: number): SpeakerMappingRow[];
   getNoteSpeakerEmbeddings(
     noteId: number
   ): Array<{ speaker_id: string; embedding: Buffer }>;
@@ -59,13 +53,11 @@ export interface SpeakerDatabase {
   attachEmailToProfile(
     profileId: number,
     email: string | null
-  ): {
-    id: number;
-    display_name: string;
-    email: string | null;
-    sample_count: number;
-  };
-  saveNoteSpeakerEmbeddings(noteId: number, buffers: Record<string, Buffer>): unknown;
+  ): SpeakerProfileWithEmbedding | null;
+  saveNoteSpeakerEmbeddings(
+    noteId: number,
+    embeddings: Array<{ speakerId: string; embedding: Buffer }>
+  ): unknown;
 }
 
 // Narrow live-identifier surface.
@@ -96,7 +88,7 @@ export interface SpeakerIpcDeps {
   liveSpeakerIdentifier: LiveIdentifierLike;
   diarizationManager: DiarizationModelsLike;
   // Retroactive/auto-label propagation owned by the orchestrating IPC class.
-  retroactiveMapping(profile: unknown): void;
+  retroactiveMapping(profile: SpeakerProfileWithEmbedding): void;
   tryAutoLabelOneOnOne(noteId: number): void;
   logError(message: string, data?: unknown): void;
 }
@@ -163,8 +155,10 @@ export function registerSpeakerHandlers(
           speakerEmbeddingBuffer,
           resolvedProfileId
         );
-        resolvedProfileId = profile.id;
-        deps.retroactiveMapping(profile);
+        if (profile) {
+          resolvedProfileId = profile.id;
+          deps.retroactiveMapping(profile);
+        }
       }
 
       database.setSpeakerMapping(noteId, speakerId, resolvedProfileId, displayName);
@@ -188,6 +182,9 @@ export function registerSpeakerHandlers(
         args[0] as number,
         args[1] as string | null
       );
+      if (!profile) {
+        return { success: false, error: "Speaker profile not found" };
+      }
       deps.retroactiveMapping(profile);
       return {
         success: true,
@@ -210,11 +207,11 @@ export function registerSpeakerHandlers(
   ipcMain.handle(c.saveNoteSpeakerEmbeddings, async (_event, ...args: unknown[]) => {
     const noteId = args[0] as number;
     const embeddingsObj = (args[1] ?? {}) as Record<string, number[]>;
-    const buffers: Record<string, Buffer> = {};
-    for (const [speakerId, arr] of Object.entries(embeddingsObj)) {
-      buffers[speakerId] = Buffer.from(new Float32Array(arr).buffer);
-    }
-    deps.databaseManager.saveNoteSpeakerEmbeddings(noteId, buffers);
+    const embeddings = Object.entries(embeddingsObj).map(([speakerId, arr]) => ({
+      speakerId,
+      embedding: Buffer.from(new Float32Array(arr).buffer),
+    }));
+    deps.databaseManager.saveNoteSpeakerEmbeddings(noteId, embeddings);
     deps.tryAutoLabelOneOnOne(noteId);
     return { success: true };
   });

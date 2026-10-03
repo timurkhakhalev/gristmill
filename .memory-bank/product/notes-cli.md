@@ -3,7 +3,7 @@
 ## Installation
 
 - The packaged app installs or refreshes the Gristmill CLI at startup.
-- To refresh it manually, use Settings → Advanced → **Install Gristmill CLI**.
+- If the CLI is not installed, use Settings → Advanced → **Install Gristmill CLI**. The button is not available for an already installed CLI.
 - The CLI is `~/.local/bin/gristmill`. If your shell `PATH` does not include `~/.local/bin`, add it.
 - The launcher uses the Node runtime of the installed app. The Gristmill app must be running.
 - Explicit test profiles do not change this global command.
@@ -45,5 +45,5 @@ For options, run `gristmill --help` or a command with `--help`.
 
 The profile-local connection file of the CLI gives read-only access to Note metadata, user notes, the saved Summary and the transcript.
 The embedded BB tools keep their write access through a separate token.
-No connection gives access to raw audio or provider payloads.
+The CLI read token does not give access to raw audio or provider payloads. The internal write token has a wider route table than the embedded BB tools; see [local automation access](user-journeys/local-api.md).
 For bridge and token details, see [BB integration](../architecture/bb-integration.md).

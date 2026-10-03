@@ -22,7 +22,7 @@ It has no backend. All data is in the local application profile.
 - Renderer: React 19, Vite 8, HeroUI, Tailwind CSS 4, zustand, TipTap, i18next.
 - Storage: SQLite (`better-sqlite3`) and managed files in Electron `userData`. The macOS Keychain keeps the secrets.
 - Audio: Swift native helpers (system audio tap, microphone and call detection, Zoom Accessibility, EventKit), bundled FFmpeg/libopus, ONNX Runtime (diarization, speaker embeddings).
-- AI: Vercel AI SDK and direct provider adapters (Deepgram, ElevenLabs, Gemini, OpenAI, Anthropic, Bedrock, Azure, Vertex, Groq and others). Local engines: whisper.cpp, llama.cpp, sherpa-onnx. Optional route: bb.
+- AI: Vercel AI SDK and direct ASR/LLM adapters. Provider support depends on the task; see [processing routes](product/user-journeys/providers.md). Local engines include whisper.cpp, llama.cpp and sherpa-onnx. Optional route: bb.
 - Browser: an MV3 Chrome extension (Gristmill Companion) and a native messaging host.
 - Tooling: native TypeScript 7 `tsc` for typecheck and build, TypeScript 6 for the Compiler API, `node:test` through the canonical test runner.
 

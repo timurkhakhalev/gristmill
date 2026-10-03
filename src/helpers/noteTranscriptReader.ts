@@ -28,7 +28,10 @@ export interface NoteTranscriptDeps {
 }
 
 interface Piece {
-  offsetMs: number;
+  /** Proven timeline offset, or null when an earlier part's length is unknown. */
+  offsetMs: number | null;
+  /** Position of the piece's first part in start order; ties and unknown offsets sort by it. */
+  order: number;
   sourceIds: string[];
   runId: string;
   transcript: MeetingTranscriptArtifact;
@@ -68,9 +71,12 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   let failed = false;
   let uncovered = false;
 
-  const partOffsets = new Map<string, number>();
+  // Display uses proven capture lengths; alignment gaps must not fail assembly.
+  // Processing keeps meetingTimelineFrameCount strict — this does not weaken it.
+  const partOffsets = new Map<string, number | null>();
   for (const part of recordings) {
-    partOffsets.set(part.id, Math.round(durationMs));
+    // A part's own start offset is proven by everything before it, even while it records.
+    partOffsets.set(part.id, durationKnown ? Math.round(durationMs) : null);
     if (part.captureState === "recording" || part.captureState === "finalizing") {
       pending = true;
       durationKnown = false;
@@ -81,7 +87,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
       diagnostics.push(`part-capture-incomplete:${part.id}`);
     }
     try {
-      durationMs += meetingTimelineFrameCount(part, deps.listEpochs(part.id)) / FRAMES_PER_MS;
+      durationMs += meetingTimelineFrameCount(part, deps.listEpochs(part.id), true) / FRAMES_PER_MS;
     } catch {
       durationKnown = false;
       diagnostics.push(`part-timeline-invalid:${part.id}`);
@@ -100,6 +106,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   const orderedRuns = [...candidates.values()].sort(
     (a, b) => b.sourceRecordingIds.length - a.sourceRecordingIds.length || b.createdAt.localeCompare(a.createdAt)
   );
+  let pieceOrder = 0;
   for (const run of orderedRuns) {
     if (run.sourceRecordingIds.some((id) => covered.has(id))) continue;
     const transcript = run.hasTranscript ? deps.readTranscript(run.id) : null;
@@ -107,7 +114,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
     const offset = partOffsets.get(run.sourceRecordingIds[0]);
     if (offset === undefined) continue;
     run.sourceRecordingIds.forEach((id) => covered.add(id));
-    pieces.push({ offsetMs: offset, sourceIds: run.sourceRecordingIds, runId: run.id, transcript, corrections: deps.getCorrections(run.id) });
+    pieces.push({ offsetMs: offset, order: pieceOrder++, sourceIds: run.sourceRecordingIds, runId: run.id, transcript, corrections: deps.getCorrections(run.id) });
   }
 
   for (const part of recordings) {
@@ -124,7 +131,8 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
     return { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null) };
   }
 
-  pieces.sort((a, b) => a.offsetMs - b.offsetMs);
+  // Proven offsets ascend; unknown offsets keep start order after proven ones.
+  pieces.sort((a, b) => (a.offsetMs ?? Infinity) - (b.offsetMs ?? Infinity) || a.order - b.order);
   const speakers: NoteTranscriptSpeaker[] = [];
   const speakerIds = new Map<string, string>();
   const speakerFor = (piece: Piece, provider: string): string => {
@@ -146,27 +154,30 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   };
 
   const withSegments = pieces.every((piece) => piece.transcript.segments !== undefined);
+  // Unknown absolute times sort last, after every proven time, by source order.
+  const sortKey = (segment: NoteTranscriptSegment): number =>
+    segment.start_ms === null || segment.end_ms === null ? Infinity : segment.start_ms;
   const ordered: Array<{ segment: NoteTranscriptSegment; order: number }> = [];
   if (withSegments) {
     pieces.forEach((piece, pieceIndex) => {
+      // An unknown offset makes this piece's absolute times unknowable, not zero.
+      const offset = piece.offsetMs;
       (piece.transcript.segments ?? []).forEach((segment, index) => {
+        const startMs = offset === null ? null : Math.round(segment.start * 1000) + offset;
+        const endMs = offset === null ? null : Math.round(segment.end * 1000) + offset;
         ordered.push({
           order: pieceIndex * 1e9 + index,
           segment: {
             speaker_id: segment.speaker ? speakerFor(piece, segment.speaker) : null,
-            start_ms: Math.round(segment.start * 1000) + piece.offsetMs,
-            end_ms: Math.round(segment.end * 1000) + piece.offsetMs,
+            start_ms: startMs,
+            end_ms: endMs,
             text: segment.text,
           },
         });
       });
     });
-    // Equal times keep source order so output is deterministic.
-    ordered.sort((a, b) =>
-      (a.segment.start_ms as number) - (b.segment.start_ms as number) ||
-      (a.segment.end_ms as number) - (b.segment.end_ms as number) ||
-      a.order - b.order
-    );
+    // Equal times keep source order so output is deterministic; unknown times keep source order.
+    ordered.sort((a, b) => sortKey(a.segment) - sortKey(b.segment) || a.order - b.order);
   }
   const segments = ordered.map((item) => item.segment);
 

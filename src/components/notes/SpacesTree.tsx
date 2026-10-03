@@ -782,18 +782,26 @@ export default function SpacesTree({
     requestAnimationFrame(() => rowRefs.current.get(key)?.focus());
   };
   // Keyboard focus survives its placement disappearing (folder collapsed,
-  // placement removed): follow the same note to its next visible placement.
+  // placement removed): follow the same note, preferring a placement in the
+  // same space — hopping spaces from one placement of a note is wrong tree
+  // semantics. No placement at all clears focus instead of picking rows[0].
   useEffect(() => {
     if (!focusedKey) return;
     if (rows.some((row) => row.key === focusedKey)) return;
-    const match = focusedKey.match(/:n:(\d+)$/);
-    const noteId = match ? Number(match[1]) : null;
+    const spaceOf = (key: string): number | null => {
+      const container = key.match(/^(.+):n:/)?.[1];
+      if (!container) return null;
+      if (container.startsWith("space:")) return Number(container.slice("space:".length));
+      return folders.find((folder) => folderContainerKey(folder.id) === container)?.space_id ?? null;
+    };
+    const match = focusedKey.match(/^(.+):n:(\d+)$/);
+    const noteId = match ? Number(match[2]) : null;
+    const placements = noteId == null ? [] : rows.filter((row) => row.note?.id === noteId);
+    const lostSpace = spaceOf(focusedKey);
     setFocusedKey(
-      noteId == null
-        ? null
-        : rows.find((row) => row.note?.id === noteId)?.key ?? null
+      (placements.find((row) => spaceOf(row.key) === lostSpace) ?? placements[0])?.key ?? null
     );
-  }, [focusedKey, rows]);
+  }, [focusedKey, rows, folders]);
   const a11y = (key: string): RowA11y => ({
     tabIndex: focusedKey === key || (!focusedKey && rows[0]?.key === key) ? 0 : -1,
     rowRef: (el) => {

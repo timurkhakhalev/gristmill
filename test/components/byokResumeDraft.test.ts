@@ -31,7 +31,17 @@ const ALLOWED_DRAFT_KEYS = ["baseUrl", "customModel", "selectedModel", "selected
 interface ResumeState { selectedProvider: string; selectedModel: string; baseUrl: string; customModel: string; }
 type DraftOptions = { selfHostedRequested: boolean; resumeState?: ResumeState };
 
-async function collectByokDrafts(t: import("node:test").TestContext, { selfHostedRequested, resumeState }: DraftOptions) {
+const SENTINEL_KEY = "sentinel-key-not-a-secret";
+const capturedConfigs: Array<Record<string, unknown>> = [];
+const capturedDrafts: Array<Record<string, unknown>> = [];
+
+function captureConnectionConfig(config: Record<string, unknown>) {
+  capturedConfigs.push(config);
+}
+
+async function setupByokStep(t: import("node:test").TestContext, { selfHostedRequested, resumeState }: DraftOptions) {
+  capturedConfigs.length = 0;
+  capturedDrafts.length = 0;
   installBrowserGlobals(t, {
     window: { electronAPI: { getPlatform: () => "linux" } },
   });
@@ -45,18 +55,23 @@ async function collectByokDrafts(t: import("node:test").TestContext, { selfHoste
         export function useTranslation() { return { t }; }
         export const initReactI18next = { type: "3rdParty", init() {} };
       `,
-      "/ProviderConnectionTest": `export default function ProviderConnectionTest() { return null; }`,
+      "/ProviderConnectionTest": `
+        export default function ProviderConnectionTest({ config }) {
+          globalThis.__gristmillTestCaptureConnectionConfig(config);
+          return null;
+        }
+      `,
       "/OnboardingShell": `export function BrandMark() { return null; }`,
       "/ui/ProviderIcon": `export function ProviderIcon() { return null; }`,
     },
   }));
+  (globalThis as Record<string, unknown>).__gristmillTestCaptureConnectionConfig = captureConnectionConfig;
   const { useSettingsStore } = await reloadSettingsStore(vite);
   useSettingsStore.setState(SECRETS);
   const { ByokProviderStep } = await vite.ssrLoadModule(
     "/components/onboarding/ProviderSetupStep.tsx"
   );
 
-  const drafts: Array<Record<string, unknown>> = [];
   function Harness() {
     // Execute the real component and hooks with React lifecycle, while leaving
     // native controls unmounted: the persisted draft is the test boundary.
@@ -66,7 +81,7 @@ async function collectByokDrafts(t: import("node:test").TestContext, { selfHoste
       onSelfHostedChange() {},
       onConnectionChange() {},
       onProceed() {},
-      onResumeStateChange: (draft: Record<string, unknown>) => drafts.push(draft),
+      onResumeStateChange: (draft: Record<string, unknown>) => capturedDrafts.push(draft),
     });
     return null;
   }
@@ -74,11 +89,77 @@ async function collectByokDrafts(t: import("node:test").TestContext, { selfHoste
   await React.act(async () => {
     root.render(React.createElement(Harness));
   });
-  // Unmounting flushes the latest draft — the same path the step takes when
-  // onboarding advances past it.
-  await React.act(async () => root.unmount());
-  return drafts;
+  const typeKey = async (value: string) => {
+    await React.act(async () => {
+      const input = findDraftKeyInput(container, value || SENTINEL_KEY);
+      assert.ok(input, "the draft API key input must be mounted");
+      input.props!.onChange!({ target: { value } });
+    });
+  };
+  return {
+    drafts: capturedDrafts,
+    typeKey,
+    unmount: async () => {
+      // Unmounting flushes the latest draft — the same path the step takes when
+      // onboarding advances past it.
+      await React.act(async () => root.unmount());
+    },
+  };
 }
+
+interface FakeInputNode {
+  props?: Record<string, unknown> & { onChange?: (event: { target: { value: string } }) => void };
+}
+
+function findDraftKeyInput(node: unknown, value: string): FakeInputNode | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findDraftKeyInput(child, value);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!node || typeof node !== "object") return null;
+  const element = node as { props?: Record<string, unknown> };
+  const props = element.props;
+  if (props && props.type === "password" && props.value === value && typeof props.onChange === "function") {
+    return element as FakeInputNode;
+  }
+  for (const child of Object.values(props?.children ?? {})) {
+    const found = findDraftKeyInput(child, value);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Self-hosted onboarding (issue #181): the typed API key must reach the
+// connection-test payload, and an empty key must stay a valid anonymous
+// config. The sentinel asserts on payload shape, never on a real credential.
+test("the self-hosted connection test payload carries the typed API key", async (t: import("node:test").TestContext) => {
+  const ui = await setupByokStep(t, { selfHostedRequested: true });
+  try {
+    await ui.typeKey(SENTINEL_KEY);
+    assert.ok(capturedConfigs.length > 0, "the connection test receives a config");
+    const latest = capturedConfigs[capturedConfigs.length - 1];
+    assert.equal(latest.provider, "custom", "self-hosted tests probe the custom route");
+    assert.equal(latest.apiKey, SENTINEL_KEY, "the typed key reaches the IPC payload");
+    assert.equal(typeof latest.baseUrl, "string");
+  } finally {
+    await ui.unmount();
+  }
+});
+
+test("an empty key keeps the self-hosted payload anonymous-compatible", async (t: import("node:test").TestContext) => {
+  const ui = await setupByokStep(t, { selfHostedRequested: true });
+  try {
+    await ui.typeKey(SENTINEL_KEY);
+    await ui.typeKey("");
+    const latest = capturedConfigs[capturedConfigs.length - 1];
+    assert.equal(latest.apiKey, "", "an empty key is passed through, not dropped");
+  } finally {
+    await ui.unmount();
+  }
+});
 
 // Each case exercises the draft boundary without exposing any credential value.
 for (const [name, options] of [
@@ -92,8 +173,15 @@ for (const [name, options] of [
   ["a self-hosted endpoint", { selfHostedRequested: true }],
 ]) {
   test(`the resume draft for ${name} carries no credential`, async (t: import("node:test").TestContext) => {
-    const drafts = await collectByokDrafts(t, options as DraftOptions);
+    const ui = await setupByokStep(t, options as DraftOptions);
+    try {
+      await ui.typeKey(SENTINEL_KEY);
+      assert.ok(capturedConfigs.length > 0, "the connection test receives a config");
+    } finally {
+      await ui.unmount();
+    }
 
+    const drafts = ui.drafts;
     assert.ok(drafts.length > 0, "the step persists a draft so the session can restore it");
     for (const draft of drafts) {
       assert.deepEqual(
@@ -105,6 +193,7 @@ for (const [name, options] of [
       for (const [field, secret] of Object.entries(SECRETS)) {
         assert.doesNotMatch(serialized, new RegExp(secret), `${field} reached the draft`);
       }
+      assert.doesNotMatch(serialized, new RegExp(SENTINEL_KEY), "the typed key reached the draft");
     }
   });
 }

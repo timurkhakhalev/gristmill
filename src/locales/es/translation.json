@@ -1584,6 +1584,7 @@
       "create": "Crear",
       "custom": "Personalizado",
       "selectFolder": "Seleccionar carpeta",
+      "noteSaveFailed": "La transcripción se realizó correctamente, pero falló al guardar la nota. Haz clic en reintentar para guardarla.",
       "transcriptionFailed": "Error en la transcripción",
       "errorOccurred": "Se produjo un error",
       "noSpeechDetected": "No se detectó voz en este audio.",

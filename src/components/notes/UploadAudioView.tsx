@@ -145,6 +145,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   // run: reset() and unmount must not delete the file under them, and the
   // execution deletes it exactly once at settlement.
   const executionTempRef = useRef<string | null>(null);
+  // A transcription whose Note save failed: kept so Retry re-saves the ASR
+  // result without re-transcribing (#145).
+  const pendingSaveRef = useRef<Parameters<typeof saveUploadNote>[0] | null>(null);
 
   const [urlInput, setUrlInput] = useState("");
   const [downloadProgress, setDownloadProgress] = useState<{
@@ -574,6 +577,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     setDiarizationWarning(false);
     setNoteId(null);
     setError(null);
+    pendingSaveRef.current = null;
     setProgress(0);
     setUrlInput("");
     setDownloadProgress(null);
@@ -695,9 +699,30 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           releaseExecutionTemp(executionTemp);
           return;
         }
-        if (noteRes.success && noteRes.note) setNoteId(noteRes.note.id);
-        releaseExecutionTemp(executionTemp);
-        setState("complete");
+        if (noteRes.success && noteRes.note) {
+          pendingSaveRef.current = null;
+          setNoteId(noteRes.note.id);
+          releaseExecutionTemp(executionTemp);
+          setState("complete");
+        } else {
+          // The transcription succeeded, only the save failed: keep the ASR
+          // result so Retry re-saves it without re-transcribing. The temp is
+          // no longer needed for that, but a Retry can also fall back to a
+          // full re-transcription if the re-save keeps failing.
+          pendingSaveRef.current = {
+            title,
+            text: res.text,
+            sourceName: currentFile.name,
+            folderId: selectedFolderId ? Number(selectedFolderId) : null,
+            diarization,
+            durationSeconds: res.durationSeconds,
+            segments: res.segments,
+          };
+          keepExecutionTempForRetry(executionTemp);
+          setProgress(0);
+          setError(t("notes.upload.noteSaveFailed"));
+          setState("error");
+        }
       } else {
         keepExecutionTempForRetry(executionTemp);
         setProgress(0);
@@ -815,8 +840,25 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     }
   };
 
-  // Retry re-runs whatever failed: a selected file's transcription, or the URL download.
-  const handleRetry = () => {
+  // Retry re-runs whatever failed: a pending Note re-save after a failed
+  // save, a selected file's transcription, or the URL download.
+  const handleRetry = async () => {
+    const pending = pendingSaveRef.current;
+    if (pending) {
+      setState("transcribing");
+      setError(null);
+      const noteRes = await saveUploadNote(pending);
+      if (noteRes.success && noteRes.note) {
+        pendingSaveRef.current = null;
+        setNoteId(noteRes.note.id);
+        releaseExecutionTemp(downloadedTempPathRef.current);
+        setState("complete");
+      } else {
+        setError(t("notes.upload.noteSaveFailed"));
+        setState("error");
+      }
+      return;
+    }
     if (file) {
       handleTranscribe();
     } else if (urlInput.trim()) {

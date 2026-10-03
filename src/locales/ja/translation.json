@@ -1667,6 +1667,7 @@
       "create": "作成",
       "custom": "カスタム",
       "selectFolder": "フォルダを選択",
+      "noteSaveFailed": "文字起こしは成功しましたが、ノートの保存に失敗しました。「再試行」をクリックすると保存できます。",
       "transcriptionFailed": "文字起こしに失敗しました",
       "errorOccurred": "エラーが発生しました",
       "noSpeechDetected": "この音声から発話を検出できませんでした。",

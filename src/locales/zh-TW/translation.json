@@ -1584,6 +1584,7 @@
       "create": "建立",
       "custom": "自訂",
       "selectFolder": "選擇資料夾",
+      "noteSaveFailed": "轉錄成功，但儲存筆記失敗。點擊重試以儲存。",
       "transcriptionFailed": "轉錄失敗",
       "errorOccurred": "發生錯誤",
       "noSpeechDetected": "未在此音訊中偵測到語音。",

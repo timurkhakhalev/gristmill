@@ -1,33 +1,31 @@
 /**
  * Dictionary import/export format.
  *
- * Export writes one entry per line. An entry that would otherwise be split on
- * import — it contains a comma, a double quote or a newline — is CSV-quoted and
- * `"` is escaped as `""`. Import follows the same rule: if the paste contains a
- * quote it is parsed as the quoted format; a plain paste keeps the convenient
- * comma/newline split for ordinary words.
+ * Export writes one entry per line, CSV-quoting only an entry that would
+ * otherwise be split on import — it contains a comma, a double quote or a
+ * newline — and escaping `"` as `""`.
+ *
+ * Import mirrors that contract per field: a leading quote is unwrapped only
+ * when the exporter would have produced it, i.e. the decoded content contains a
+ * comma/newline or an escaped quote. A plain paste therefore keeps the
+ * historical comma/newline semantics byte-for-byte — `"hello"` stays the
+ * literal entry `"hello"` and `""` stays `""` — while an exported
+ * `"Acme, Inc."` round-trips as one entry.
  *
  * @param {string} text
  * @returns {string[]}
  */
 export function parseDictionaryImportText(text: unknown): string[] {
   const raw = String(text ?? "");
-  // No quote means a plain paste (typing/pasting words); keep the historical
-  // comma-and-newline split so "Acme, Inc." still pastes as two entries.
-  if (!raw.includes('"')) return splitPlain(raw);
-  const quoted = parseQuotedFields(raw);
-  // An unbalanced quote is not the export format either; fall back rather than
-  // silently swallowing the rest of the paste.
-  return quoted === null ? splitPlain(raw) : normalizeFields(quoted);
+  // An unbalanced quote is not the export shape; fall back to the plain split
+  // rather than silently swallowing the rest of the paste.
+  const quoted = parseFields(raw);
+  return normalizeFields(quoted === null ? raw.split(/[,\n]/) : quoted);
 }
 
 /** Serializes entries for export, quoting those a plain split would corrupt. */
 export function serializeDictionaryEntries(words: readonly string[]): string {
   return words.map(quoteField).join("\n");
-}
-
-function splitPlain(raw: string): string[] {
-  return normalizeFields(raw.split(/[,\n]/));
 }
 
 function normalizeFields(fields: readonly string[]): string[] {
@@ -39,47 +37,70 @@ function quoteField(word: string): string {
   return `"${word.replace(/"/g, '""')}"`;
 }
 
-// Minimal CSV scan over the exported shape: comma or newline separates fields,
-// a field may be quote-wrapped (after optional leading spaces), and `""` is a
-// literal quote. Returns null when a quote is left open.
-function parseQuotedFields(text: string): string[] | null {
+// Single scan that both splits fields and decodes the exported quoting. A field
+// is unwrapped only when its decoded content needed quoting (a comma, newline
+// or escape); otherwise the literal slice survives, so plain pastes are
+// unchanged. Returns null when a quote is left open.
+function parseFields(text: string): string[] | null {
   const fields: string[] = [];
-  let field = "";
+  let decoded = "";
+  let literal = "";
   let inQuotes = false;
-  // True while the field holds only whitespace, so leading spaces before an
-  // opening quote are allowed and discarded.
+  let quoteOpened = false;
+  let hadEscape = false;
+  let closed = false;
+  // True while the field holds only whitespace, so spaces before an opening
+  // quote are allowed.
   let quoteMayOpen = true;
+
+  const endField = () => {
+    const exportQuoted = quoteOpened && closed && (hadEscape || /[,\n\r]/.test(decoded));
+    fields.push(exportQuoted ? decoded : literal);
+    decoded = "";
+    literal = "";
+    quoteOpened = false;
+    hadEscape = false;
+    closed = false;
+    quoteMayOpen = true;
+  };
+
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (inQuotes) {
+      literal += char;
       if (char === '"') {
         if (text[i + 1] === '"') {
-          field += '"';
+          literal += '"';
+          decoded += '"';
+          hadEscape = true;
           i += 1;
         } else {
           inQuotes = false;
+          closed = true;
         }
       } else {
-        field += char;
+        decoded += char;
       }
       continue;
     }
     if (char === '"' && quoteMayOpen) {
       inQuotes = true;
-      field = "";
+      quoteOpened = true;
+      literal += char;
       quoteMayOpen = false;
       continue;
     }
     if (char === "," || char === "\n" || char === "\r") {
-      fields.push(field);
-      field = "";
-      quoteMayOpen = true;
+      endField();
       continue;
     }
-    field += char;
-    if (char !== " " && char !== "\t") quoteMayOpen = false;
+    literal += char;
+    if (char !== " " && char !== "\t") {
+      quoteMayOpen = false;
+      closed = false;
+    }
   }
   if (inQuotes) return null;
-  fields.push(field);
+  endField();
   return fields;
 }

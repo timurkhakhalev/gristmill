@@ -50,13 +50,36 @@ test("a plain paste with a comma in one word keeps its convenient split", async 
   assert.deepEqual(parseDictionaryImportText("Acme, Inc.\nBob"), ["Acme", "Inc.", "Bob"]);
 });
 
-test("quoted fields accept a comma separator and surrounding spaces", async () => {
+test("an exported field is unwrapped while a plain quoted word stays literal", async () => {
   const { parseDictionaryImportText } = await load();
+  // "Acme, Inc." is exporter-shaped (it needed quoting), so its quotes are
+  // decoded. "Carol" never needed quoting, so its quotes stay literal — the
+  // pre-PR behavior for a plain paste.
   assert.deepEqual(parseDictionaryImportText(' "Acme, Inc." , Bob\n"Carol" '), [
     "Acme, Inc.",
     "Bob",
-    "Carol",
+    '"Carol"',
   ]);
+});
+
+// R184-1/R184-2: plain pastes must keep pre-PR semantics byte-for-byte. A quote
+// that the exporter would not have produced is a literal character, not a
+// wrapper.
+test('a plain paste of "hello" survives as the literal entry "hello"', async () => {
+  const { parseDictionaryImportText } = await load();
+  assert.deepEqual(parseDictionaryImportText('"hello"'), ['"hello"']);
+});
+
+test('a plain paste of "" survives as the literal entry ""', async () => {
+  const { parseDictionaryImportText } = await load();
+  assert.deepEqual(parseDictionaryImportText('""'), ['""']);
+});
+
+// The most plausible mixed paste: a quoted-leading word the exporter would
+// unwrap, next to plain comma words.
+test("a mixed paste decodes the exported field and keeps plain words split", async () => {
+  const { parseDictionaryImportText } = await load();
+  assert.deepEqual(parseDictionaryImportText('"Acme, Inc.", Bob, Carol'), ["Acme, Inc.", "Bob", "Carol"]);
 });
 
 test("an unbalanced quote falls back to the plain comma/newline split", async () => {
@@ -71,7 +94,7 @@ test("quoted parsing still drops blanks and trims duplicates for the caller to d
   assert.deepEqual(parseDictionaryImportText('"Acme, Inc.",\n\n"Acme, Inc.",  "Bob"'), [
     "Acme, Inc.",
     "Acme, Inc.",
-    "Bob",
+    '"Bob"',
   ]);
 });
 

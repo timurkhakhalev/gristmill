@@ -58,19 +58,29 @@ function createPcm16Wav(sampleValue: number, sampleCount = 160) {
   return wav;
 }
 
-function listParakeetTempFiles(): string[] {
-  return fs.readdirSync(os.tmpdir()).filter((f: string) => f.startsWith("parakeet-"));
-}
-
 interface LoadedParakeet {
   ParakeetServerManager: any;
   convertCalls: { input: string; output: string; signal: unknown }[];
+}
+
+// Asserts the exact files this operation created are gone — never a global
+// tmpdir scan, which concurrent tests' real parakeet-* files would poison.
+function assertTempFilesGone(
+  call: { input: string; output: string },
+  message: string
+): void {
+  assert.equal(fs.existsSync(call.input), false, `${message}: temp input must be unlinked`);
+  assert.equal(fs.existsSync(call.output), false, `${message}: temp WAV must be unlinked`);
 }
 
 const parakeetServerModulePath = require.resolve("../../src/helpers/parakeetServer.ts");
 
 // Loads a fresh parakeetServer module with convertToWav replaced, recording
 // the signal it received and simulating ffmpeg's on-disk behavior.
+// Fresh-copy invariant: each call invalidates the module cache entry so it
+// mints a fresh parakeetServer module with this call's mock baked in; that
+// invalidation is only safe under per-file process isolation — revisit the
+// cache handling if this file ever joins a shared-isolation phase.
 function loadWithConvertToWav(behavior: (outputPath: string) => void): LoadedParakeet {
   const convertCalls: { input: string; output: string; signal: unknown }[] = [];
   const originalLoad = Module._load;
@@ -147,7 +157,7 @@ test("preprocessing passes the caller's signal to convertToWav and cleans up on 
     assert.equal(result.text, "audible");
     assert.equal(convertCalls.length, 1);
     assert.equal(convertCalls[0].signal, controller.signal, "the cancellation signal reaches ffmpeg");
-    assert.deepEqual(listParakeetTempFiles(), [], "success must leave no parakeet temp files behind");
+    assertTempFilesGone(convertCalls[0], "success");
   });
 });
 
@@ -167,12 +177,12 @@ test("conversion failure cleans up the temp input and partial WAV", async () => 
       /FFmpeg exited/
     );
     assert.equal(convertCalls.length, 1);
-    assert.deepEqual(listParakeetTempFiles(), [], "conversion failure must not leak the input or the partial WAV");
+    assertTempFilesGone(convertCalls[0], "conversion failure");
   });
 });
 
 test("WAV read failure after conversion also cleans up the temp files", async () => {
-  const { ParakeetServerManager } = loadWithConvertToWav((outputPath) => {
+  const { ParakeetServerManager, convertCalls } = loadWithConvertToWav((outputPath) => {
     fs.writeFileSync(outputPath, createPcm16Wav(0.5));
     // Simulate the file vanishing between ffmpeg close and readFileSync.
     fs.unlinkSync(outputPath);
@@ -184,7 +194,8 @@ test("WAV read failure after conversion also cleans up the temp files", async ()
       transcribe: async () => ({ text: "never", elapsed: 0 }),
     };
     await assert.rejects(() => manager.transcribe(createFloat32Wav(0.5), { modelName: MODEL_NAME }));
-    assert.deepEqual(listParakeetTempFiles(), [], "a read failure must not leak the temp input");
+    assert.equal(convertCalls.length, 1);
+    assert.equal(fs.existsSync(convertCalls[0].input), false, "a read failure must not leak the temp input");
   });
 });
 

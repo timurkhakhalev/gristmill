@@ -53,7 +53,7 @@ A technical individual user who:
 9. An automatic Summary follows the saved transcript only when both thresholds are met: 180 seconds and 2,500 transcript characters. The user can start a Summary manually for each ready transcript. The Summary uses the corrected full transcript segments and a saved prompt and model snapshot.
 10. Meeting recordings and result history attach to the existing Note. The selected transcript and the single Summary Markdown artifact show in the existing Notes fields. Manual content stays separate. Previous runs and raw tracks stay available after a retry.
 11. Prioritized tasks fill the existing `## Action Items` section of the Summary. Zero tasks remove this section. An optional manual Recap uses the same Markdown with revision checks. Follow-up makes a normal assistant reply draft in the existing Chat. Gristmill sends no message anywhere.
-12. The user can select a completed result version, correct speakers, play and seek audio, export audio, start an ASR run with a different provider or model, or try the Summary again from a saved transcript.
+12. The user can correct speakers, play and seek audio, export a selected part, start an ASR run with settings from Models, or try the Summary again from a saved transcript. Result history is saved, but the current Results UI has no picker for previous completed versions.
 
 ## Required capabilities
 
@@ -96,9 +96,9 @@ A technical individual user who:
 ### Chat
 
 - Keep the full embedded Note chat, with its tools that create and edit notes.
-- Use the transcript, manual notes, generated notes and meeting metadata as context.
+- The direct Note chat receives the title, folder ID, manual notes and transcript as initial context. Summary and participants are not separate automatic context fields. Note tools can read saved Summary content. The BB route starts with the current Note ID. See [AI conversations](user-journeys/chat.md).
 - Link factual answers to transcript timestamps.
-- Keep the chat history for each meeting.
+- Keep the chat history for each Note. Home has a separate entry point and can open conversations from multiple Notes.
 - Offer the editable Follow-up Action as a draft in the existing Chat. Store it as a normal assistant message. Never send it anywhere.
 - Keep explicit local cross-note search and access. Do not limit the chat to one note.
 
@@ -133,3 +133,8 @@ Live microphone and system tail-loss and restart checks need isolated hardware v
 - A note without an explicit folder stays at the space root. This includes calendar meetings.
 - Uploads offer a "No folder" destination.
 - Existing folders stay.
+
+## User journeys
+
+See [user journeys](user-journeys/index.md) for the current UI paths, limits and source entry points.
+Required capabilities above do not imply that every backend operation has a user-visible control.

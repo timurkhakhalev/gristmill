@@ -11,7 +11,7 @@ const {
 
 type TestContext = import("node:test").TestContext;
 type ViteDevServer = import("vite").ViteDevServer;
-type ModelEntry = { id: string; downloaded?: boolean };
+type ModelEntry = { id: string; downloaded?: boolean; organization?: string };
 type ModelGroup = { id: string; entries: ModelEntry[] };
 
 let vitePromise: Promise<ViteDevServer> | undefined;
@@ -148,5 +148,43 @@ test("on a Mac without the sherpa runtime, Oruk, NVIDIA and Cohere are unavailab
   await runHooks(t, vite, () => useTranscriptionPolicies(false));
   assert.equal(useSettingsStore.getState().meetingLocalTranscriptionProvider, "whisper");
   assert.equal(useSettingsStore.getState().uploadLocalTranscriptionProvider, "whisper");
+  await unmountAll();
+});
+
+// Issue #182: downloading a local model must leave the task's route alone. The
+// old download button auto-selected the model on success, so a completion that
+// landed after the user picked another source snapped the task back to Local.
+test("a completed local download updates the inventory without changing the task route", async (t: TestContext) => {
+  let resolveDownload!: (value: { success: boolean }) => void;
+  const vite = await renderer(t, inventoryApi({
+    downloadWhisperModel: () => new Promise((resolve) => {
+      resolveDownload = (value) => resolve(value);
+    }),
+  }));
+  const read = await inventory(t, vite);
+  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  const { selectCloudModel } = await vite.ssrLoadModule("/components/settings/models/taskModels.ts");
+  const state = useSettingsStore.getState();
+  t.after(() => useSettingsStore.setState(state));
+
+  // The user picks a cloud route for the meeting task.
+  selectCloudModel("meeting", "deepgram", "nova-3");
+  assert.equal(useSettingsStore.getState().meetingTranscriptionMode, "providers");
+
+  const whisperEntry = read().speech.find((entry: ModelEntry) => entry.organization === "whisper");
+  assert.ok(whisperEntry);
+  await React.act(async () => {
+    read().download(whisperEntry);
+  });
+  // The download completes later; the route must not snap back to local.
+  await React.act(async () => {
+    resolveDownload({ success: true });
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  const next = useSettingsStore.getState();
+  assert.equal(next.meetingTranscriptionMode, "providers", "the cloud route survives a late download");
+  assert.equal(next.meetingCloudTranscriptionProvider, "deepgram");
+  assert.equal(next.meetingCloudTranscriptionModel, "nova-3");
   await unmountAll();
 });

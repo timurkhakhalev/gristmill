@@ -29,7 +29,8 @@ export interface LocalModelInventory {
   sherpaSupported: boolean;
   find(kind: "speech" | "language", id: string): LocalModelEntry | undefined;
   downloadState(entry: LocalModelEntry): LocalDownloadState | null;
-  download(entry: LocalModelEntry, onDownloaded?: (id: string) => void): void;
+  /** Downloads to disk and refreshes the inventory; it does not change any task's selection. */
+  download(entry: LocalModelEntry): void;
   cancel(entry: LocalModelEntry): void;
   remove(entry: LocalModelEntry): void;
 }

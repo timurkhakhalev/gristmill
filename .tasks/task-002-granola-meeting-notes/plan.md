@@ -23,7 +23,7 @@ Implement delayed post-meeting transcription, evidence-based speaker names, one 
 
 ## 3. Milestone rules (dependencies)
 
-Milestones run sequentially. Each delivers its contracts and verifies its own behavior before the next starts. Consumer milestones begin by checking the actual upstream contract and adapting direct consumers, without a dual legacy path. Only the root integrator runs tests, builds, installs or native rebuilds; agents may write tests and run scoped lint/typecheck, and report test commands. Focused checks happen at milestone boundaries; integration runs one full suite after the cross-domain changes. No production-profile smoke.
+Milestones run sequentially. Each delivers its contracts and verifies its own behavior before the next starts. Consumer milestones begin by checking the actual upstream contract and adapting direct consumers, without a dual legacy path. Focused checks happen at milestone boundaries; integration runs one full suite after the cross-domain changes. No production-profile smoke.
 
 ## 4. Milestone index
 
@@ -161,7 +161,7 @@ Depends on: M3.
 
 #### 5.4.4 Verification
 
-- Root runs focused failed files first if needed, then **sequentially** `pnpm run lint`, `pnpm run typecheck`, `pnpm test` once for integrated cross-domain/database/provider/renderer changes, and `git diff --check`. Inspect `pnpm test --list` if files/registry entries move. No simultaneous test/build/install processes. Manual isolated `--user-data-dir` smoke: real macOS mic+system capture with Pause/Resume/End, 15-second waiting, a short meeting, Summary threshold crossing, speaker edit, same Chat Follow-up and Recap; test representative configured routes including BB if credentials are available. Record any unavailable hardware/paid-provider checks as unverified, not passed. No package build unless touched output requires it under quality steering.
+- Run focused failed files first if needed, then **sequentially** `pnpm run lint`, `pnpm run typecheck`, `pnpm test` once for integrated cross-domain/database/provider/renderer changes, and `git diff --check`. Inspect `pnpm test --list` if files/registry entries move. No simultaneous test/build/install processes. Manual isolated `--user-data-dir` smoke: real macOS mic+system capture with Pause/Resume/End, 15-second waiting, a short meeting, Summary threshold crossing, speaker edit, same Chat Follow-up and Recap; test representative configured routes including BB if credentials are available. Record any unavailable hardware/paid-provider checks as unverified, not passed. No package build unless touched output requires it under quality steering.
 
 #### 5.4.5 Consumer surfaces impacted
 
@@ -241,7 +241,7 @@ Depends on: M7.
 #### 5.8.2 Scope
 
 - Resolve M7-1 in the committed [review-4.md](review-4.md). The Results `New Summary` affordance must reflect the same selected-run and capture eligibility as the toolbar, with no enabled control that silently returns without a request. Keep the common selected-run Summary path established in M7.
-- Preserve M1–M7's capture gate, older run history, empty-transcript exclusion, short nonempty manual eligibility outside capture, saved Summary artifact and Markdown projection, speaker correction precedence, tasks/Recap and Chat Follow-up. M4-1 live verification remains a separate root-owned evidence boundary.
+- Preserve M1–M7's capture gate, older run history, empty-transcript exclusion, short nonempty manual eligibility outside capture, saved Summary artifact and Markdown projection, speaker correction precedence, tasks/Recap and Chat Follow-up. M4-1 live verification remains a separate required evidence boundary.
 
 #### 5.8.3 Acceptance criteria
 

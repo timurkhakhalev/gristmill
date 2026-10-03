@@ -33,13 +33,13 @@ It has no backend. All data is in the local application profile.
 | [product/](product/index.md) | Requirements, scope, user-facing behavior | You change behavior or the product surface |
 | [architecture/](architecture/index.md) | C4 overview, recording and processing, storage, speakers, Companion, BB | You change code in that area |
 | [adr/](adr/index.md) | Accepted decisions and their reasons | You want to change a deliberate decision |
-| [steerings/](steerings/index.md) | Invariants, quality policy, commands, scripts, documentation rules | Before each change; when you select or run checks, change tooling or write documents |
+| [steerings/](steerings/index.md) | Quality policy, commands, scripts, documentation rules | Before each change; when you select or run checks, change tooling or write documents |
 | [runbooks/](runbooks/index.md) | Local builds, signing, profiles, troubleshooting | You build, install or diagnose the app |
 | [references.md](references.md) | Documents outside the Memory Bank and external sources | You need upstream, brand, issues or provider documentation |
 
 ## Reading paths
 
-- **Onboarding:** this file → [invariants](steerings/invariants.md) → [architecture overview](architecture/overview.md) → [product requirements](product/requirements.md) → [quality steering](steerings/quality.md).
+- **Onboarding:** this file → [architecture overview](architecture/overview.md) → [product requirements](product/requirements.md) → [quality steering](steerings/quality.md).
 - **Recording and processing:** [ADR-0003](adr/0003-record-then-process.md) → [recording and processing](architecture/recording-processing.md) → [post-Stop processing](architecture/post-stop-processing.md) → [audio storage](architecture/audio-storage.md).
 - **Providers, chat, BB:** [product scope](product/scope.md) → [BB integration](architecture/bb-integration.md).
 - **Speakers and Companion:** [speaker evidence](architecture/speaker-evidence.md) → [Companion](architecture/companion.md).

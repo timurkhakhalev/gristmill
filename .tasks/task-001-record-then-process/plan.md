@@ -28,7 +28,7 @@
 
 ## 3. Milestone rules (dependencies)
 
-Milestones выполняются последовательно одним implementer. Каждый завершается своими проверками до следующего. Только root/integrator запускает tests/build/install/native rebuild, последовательно; workers могут typecheck/lint и писать тесты. Не использовать исходный профиль OpenWhispr.
+Milestones выполняются последовательно одним implementer. Каждый завершается своими проверками до следующего. Tests/build/install/native rebuild выполняются последовательно с координацией между агентами. Не использовать исходный профиль OpenWhispr.
 
 Проверки данных используют временные файлы и отдельную SQLite; mocked API без платных вызовов. Реальную гарантию capture подтверждает macOS smoke, а не только unit test. Пропущенный из-за SQLite ABI тест не считается проверкой данных.
 
@@ -224,7 +224,7 @@ Depends on: M1, M2, M3, M4.
 
 #### 5.5.4 Verification
 
-Добавить или обновить focused regression tests для всех шести findings на подходящем уровне, включая Notes consumer states и IPC/config validation. Root запускает affected focused tests, `pnpm run typecheck`, `pnpm run lint`; после интеграции — последовательный `pnpm test`, затем `pnpm run pack` и `node scripts/smoke-electron.js`. Записать результаты в `implementation_progress.md`. Аппаратная mic/system проверка остаётся за Тимуром и не считается пройденной.
+Добавить или обновить focused regression tests для всех шести findings на подходящем уровне, включая Notes consumer states и IPC/config validation. Запустить affected focused tests, `pnpm run typecheck`, `pnpm run lint`; после интеграции — последовательный `pnpm test`, затем `pnpm run pack` и `node scripts/smoke-electron.js`. Записать результаты в `implementation_progress.md`. Аппаратная mic/system проверка остаётся за Тимуром и не считается пройденной.
 
 ### 5.6 M6 — Reviewer Fix 2
 
@@ -242,7 +242,7 @@ Depends on: M5.
 
 #### 5.6.4 Verification
 
-Добавить focused regression tests для deletion без transcript, summary-only correction после ASR и выбора двух записей в одной Note. Root запускает affected focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, затем последовательные `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js`. Результаты записать в `implementation_progress.md`. Отложенная аппаратная проверка не считается пройденной.
+Добавить focused regression tests для deletion без transcript, summary-only correction после ASR и выбора двух записей в одной Note. Запустить affected focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, затем последовательные `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js`. Результаты записать в `implementation_progress.md`. Отложенная аппаратная проверка не считается пройденной.
 
 ### 5.7 M7 — Reviewer Fix 3 (по решению Тимура)
 
@@ -283,13 +283,13 @@ Depends on: M7 and passing milestone review `review-4.md`.
 
 #### 5.8.4 Verification
 
-Добавить focused regression для playback старого видимого run при новом pending и неизменного `current_run_id`/projection; после завершения pending проверить новый результат. Для export проверить несколько epochs и gaps, большой sparse/temporary PCM без whole-file read, bounded chunk I/O, failure cleanup, cancellation/deletion race и завершение только после close/rename. Root запускает affected focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, затем последовательные `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js`. Аппаратная mic/system проверка остаётся у Тимура.
+Добавить focused regression для playback старого видимого run при новом pending и неизменного `current_run_id`/projection; после завершения pending проверить новый результат. Для export проверить несколько epochs и gaps, большой sparse/temporary PCM без whole-file read, bounded chunk I/O, failure cleanup, cancellation/deletion race и завершение только после close/rename. Запустить affected focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, затем последовательные `pnpm test`, `pnpm run pack`, `node scripts/smoke-electron.js`. Аппаратная mic/system проверка остаётся у Тимура.
 
 ## 6. Execution order (derived from dependencies)
 
 M1 → review/verification → M2 → review/verification → M3 → review/verification → M4 → интеграционная проверка → M5 Reviewer Fix 1 → повторный milestone review → M6 Reviewer Fix 2 → повторный milestone review → M7 Reviewer Fix 3 по решению Тимура → повторный milestone review → code review → M8 Code Review Fix 1 → повторный code review. Не запускать следующий milestone до закрытия блокирующих findings текущего.
 
-Общие команды из корня worktree: `pnpm run typecheck`, `pnpm run lint`, focused Node commands выше; полный `pnpm test` один раз после интеграции, при ошибке сначала focused rerun. Не устанавливать новые библиотеки для очереди, кодирования или тестов: SQLite, Node fs, ffmpeg и node:test уже есть. Tests/build/install выполняет только root.
+Общие команды из корня worktree: `pnpm run typecheck`, `pnpm run lint`, focused Node commands выше; полный `pnpm test` один раз после интеграции, при ошибке сначала focused rerun. Не устанавливать новые библиотеки для очереди, кодирования или тестов: SQLite, Node fs, ffmpeg и node:test уже есть.
 
 Официальные контракты для проверки затронутых адаптеров: [Deepgram diarization](https://developers.deepgram.com/docs/diarization), [ElevenLabs file ASR](https://elevenlabs.io/docs/api-reference/speech-to-text/convert), [Gemini Transcribe](https://ai.google.dev/gemini-api/docs/transcribe). Проверены страницы 2026-09-24; текущие code guards размера 2/3/2 GiB и Gemini30min — ограничения реализации, не результат платного e2e. Новые ограничения показывать явно, без обхода делением аудио.
 

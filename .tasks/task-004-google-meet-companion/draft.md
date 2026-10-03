@@ -348,9 +348,9 @@ production rollout — отдельная задача. Beta/Canary и друг�
   устройства во время записи с существующим idle warm hold/detection policy.
 - Новые app UI keys во всех 11 текущих локалях проходят существующий
   `test/locales/translationCoverage.test.ts`; RU/EN — отдельный scope Meet DOM.
-- Root последовательно выполняет focused tests, lint/typecheck, одну full suite
+- Последовательно выполнить focused tests, lint/typecheck, одну full suite
   после интеграции, renderer build, `pack:dev` и packaged Chrome/native-host
-  smoke. Subagents не запускают tests/build/install/native rebuild.
+  smoke.
 - Live isolated Dev + isolated Chrome: hardware mic/system gate, unmute
   alignment, tail-loss, Pause/Resume/recovery, confirmed leave и Meet names/
   overlap/lag. Второй собственный browser/device с заранее заданным synthetic

@@ -68,7 +68,7 @@ Severity counts: critical 0; high 1; medium 3; minor 0. Overall status is blocke
 
 ## Verification
 
-- Reviewer read-only commands: `git status --short --branch`, `git log --oneline --no-decorate -14`, `git diff --stat adfa8157d..HEAD`, `git show --format=medium --stat` and source/test diffs for M5 implementation commits, plus scoped `rg`, `sed`, and `nl` reads. These confirmed the cited final-tree conditions and test coverage. No test, build, install or native rebuild was run by this reviewer, as repository quality steering reserves them for the root integrator.
+- Reviewer read-only commands: `git status --short --branch`, `git log --oneline --no-decorate -14`, `git diff --stat adfa8157d..HEAD`, `git show --format=medium --stat` and source/test diffs for M5 implementation commits, plus scoped `rg`, `sed`, and `nl` reads. These confirmed the cited final-tree conditions and test coverage. No test, build, install or native rebuild was run by this reviewer.
 - Root-supplied automated results: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts test/services/meetingResults.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/locales/translationCoverage.test.ts` passed; `pnpm run lint` passed; `pnpm run typecheck` passed; `pnpm test` passed; renderer build passed. M5 progress records `git diff --check` passing. These results were not independently rerun here.
 - Isolated Electron startup occurred as described under M4-1. Live hardware, UI journey, configured provider/BB responses and controlled prompt-quality outputs remain unverified.
 

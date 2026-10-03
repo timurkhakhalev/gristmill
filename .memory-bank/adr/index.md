@@ -15,4 +15,3 @@ Use the [template](template.md). Name the file `NNNN-short-slug.md`.
 | [0003](0003-record-then-process.md) | Record only during the meeting. Do ASR and notes after Stop | Accepted, 2026-09-23 |
 | [0004](0004-opus-capture.md) | Write the original tracks directly as Ogg/Opus at 32 kbit/s | Accepted, 2026-09-30 |
 | [0005](0005-typescript-toolchain.md) | Native TypeScript 7 for typecheck and build. TypeScript 6 only for the Compiler API | Accepted |
-| [0006](0006-two-process-test-runner.md) | The canonical test runner uses a maximum of two processes. Heavy phases run in sequence | Accepted, 2026-09-27 |

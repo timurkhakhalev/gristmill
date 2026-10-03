@@ -49,7 +49,7 @@ Follow-up verification by this implementer:
 - `git diff --check` — passed.
 - No tests, builds, installs or native commands were run by this implementer.
 
-Root must rerun the complete M1 selection from §5.1.4:
+Rerun the complete M1 selection from §5.1.4:
 
 ```sh
 pnpm test -- test/helpers/activeMicRecovery.test.ts test/helpers/meetingAudioTimeline.test.ts test/helpers/meetingCaptureRecovery.test.ts test/helpers/meetingAudioParts.test.ts test/helpers/meetingProcessing.test.ts test/helpers/meetingRecordingSession.test.ts test/helpers/meetingAudioActivityMonitor.test.ts test/helpers/meetingAutoEndController.test.ts test/cases/recording/unit/meetingPcmProcessor.test.ts test/cases/recording/integration/meetingMicrophoneSelection.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/cases/recording/unit/meetingClockSync.test.ts test/cases/recording/integration/meetingMicGate.test.ts test/cases/recording/integration/meetingIntentionalIntervals.test.ts test/cases/recording/native/audioTapClockProbe.test.ts
@@ -154,7 +154,7 @@ input to `getDerivedAudioPath(recording.id, run.id, "mono")` directly.
 
 Only these two test files changed for the correction. Scoped `pnpm run
 typecheck:tests` and ESLint on both changed tests passed; no tests, builds,
-installs, or native commands were run by this implementer. Root must rerun the
+installs, or native commands were run by this implementer. Rerun the
 selection above and the full §5.1.4 M1 verification. M1 stays in progress: the
 capture-clock behavior and user clock-domain decision logged above remain
 unresolved and no clock architecture was changed.

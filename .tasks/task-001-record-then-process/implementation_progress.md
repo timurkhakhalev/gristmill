@@ -6,7 +6,7 @@ Implemented typed recording/run/result contracts, additive SQLite persistence, i
 
 Preserved constraints: configuration snapshots are stored before epochs and strip unknown fields/secrets; recovery counts complete frames without rewriting raw audio; recording capture state stays independent from processing state; audio deletion preserves run JSON/text; note deletion removes recording results while shared speaker profiles and existing Notes behavior remain intact. All managed paths are generated and checked in main.
 
-Issues: test execution is pending the root-only verification gate; this worker did not run tests, builds, installs, or native rebuilds.
+Issues: test execution is pending verification; this worker did not run tests, builds, installs, or native rebuilds.
 
 Verification:
 - `pnpm run typecheck` — passed (main, renderer, settings selectors).
@@ -25,7 +25,7 @@ Root's focused run found two issues. The audio deletion test incorrectly expecte
 Follow-up verification:
 - `pnpm run typecheck` — passed.
 - `pnpm run lint` — passed with 12 pre-existing warnings; no warnings on M1 files.
-- Tests remain root-only and were not rerun by this worker.
+- Tests remain required and were not rerun by this worker.
 
 Follow-up commits:
 - `0e0f08fd` — M1: correct recovery and deleted-audio expectations.
@@ -38,13 +38,13 @@ Implemented local capture with a pre-capture settings snapshot, main-owned immut
 
 Preserved constraints: recording is independent of network/provider availability; raw mic and system audio remain separate and are written before any processing; source restarts retain gaps; missing or failed sources finalize incomplete; native system Stop waits for tap close; note text and existing transcript remain untouched.
 
-Issues: native tap output is main-owned and does not have a renderer sequence number. Finalization now relies on its awaited process close for that source, while still checking renderer sequence numbers; a regression case also covers stdout chunks larger than 100 ms. The code commit is complete; tests and macOS hardware smoke remain root-only verification gates.
+Issues: native tap output is main-owned and does not have a renderer sequence number. Finalization now relies on its awaited process close for that source, while still checking renderer sequence numbers; a regression case also covers stdout chunks larger than 100 ms. The code commit is complete; tests and macOS hardware smoke remain required verification gates.
 
 Verification:
 - `pnpm run typecheck` — passed (main, renderer, settings selectors).
 - `pnpm run lint` — passed with 0 errors; 36 warnings remain, including unreachable legacy meeting helpers exposed by the capture cutover and unrelated existing warnings.
 - `git diff --check` and staged diff check — passed.
-- Tests were not run by this worker, per the root-only execution constraint.
+- Tests were not run by this worker, per the required execution constraint.
 - Root focused command, including added quit-flow coverage: `node --import tsx --test --test-concurrency=1 test/helpers/meetingCoordinatorIpc.test.js test/helpers/meetingAudioTimeline.test.js test/helpers/meetingCaptureRecovery.test.js test/stores/meetingRecordingStoreAutoEndStop.test.js test/stores/meetingRecordingStoreSystemAudioInterrupted.test.js test/helpers/windowManagerMeetingNotification.test.js`.
 - Root hardware smoke: use an isolated macOS arm64 user-data profile; record known continuous signals to mic and system audio offline; verify hide/reopen, Stop mid-speech, quit/cancel, device restart, and process kills at several points; compare recovered tails and durations against the reference and record bytes/durations/loss. Normal Stop must have no tail loss and each crash-recovered track must lose at most 1 second.
 
@@ -131,7 +131,7 @@ Verification:
 - `pnpm run typecheck` — passed (main, renderer, settings selectors).
 - `pnpm run lint` — passed with 0 errors; 36 warnings remain in pre-existing or unrelated files, including M2's unused realtime-helper warnings after the capture cutover.
 - `git diff --check` and staged diff check — passed.
-- Tests were not run by this worker, per the root-only execution constraint. Root command: `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/remoteTranscriptionIpc.test.js test/helpers/geminiFileTranscription.test.js test/helpers/retryTranscriptionHandler.test.js test/helpers/transcriptionRoute.test.js test/services/fileTranscriptionDiarizationWarning.test.js`.
+- Tests were not run by this worker, per the required execution constraint. Root command: `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/remoteTranscriptionIpc.test.js test/helpers/geminiFileTranscription.test.js test/helpers/retryTranscriptionHandler.test.js test/helpers/transcriptionRoute.test.js test/services/fileTranscriptionDiarizationWarning.test.js`.
 - The mixer suite includes a real FFmpeg sample/offset/gap/duration check and skips only when FFmpeg is unavailable. Real provider calls and hardware smoke were not run by this worker.
 
 Commit:
@@ -155,7 +155,7 @@ Added the Notes result/version panel, selected-run transcript/summary projection
 
 Preserved constraints: Note content and empty Notes remain intact; no new dashboard or Self-Hosted meeting route; selected results and corrections remain per run; raw provider results and mic/system PCM remain separate/immutable; expiry uses recording end time; audio deletion retains text/history and shared speaker profiles; Note deletion waits for active processing and prevents late publication. The main checkout's dirty README/docs were read only and were not modified. Live mic/system hardware smoke remains explicitly unverified.
 
-Issues: final root-owned focused/full tests, build/packaged smoke, and hardware validation are pending. Typecheck initially caught the async delete-all dependency shape and duplicate Stop option fields; both were corrected. Tests/builds/installs/native rebuilds were not run by this worker.
+Issues: final required focused/full tests, build/packaged smoke, and hardware validation are pending. Typecheck initially caught the async delete-all dependency shape and duplicate Stop option fields; both were corrected. Tests/builds/installs/native rebuilds were not run by this worker.
 
 Verification:
 - `pnpm run typecheck` — passed (main, renderer, settings selectors).
@@ -203,14 +203,14 @@ Fixed the full-run failures caused by stale capture fixtures and contracts, obso
 
 Preserved constraints: meeting capture continues to store raw mic/system audio before processing, wait for acknowledged writes and native tail drain, and mark missing system audio incomplete. The old realtime streaming assertions were replaced with checks for post-Stop persisted processing, raw writes, watchdog interruption, and Stop drain. Existing renderer provider behavior, Notes/manual content, Local/Self-Hosted/file-import routes, and deletion/result semantics remain in place.
 
-Issues: root's first full run had 39 failures before these fixes. This worker did not run tests, builds, installs, or native rebuilds. Root must rerun the focused failures and full suite before marking integration verified.
+Issues: root's first full run had 39 failures before these fixes. This worker did not run tests, builds, installs, or native rebuilds. Rerun the focused failures and full suite before marking integration verified.
 
 Verification run by this worker:
 - `pnpm run typecheck` — passed (main, renderer, settings selectors).
 - `pnpm run lint` — passed with 34 pre-existing warnings in the root lint pass and 2 React-refresh warnings in `src/`; no lint errors.
 - `git diff --check` — passed.
 
-Root-only focused verification:
+Required focused verification:
 - `node --import tsx --test --test-concurrency=1 test/components/fieldDirectionPolicy.test.js test/components/meetingInterruptionWarning.test.js test/helpers/audioTapManagerWarnings.test.js test/helpers/calendarAvailabilityBridge.test.js test/helpers/localFileTranscriptionBridge.test.js test/helpers/meetingCoordinatorBridge.test.js test/helpers/meetingStreamingWiring.test.js test/helpers/transcriptFormatter.test.js test/helpers/transcriptionDataDeleteAllAudio.test.js test/locales/translationCoverage.test.js test/scripts/meetingCoordinatorTypeProbe.test.js test/scripts/noteFilesTypeProbe.test.js test/stores/meetingRecordingStoreDiarizationPublish.test.js test/stores/meetingRecordingStoreSystemAudioDegraded.test.js test/stores/meetingRecordingStoreSystemAudioSilence.test.js`
 - `pnpm run build:main` followed by `node --import tsx --test --test-concurrency=1 test/scripts/mainBuild.test.js`
 - After focused fixes pass, `pnpm test` (its `pretest` builds the main graph).
@@ -234,7 +234,7 @@ Verification:
 - `git diff --check` — passed.
 - This worker did not run tests, builds, installs, or native rebuilds.
 
-Root-only rerun: `node --import tsx --test --test-concurrency=1 test/locales/translationCoverage.test.js`
+Required rerun: `node --import tsx --test --test-concurrency=1 test/locales/translationCoverage.test.js`
 
 ## M5 Reviewer Fix 1
 
@@ -253,10 +253,10 @@ Verification run by this worker:
 - `git diff --check` — passed.
 - Tests, builds, installs, and native rebuilds were not run by this worker.
 
-Root-only focused regression command:
+Required focused regression command:
 `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
 
-Root-only integration verification remains `pnpm test`, then `pnpm run pack` and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains unverified.
+Required integration verification remains `pnpm test`, then `pnpm run pack` and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains unverified.
 
 Commit: `9b4755a6` — M5: fix reviewed meeting processing gaps.
 
@@ -275,7 +275,7 @@ Verification run by this worker:
 - `git diff --check` — passed.
 - Tests, builds, installs, and native rebuilds were not run by this worker.
 
-Root-only focused rerun:
+Required focused rerun:
 `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
 
 Commit: `0fbe743f` — M5: fix focused meeting result test failures.
@@ -293,7 +293,7 @@ Verification run by this worker:
 - `git diff --check` — passed.
 - Tests, builds, installs, and native rebuilds were not run by this worker.
 
-Root-only focused rerun:
+Required focused rerun:
 `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
 
 Commit: `98ef791c` — M5: stabilize mounted results panel tests.
@@ -315,10 +315,10 @@ Verification run by this worker:
 - `git diff --check` — passed.
 - Tests, builds, installs, and native rebuilds were not run by this worker.
 
-Root-only focused regression command:
+Required focused regression command:
 `node --import tsx --test --test-concurrency=1 test/helpers/meetingProcessing.test.js test/helpers/meetingRecordingPersistence.test.js test/components/meetingResultsPanel.test.js test/locales/translationCoverage.test.js`
 
-Root-only final verification from plan 5.6: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
+Required final verification from plan 5.6: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
 
 Commit: `d0795810` — M6: fix reviewed recording selection and retry paths.
 
@@ -338,10 +338,10 @@ Verification run by this worker:
 - `git diff --check` — passed.
 - Tests, builds, installs, and native rebuilds were not run by this worker.
 
-Root-only focused regression command:
+Required focused regression command:
 `node --import tsx --test --test-concurrency=1 test/helpers/meetingRecordingConfigSnapshot.test.js test/helpers/meetingProcessing.test.js test/components/meetingResultsPanel.test.js`
 
-Root-only M7 checks: `pnpm run typecheck`, `pnpm run lint`, and `pnpm run i18n:check`; final integration remains sequential `pnpm test`, `pnpm run pack`, then `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
+Required M7 checks: `pnpm run typecheck`, `pnpm run lint`, and `pnpm run i18n:check`; final integration remains sequential `pnpm test`, `pnpm run pack`, then `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
 
 Commit: `99ba4a1f` — M7: keep summary correction and version selection stable.
 
@@ -359,7 +359,7 @@ Verification run by this worker:
 - `git diff --check` — passed.
 - Tests, builds, installs, and native rebuilds were not run by this worker.
 
-Root-only focused regression command:
+Required focused regression command:
 `node --import tsx --test --test-concurrency=1 test/services/meetingResults.test.js test/components/meetingResultsPanel.test.js test/helpers/meetingRecordingRetention.test.js test/helpers/meetingProcessing.test.js`
 
 Root integration checks from the plan: `pnpm run typecheck`, `pnpm run lint`, `pnpm run i18n:check`, then sequential `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js`. Live mic/system hardware smoke remains deferred and unverified.
@@ -378,7 +378,7 @@ Verification:
 - `git diff --check` — passed.
 - Tests, builds, installs, and native rebuilds were not run by this worker.
 
-Root-only focused rerun:
+Required focused rerun:
 `node --import tsx --test --test-concurrency=1 test/services/meetingResults.test.js test/components/meetingResultsPanel.test.js test/helpers/meetingRecordingRetention.test.js test/helpers/meetingProcessing.test.js`
 
 Fixture follow-up commits: `0811867c`, `76f1cc5a`.

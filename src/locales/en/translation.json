@@ -2037,6 +2037,8 @@
   "integrations": {
     "title": "Integrations",
     "description": "Connect services to supercharge your workflow",
+    "disconnectFailed": "Disconnect Failed",
+    "disconnectFailedDescription": "Something went wrong while disconnecting. The account stays connected — please try again.",
     "googleCalendar": {
       "title": "Google Calendar",
       "description": "Auto-fill meeting titles and attendees from your calendar.",

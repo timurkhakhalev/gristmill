@@ -393,6 +393,8 @@
   "integrations": {
     "title": "التكاملات (Integrations)",
     "description": "قم بتوصيل الخدمات لتعزيز سير عملك",
+    "disconnectFailed": "فشل قطع الاتصال",
+    "disconnectFailedDescription": "حدث خطأ أثناء قطع الاتصال. يبقى الحساب متصلاً — يرجى المحاولة مرة أخرى.",
     "googleCalendar": {
       "title": "تقويم Google",
       "description": "الملء التلقائي لعناوين الاجتماعات والحاضرين من التقويم الخاص بك.",

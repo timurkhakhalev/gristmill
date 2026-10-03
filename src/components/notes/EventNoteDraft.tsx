@@ -6,6 +6,7 @@ import NoteBottomBar from "./NoteBottomBar";
 import NoteParticipants from "./NoteParticipants";
 import NoteRecordControl from "./NoteRecordControl";
 import { setNoteHandoff } from "./noteHandoff";
+import type { EventDraftHandoff } from "../../lib/noteEditorPendingSave";
 import type { CalendarEvent } from "../../contracts/calendar";
 import type { NoteItem } from "../../contracts/notes";
 import { parseAttendees } from "../../utils/calendarAttendees";
@@ -21,14 +22,22 @@ interface EventNoteDraftProps {
   onBack: () => void;
   /** The note now exists; open it, and start recording when that was the intent. */
   onMaterialized: (note: NoteItem, intent: EventDraftIntent) => void;
+  /** Receives the full latest draft for the note's owner to persist. */
+  onDraftHandoff: (handoff: EventDraftHandoff) => void;
 }
 
 /**
  * A calendar event opened before it has a note: it looks like the note editor
  * but stores nothing. The note is created only when the user writes, starts
  * recording or asks the chat, and that first input goes into it.
+ *
+ * The draft never persists the note itself beyond the create call: every typed
+ * revision is handed to the note owner (the editor's pending-save pipeline),
+ * read at handoff time after all awaits, so keystrokes that land during the
+ * create/update round-trips are never lost — and input never has to be
+ * disabled while the request runs.
  */
-export default function EventNoteDraft({ event, onBack, onMaterialized }: EventNoteDraftProps) {
+export default function EventNoteDraft({ event, onBack, onMaterialized, onDraftHandoff }: EventNoteDraftProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
   const { dateFormat } = useDateTimePreferences();
@@ -47,19 +56,22 @@ export default function EventNoteDraft({ event, onBack, onMaterialized }: EventN
       creatingRef.current = true;
       setCreating(true);
       try {
-        const sent = { ...draftRef.current };
-        const target = await window.electronAPI.createCalendarEventNote?.(event.id, sent);
+        const target = await window.electronAPI.createCalendarEventNote?.(
+          event.id,
+          { ...draftRef.current }
+        );
         if (!target) throw new Error("Calendar event note was not created");
-        // Keystrokes that landed while the note was being created.
-        const latest = draftRef.current;
-        if (latest.title !== sent.title || latest.content !== sent.content) {
-          await window.electronAPI.updateNote(target.noteId, {
-            ...(latest.title !== undefined ? { title: latest.title } : {}),
-            ...(latest.content !== undefined ? { content: latest.content } : {}),
-          });
-        }
         const note = await window.electronAPI.getNote(target.noteId);
         if (!note) throw new Error("Calendar event note could not be loaded");
+        // Read after every await: keystrokes that landed during the whole
+        // create → get round-trip are part of the handed-off draft. A reused
+        // note keeps its manual content — the typed text appends; a fresh
+        // note replaces (its insert already carries the early snapshot).
+        onDraftHandoff({
+          noteId: target.noteId,
+          mode: target.existing ? "append" : "replace",
+          draft: { ...draftRef.current },
+        });
         setNoteHandoff({ noteId: note.id, ...handoff });
         onMaterialized(note, intent);
       } catch (error) {
@@ -68,7 +80,7 @@ export default function EventNoteDraft({ event, onBack, onMaterialized }: EventN
         setCreating(false);
       }
     },
-    [event.id, onMaterialized]
+    [event.id, onMaterialized, onDraftHandoff]
   );
 
   return (

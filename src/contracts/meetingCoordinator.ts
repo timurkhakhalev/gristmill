@@ -366,7 +366,12 @@ export type SimpleSuccessResult = z.infer<typeof simpleSuccessResultSchema>;
 
 /** The note linked to a calendar event; null when there is none (or it could not be created). */
 export const calendarEventNoteResultSchema = z
-  .object({ noteId: z.number().int().positive(), folderId: z.number().int().positive().nullable() })
+  .object({
+    noteId: z.number().int().positive(),
+    folderId: z.number().int().positive().nullable(),
+    /** True when the note already existed and was reused, not created. */
+    existing: z.boolean().optional(),
+  })
   .nullable();
 export type CalendarEventNoteResult = z.infer<typeof calendarEventNoteResultSchema>;
 

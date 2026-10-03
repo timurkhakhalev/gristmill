@@ -27,7 +27,7 @@ Keep these surfaces:
 - Realtime recording and all speaker recognition.
 - Dictionary and Snippets, calendars and import.
 
-The application opens Notes by default. Do not add a replacement dashboard.
+The start view is Home. Do not add a dashboard that replaces Notes as the product root.
 The full list is in [product scope](../product/scope.md).
 
 Timur confirmed these details:
@@ -41,3 +41,10 @@ Timur confirmed these details:
 
 - To bring back a removed surface, make a new product decision (a new ADR).
 - Run smoke tests only on isolated Gristmill profiles. Never use the original OpenWhispr profile.
+
+## Amendment 2026-10-03
+
+The removed Home was the OpenWhispr dictation history. The current Home is a different start view
+(upcoming calendar events, recent notes across spaces and a cross-note chat). It does not replace
+the Note as the product root. Only the sentence about the start view changed; the removed surfaces
+above still hold.

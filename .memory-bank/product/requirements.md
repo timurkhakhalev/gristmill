@@ -86,11 +86,11 @@ A technical individual user who:
 ### Meeting detail
 
 - Play the meeting and go from a transcript segment to its timestamp.
-- Download or show the original microphone and system tracks.
-- Export the transcript as Markdown, text, JSON and SRT when timing is available.
-- Edit the title, category, tags, participants and speaker mappings.
+- Export the meeting audio of a selected result. The source picker for the original microphone and system tracks is not in the UI yet.
+- Export the transcript as Markdown, text, JSON and SRT when timing is available. The formatter and the IPC route exist; no user-visible control calls them yet.
+- Edit the title, participants and speaker mappings.
 - Add manual notes before or after the meeting.
-- Select a summary template and make the notes again.
+- Make the notes again from the saved transcript with the saved Summary prompt and model.
 - Show incomplete or degraded capture clearly.
 
 ### Chat
@@ -105,7 +105,6 @@ A technical individual user who:
 ### Integrations and customization
 
 - Google, Microsoft and Apple Calendar integration.
-- User-defined meeting categories, tags and note templates.
 - ElevenLabs, Deepgram, Gemini and OpenAI file routes, with explicit provider selection and visible capability and limit errors.
 - Provider and model settings for transcription, summary and chat. Integrated diarization is part of the transcription settings. Show a separate diarization selection only for a supported independent path.
 - Keep all existing direct cloud, on-demand Local and supported Self-Hosted implementations.

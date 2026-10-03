@@ -20,7 +20,7 @@ The cleanup decision is [ADR-0002](../adr/0002-cleanup-scope.md).
 
 - OpenWhispr accounts, Cloud inference, sync and backup, sharing and teams, billing, enterprise policies (SSO, SCIM), hosted API, MCP and CLI integrations, engagement features and the Insights upload.
 - Dictation, paste at the cursor, dictation translation, wake words, the global voice assistant, the standalone ChatView, and screen or selection context outside notes.
-- Home (dictation history) and Insights. The application opens Notes by default.
+- The dictation-history Home of OpenWhispr and Insights. The start view is the current Home.
 - `web_search`, YouTube import, Qdrant and cross-note semantic search.
 - Upstream auto-update and all distribution that is not macOS arm64.
 
@@ -29,7 +29,7 @@ Do not keep it in hidden flags, commented-out code or legacy directories.
 
 ## Non-goals without a new product decision
 
-- A dashboard or a meeting-only screen that replaces Notes.
+- A meeting-only screen that replaces Notes as the product root. The current Home is a start view, not a replacement root.
 - Dictation, a general voice assistant, team collaboration, hosted sync, enterprise controls, Windows or Linux.
 - A live transcript, a draft or ASR during capture.
 - Cross-meeting semantic search and public web sharing.

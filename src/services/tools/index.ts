@@ -33,8 +33,9 @@ export function createToolRegistry(settings: ToolRegistrySettings): ToolRegistry
   registry.register(clipboardTool);
 
   if (settings.vocabulary) {
-    const snippets = settings.vocabulary.getSnippets();
-    if (snippets.length > 0) registry.register(createSnippetTool(snippets));
+    if (settings.vocabulary.getSnippets().length > 0) {
+      registry.register(createSnippetTool(settings.vocabulary.getSnippets));
+    }
     registry.register(createUpdateDictionaryTool(settings.vocabulary));
     registry.register(createUpdateSnippetsTool(settings.vocabulary));
   }

@@ -707,8 +707,8 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         } else {
           // The transcription succeeded, only the save failed: keep the ASR
           // result so Retry re-saves it without re-transcribing. The temp is
-          // no longer needed for that, but a Retry can also fall back to a
-          // full re-transcription if the re-save keeps failing.
+          // kept for Retry exactly like a transcription failure; Start Over
+          // clears the pending re-save.
           pendingSaveRef.current = {
             title,
             text: res.text,
@@ -845,13 +845,28 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const handleRetry = async () => {
     const pending = pendingSaveRef.current;
     if (pending) {
+      const runId = ++runIdRef.current;
       setState("transcribing");
       setError(null);
-      const noteRes = await saveUploadNote(pending);
+      let noteRes: Awaited<ReturnType<typeof saveUploadNote>>;
+      try {
+        noteRes = await saveUploadNote(pending);
+      } catch {
+        noteRes = { success: false } as Awaited<ReturnType<typeof saveUploadNote>>;
+      }
+      if (runId !== runIdRef.current) return;
       if (noteRes.success && noteRes.note) {
         pendingSaveRef.current = null;
         setNoteId(noteRes.note.id);
-        releaseExecutionTemp(downloadedTempPathRef.current);
+        // The temp is view-owned again (kept for Retry); hand it back to the
+        // execution-owner path so it is still deleted exactly once.
+        const temp = downloadedTempPathRef.current;
+        if (temp) {
+          downloadedTempPathRef.current = null;
+          setDownloadedTempPath(null);
+          executionTempRef.current = temp;
+          releaseExecutionTemp(temp);
+        }
         setState("complete");
       } else {
         setError(t("notes.upload.noteSaveFailed"));

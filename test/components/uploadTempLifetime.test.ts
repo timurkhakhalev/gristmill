@@ -417,7 +417,8 @@ test("a failed Note save is an error, and Retry re-saves without re-transcribing
 
   await sandbox.handleTranscribe();
   assert.equal(transcriptions, 1);
-  assert.deepEqual(states.slice(-1), ["error"], "a save failure must not report complete");
+  assert.ok(!states.includes("complete"), "a save failure must not report complete");
+  assert.deepEqual(states.slice(-1), ["error"]);
   assert.ok(sandbox.pendingSaveRef.current, "the ASR result is kept for a re-save");
   assert.deepEqual(deletes, [], "the temp is kept for Retry");
 
@@ -429,8 +430,98 @@ test("a failed Note save is an error, and Retry re-saves without re-transcribing
   assert.equal(sandbox.pendingSaveRef.current, null);
   assert.deepEqual(states.slice(-1), ["complete"]);
   assert.deepEqual(deletes, ["/tmp/dl-6.wav"], "the successful re-save releases the temp");
+  assert.equal(sandbox.downloadedTempPath, null, "the view no longer holds the released temp");
 
-  // Start Over clears the pending save.
+  // Start Over (the temp is already gone) deletes nothing again.
   sandbox.reset();
   assert.equal(sandbox.pendingSaveRef.current, null);
+  assert.deepEqual(deletes, ["/tmp/dl-6.wav"]);
+});
+
+// The pending re-save's own settlement paths.
+test("a rejected save in the pending re-save is caught and Retry still re-saves", async () => {
+  const deletes: string[] = [];
+  const sandbox = buildSandbox({ deletes });
+  const states: string[] = [];
+  sandbox.setState = (s: string) => states.push(s);
+  sandbox.downloadedTempPath = "/tmp/dl-7.wav";
+  sandbox.downloadedTempPathRef.current = "/tmp/dl-7.wav";
+  sandbox.file = fromUrlFile("/tmp/dl-7.wav");
+  sandbox.transcribeFileWithSpeakers = async () => ({
+    success: true,
+    text: "hello world",
+    segments: [],
+  });
+
+  let calls = 0;
+  sandbox.saveUploadNote = async () => {
+    calls++;
+    if (calls === 1) return { success: false };
+    if (calls === 2) throw new Error("db write failed");
+    return { success: true, note: { id: 7 } };
+  };
+
+  await sandbox.handleTranscribe();
+  assert.deepEqual(states.slice(-1), ["error"]);
+  assert.ok(sandbox.pendingSaveRef.current);
+
+  // Retry 1: the save IPC rejects — the view shows the error state and keeps
+  // the pending result instead of an unhandled rejection.
+  await sandbox.handleRetry();
+  assert.deepEqual(states.slice(-1), ["error"], "a rejected re-save must not wedge the view");
+  assert.ok(sandbox.pendingSaveRef.current, "the result survives a rejected re-save");
+  assert.deepEqual(deletes, []);
+
+  // Retry 2 succeeds.
+  await sandbox.handleRetry();
+  assert.deepEqual(states.slice(-1), ["complete"]);
+  assert.equal(sandbox.pendingSaveRef.current, null);
+  assert.deepEqual(deletes, ["/tmp/dl-7.wav"]);
+});
+
+test("Cancel during the pending re-save drops the late settlement", async () => {
+  const deletes: string[] = [];
+  const sandbox = buildSandbox({ deletes });
+  const states: string[] = [];
+  sandbox.setState = (s: string) => states.push(s);
+  sandbox.downloadedTempPath = "/tmp/dl-8.wav";
+  sandbox.downloadedTempPathRef.current = "/tmp/dl-8.wav";
+  sandbox.file = fromUrlFile("/tmp/dl-8.wav");
+  sandbox.transcribeFileWithSpeakers = async () => ({
+    success: true,
+    text: "hello world",
+    segments: [],
+  });
+  sandbox.saveUploadNote = async () => ({ success: false });
+
+  await sandbox.handleTranscribe();
+  assert.deepEqual(states.slice(-1), ["error"]);
+
+  const gate = deferred();
+  sandbox.saveUploadNote = async () => {
+    await gate.promise;
+    return { success: true, note: { id: 9 } };
+  };
+  const retry = sandbox.handleRetry();
+  await tick();
+  assert.deepEqual(states.slice(-1), ["transcribing"]);
+
+  // Cancel resets the view while the re-save is in flight.
+  await sandbox.cancelTranscription();
+  assert.deepEqual(states.slice(-1), ["idle"], "Cancel reset the view");
+
+  gate.resolve();
+  await retry;
+  await tick();
+  assert.ok(!states.includes("complete"), "the late re-save settlement must not publish complete");
+  assert.deepEqual(
+    deletes,
+    ["/tmp/dl-8.wav"],
+    "reset deleted the view-owned temp; the dropped settlement deletes nothing more"
+  );
+  assert.equal(
+    sandbox.pendingSaveRef.current,
+    null,
+    "the Cancel reset discarded the pending result along with the view"
+  );
 });

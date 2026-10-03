@@ -83,7 +83,9 @@ function loadBundledPreload(transport: { invoke: (channel: string, ...args: unkn
 
 const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
-async function createFixture() {
+async function createFixture(
+  googleSyncEvents?: () => Promise<{ total: number; succeeded: number; failed: number; errors: string[] }>
+) {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
   const { registerCalendarIntegrationHandlers } = await import(
@@ -107,7 +109,7 @@ async function createFixture() {
         getCalendars: () => [],
         setCalendarSelection: async () => {},
         setPrimaryOnly: async () => {},
-        syncEvents: async () => {},
+        syncEvents: googleSyncEvents ?? (async () => {}),
       },
       microsoftManager: {
         startOAuth: async () => ({ success: true, email: "m@x.io" }),
@@ -180,6 +182,23 @@ test("command shapes cross the bundled preload per provider", async () => {
   // Invalid arguments fail closed at the bridge without an IPC round-trip.
   assert.deepEqual(plain(await api.gcalGetUpcomingEvents(-1)), { success: false, events: [] });
   assert.deepEqual(plain(await api.gcalGetEvent("")), { success: false, event: null });
+});
+
+// Regression: `partial` is projected in-process, but nothing guaranteed it
+// survived the preload parse. The bridge must carry the partial marker and a
+// full-failure result through the shared schema unchanged.
+test("gcal sync partial and failure results cross the bundled preload", async () => {
+  const outcomes = [
+    { total: 2, succeeded: 1, failed: 1, errors: ["calendar b failed"] },
+    { total: 2, succeeded: 0, failed: 2, errors: ["provider down", "provider down"] },
+    { total: 2, succeeded: 2, failed: 0, errors: [] },
+  ];
+  let callIndex = 0;
+  const { api } = await createFixture(async () => outcomes[callIndex++]);
+
+  assert.deepEqual(plain(await api.gcalSyncEvents()), { success: true, partial: true });
+  assert.deepEqual(plain(await api.gcalSyncEvents()), { success: false, error: "provider down" });
+  assert.deepEqual(plain(await api.gcalSyncEvents()), { success: true });
 });
 
 test("events reach callbacks for all three providers; malformed payloads are dropped", async () => {

@@ -16,12 +16,12 @@ const quoteList = (triggers: string[]) => triggers.map((t) => `"${t}"`).join(", 
  * and are only needed when a command names one. The trigger list rides in the
  * tool description so the model knows which snippets exist without a call.
  */
-export function createSnippetTool(snippets: Snippet[]): ToolDefinition {
-  const triggerList = quoteList(snippets.map((s) => s.trigger));
+export function createSnippetTool(getSnippets: () => Snippet[]): ToolDefinition {
+  const triggerList = () => quoteList(getSnippets().map((s) => s.trigger));
 
   return {
     name: "get_snippet",
-    description: `Fetch the exact saved text behind one of the user's snippets by its spoken trigger phrase. Saved triggers: ${triggerList}.`,
+    description: `Fetch the exact saved text behind one of the user's snippets by its spoken trigger phrase. Saved triggers: ${triggerList()}.`,
     parameters: {
       type: "object",
       properties: {
@@ -38,12 +38,12 @@ export function createSnippetTool(snippets: Snippet[]): ToolDefinition {
     async execute(args: Record<string, unknown>): Promise<ToolResult> {
       const requested = typeof args.trigger === "string" ? args.trigger : "";
       const wanted = normalizeTrigger(requested);
-      const snippet = snippets.find((s) => normalizeTrigger(s.trigger) === wanted);
+      const snippet = getSnippets().find((s) => normalizeTrigger(s.trigger) === wanted);
       if (!snippet) {
         return {
           success: false,
           data: null,
-          displayText: `No snippet with trigger "${requested}". Saved triggers: ${triggerList}`,
+          displayText: `No snippet with trigger "${requested}". Saved triggers: ${triggerList()}`,
         };
       }
       return {

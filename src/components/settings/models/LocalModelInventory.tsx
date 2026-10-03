@@ -113,7 +113,7 @@ export function LocalModelInventoryProvider({ children }: { children: ReactNode 
       if (!status) return null;
       return { progress: status.progress, installing: status.phase === "installing", cancelling: manager.isCancellingModel(entry.id) };
     },
-    download: (entry, onDownloaded) => { void managers[entry.kind].downloadModel(entry.id, onDownloaded); },
+    download: (entry) => { void managers[entry.kind].downloadModel(entry.id); },
     cancel: (entry) => { void managers[entry.kind].cancelDownload(entry.id); },
     remove: (entry) => showConfirmDialog({
       title: t("transcription.deleteModel.title"),

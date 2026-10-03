@@ -306,3 +306,56 @@ test("deleting inactive B does not cancel A's pending save", async () => {
   assert.equal(shouldCancelPendingSavesForDelete(17, 17), true);
   assert.equal(shouldCancelPendingSavesForDelete(null, 17), false);
 });
+
+test("an event draft handoff replaces the fresh note's draft and appends to an existing one", async () => {
+  const { applyEventDraftHandoff } = await load();
+
+  // Fresh note: the typed draft wins outright.
+  assert.deepEqual(
+    applyEventDraftHandoff(
+      { noteId: 1, title: "Event title", content: "early snapshot", enhancedContent: null },
+      { noteId: 1, mode: "replace", draft: { content: "early snapshot plus ABC" } }
+    ),
+    { noteId: 1, title: "Event title", content: "early snapshot plus ABC", enhancedContent: null }
+  );
+
+  // Existing note: the manual content is kept, the typed text appends.
+  assert.deepEqual(
+    applyEventDraftHandoff(
+      { noteId: 2, title: "Manual title", content: "Manual content", enhancedContent: null },
+      { noteId: 2, mode: "append", draft: { content: "first input" } }
+    ),
+    {
+      noteId: 2,
+      title: "Manual title",
+      content: "Manual content\n\nfirst input",
+      enhancedContent: null,
+    }
+  );
+
+  // Untyped draft fields leave the note's values alone.
+  assert.deepEqual(
+    applyEventDraftHandoff(
+      { noteId: 3, title: "T", content: "C", enhancedContent: null },
+      { noteId: 3, mode: "append", draft: {} }
+    ),
+    { noteId: 3, title: "T", content: "C", enhancedContent: null }
+  );
+
+  // A typed draft title is deliberate input and wins even over an existing
+  // note's title.
+  assert.deepEqual(
+    applyEventDraftHandoff(
+      { noteId: 4, title: "Manual title", content: "", enhancedContent: null },
+      { noteId: 4, mode: "append", draft: { title: "Typed title" } }
+    ).title,
+    "Typed title"
+  );
+
+  // No change returns the same draft object.
+  const draft = { noteId: 5, title: "T", content: "C", enhancedContent: null };
+  assert.equal(
+    applyEventDraftHandoff(draft, { noteId: 5, mode: "replace", draft: { title: "T", content: "C" } }),
+    draft
+  );
+});

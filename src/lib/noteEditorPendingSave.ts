@@ -113,3 +113,35 @@ export function planNoteTransition(
       : null,
   };
 }
+
+export type EventDraftHandoffMode = "replace" | "append";
+
+// What a calendar-event draft hands to the note owner that replaces it: the
+// full latest draft, read after every await, applied by the editor's own
+// pending-save pipeline. "replace" is for a note the create call just made
+// (its content already carries the early snapshot); "append" is for a note
+// that already existed, where the typed text must not clobber the manual
+// content the note picked up elsewhere.
+export interface EventDraftHandoff {
+  noteId: number;
+  mode: EventDraftHandoffMode;
+  draft: { title?: string; content?: string };
+}
+
+export function applyEventDraftHandoff(
+  draft: NoteEditorDraft,
+  handoff: EventDraftHandoff
+): NoteEditorDraft {
+  const pending = handoff.draft;
+  const content =
+    pending.content === undefined
+      ? draft.content
+      : handoff.mode === "append" && draft.content
+        ? `${draft.content}\n\n${pending.content}`
+        : pending.content;
+  // A typed draft title is the user's deliberate input and wins even over an
+  // existing note's title; an untouched field leaves the note's value alone.
+  const title = pending.title === undefined ? draft.title : pending.title;
+  if (title === draft.title && content === draft.content) return draft;
+  return { ...draft, title, content };
+}

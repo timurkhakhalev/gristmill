@@ -48,10 +48,11 @@ function createHarness(overrides: Record<string, unknown> = {}) {
       id: profileId,
       display_name: "A",
       email,
+      embedding: embeddingBuffer(),
       sample_count: 2,
     }),
-    saveNoteSpeakerEmbeddings: (noteId: unknown, buffers: unknown) => {
-      calls.savedEmbeddings.push({ noteId, buffers });
+    saveNoteSpeakerEmbeddings: (noteId: unknown, embeddings: unknown) => {
+      calls.savedEmbeddings.push({ noteId, embeddings });
     },
     ...(overrides.database as any),
   };
@@ -184,8 +185,10 @@ test("save-note-speaker-embeddings stores float32 buffers and triggers auto-labe
   assert.deepEqual(result, { success: true });
   const saved = h.calls.savedEmbeddings[0];
   assert.equal(saved.noteId, 9);
-  assert.ok(saved.buffers.speaker_0 instanceof Buffer);
-  assert.equal(saved.buffers.speaker_0.length, 8);
+  assert.equal(saved.embeddings.length, 1);
+  assert.equal(saved.embeddings[0].speakerId, "speaker_0");
+  assert.ok(saved.embeddings[0].embedding instanceof Buffer);
+  assert.equal(saved.embeddings[0].embedding.length, 8);
   assert.deepEqual(h.calls.autoLabel, [9]);
 });
 

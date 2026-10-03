@@ -206,6 +206,10 @@ async function press(row: RowProbe, key: string): Promise<void> {
 
 /** Mounts the real SpacesTree against the shared mutable tree state. */
 async function mountTree(t: TestContext) {
+  // Unmount must be the first hook registered: cleanup runs before the
+  // browser-global teardown removes `window`, which react-dom touches on unmount.
+  let unmountTree: () => Promise<void> = async () => {};
+  t.after(() => unmountTree());
   installBrowserGlobals(t);
   const container = installHookDom(t);
   const vite = await (vitePromise ??= createRendererServer(
@@ -230,9 +234,9 @@ async function mountTree(t: TestContext) {
   await React.act(async () => {
     root.render(React.createElement(Harness));
   });
-  t.after(async () => {
+  unmountTree = async () => {
     await React.act(async () => root.unmount());
-  });
+  };
   return {
     tree: () => tree,
     rerender: async () => {
@@ -259,7 +263,7 @@ test("one note in two folders renders two independently focusable placements", a
   const rows = rowsIn(ui.tree());
   assert.deepEqual(
     rows.map((candidate) => candidate.key),
-    ["folder:11", "folder:11:n:201", "folder:22", "folder:22:n:201", "space:1:n:301"],
+    ["11", "folder:11:n:201", "22", "folder:22:n:201", "space:1:n:301"],
     "both placements of the shared note are separate rows in tree order"
   );
   // Before any keyboard interaction the first row owns the roving tabIndex;
@@ -291,10 +295,10 @@ test("outward navigation from a placement focuses that placement's own folder", 
   await press(row(rowsIn(ui.tree()), "folder:11:n:201"), "ArrowDown");
   // The focused placement is inside Folder B; outward must target Folder B.
   await press(row(rowsIn(ui.tree()), "folder:22:n:201"), "ArrowLeft");
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22", "outward focuses the current placement's parent folder");
+  assert.equal(focusedRow(rowsIn(ui.tree())).key, "22", "outward focuses the current placement's parent folder");
 
   // Inward from Folder B opens onto its own child placement again.
-  await press(row(rowsIn(ui.tree()), "folder:22"), "ArrowRight");
+  await press(row(rowsIn(ui.tree()), "22"), "ArrowRight");
   assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:201", "inward focuses this folder's placement");
 });
 

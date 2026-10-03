@@ -176,6 +176,7 @@ export default function IntegrationsView() {
   const [appleSourceNames, setAppleSourceNames] = useState<string[]>([]);
   const [confirmAppleDisconnect, setConfirmAppleDisconnect] = useState(false);
   const [appleConnectError, setAppleConnectError] = useState<"denied" | "failed" | null>(null);
+  const [disconnectFailed, setDisconnectFailed] = useState(false);
   // i18n prefix of the provider whose OAuth flow failed, e.g. "integrations.googleCalendar"
   const [oauthErrorKey, setOauthErrorKey] = useState<string | null>(null);
   const [googleConfigured, setGoogleConfigured] = useState(false);
@@ -273,18 +274,33 @@ export default function IntegrationsView() {
   );
 
   const handleAppleDisconnect = useCallback(async () => {
-    await window.electronAPI?.acalDisconnect?.();
-    setAppleCalendarConnected(false);
-    setAppleSourceNames([]);
-  }, [setAppleCalendarConnected]);
+    try {
+      const result = await window.electronAPI?.acalDisconnect?.();
+      if (result?.success) {
+        setAppleCalendarConnected(false);
+        setAppleSourceNames([]);
+      } else {
+        setDisconnectFailed(true);
+      }
+    } catch {
+      setDisconnectFailed(true);
+    }
+  }, [setAppleCalendarConnected, setAppleSourceNames]);
 
   const handleDisconnect = useCallback(
     async (email: string) => {
       setDisconnectingEmail(email);
       try {
-        await window.electronAPI?.gcalDisconnect?.(email);
-        const current = useSettingsStore.getState().gcalAccounts;
-        setGcalAccounts(current.filter((a) => a.email !== email));
+        const result = await window.electronAPI?.gcalDisconnect?.(email);
+        if (result?.success) {
+          setGcalAccounts(
+            useSettingsStore.getState().gcalAccounts.filter((a) => a.email !== email)
+          );
+        } else {
+          setDisconnectFailed(true);
+        }
+      } catch {
+        setDisconnectFailed(true);
       } finally {
         setDisconnectingEmail(null);
       }
@@ -296,9 +312,16 @@ export default function IntegrationsView() {
     async (email: string) => {
       setMsDisconnectingEmail(email);
       try {
-        await window.electronAPI?.mcalDisconnect?.(email);
-        const current = useSettingsStore.getState().mcalAccounts;
-        setMcalAccounts(current.filter((a) => a.email !== email));
+        const result = await window.electronAPI?.mcalDisconnect?.(email);
+        if (result?.success) {
+          setMcalAccounts(
+            useSettingsStore.getState().mcalAccounts.filter((a) => a.email !== email)
+          );
+        } else {
+          setDisconnectFailed(true);
+        }
+      } catch {
+        setDisconnectFailed(true);
       } finally {
         setMsDisconnectingEmail(null);
       }
@@ -533,6 +556,14 @@ export default function IntegrationsView() {
         onOpenChange={(open) => !open && setOauthErrorKey(null)}
         title={oauthErrorKey ? t(`${oauthErrorKey}.connectFailed`) : ""}
         description={oauthErrorKey ? t(`${oauthErrorKey}.connectFailedDescription`) : ""}
+        onOk={() => {}}
+      />
+
+      <AlertDialog
+        open={disconnectFailed}
+        onOpenChange={(open) => !open && setDisconnectFailed(false)}
+        title={t("integrations.disconnectFailed")}
+        description={t("integrations.disconnectFailedDescription")}
         onOk={() => {}}
       />
     </div>

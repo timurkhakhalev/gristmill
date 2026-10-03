@@ -2037,6 +2037,8 @@
   "integrations": {
     "title": "Integrationen",
     "description": "Verbinde Dienste, um deinen Workflow zu verbessern",
+    "disconnectFailed": "Trennen fehlgeschlagen",
+    "disconnectFailedDescription": "Beim Trennen ist ein Fehler aufgetreten. Das Konto bleibt verbunden – bitte versuche es erneut.",
     "googleCalendar": {
       "title": "Google Calendar",
       "description": "Meeting-Titel und Teilnehmer automatisch aus deinem Kalender übernehmen.",

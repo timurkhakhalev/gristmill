@@ -1996,6 +1996,8 @@
   "integrations": {
     "title": "整合",
     "description": "連接服務以增強您的工作流程",
+    "disconnectFailed": "斷線失敗",
+    "disconnectFailedDescription": "斷開連線時發生錯誤。帳號仍保持連線，請再試一次。",
     "googleCalendar": {
       "title": "Google 日曆",
       "description": "從日曆自動填入會議名稱和參與者。",

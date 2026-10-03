@@ -406,7 +406,7 @@ function CloudTab({ task, selection }: { task: ModelTask; selection: TaskSelecti
   );
 }
 
-function LocalRow({ task, entry, selected }: { task: ModelTask; entry: LocalModelEntry; selected: boolean }) {
+export function LocalRow({ task, entry, selected }: { task: ModelTask; entry: LocalModelEntry; selected: boolean }) {
   const { t } = useTranslation();
   const inventory = useLocalModelInventory();
   const state = inventory.downloadState(entry);

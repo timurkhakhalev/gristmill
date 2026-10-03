@@ -81,7 +81,7 @@ The task-local plan is self-contained. I compared the commits with `main`, read 
 ## Verification commands and results
 
 - **Run in this review:** `git diff --check main...HEAD` — passed. `git log --oneline main..HEAD`, `git show --stat` for milestone commits, `rg`, and targeted source/test reads were used for static inspection.
-- **Not run in this review:** all tests, builds, installs, native rebuilds, and hardware smoke, per the explicit orchestrator restriction. This includes the M1/M2/M3/M4 focused commands and the plan's `pnpm run typecheck`, `pnpm run lint`, `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js` sequence.
+- **Not run in this review:** all tests, builds, installs, native rebuilds, and hardware smoke, during this review. This includes the M1/M2/M3/M4 focused commands and the plan's `pnpm run typecheck`, `pnpm run lint`, `pnpm test`, `pnpm run pack`, and `node scripts/smoke-electron.js` sequence.
 - **Recorded root verification:** `pnpm run typecheck` passed; `pnpm run lint` passed with 0 errors and 36 warnings; focused M4 32/32, M2 Stop 50/50, locale 8/8, main-build 7/7; full `pnpm test` 2768/2768; `pnpm run pack` and `node scripts/smoke-electron.js` passed. These are reported evidence in `plan.md`/`implementation_progress.md`, not independent reruns by this reviewer.
 
 ## Residual notes

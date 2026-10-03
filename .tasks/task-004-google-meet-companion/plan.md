@@ -159,9 +159,8 @@ Beta/Canary/другие channels не входят в обязательную 
 17. Current docs обновляются с реализацией. Предыдущие .tasks/ и accepted ADRs
     read-only: corrections записывать здесь с ссылкой на оригинал. В этом scope
     accepted ADR не пересматривается; новый ADR без такого изменения не нужен.
-18. Только root запускает tests/build/install/native rebuild, последовательно.
-    Subagents могут писать tests и запускать scoped lint/typecheck; не запускают
-    tests/build/install, включая focused/watch/hooks. Full suite один раз после
+18. Tests/build/install/native rebuild выполняются последовательно.
+    Full suite один раз после
     интеграции; новое поведение требует повторить affected checks.
     M6 onset-loss/unmute-latency — измерение с P50/P95/max/методом/ограничениями,
     без порога pass/fail для потери начала речи; величина не блокирует milestone.

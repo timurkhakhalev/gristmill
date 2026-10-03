@@ -67,7 +67,7 @@ Severity counts: critical 0; high 1; medium 2; minor 0. Overall status is blocke
 
 ## Verification
 
-- Reviewer read-only commands: `git status --short --branch`, `git log --oneline --no-decorate`, `git show --format=medium --stat` and source/test diffs for M6 commits, plus scoped `rg`, `sed` and `nl` reads. I did not run tests, builds, installs or native rebuilds because project quality steering reserves those for the root integrator.
+- Reviewer read-only commands: `git status --short --branch`, `git log --oneline --no-decorate`, `git show --format=medium --stat` and source/test diffs for M6 commits, plus scoped `rg`, `sed` and `nl` reads. I did not run tests, builds, installs or native rebuilds.
 - Root-supplied results: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts` passed; `pnpm run lint` passed; `pnpm run typecheck` passed; full `pnpm test` passed. M6 progress records scoped typechecks/ESLint, locale-key audit and `git diff --check` passing. These were not independently rerun here.
 - The isolated Electron process startup is partial evidence only. Live capture, Notes/provider interaction, BB behavior and controlled prompt-quality outputs remain unverified as described in M4-1.
 

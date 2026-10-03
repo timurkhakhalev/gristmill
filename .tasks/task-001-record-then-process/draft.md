@@ -96,7 +96,7 @@ OpenHercules сохраняет встречу локально независи
 
 ## 6. Ожидания от проверок
 
-Использовать существующие Node tests (`node --import tsx --test --test-concurrency=1`) и изолированный Electron smoke. Tests/build/install выполняет только корневой интегратор, последовательно; подагенты могут читать код, редактировать тесты, запускать typecheck/lint, но не tests/build/install/native rebuild.
+Использовать существующие Node tests (`node --import tsx --test --test-concurrency=1`) и изолированный Electron smoke. Tests/build/install выполняются последовательно с координацией между агентами.
 
 - Unit: границы finalization и идемпотентный Stop, преобразование ответов трёх API, ограничения входа, позиции в общей шкале, состояния отсутствующего источника.
 - Integration на временных файлах/БД и подменённых provider responses: запись → Stop → job → ответ → транскрипт → summary; offline/restart, восстановление неполного захвата, сохранённый ответ после сбоя публикации, независимый retry summary, сохранение старых результатов/ручных заметок.

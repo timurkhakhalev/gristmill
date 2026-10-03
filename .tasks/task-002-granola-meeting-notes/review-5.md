@@ -65,7 +65,7 @@ Severity counts: critical 0; high 0; medium 1; minor 0. Overall status is blocke
 
 ## Verification
 
-- Reviewer read-only commands: `git status --short --branch`, scoped `git show` of M8 commits, and `rg`, `sed` and `nl` reads of the current plan, progress, previous review, source and renderer tests. I ran no tests, builds, installs or native rebuilds because project quality steering reserves those for the root integrator.
+- Reviewer read-only commands: `git status --short --branch`, scoped `git show` of M8 commits, and `rg`, `sed` and `nl` reads of the current plan, progress, previous review, source and renderer tests. I ran no tests, builds, installs or native rebuilds.
 - Root-supplied M8 results: `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts` passed; `pnpm run lint` passed with 0 errors and pre-existing warnings; `pnpm run typecheck` passed; full `pnpm test` passed across 396 files; `git diff --check` passed. These were not independently rerun here.
 - The M4 isolated live capture/provider verification remains unperformed as described above.
 

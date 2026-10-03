@@ -10,7 +10,7 @@ Preserved the original mic/system tracks, previous artifacts, no capture-time pr
 
 Issues: the first test typecheck found a nullable deadline assertion; the test now asserts the persisted deadline before parsing it. No other implementation issues found.
 
-Root's M1 focused run exposed two test assumptions, with no product-code regression: the renderer harness does not interpolate i18n placeholders, and the missing-key test expected provider validation before the persisted gate elapsed. The assertions now check the visible waiting notice/no-bypass behavior, and the config test advances its controlled clock to the persisted deadline before asserting the blocked provider state. Root should rerun the focused suite.
+Root's M1 focused run exposed two test assumptions, with no product-code regression: the renderer harness does not interpolate i18n placeholders, and the missing-key test expected provider validation before the persisted gate elapsed. The assertions now check the visible waiting notice/no-bypass behavior, and the config test advances its controlled clock to the persisted deadline before asserting the blocked provider state. Rerun the focused suite.
 
 Verification:
 
@@ -20,7 +20,7 @@ Verification:
 - Scoped main/test ESLint — 0 errors; 27 existing unused-symbol warnings in `ipcHandlers.ts` and `meetingCoordinatorIpcHandlers.ts`.
 - Scoped renderer ESLint — passed; Node emitted the existing `MODULE_TYPELESS_PACKAGE_JSON` config warning.
 - `git diff --check` — passed.
-- Required focused tests remain unrun by this agent; root integrator owns test execution. Run: `pnpm test -- test/helpers/meetingProcessing.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/components/meetingResultsPanel.test.ts`.
+- Required focused tests remain unrun by this agent. Run: `pnpm test -- test/helpers/meetingProcessing.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/components/meetingResultsPanel.test.ts`.
 - Isolated live-profile/hardware check was not run here.
 
 Commits: `49d8e48c6` (M1 implementation). This progress-record update is a separate M1 log commit.
@@ -35,7 +35,7 @@ The next root renderer rerun reached `NoteNotices.ElapsedClock`, which uses the 
 
 Harness-fix commit: `16421a5bc` (`M1: stub interval cleanup in renderer test`).
 
-Two hook-order-only teardown attempts (`901a1a3c7`, `a0226e46d`) did not fix the renderer failure. The test cleanup now captures the mounted browser/DOM and React globals, temporarily restores them around `root.unmount()`, then restores the values present before cleanup in `finally`; it no longer depends on hook order. No product code changed. `pnpm run typecheck:tests`, scoped ESLint, and `git diff --check` pass. Tests remain root-only and were not run here.
+Two hook-order-only teardown attempts (`901a1a3c7`, `a0226e46d`) did not fix the renderer failure. The test cleanup now captures the mounted browser/DOM and React globals, temporarily restores them around `root.unmount()`, then restores the values present before cleanup in `finally`; it no longer depends on hook order. No product code changed. `pnpm run typecheck:tests`, scoped ESLint, and `git diff --check` pass. Tests were not run here.
 
 Final teardown-fix commit: `3c6b80954` (`M1: preserve renderer globals for unmount`).
 
@@ -57,7 +57,7 @@ Verification run by this agent:
 - Scoped main/test ESLint — 0 errors; 4 existing unused-symbol warnings in `ipcHandlers.ts` and `test/services/meetingResults.test.ts`.
 - Scoped renderer ESLint — passed; Node emitted the existing `MODULE_TYPELESS_PACKAGE_JSON` config warning.
 - `git diff --check` — passed.
-- Tests/builds/install/native rebuilds were not run by this agent; root owns those checks. Run the plan's focused suite: `pnpm test -- test/helpers/meetingProcessing.test.ts test/helpers/speakerIpc.test.ts test/helpers/speakerAssignmentPolicy.test.ts test/helpers/speakerRetroactiveMapping.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts`. Also run `pnpm test -- test/services/meetingResults.test.ts` for the voice-provenance assertion updated in that existing test.
+- Tests/builds/install/native rebuilds were not run by this agent. Run the plan's focused suite: `pnpm test -- test/helpers/meetingProcessing.test.ts test/helpers/speakerIpc.test.ts test/helpers/speakerAssignmentPolicy.test.ts test/helpers/speakerRetroactiveMapping.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts`. Also run `pnpm test -- test/services/meetingResults.test.ts` for the voice-provenance assertion updated in that existing test.
 - The isolated-profile Russian prompt-quality check was not run here; root should record the controlled transcript outputs and compare live UI to committed previews.
 
 Implementation commit: `394f19c63` (`M2: add speaker names and meeting Summary`). This progress-record update is a separate M2 log commit.
@@ -72,7 +72,7 @@ Verification for this fix:
 - Scoped main/test ESLint — 0 errors; one pre-existing unused `recording` warning in `test/services/meetingResults.test.ts`.
 - Scoped renderer ESLint — passed; Node emitted the existing `MODULE_TYPELESS_PACKAGE_JSON` config warning.
 - `git diff --check` — passed.
-- Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Rerun the focused command from the plan and `pnpm test -- test/services/meetingResults.test.ts`.
+- Tests/builds/install/native rebuilds were not run by this agent. Rerun the focused command from the plan and `pnpm test -- test/services/meetingResults.test.ts`.
 
 Fix commit: `1d2563337` (`M2: fix selected run and fixture regressions`).
 
@@ -84,7 +84,7 @@ Verification for this fix:
 - `pnpm run typecheck:tests` — passed.
 - Scoped main/test ESLint — passed with 0 errors.
 - `git diff --check` — passed.
-- Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Rerun the seven-file focused M2 suite and `pnpm test -- test/services/meetingResults.test.ts`.
+- Tests/builds/install/native rebuilds were not run by this agent. Rerun the seven-file focused M2 suite and `pnpm test -- test/services/meetingResults.test.ts`.
 
 Fix commit: `2ba71bd87` (`M2: preserve meeting run history`).
 
@@ -95,7 +95,7 @@ Verification for this adjustment:
 - `pnpm run typecheck:tests` — passed.
 - Scoped ESLint for `test/helpers/meetingProcessing.test.ts` — passed.
 - `git diff --check` — passed.
-- Root must rerun the focused tests; tests/builds/install/native rebuilds were not run by this agent.
+- Rerun the focused tests; tests/builds/install/native rebuilds were not run by this agent.
 
 Fix commit: `6c7ec570c` (`M2: assert independent Summary input ordering`).
 
@@ -117,7 +117,7 @@ Verification run by this agent:
 - Scoped ESLint for renderer and test files — passed; existing Node `MODULE_TYPELESS_PACKAGE_JSON` config warning only.
 - Scoped ESLint for main helpers/contracts with `--no-ignore` — passed; same config warning only.
 - `git diff --check` — passed before commit.
-- Tests/builds/dependency installation/native rebuilds were not run; root owns them. Run the M3 plan suite plus the added stateful/action coverage: `pnpm test -- test/helpers/actionsCatalogBehavior.test.ts test/helpers/actionsIpc.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/helpers/retiredPrompts.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/cases/notes/integration/meetingActions.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/helpers/meetingProcessing.test.ts test/helpers/chatMessageSubmissionLock.test.ts test/helpers/useChatStreamingCancellation.test.ts test/helpers/promptsCleanupFormatter.test.ts`. Then run `pnpm run typecheck:main` and `pnpm run typecheck:renderer`. The isolated-profile and controlled Russian model-quality checks were not run here.
+- Tests/builds/dependency installation/native rebuilds were not run. Run the M3 plan suite plus the added stateful/action coverage: `pnpm test -- test/helpers/actionsCatalogBehavior.test.ts test/helpers/actionsIpc.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/helpers/retiredPrompts.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/cases/notes/integration/meetingActions.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/helpers/meetingProcessing.test.ts test/helpers/chatMessageSubmissionLock.test.ts test/helpers/useChatStreamingCancellation.test.ts test/helpers/promptsCleanupFormatter.test.ts`. Then run `pnpm run typecheck:main` and `pnpm run typecheck:renderer`. The isolated-profile and controlled Russian model-quality checks were not run here.
 
 Implementation commit: `2e0cdb78a` (`M3: add tasks, Recap, Follow-up and cleanup formatter`).
 
@@ -128,7 +128,7 @@ Verification for this fix:
 - `pnpm run typecheck:tests` — passed.
 - Scoped ESLint for the four changed test files — passed.
 - `git diff --check` — passed.
-- Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Root should rerun: `pnpm test -- test/helpers/actionsCatalogBehavior.test.ts test/helpers/actionsIpc.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/helpers/retiredPrompts.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/cases/notes/integration/meetingActions.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/helpers/meetingProcessing.test.ts test/helpers/chatMessageSubmissionLock.test.ts test/helpers/useChatStreamingCancellation.test.ts test/helpers/promptsCleanupFormatter.test.ts`.
+- Tests/builds/install/native rebuilds were not run by this agent. Rerun: `pnpm test -- test/helpers/actionsCatalogBehavior.test.ts test/helpers/actionsIpc.test.ts test/stores/actionProcessingNoteOutput.test.ts test/components/meetingResultsPanel.test.ts test/helpers/retiredPrompts.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/cases/notes/integration/meetingActions.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/helpers/meetingProcessing.test.ts test/helpers/chatMessageSubmissionLock.test.ts test/helpers/useChatStreamingCancellation.test.ts test/helpers/promptsCleanupFormatter.test.ts`.
 
 M3 focused-rerun fix commit: `353598a08` (`M3: fix focused rerun fixtures`).
 
@@ -140,7 +140,7 @@ Verification for this fix:
 - `pnpm run typecheck:tests` — passed.
 - Scoped ESLint for the changed main helpers and tests — passed (the root-level invocation ignores the main helpers, so source lint was run from `src` with `--no-ignore`).
 - `git diff --check` — passed.
-- Tests/builds/install/native rebuilds remain root-only and were not run by this agent. Root should rerun `pnpm test -- test/helpers/meetingProcessing.test.ts test/cases/notes/integration/meetingSummarySections.test.ts` and the failed-files M3 command as needed.
+- Tests/builds/install/native rebuilds were not run by this agent. Rerun `pnpm test -- test/helpers/meetingProcessing.test.ts test/cases/notes/integration/meetingSummarySections.test.ts` and the failed-files M3 command as needed.
 
 M3 concurrent section-merge fix commit: `e0487ce3c` (`M3: serialize independent Summary section edits`).
 
@@ -163,7 +163,7 @@ Verification run by this agent:
 - `pnpm run typecheck:tests` — passed.
 - Scoped ESLint for `src/helpers/meetingProcessing.ts` and `test/helpers/meetingProcessing.test.ts` — passed; source ESLint emitted the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
 - `git diff --check` — passed.
-- Tests, builds, dependency installation, and native rebuilds were not run by this agent; root owns them. Run focused integration coverage first: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/cases/notes/integration/meetingActions.test.ts`, then sequentially `pnpm run lint`, `pnpm run typecheck`, and `pnpm test`.
+- Tests, builds, dependency installation, and native rebuilds were not run by this agent. Run focused integration coverage first: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/cases/notes/integration/meetingActions.test.ts`, then sequentially `pnpm run lint`, `pnpm run typecheck`, and `pnpm test`.
 - Isolated macOS mic/system capture, Pause/Resume/End, 15-second wait, short and threshold meetings, speaker edit, Chat Follow-up, Recap, and configured provider/BB smokes remain unverified; record only checks actually performed.
 
 Implementation commit: `9a14da5c5` (`M4: serialize BB actions and document journeys`).
@@ -175,7 +175,7 @@ Verification for the locale fix:
 - `pnpm run typecheck` — passed.
 - Static JSON/key-presence audit across all locale `translation.json` files — all 11 complete.
 - `git diff --check` — passed.
-- The root-owned focused locale test and full suite were not run here. Root should run `pnpm test -- test/locales/translationCoverage.test.ts`, then the full integrated `pnpm test` after confirming the locale test passes.
+- The required focused locale test and full suite were not run here. Run `pnpm test -- test/locales/translationCoverage.test.ts`, then the full integrated `pnpm test` after confirming the locale test passes.
 
 M4 full-suite fixture follow-up: changed the Action bridge expectation to the existing `wand-sparkles` creation default. Completed the local-transcription bridge's shared-registration database mock with `listAllMeetingProcessingRuns: () => []`, which the real worker constructor requires while recovering interrupted Summary tasks. This keeps the production DB contract strict and preserves the other bridge lifecycle assertions.
 
@@ -184,7 +184,7 @@ Verification for this follow-up:
 - `pnpm run typecheck:tests` — passed.
 - Scoped ESLint for both changed bridge tests — passed.
 - `git diff --check` — passed.
-- Tests remain root-only. Rerun `pnpm test -- test/helpers/actionsBridge.test.ts test/helpers/localFileTranscriptionBridge.test.ts`, then the full `pnpm test` suite.
+- Rerun `pnpm test -- test/helpers/actionsBridge.test.ts test/helpers/localFileTranscriptionBridge.test.ts`, then the full `pnpm test` suite.
 
 Fixture-fix commit: `b113ef8bf` (`M4: align bridge fixtures with current contracts`).
 
@@ -206,7 +206,7 @@ Verification run by this agent:
 - Scoped ESLint for M5 product and test files — 0 errors; the test run reports the existing unused `recording` warning in `test/services/meetingResults.test.ts`, and source ESLint reports the existing `MODULE_TYPELESS_PACKAGE_JSON` warning.
 - Static locale JSON/key audit — all three new `meetingResults` keys are present in all 11 locales.
 - `git diff --check` — passed.
-- Tests/builds/dependency installation/native rebuilds were not run by this agent; root owns them. Run focused regressions and affected journeys first: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts test/services/meetingResults.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/locales/translationCoverage.test.ts`. Then run `pnpm run lint`, `pnpm run typecheck`, and the required full `pnpm test` sequentially.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Run focused regressions and affected journeys first: `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts test/services/meetingResults.test.ts test/stores/meetingRecordingStoreAutoEndStop.test.ts test/cases/ai/integration/meetingJsonRepair.test.ts test/cases/notes/integration/meetingSummarySections.test.ts test/locales/translationCoverage.test.ts`. Then run `pnpm run lint`, `pnpm run typecheck`, and the required full `pnpm test` sequentially.
 
 Implementation commit: `51f587d23` (`M5: close meeting processing review findings`).
 
@@ -216,14 +216,14 @@ Status: done
 
 Moved the live short-transcript ineligibility notice above the Notes view-mode split, so it is visible in the default/raw view as well as the Summary view. The manual Summary action and the mock-only preview notice remain unchanged.
 
-Preserved the existing eligibility thresholds and selected-run state; no capture or processing behavior changed. Root owns all tests and integration runs.
+Preserved the existing eligibility thresholds and selected-run state; no capture or processing behavior changed.
 
 Verification run by this agent:
 
 - `pnpm run typecheck:renderer` — passed.
 - Scoped ESLint for `src/components/notes/MeetingResultsPanel.tsx` — passed with the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
 - `git diff --check` — passed.
-- Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts`, then the affected M1–M4 tests and integrated checks.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Rerun `pnpm test -- test/components/meetingResultsPanel.test.ts`, then the affected M1–M4 tests and integrated checks.
 
 Implementation commit: `d733f5f39` (`M5: show short transcript notice in raw view`).
 
@@ -240,7 +240,7 @@ Verification run by this agent:
 - `pnpm run typecheck:tests` — passed.
 - Scoped ESLint for `test/components/meetingResultsPanel.test.ts` — passed.
 - `git diff --check` — passed.
-- Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and the affected M1–M4 tests.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and the affected M1–M4 tests.
 
 Implementation commit: `8e790528e` (`M5: assert manual summary in its owning control`).
 
@@ -252,7 +252,7 @@ Malformed optional calendar participants are now recorded as a persisted speaker
 
 Preserved raw tracks, previous run artifacts, manual Notes, corrected-speaker precedence, selected-run projection, the single Summary Markdown, and the M1 end-of-meeting gate. Debug previews remain isolated, and the manual Summary control stays in its existing NoteEditor owner.
 
-Issues: none unresolved. Root owns automated tests, builds, dependency installation, native rebuilds, and M4-1 live evidence; this agent ran none of those.
+Issues: none unresolved. This agent did not run automated tests, builds, dependency installation, native rebuilds, or M4-1 live checks.
 
 Verification run by this agent:
 
@@ -263,7 +263,7 @@ Verification run by this agent:
 - Scoped ESLint for changed renderer files — passed with the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
 - Static JSON/key audit — all 11 shipped locales parse and contain `meetingResults.calendarParticipantsNamingSkipped`.
 - `git diff --check` — passed.
-- Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should first run `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts`, then the M6/M5 affected journey set and, as required by quality steering, the integrated full `pnpm test` run sequentially. Root should record M4-1 live evidence separately.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. First run `pnpm test -- test/helpers/meetingProcessing.test.ts test/components/meetingResultsPanel.test.ts`, then the M6/M5 affected journey set and, as required by quality steering, the integrated full `pnpm test` run sequentially. Root should record M4-1 live evidence separately.
 
 Implementation commit: `9873d1650` (`M6: preserve summary and group gate behavior`).
 
@@ -280,7 +280,7 @@ Verification run by this agent:
 - `pnpm run typecheck:tests` — passed.
 - Scoped ESLint for `test/components/meetingResultsPanel.test.ts` — passed.
 - `git diff --check` — passed.
-- Tests/builds/dependency installation/native rebuilds were not run by this agent. Root should rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and then the M6 focused set.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Rerun `pnpm test -- test/components/meetingResultsPanel.test.ts` and then the M6 focused set.
 
 Implementation commit: `a38587ca5` (`M6: assert gate and Summary in owning views`).
 
@@ -292,7 +292,7 @@ Connected the existing NoteEditor toolbar Summary control to the same selected-r
 
 The toolbar and Results Summary action now require nonempty selected-run transcript text and no active capture. A short ready transcript still offers manual Summary. Debug preview keeps its isolated in-memory Summary callback. Existing worker coverage now also asserts the selected source run, prompt/model snapshot, saved Summary projection and corrected transcript projection.
 
-Preserved raw tracks, manual notes, previous artifacts, selected speaker corrections, capture/gate rules, one Summary Markdown, task/Recap consumers and Chat Follow-up. Calendar participants/emails and raw/live transcript data do not enter the selected-run Summary request. No unresolved implementation issue; live hardware/provider checks remain root-owned and M4-1 remains unverified.
+Preserved raw tracks, manual notes, previous artifacts, selected speaker corrections, capture/gate rules, one Summary Markdown, task/Recap consumers and Chat Follow-up. Calendar participants/emails and raw/live transcript data do not enter the selected-run Summary request. No unresolved implementation issue; live hardware/provider checks remain required and M4-1 remains unverified.
 
 Verification run by this agent:
 
@@ -300,7 +300,7 @@ Verification run by this agent:
 - Scoped ESLint for `test/components/meetingResultsPanel.test.ts` and `test/helpers/meetingProcessing.test.ts` — passed.
 - Scoped renderer ESLint for `MeetingResultsPanel.tsx`, `NoteEditor.tsx` and `PersonalNotesView.tsx` — passed with the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
 - `git diff --check` — passed.
-- Tests/builds/dependency installation/native rebuilds were not run by this agent; root owns them. Root should run `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts`, then required integrated checks sequentially.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Run `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts`, then required integrated checks sequentially.
 
 Implementation commit: `f4b8dfc46` (`M7: route toolbar Summary through selected run`).
 
@@ -318,6 +318,6 @@ Verification run by this agent:
 - Scoped ESLint for `test/components/meetingResultsPanel.test.ts` — passed.
 - Scoped renderer ESLint for `src/components/notes/MeetingResultsPanel.tsx` — passed with the existing Node `MODULE_TYPELESS_PACKAGE_JSON` warning.
 - `git diff --check` — passed.
-- Tests/builds/dependency installation/native rebuilds were not run by this agent; root owns them. Root should run `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts`, then lint, typecheck and integrated suite sequentially as required.
+- Tests/builds/dependency installation/native rebuilds were not run by this agent. Run `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts`, then lint, typecheck and integrated suite sequentially as required.
 
 Implementation commit: `eb3fac552` (`M8: disable Summary during active capture`).

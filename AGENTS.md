@@ -3,9 +3,8 @@
 ## Start here
 
 1. Read [.memory-bank/index.md](.memory-bank/index.md). Then read only the documents that your task needs.
-2. Obey the [invariants](.memory-bank/steerings/invariants.md) in every change.
-3. Before you select or run checks, read the [quality steering](.memory-bank/steerings/quality.md).
-4. Before you write documentation, read the [documentation steering](.memory-bank/steerings/documentation.md).
+2. Before you select or run checks, read the [quality steering](.memory-bank/steerings/quality.md).
+3. Before you write documentation, read the [documentation steering](.memory-bank/steerings/documentation.md).
 
 ## Main commands
 

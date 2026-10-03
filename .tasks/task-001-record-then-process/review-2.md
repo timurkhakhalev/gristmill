@@ -67,7 +67,7 @@ I read `plan.md`, `implementation_progress.md`, and `review-1.md`, then inspecte
 ## Verification commands and results
 
 - **Run in this review:** `git diff --check main...HEAD` and `git diff --check` — passed. I also used `git log --oneline`, `git show`, `git diff`, `rg`, and targeted source/test reads for static inspection.
-- **Not run in this review:** tests, builds, dependency installation, native rebuilds, and hardware smoke, per the explicit orchestrator restriction. This includes the plan's M1–M5 focused commands and the full integration command sequence.
+- **Not run in this review:** tests, builds, dependency installation, native rebuilds, and hardware smoke, during this review. This includes the plan's M1–M5 focused commands and the full integration command sequence.
 - **Recorded root evidence:** M5 focused tests 38/38; `pnpm run typecheck` passed; `pnpm run lint` passed with 0 errors and 36 warnings; `pnpm run i18n:check` passed; sequential `pnpm test` passed 2779/2779; `pnpm run pack` and `node scripts/smoke-electron.js` passed. These results are reported in `plan.md` and `implementation_progress.md`, not independently rerun here. Earlier M1–M4 verification, including M2 Stop 50/50 and M4 32/32, remains recorded there.
 
 ## Residual notes

@@ -72,7 +72,7 @@ Storage, mute, clock alignment, run creation and provider input formats are in [
 - Tasks return Markdown without JSON repair. An empty response means no tasks.
 - A BB repair uses the saved thread. The BB adapter gets only the final text, without native refusal metadata.
 
-The root orchestrator runs the checks that the [quality steering](../steerings/quality.md) requires.
+Run the checks that the [quality steering](../steerings/quality.md) requires.
 The hardware smoke test is a separate isolated macOS arm64 check. Automated tests do not replace it.
 
 ## Agreed flow

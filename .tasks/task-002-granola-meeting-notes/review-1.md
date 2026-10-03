@@ -87,7 +87,7 @@ Severity counts: critical 0; high 5; medium 2; minor 0. Overall status is blocke
 
 - Reviewer read-only commands: `git status --short --branch`; `git diff --stat 2a1aa0e48..HEAD`; `git log --oneline --no-decorate 2a1aa0e48..HEAD`; `git show --format=medium --stat --no-renames` for milestone implementation commits; scoped `rg`, `sed`, and `nl` source/test reads. These confirmed commit coverage and the cited final-tree paths.
 - Root integrator supplied results for the final tree: milestone-focused M1/M2/M3/M4 tests passed; `pnpm run lint` passed with warnings only; `pnpm run typecheck` passed; `pnpm test` passed; `git diff --check` passed. Exact focused commands are recorded in `plan.md` and `implementation_progress.md`; this reviewer did not rerun them.
-- Tests, builds, installs and native rebuilds were not run by this reviewer because the repository's quality steering reserves them for the root integrator. The manual M1–M4 isolated-profile and prompt-quality checks remain unverified.
+- Tests, builds, installs and native rebuilds were not run by this reviewer. The manual M1–M4 isolated-profile and prompt-quality checks remain unverified.
 
 ## Unrelated failures and residual notes
 

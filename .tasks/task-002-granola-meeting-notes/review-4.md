@@ -67,7 +67,7 @@ Severity counts: critical 0; high 0; medium 2; minor 0. Overall status is blocke
 
 ## Verification
 
-- Reviewer commands: read-only `git status --short --branch`, `git show --stat` and scoped M7 diff, `rg`, `sed` and `nl` on plan, progress, previous reviews, source and tests. No tests, builds, installs or native rebuilds were run by this reviewer because project quality steering reserves them for the root integrator.
+- Reviewer commands: read-only `git status --short --branch`, `git show --stat` and scoped M7 diff, `rg`, `sed` and `nl` on plan, progress, previous reviews, source and tests. No tests, builds, installs or native rebuilds were run by this reviewer.
 - Root-supplied M7 results: `pnpm test -- test/components/meetingResultsPanel.test.ts test/helpers/meetingProcessing.test.ts` passed; `pnpm run lint` passed with 0 errors and existing warnings; `pnpm run typecheck` passed; full `pnpm test` passed across 396 files; `pnpm run build:renderer` passed; `git diff --check` passed. These were not independently rerun here.
 - M7-1's active-capture Results menu state is not established by the supplied focused cases. The plan's isolated live capture/provider check remains unverified as described in M4-1.
 

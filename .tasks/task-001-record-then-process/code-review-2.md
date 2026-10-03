@@ -20,6 +20,6 @@ This review found no merge-blocking code issue. It does not establish hardware c
 
 ## Verification and remaining gap
 
-- **This review:** Static source, diff, and test inspection; `git diff --check main...HEAD` passed. I did not run tests, builds, dependency installation, or native rebuilds, per the root-only execution rule.
+- **This review:** Static source, diff, and test inspection; `git diff --check main...HEAD` passed. I did not run tests, builds, dependency installation, or native rebuilds, per the required execution rule.
 - **Root-reported evidence:** M8 focused tests 45/45; full suite 2790/2790; typecheck, i18n check, pack, and packaged Electron smoke passed; lint passed with 0 errors and 36 warnings. These results were reported by root and were not independently rerun here.
 - **Unverified:** Timur deferred live mic/system recording, Stop-tail comparison, device restart, process-kill loss measurement, and real post-Stop recognition. Automated and packaged results do not verify the hardware capture-loss guarantee.

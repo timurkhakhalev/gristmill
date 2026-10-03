@@ -38,7 +38,7 @@ Hot spots:
 - Also fix remaining `OpenWhispr` attributions only where wrong; keep MIT attribution (`LICENSE`, `docs/openwhispr-upstream/IMPORT.md`).
 - Update `.github/` workflows/CONTRIBUTING if they reference the name/repo (CONTRIBUTING currently points at upstream OpenWhispr).
 
-Verification (root orchestrator only, sequential): typecheck, lint, then per quality steering; the full test suite once after integration; `grep -ri hercules` returns only intentional leftovers.
+Verification (sequential): typecheck, lint, then per quality steering; the full test suite once after integration; `grep -ri hercules` returns only intentional leftovers.
 
 ## 3. Runtime identity — data-loss risks (do NOT skip)
 

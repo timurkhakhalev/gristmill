@@ -6,7 +6,7 @@ const MIN = 60_000;
 const base = Date.parse("2026-09-25T10:00:00.000Z");
 const iso = (ms: number) => new Date(base + ms).toISOString();
 
-interface PartSpec { id: string; group: string; startMin: number; minutes: number; state?: string; run?: string | null }
+interface PartSpec { id: string; group: string; startMin: number; minutes: number; state?: string; run?: string | null; endedAt?: string | null }
 function part(spec: PartSpec) {
   return {
     id: spec.id,
@@ -15,7 +15,7 @@ function part(spec: PartSpec) {
     sourceMetadata: {},
     captureState: spec.state ?? "ready",
     startedAt: iso(spec.startMin * MIN),
-    endedAt: spec.state === "recording" ? null : iso((spec.startMin + spec.minutes) * MIN),
+    endedAt: spec.endedAt !== undefined ? spec.endedAt : spec.state === "recording" ? null : iso((spec.startMin + spec.minutes) * MIN),
     currentRunId: spec.run ?? null,
   };
 }
@@ -122,6 +122,43 @@ test("an uncovered part makes the transcript partial, not ready", () => {
   const result = readNoteTranscript(deps(parts, [run("ra", [A])], { ra: { text: "a", segments: [{ text: "a", start: 0, end: 1 }] } }), 42);
   assert.equal(result.status, "partial");
   assert.deepEqual(result.diagnostics, [`part-uncovered:${B}`]);
+});
+
+test("unknown duration of an earlier part keeps later segments from claiming false times", () => {
+  // A's capture end is unprovable (no endedAt, no aligned epochs), so B's true offset is unknown.
+  const parts = [
+    part({ id: A, group: G1, startMin: 0, minutes: 10, run: "ra", endedAt: null }),
+    part({ id: B, group: G1, startMin: 13, minutes: 8, run: "rb" }),
+  ];
+  const result = readNoteTranscript(deps(parts, [run("ra", [A]), run("rb", [B])], {
+    ra: { text: "a", segments: [{ text: "a", start: 1, end: 2 }] },
+    rb: { text: "b", segments: [{ text: "b", start: 2, end: 3 }] },
+  }), 42);
+  assert.equal(result.status, "partial");
+  assert.deepEqual(result.diagnostics, [`part-timeline-invalid:${A}`]);
+  assert.equal(result.timeline.duration_ms, null);
+  // A's early timestamp stays proven; B's is explicitly unknown, not invented.
+  assert.deepEqual(result.segments.map((s: { start_ms: number | null; text: string }) => [s.text, s.start_ms]), [["a", 1000], ["b", null]]);
+  assert.equal(result.text, "a\nb");
+  assert.equal(result.speakers.length, 2);
+  // Time filtering keeps the unknown-time segment out of a window instead of matching a false time.
+  const filtered = filterNoteTranscript(result, { fromMs: 0, toMs: 60_000 });
+  assert.deepEqual(filtered.segments.map((s: { text: string }) => s.text), ["a"]);
+});
+
+test("segments of a later part stay unknown when the earlier part is still recording", () => {
+  const parts = [
+    part({ id: A, group: G1, startMin: 0, minutes: 10, state: "recording", run: "ra" }),
+    part({ id: B, group: G1, startMin: 13, minutes: 8, run: "rb" }),
+  ];
+  const result = readNoteTranscript(deps(parts, [run("ra", [A]), run("rb", [B])], {
+    ra: { text: "a", segments: [{ text: "a", start: 1, end: 2 }] },
+    rb: { text: "b", segments: [{ text: "b", start: 2, end: 3 }] },
+  }), 42);
+  assert.equal(result.status, "pending");
+  assert.equal(result.timeline.duration_ms, null);
+  // A has started, so its offset is proven even while it records; B's start is not.
+  assert.deepEqual(result.segments.map((s: { start_ms: number | null; text: string }) => [s.text, s.start_ms]), [["a", 1000], ["b", null]]);
 });
 
 test("a recording in progress reports pending and never invents text", () => {

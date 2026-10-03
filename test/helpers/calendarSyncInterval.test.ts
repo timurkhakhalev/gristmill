@@ -145,6 +145,63 @@ test("a late resolved failure after stop does not restart the timer", async (t: 
   assert.equal(runner.timer, null);
 });
 
+// Regression (R166-1): guarding every reschedule on a `_running` flag silently
+// stopped the managers' explicit out-of-band paths (wake, selection) from
+// rescheduling after a stop — the old code called _schedule() unconditionally
+// there. The runner must distinguish an explicit outcome from a tick completion
+// that merely raced a stop.
+test("an explicit out-of-band outcome schedules after stop while a racing tick completion does not", async (t: import("node:test").TestContext) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let resolveTick: (value: Outcome) => void = () => {};
+  let calls = 0;
+  const runner = createRunner(() => {
+    calls += 1;
+    return new Promise<Outcome>((resolve) => {
+      resolveTick = resolve;
+    });
+  });
+
+  runner.start();
+  t.mock.timers.tick(1000);
+  assert.equal(calls, 1);
+
+  // A tick completion that lands after stop must not re-arm the timer.
+  runner.stop();
+  assert.equal(runner.timer, null);
+  resolveTick(FAILURE);
+  await flushPromises();
+  await flushPromises();
+  assert.equal(runner.timer, null, "racing tick completion must not re-arm");
+
+  // An explicit out-of-band outcome (post-stop wake / selection) still does.
+  runner.notifyOutcome(FAILURE);
+  assert.notEqual(runner.timer, null, "explicit out-of-band outcome must reschedule");
+  assert.equal(runner._consecutiveFailures, 1);
+
+  runner.stop();
+});
+
+// Regression (R166-2): the focus path's rejection handler only logged, so a
+// rejected focus sync never counted toward backoff. It must record the same
+// failure shape as the interval tick.
+test("a rejected focus sync records a failure and backs off", async () => {
+  let calls = 0;
+  const runner = createRunner(() => {
+    calls += 1;
+    return Promise.reject(new Error("boom"));
+  });
+
+  runner.syncOnFocus();
+  await flushPromises();
+  await flushPromises();
+
+  assert.equal(calls, 1);
+  assert.equal(runner._consecutiveFailures, 1);
+  assert.equal(runner._getInterval(), 2000);
+
+  runner.stop();
+});
+
 test("a failed sync reschedules the next run at the backed-off interval", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   let calls = 0;

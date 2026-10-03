@@ -80,6 +80,28 @@ test("normalizes custom compatible endpoints", () => {
   );
 });
 
+// Issue #181: a compatible server fronting Bearer auth must receive the typed
+// key on the connection test, while an empty key stays a valid anonymous probe.
+test("custom endpoints send Bearer auth for a given key and none without one", async () => {
+  const secured = resolveProviderRequest({ provider: "custom", baseUrl: "http://localhost:1234/v1", apiKey: "local-secret" });
+  assert.equal(secured.headers.Authorization, "Bearer local-secret");
+
+  const anonymous = resolveProviderRequest({ provider: "custom", baseUrl: "http://localhost:1234/v1", apiKey: "" });
+  assert.equal(anonymous.headers.Authorization, undefined);
+
+  const requests: Array<{ url: string; headers: Record<string, string> }> = [];
+  const result = await testProviderConnection(
+    { provider: "custom", baseUrl: "http://localhost:1234/v1", apiKey: "local-secret" },
+    async (url: string, init?: { headers: Record<string, string> }) => {
+      requests.push({ url, headers: init?.headers ?? {} });
+      return { ok: true, status: 200, json: async () => ({ data: [] }) };
+    }
+  );
+  assert.deepEqual(result, { success: true });
+  assert.equal(requests[0].headers.Authorization, "Bearer local-secret");
+  assert.ok(requests.every((request) => !request.url.includes("local-secret")), "the key rides headers, never the URL");
+});
+
 test("probes the /v1 sibling for bare custom origins", () => {
   assert.deepEqual(
     resolveProviderRequest({ provider: "custom", baseUrl: "http://localhost:1234", apiKey: "" })

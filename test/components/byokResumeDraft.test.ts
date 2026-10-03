@@ -62,6 +62,7 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
       `,
       "/OnboardingShell": `export function BrandMark() { return null; }`,
       "/ui/ProviderIcon": `export function ProviderIcon() { return null; }`,
+      "/ui/SelectField": `export function SelectField() { return null; }`,
     },
   }));
   (globalThis as Record<string, unknown>).__gristmillTestCaptureConnectionConfig = captureConnectionConfig;
@@ -72,9 +73,11 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
   );
 
   function Harness() {
-    // Execute the real component and hooks with React lifecycle, while leaving
-    // native controls unmounted: the persisted draft is the test boundary.
-    ByokProviderStep({
+    // Render the real tree into installHookDom's inert fake DOM: the mock
+    // ProviderConnectionTest captures its config, and the draft callback fires
+    // on unmount. Everything rendering is either mocked above or a plain DOM
+    // element; nothing native runs.
+    return ByokProviderStep({
       selfHostedRequested,
       resumeState,
       onSelfHostedChange() {},
@@ -82,7 +85,6 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
       onProceed() {},
       onResumeStateChange: (draft: Record<string, unknown>) => capturedDrafts.push(draft),
     });
-    return null;
   }
   const root = createRoot(container);
   await React.act(async () => {

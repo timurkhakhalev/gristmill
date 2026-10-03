@@ -776,3 +776,35 @@ test("a detection card whose load fails releases that detection", async () => {
   await assert.rejects(showPromise, /load failed/);
   assert.deepEqual(closedDetections, ["audio:sustained-audio"]);
 });
+
+// Issue #173: the notification toggles arrive from the renderer through the
+// desktop settings handler, which centralizes the update and the derived
+// detection gate on the window manager. Pinning the gate keeps detection and
+// the master/meeting toggles consistent without re-deriving it at each caller.
+test("notification preferences update individually and derive the detection gate", () => {
+  const manager = createNormalWindowManager();
+
+  // Defaults are all on.
+  assert.equal(manager.notificationsGateDetection(), true);
+
+  // macOS disabled notifications
+  manager.setNotificationPreferences({ notificationsEnabled: false });
+  assert.equal(manager.notificationPrefs.notificationsEnabled, false);
+  assert.equal(manager.notificationsGateDetection(), false);
+
+  // Re-enabling the master is not enough — the meeting toggle still gates it.
+  manager.setNotificationPreferences({ notificationsEnabled: true });
+  assert.equal(manager.notificationsGateDetection(), true);
+  manager.setNotificationPreferences({ notifyMeetingDetection: false });
+  assert.equal(manager.notificationsGateDetection(), false);
+
+  // The calendar reminder toggle does not affect the detection gate.
+  manager.setNotificationPreferences({ notifyCalendarReminders: false });
+  assert.equal(manager.notificationPrefs.notifyCalendarReminders, false);
+  assert.equal(manager.notificationsGateDetection(), false);
+
+  // Setting an immutable-typed partial leaves the other keys untouched.
+  const before = { ...manager.notificationPrefs };
+  manager.setNotificationPreferences({});
+  assert.deepEqual(manager.notificationPrefs, before);
+});

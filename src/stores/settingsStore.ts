@@ -2603,20 +2603,9 @@ export async function initializeSettings(): Promise<void> {
       );
     }
 
-    try {
-      const currentState = useSettingsStore.getState();
-      await window.electronAPI.syncNotificationPreferences?.({
-        notificationsEnabled: currentState.notificationsEnabled,
-        notifyMeetingDetection: currentState.notifyMeetingDetection,
-        notifyCalendarReminders: currentState.notifyCalendarReminders,
-      });
-    } catch (err) {
-      logger.warn(
-        "Failed to sync notification preferences on startup",
-        { error: (err as Error).message },
-        "settings"
-      );
-    }
+    // syncNotificationPreferences is owned by the SettingsProvider effect so
+    // that in-session toggle changes reach main too; a second startup-only
+    // call here would just duplicate the value it already sent on mount.
 
     // The main-process DB is the source of truth for the Apple Calendar connection
     try {

@@ -49,8 +49,10 @@ function createEngine() {
     getActiveMeetingState: () => ({ activeMeeting: null, activeEvents: [], upcomingEvents: [] }),
   };
   const processDetector = new EventEmitter();
-  processDetector.start = () => {};
-  processDetector.stop = () => {};
+  processDetector.starts = 0;
+  processDetector.stops = 0;
+  processDetector.start = () => { processDetector.starts++; };
+  processDetector.stop = () => { processDetector.stops++; };
 
   const audioDetector = new EventEmitter();
   audioDetector.dismissals = 0;
@@ -60,11 +62,15 @@ function createEngine() {
   audioDetector.setMicWarmHold = () => {};
   audioDetector.meetingAppNotifications = 0;
   audioDetector.notifyMeetingAppsChanged = () => audioDetector.meetingAppNotifications++;
-  audioDetector.start = () => {};
-  audioDetector.stop = () => {};
+  audioDetector.starts = 0;
+  audioDetector.stops = 0;
+  audioDetector.start = () => { audioDetector.starts++; };
+  audioDetector.stop = () => { audioDetector.stops++; };
   const callDetector = new EventEmitter();
-  callDetector.start = () => {};
-  callDetector.stop = () => {};
+  callDetector.starts = 0;
+  callDetector.stops = 0;
+  callDetector.start = () => { callDetector.starts++; };
+  callDetector.stop = () => { callDetector.stops++; };
 
   const shown: MeetingNotificationData[] = [];
   const windowManager = {
@@ -380,5 +386,46 @@ test("detected and manual placeholder events use the injected timestamp", async 
   assert.ok(navigation);
   assert.equal(navigation.event.id, `manual-${clock.now()}`);
   assert.equal(navigation.event.start_time, new Date(clock.now()).toISOString());
+  engine.stop();
+});
+
+// Issue #173: the notification toggles now reach main reactively, and the
+// desktop settings handler re-applies the same audio gate on every sync. A
+// redundant sync (the value main already holds) must not restart the detached
+// detectors — only an actual change may.
+test("setPreferences does not restart detectors when a value is unchanged", () => {
+  const { engine, audioDetector, callDetector, processDetector } = createEngine();
+
+  engine.setPreferences({ audioDetection: false, processDetection: false });
+  assert.equal(audioDetector.starts, 0);
+  assert.equal(audioDetector.stops, 1);
+  assert.equal(callDetector.stops, 1);
+  assert.equal(processDetector.stops, 1);
+  assert.deepEqual(engine.getPreferences(), { processDetection: false, audioDetection: false });
+
+  // Re-sending the exact same values is a no-op: no detector is touched again.
+  engine.setPreferences({ audioDetection: false, processDetection: false });
+  assert.equal(audioDetector.starts, 0);
+  assert.equal(audioDetector.stops, 1, "a redundant audio sync must not stop again");
+  assert.equal(callDetector.stops, 1, "a redundant audio sync must not touch the call detector");
+  assert.equal(processDetector.stops, 1, "a redundant process sync must not stop again");
+
+  // A real change re-applies only the changed gate.
+  engine.setPreferences({ audioDetection: true });
+  assert.equal(audioDetector.starts, 1, "re-enabling audio starts the detector");
+  assert.equal(callDetector.starts, 1);
+  assert.equal(processDetector.starts, 0, "the unchanged process gate is not restarted");
+  engine.stop();
+});
+
+// The master toggle is enforced by main notifying the engine with the derived
+// audio gate; re-enabling after a disable must start detection again.
+test("setPreferences re-enables detection after a disable", () => {
+  const { engine, audioDetector } = createEngine();
+  engine.setPreferences({ audioDetection: false });
+  assert.equal(engine.getPreferences().audioDetection, false);
+  engine.setPreferences({ audioDetection: true });
+  assert.equal(engine.getPreferences().audioDetection, true);
+  assert.equal(audioDetector.starts, 1);
   engine.stop();
 });

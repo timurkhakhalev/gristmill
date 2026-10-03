@@ -1258,16 +1258,25 @@ export class MeetingDetectionEngine {
 
   setPreferences(prefs: { processDetection?: boolean; audioDetection?: boolean }): void {
     debugLogger.info("Updating detection preferences", prefs, "meeting");
-    if (typeof prefs?.processDetection === "boolean") {
+    let processChanged = false;
+    let audioChanged = false;
+    if (typeof prefs?.processDetection === "boolean" && prefs.processDetection !== this.preferences.processDetection) {
       this.preferences.processDetection = prefs.processDetection;
+      processChanged = true;
     }
-    if (typeof prefs?.audioDetection === "boolean") {
+    if (typeof prefs?.audioDetection === "boolean" && prefs.audioDetection !== this.preferences.audioDetection) {
       this.preferences.audioDetection = prefs.audioDetection;
+      audioChanged = true;
     }
+    // A redundant sync (the same value re-sent) must not restart the detached
+    // detectors; only the changed gate is re-applied.
+    if (!processChanged && !audioChanged) return;
 
-    this._syncMeetingProcessDetector();
-    this._syncAudioActivityDetector();
-    this._syncCallDetector();
+    if (processChanged) this._syncMeetingProcessDetector();
+    if (audioChanged) {
+      this._syncAudioActivityDetector();
+      this._syncCallDetector();
+    }
   }
 
   private _syncCallDetector(): void {

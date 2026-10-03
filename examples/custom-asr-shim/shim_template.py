@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Generic local shim that lets OpenWhispr's Self-Hosted transcription talk
+"""Generic local shim that lets Gristmill's Self-Hosted transcription talk
 to an ASR backend that does NOT speak the OpenAI /audio/transcriptions
 protocol.
 
-The contract OpenWhispr speaks (verified against its source):
+The contract Gristmill speaks (verified against its source):
 
   - It POSTs multipart/form-data to {Server URL}/audio/transcriptions.
   - Fields: `file` (recorded audio, usually WebM/Opus, filename audio.webm),
     optional `model` (the string from the Self-Hosted panel), optional
     `language` (ISO code), optional `prompt` (custom-dictionary hint).
     Self-Hosted transcription is batch HTTP; `stream` is not used on this path.
-  - Do not require Authorization from OpenWhispr. Hold vendor keys in env vars.
+  - Do not require Authorization from Gristmill. Hold vendor keys in env vars.
   - It expects HTTP 200 with JSON {"text": "..."}. Empty text shows
     "No audio detected"; non-200 is surfaced as an API error.
 
@@ -90,7 +90,7 @@ def transcribe(audio_path: str, model: str, language: str | None, prompt: str | 
     """The ONLY function you edit. Call your vendor's ASR backend with the WAV at
     `audio_path` and return the transcript as a plain string.
 
-    `model`/`language`/`prompt` come straight from OpenWhispr's UI and may be
+    `model`/`language`/`prompt` come straight from Gristmill's UI and may be
     used or ignored. See stepaudio_shim.py for a concrete implementation."""
     raise NotImplementedError(
         "Replace transcribe() with your vendor's ASR call; return the transcript string."
@@ -98,7 +98,7 @@ def transcribe(audio_path: str, model: str, language: str | None, prompt: str | 
 
 
 class ShimHandler(BaseHTTPRequestHandler):
-    """Handles the single POST endpoint OpenWhispr calls."""
+    """Handles the single POST endpoint Gristmill calls."""
 
     def _send_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -169,7 +169,7 @@ def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", PORT), ShimHandler)
     server.daemon_threads = True  # let Ctrl+C exit even with a request in flight
     print(f"Custom ASR shim listening on http://localhost:{PORT}")
-    print("Point OpenWhispr at it: Settings -> Transcription -> Self-Hosted")
+    print("Point Gristmill at it: Settings -> Transcription -> Self-Hosted")
     print(f"  Server URL: http://localhost:{PORT}")
     print("  Vendor API key: hold it in an env var inside transcribe()")
     print("Press Ctrl+C to stop.")

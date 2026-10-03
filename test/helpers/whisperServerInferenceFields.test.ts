@@ -144,3 +144,20 @@ test("transcribeLocalWhisper plumbs skipDecoderThresholds to the server request 
   await manager.transcribeLocalWhisper(Buffer.from("audio"), { model: "base" });
   assert.equal(captured[1].skipDecoderThresholds, false);
 });
+
+test("#161: transcribe passes the cancellation signal into the WAV conversion", async (t: import("node:test").TestContext) => {
+  const { server, port } = await startCapturingServer();
+  t.after(() => server.close());
+
+  const manager = createManager(port);
+  const conversionSignals: unknown[] = [];
+  manager._convertToWav = async (buffer: unknown, signal?: unknown) => {
+    conversionSignals.push(signal);
+    return buffer;
+  };
+  const controller = new AbortController();
+  await manager.transcribe(Buffer.from("audio"), { signal: controller.signal });
+
+  assert.equal(conversionSignals.length, 1);
+  assert.equal(conversionSignals[0], controller.signal, "ffmpeg conversion must be cancellable");
+});

@@ -59,7 +59,13 @@ export class ParakeetServerManager {
     );
   }
 
-  async _ensureWav(audioBuffer: Buffer): Promise<{ wavBuffer: Buffer; filesToCleanup: string[] }> {
+  // Owns its temp files from creation: every exit path (success, conversion
+  // failure, read failure, abort) unlinks them exactly once, after ffmpeg has
+  // closed. The signal is only for cancelling the conversion child.
+  async _ensureWav(
+    audioBuffer: Buffer,
+    signal?: AbortSignal
+  ): Promise<{ wavBuffer: Buffer; filesToCleanup: string[] }> {
     if (isWavFormat(audioBuffer)) {
       const format = parseWavFormat(audioBuffer);
       if (
@@ -86,14 +92,17 @@ export class ParakeetServerManager {
     const tempWavPath = path.join(tempDir, `parakeet-${timestamp}.wav`);
 
     fs.writeFileSync(tempInputPath, audioBuffer);
+    try {
+      const inputStats = fs.statSync(tempInputPath);
+      debugLogger.debug("Converting audio to WAV", { inputSize: inputStats.size });
 
-    const inputStats = fs.statSync(tempInputPath);
-    debugLogger.debug("Converting audio to WAV", { inputSize: inputStats.size });
+      await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1, signal });
 
-    await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1 });
-
-    const wavBuffer = fs.readFileSync(tempWavPath);
-    return { wavBuffer, filesToCleanup: [tempInputPath, tempWavPath] };
+      return { wavBuffer: fs.readFileSync(tempWavPath), filesToCleanup: [tempInputPath, tempWavPath] };
+    } catch (error) {
+      this._cleanupFiles([tempInputPath, tempWavPath]);
+      throw error;
+    }
   }
 
   async transcribe(audioBuffer: Buffer, options: {
@@ -122,7 +131,7 @@ export class ParakeetServerManager {
     // An already-cancelled upload skips the ffmpeg conversion entirely.
     throwIfAborted();
 
-    const { wavBuffer, filesToCleanup } = await this._ensureWav(audioBuffer);
+    const { wavBuffer, filesToCleanup } = await this._ensureWav(audioBuffer, signal);
     try {
       throwIfAborted();
       const runtime = getModelRuntime(modelName);

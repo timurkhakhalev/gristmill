@@ -50,10 +50,11 @@ async function mountProvider(t: TestContext, initialStorage: Record<string, stri
 async function renderProvider(vite: ViteDevServer, container: unknown): Promise<{ root: Root; store: { getState(): Record<string, unknown> } }> {
   const { SettingsProvider } = await vite.ssrLoadModule("/hooks/useSettings.ts");
   const { useSettingsStore, initializeSettings } = await vite.ssrLoadModule("/stores/settingsStore.ts");
-  // The store registers its cross-window storage listener from
-  // initializeSettings; the Provider's own effect would start it too, but the
-  // test needs it registered before it dispatches a synthetic storage event.
-  await initializeSettings().catch(() => {});
+  // The store registers its cross-window storage listener at the tail of
+  // initializeSettings. Awaited here so the listener exists before any
+  // synthetic storage event is dispatched — an un-awaited call leaves
+  // hydration suspended and the event is dropped.
+  await initializeSettings();
   let root: Root | undefined;
   await React.act(async () => {
     root = createRoot(container as unknown as Element);
@@ -64,6 +65,17 @@ async function renderProvider(vite: ViteDevServer, container: unknown): Promise<
 }
 
 const last = (calls: Prefs[]): Prefs => calls[calls.length - 1]!;
+
+// Flushes microtasks until the predicate holds, so the test waits for the real
+// async hydration / effect instead of racing it. Fails with the label if the
+// expected state never arrives within the budget.
+async function waitFor(predicate: () => boolean, label: string, attempts = 50): Promise<void> {
+  for (let i = 0; i < attempts; i++) {
+    if (predicate()) return;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.fail(label);
+}
 
 test("a notification setter reaches main through the provider without a reload", async (t) => {
   const { calls, container, vite } = await mountProvider(t);
@@ -103,17 +115,20 @@ test("a notification setter reaches main through the provider without a reload",
 
 // The store's storage listener is the other-window path: a storage event from a
 // second window updates the store, and the provider effect must carry the new
-// value to main in this window too.
+// value to main in this window too. The assertion requires a *new* main call,
+// so it cannot pass on inherited state or echo the mount payload.
 test("a change arriving from another window reaches main", async (t) => {
   const { calls, container, vite, storageEvents } = await mountProvider(t);
   const { root } = await renderProvider(vite, container);
 
   try {
-    assert.equal(calls.length, 1);
-    // initializeSettings is a module-level once-guard shared across tests in
-    // this process, so the cross-window listener may already be registered by
-    // an earlier test's initializeSettings() call. Either way it must exist.
-    assert.ok(storageEvents.length >= 1, "the store subscribed to storage");
+    // Wait until the storage listener is actually registered: initializeSettings
+    // registers it at its tail, and a dispatch before then is silently dropped.
+    await waitFor(() => storageEvents.length >= 1, "the store subscribed to storage");
+    assert.equal(calls.length, 1, "only the mount-time sync has run");
+
+    // The inherited state has notifyMeetingDetection on, so reaching `false`
+    // proves the storage path rather than a pre-existing value.
     await React.act(async () => {
       storageEvents[0]({
         key: "notifyMeetingDetection",
@@ -122,7 +137,10 @@ test("a change arriving from another window reaches main", async (t) => {
       } as unknown as StorageEvent);
       await Promise.resolve();
     });
+    await waitFor(() => calls.length >= 2, "the other-window change reached main");
+    assert.equal(calls.length, 2, "exactly one extra main call");
     assert.equal(last(calls).notifyMeetingDetection, false, "other-window change must reach main");
+    assert.equal(last(calls).notificationsEnabled, true, "the untouched prefs stay as they were");
   } finally {
     React.act(() => root.unmount());
   }

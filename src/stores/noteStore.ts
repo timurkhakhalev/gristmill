@@ -26,6 +26,12 @@ interface NoteState {
   activeContext: ActiveContext | null;
   activeNoteId: number | null;
   isTreeLoading: boolean;
+  // Bumped on every confirmed Note event (added/updated/deleted), whether or
+  // not the row was cached. Consumers that read the authoritative list from
+  // main (Home's cross-space recent list) react to this instead of the cache
+  // identity, which does not change when a note is deleted from an unloaded
+  // container.
+  noteEventsRevision: number;
 }
 
 const EXPANDED_STORAGE_KEY = "notesTree.expanded";
@@ -58,7 +64,13 @@ const useNoteStore = create<NoteState>()(() => ({
   activeContext: null,
   activeNoteId: null,
   isTreeLoading: true,
+  noteEventsRevision: 0,
 }));
+
+/** Signal that a confirmed Note event arrived, regardless of cache presence. */
+function bumpNoteEventsRevision(): void {
+  useNoteStore.setState((state) => ({ noteEventsRevision: state.noteEventsRevision + 1 }));
+}
 
 let hasBoundIpcListeners = false;
 const DEFAULT_LIMIT = 50;
@@ -128,6 +140,7 @@ function ensureIpcListeners() {
     const dispose = window.electronAPI.onNoteAdded((note) => {
       if (note) {
         addNote(note);
+        bumpNoteEventsRevision();
         loadFolders();
       }
     });
@@ -141,6 +154,7 @@ function ensureIpcListeners() {
       if (note) {
         const previous = findNoteInState(useNoteStore.getState(), note.id);
         updateNoteInStore(note);
+        bumpNoteEventsRevision();
         if (previous && !sameContainers(previous, note)) {
           loadFolders();
         }
@@ -154,6 +168,9 @@ function ensureIpcListeners() {
   if (window.electronAPI.onNoteDeleted) {
     const dispose = window.electronAPI.onNoteDeleted(({ id }) => {
       removeNote(id);
+      // Always signal: a note deleted from an unloaded container is not in
+      // `lists`, so removeNote no-ops, but the authoritative list still changed.
+      bumpNoteEventsRevision();
       loadFolders();
     });
     if (typeof dispose === "function") {
@@ -614,6 +631,14 @@ export function getActiveFolderIdValue(): number | null {
 }
 
 /** Live (non-hook) reads for deferred callbacks like undo toasts. */
+export function getNotesByContainerValue(): Record<string, NoteItem[]> {
+  return useNoteStore.getState().notesByContainer;
+}
+
+export function getNoteEventsRevisionValue(): number {
+  return useNoteStore.getState().noteEventsRevision;
+}
+
 export function getFoldersValue(): FolderItem[] {
   return useNoteStore.getState().folders;
 }
@@ -644,6 +669,10 @@ export function useSpaceRootCounts(): Record<number, number> {
 
 export function useNotesByContainer(): Record<string, NoteItem[]> {
   return useNoteStore((state) => state.notesByContainer);
+}
+
+export function useNoteEventsRevision(): number {
+  return useNoteStore((state) => state.noteEventsRevision);
 }
 
 export function useExpandedContainers(): Set<string> {

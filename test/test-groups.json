@@ -1234,6 +1234,7 @@
     "buildMain": false,
     "files": [
       "test/scripts/type-probes/meeting-coordinator.test.ts",
+      "test/scripts/type-probes/meeting-processing.test.ts",
       "test/scripts/nativeAudioCaptureTypeProbe.test.ts",
       "test/scripts/type-probes/speaker-onnx.test.ts"
     ]

@@ -298,7 +298,11 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const savedSummary = selected?.summary?.text;
   const hasSavedSummary = Boolean(fallbackText.enhanced.trim()) || recordings.some((part) => part.runs.some((item) => item.run.hasSummary));
   const summaryText = savedSummary && mock ? composeMockSummary(savedSummary, mock.tasks, mock.recap) : savedSummary;
-  const speakerCorrectionRevision = selected?.speakerCorrections.reduce((sum, correction) => sum + correction.revision, 0) ?? 0;
+  // The authoritative transcript-source revision, not the sum of the visible
+  // corrections: a cleared model proposal keeps a tombstone row the display
+  // list omits, so summing only what is shown reads 0 after a revoke while the
+  // Summary was written at a higher revision.
+  const speakerCorrectionRevision = selected?.speakerCorrectionRevision ?? 0;
   const summaryIsStale = selected?.summary?.speakerCorrectionRevision !== undefined &&
     selected.summary.speakerCorrectionRevision !== speakerCorrectionRevision;
   // Dismissal is remembered per run and correction state; a newer correction shows the notice again.
@@ -497,10 +501,22 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
     });
   };
 
+  // Optimistically applies a user correction to the selected bundle — bumping
+  // the authoritative revision and replacing the speaker's row — so a fresh
+  // Summary turns stale immediately. The panel must not depend on the
+  // meeting-processing-updated broadcast to notice its own edit: if that event
+  // is dropped or arrives before refresh(), a genuinely stale Summary would
+  // show no regenerate prompt.
+  const applyOptimisticUserCorrection = (runId: string) => {
+    const targetSpeakerId = speakerId;
+    if (!targetSpeakerId) return;
+    setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === runId ? { ...run, speakerCorrectionRevision: (run.speakerCorrectionRevision ?? 0) + 1, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== targetSpeakerId), { speakerId: targetSpeakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId), participantEmail: participantEmail === "none" ? null : participantEmail, source: "user" as const, revision: (run.speakerCorrections.find((correction) => correction.speakerId === targetSpeakerId)?.revision ?? 0) + 1 }] } : run) })));
+  };
+
   const correctSpeaker = () => runTask(async () => {
     if (!speakerId || !selected || !speakerName.trim()) return;
     if (previewRecordings) {
-      setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId), participantEmail: participantEmail === "none" ? null : participantEmail, source: "user", revision: (run.speakerCorrections.find((correction) => correction.speakerId === speakerId)?.revision ?? 0) + 1 }] } : run) })));
+      applyOptimisticUserCorrection(selected.run.id);
       setSpeakerId(null);
       setMock((current) => current && { ...current, modelSpeakerIds: current.modelSpeakerIds?.filter((id) => id !== speakerId), summaryStale: Boolean(summaryText) });
       return;
@@ -510,7 +526,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
       speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId),
       ...(participantEmail !== "none" ? { participantEmail } : {}),
     });
+    // Only after main accepted the write; a rejection throws and leaves the
+    // panel unchanged, like the preview branch, which cannot fail.
     if (!result.success) throw new Error(result.error || t("meetingResults.speakerError"));
+    applyOptimisticUserCorrection(selected.run.id);
     setSpeakerId(null);
   });
 

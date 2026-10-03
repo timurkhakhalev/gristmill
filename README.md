@@ -26,7 +26,7 @@ It also never shows a meeting as complete when a processing stage used only part
 - Makes a Summary with prioritized tasks. A Recap and a Follow-up draft are available on request.
 - Gives a chat for each meeting. Answers link to transcript timestamps.
 - Lets you play, export and process the original audio again.
-- Connects meetings to calendars, participants, tags and templates.
+- Connects meetings to calendars and participants.
 - Links Google Meet and Telemost calls through the [Gristmill Companion](.memory-bank/product/companion.md) Chrome extension.
 - Gives read-only access to notes from the terminal through the [`gristmill` CLI](.memory-bank/product/notes-cli.md).
 

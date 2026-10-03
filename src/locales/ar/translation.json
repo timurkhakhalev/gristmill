@@ -870,6 +870,7 @@
       "create": "إنشاء",
       "custom": "مخصص",
       "selectFolder": "تحديد مجلد",
+      "noteSaveFailed": "نجح التفريغ النصي، لكن فشل حفظ الملاحظة. انقر على إعادة المحاولة لحفظها.",
       "transcriptionFailed": "فشل التفريغ",
       "errorOccurred": "حدث خطأ",
       "noSpeechDetected": "لم يتم اكتشاف أي كلام في هذا الصوت.",

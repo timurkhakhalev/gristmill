@@ -1584,6 +1584,7 @@
       "create": "Criar",
       "custom": "Personalizado",
       "selectFolder": "Selecionar pasta",
+      "noteSaveFailed": "A transcrição foi bem-sucedida, mas falhou ao salvar a nota. Clique em repetir para salvá-la.",
       "transcriptionFailed": "Falha na transcrição",
       "errorOccurred": "Ocorreu um erro",
       "noSpeechDetected": "Nenhuma fala detectada neste áudio.",

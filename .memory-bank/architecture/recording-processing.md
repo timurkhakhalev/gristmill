@@ -47,8 +47,8 @@ All paths are under Electron `userData`:
 | Content | Path |
 | --- | --- |
 | Original mono Ogg/Opus (32 kbit/s VBR, complexity 0, voice mode) | `audio/meetings/{recordingId}/{mic\|system}/epoch-000000.opus` |
-| Derived full-timeline WAV | `audio/meetings/{recordingId}/derived/{runId}.wav` |
-| Raw provider response | `meeting-results/{runId}/raw-provider-response.json` |
+| Derived full-timeline WAV | `audio/meetings/{recordingId}/derived/{runId}.wav` (mono), `{runId}-stereo.wav`, `{runId}-mic.wav` or `{runId}-system.wav` |
+| Raw provider response | `meeting-results/{runId}/raw-provider-response.json`. Two-request cloud routes write `raw-provider-response-mic.json` and `raw-provider-response-system.json` and combine them into the canonical file |
 | Transcript | `meeting-results/{runId}/transcript.json` |
 | Summary | `meeting-results/{runId}/summary.json` |
 

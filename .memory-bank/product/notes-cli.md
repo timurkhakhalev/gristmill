@@ -1,9 +1,9 @@
-# Read-only Notes CLI
+# Read-only Gristmill CLI
 
 ## Installation
 
-- The packaged app installs or refreshes the Notes CLI at startup.
-- To refresh it manually, use Settings → Advanced → **Install Notes CLI**.
+- The packaged app installs or refreshes the Gristmill CLI at startup.
+- To refresh it manually, use Settings → Advanced → **Install Gristmill CLI**.
 - The CLI is `~/.local/bin/gristmill`. If your shell `PATH` does not include `~/.local/bin`, add it.
 - The launcher uses the Node runtime of the installed app. The Gristmill app must be running.
 - Explicit test profiles do not change this global command.

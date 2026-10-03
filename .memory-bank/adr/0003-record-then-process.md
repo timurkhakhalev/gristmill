@@ -29,7 +29,7 @@ Cloud processing is useful, but capture must not depend on the network.
 - Transcription of one-minute fragments during the recording (VAD windows, overlap, a live queue, speaker matching across fragments) and a local draft.
   We examined 15 open-source projects and rejected this option.
   Speaker and boundary matching adds much complexity and does not help the main goal.
-  The research is in the Git history (`docs/transcription-chunking-research.md`).
+  The research was in `docs/transcription-chunking-research.md`. That file was removed in the memory bank restructure commit `e549bb3bb`; the last revision before that is in the Git history.
 
 ## Consequences
 

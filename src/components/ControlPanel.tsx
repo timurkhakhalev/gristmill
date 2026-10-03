@@ -1,4 +1,5 @@
-import React, { Suspense, useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { EventDraftHandoff } from "../lib/noteEditorPendingSave";
 import { useTranslation } from "react-i18next";
 import { cn } from "./lib/utils";
 import ControlPanelSidebar from "./ControlPanelSidebar";
@@ -88,9 +89,17 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const [notesDebugScenario, setNotesDebugScenario] = useState<NotesDebugScenario | null>(null);
   const [meetingRecordingRequest, setMeetingRecordingRequest] = useState<{
     noteId: number;
-    folderId: number | null;
+    folderId: null | number;
     event: any;
   } | null>(null);
+  // A calendar-event draft's latest typed revision, forwarded to the notes
+  // view once it owns the created/existing note (see EventNoteDraft). The
+  // draft hands off before the view mounts, so the value waits in a ref the
+  // mounted view consumes once.
+  const pendingEventDraftHandoffRef = useRef<EventDraftHandoff | null>(null);
+  const handleEventDraftHandoff = useCallback((handoff: EventDraftHandoff) => {
+    pendingEventDraftHandoffRef.current = handoff;
+  }, []);
   const isMeetingMode = useIsMeetingMode();
   const activeNoteId = useActiveNoteId();
   // Notes has no list page of its own: with no note open, Home is the list.
@@ -430,6 +439,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   key={eventDraft.id}
                   event={eventDraft}
                   onBack={() => setEventDraft(null)}
+                  onDraftHandoff={handleEventDraftHandoff}
                   onMaterialized={(note, intent) => {
                     setEventDraft(null);
                     openNote(note);
@@ -462,6 +472,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                       meetingRecordingRequest={meetingRecordingRequest}
                       onMeetingRecordingRequestHandled={() => setMeetingRecordingRequest(null)}
                       chromeProvidesBack={isSidePanelLayout}
+                      eventDraftHandoff={pendingEventDraftHandoffRef}
                     />
                   )}
                 </Suspense>

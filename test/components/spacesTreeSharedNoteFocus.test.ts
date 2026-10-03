@@ -150,8 +150,15 @@ const MOCK_MODULES = {
     export const Separator = () => null;
   `,
   "react-i18next": `
+    // One frozen i18n shared by every render: if dir ever went missing the
+    // probe below would show it, and freeze() stops any code mutating it.
+    const I18N = Object.freeze({ dir: () => "ltr", resolvedLanguage: "en", language: "en" });
+    const probe = () => (globalThis.__spacesTreeI18nProbe ??= []);
     export function useTranslation() {
-      return { t: (key: string) => key, i18n: { dir: () => "ltr", resolvedLanguage: "en", language: "en" } };
+      const log = probe();
+      log.push({ dirType: typeof I18N.dir, keys: Object.keys(I18N) });
+      if (log.length > 50) log.shift();
+      return { t: (key) => key, i18n: I18N };
     }
   `,
 };
@@ -198,12 +205,25 @@ const focusedRow = (rows: RowProbe[]): RowProbe => {
   return match[0]!;
 };
 
-async function press(row: RowProbe, key: string): Promise<void> {
-  await React.act(async () => {
-    row.a11y.onKeyDown({ key, preventDefault() {} });
-  });
+// One settled render pass: an act that re-renders and lets every effect —
+// including the retarget effect's own setState — flush before returning, so
+// tree() is never read from a partially-flushed render.
+async function flushTwice(ui: { rerender: () => Promise<void> }): Promise<void> {
+  await ui.rerender();
+  await ui.rerender();
 }
-
+/** Presses a key, then settles: rows are re-read only after the flush lands. */
+async function pressAndSettle(
+  ui: { tree: () => unknown; rerender: () => Promise<void> },
+  probe: RowProbe,
+  key: string
+): Promise<RowProbe[]> {
+  await React.act(async () => {
+    probe.a11y.onKeyDown({ key, preventDefault() {} });
+  });
+  await flushTwice(ui);
+  return rowsIn(ui.tree());
+}
 /** Mounts the real SpacesTree against the shared mutable tree state. */
 async function mountTree(t: TestContext) {
   // Unmount must be the first hook registered: cleanup runs before the
@@ -276,15 +296,15 @@ test("ArrowDown and ArrowUp traverse both placements of the shared note", async 
   t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
   const ui = await mountTree(t);
 
-  await press(row(rowsIn(ui.tree()), "folder:11:n:201"), "ArrowDown");
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:201", "ArrowDown reaches the second placement");
+  let rows = await pressAndSettle(ui, row(rowsIn(ui.tree()), "folder:11:n:201"), "ArrowDown");
+  assert.equal(focusedRow(rows).key, "folder:22:n:201", "ArrowDown reaches the second placement");
 
-  await press(row(rowsIn(ui.tree()), "folder:22:n:201"), "ArrowDown");
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "space:1:n:301", "ArrowDown continues past the second placement");
+  rows = await pressAndSettle(ui, row(rows, "folder:22:n:201"), "ArrowDown");
+  assert.equal(focusedRow(rows).key, "space:1:n:301", "ArrowDown continues past the second placement");
 
-  await press(row(rowsIn(ui.tree()), "space:1:n:301"), "ArrowUp");
-  await press(row(rowsIn(ui.tree()), "folder:22:n:201"), "ArrowUp");
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:11:n:201", "ArrowUp returns to the first placement");
+  rows = await pressAndSettle(ui, row(rows, "space:1:n:301"), "ArrowUp");
+  rows = await pressAndSettle(ui, row(rows, "folder:22:n:201"), "ArrowUp");
+  assert.equal(focusedRow(rows).key, "folder:11:n:201", "ArrowUp returns to the first placement");
 });
 
 test("outward navigation from a placement focuses that placement's own folder", async (t: TestContext) => {
@@ -292,14 +312,14 @@ test("outward navigation from a placement focuses that placement's own folder", 
   t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
   const ui = await mountTree(t);
 
-  await press(row(rowsIn(ui.tree()), "folder:11:n:201"), "ArrowDown");
+  let rows = await pressAndSettle(ui, row(rowsIn(ui.tree()), "folder:11:n:201"), "ArrowDown");
   // The focused placement is inside Folder B; outward must target Folder B.
-  await press(row(rowsIn(ui.tree()), "folder:22:n:201"), "ArrowLeft");
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "22", "outward focuses the current placement's parent folder");
+  rows = await pressAndSettle(ui, row(rows, "folder:22:n:201"), "ArrowLeft");
+  assert.equal(focusedRow(rows).key, "22", "outward focuses the current placement's parent folder");
 
   // Inward from Folder B opens onto its own child placement again.
-  await press(row(rowsIn(ui.tree()), "22"), "ArrowRight");
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:201", "inward focuses this folder's placement");
+  rows = await pressAndSettle(ui, row(rows, "22"), "ArrowRight");
+  assert.equal(focusedRow(rows).key, "folder:22:n:201", "inward focuses this folder's placement");
 });
 
 test("Enter on a placement opens the note itself", async (t: TestContext) => {
@@ -308,7 +328,7 @@ test("Enter on a placement opens the note itself", async (t: TestContext) => {
   t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
   const ui = await mountTree(t);
 
-  await press(row(rowsIn(ui.tree()), "folder:22:n:201"), "Enter");
+  await pressAndSettle(ui, row(rowsIn(ui.tree()), "folder:22:n:201"), "Enter");
   assert.equal(state.openedNoteId, 201, "Enter activates the note from either placement");
 });
 
@@ -321,12 +341,14 @@ test("focus follows the note when one placement is collapsed or removed", async 
   await React.act(async () => {
     row(rowsIn(ui.tree()), "folder:11:n:201").a11y.onFocus();
   });
+  await flushTwice(ui);
   assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:11:n:201");
 
   // Collapse the focused placement's folder: the same note remains visible in
-  // Folder B and keeps the roving tabIndex there.
+  // Folder B and keeps the roving tabIndex there. Two flushes: one for the
+  // rows change, one for the retarget effect's own state update.
   setState({ expanded: new Set(["space:1", "folder:22"]) });
-  await ui.rerender();
+  await flushTwice(ui);
   const afterCollapse = rowsIn(ui.tree());
   assert.ok(!afterCollapse.some((candidate) => candidate.key === "folder:11:n:201"));
   assert.equal(focusedRow(afterCollapse).key, "folder:22:n:201");
@@ -336,6 +358,6 @@ test("focus follows the note when one placement is collapsed or removed", async 
     expanded: new Set(["space:1", "folder:11", "folder:22"]),
     notesByContainer: { ...state.notesByContainer, "folder:11": [] },
   });
-  await ui.rerender();
+  await flushTwice(ui);
   assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:201");
 });

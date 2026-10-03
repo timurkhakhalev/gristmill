@@ -99,7 +99,7 @@ test("custom endpoints send Bearer auth for a given key and none without one", a
   );
   assert.deepEqual(result, { success: true });
   assert.equal(requests[0].headers.Authorization, "Bearer local-secret");
-  assert.ok(!JSON.stringify(requests).includes("local-secret"), "the key rides headers only");
+  assert.ok(requests.every((request) => !request.url.includes("local-secret")), "the key rides headers, never the URL");
 });
 
 test("probes the /v1 sibling for bare custom origins", () => {

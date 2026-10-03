@@ -61,7 +61,7 @@ import {
   registerMeetingCoordinatorHandlers,
   type MeetingCoordinatorRuntime,
 } from "./meetingCoordinatorIpcHandlers.js";
-import { registerSpeakerHandlers, type SpeakerDatabase } from "./speakerIpcHandlers.js";
+import { registerSpeakerHandlers } from "./speakerIpcHandlers.js";
 import { registerRemoteTranscriptionHandler, transcribeAudioFileByok, type RemoteTranscriptionDeps } from "./remoteTranscriptionIpcHandler.js";
 import { postRawAudioFile } from "./audioFileUpload.js";
 import { registerReasoningHandlers, type EnterpriseStreamModel } from "./reasoningIpcHandlers.js";
@@ -107,7 +107,10 @@ import localReasoningBridge from "../services/localReasoningBridge.js";
 import type { NoteItem } from "../contracts/notes.js";
 import type { TranscriptionResponse } from "../contracts/localFileTranscription.js";
 import type { EnvironmentManagerWithByok } from "./environment.js";
-import type { DatabaseManager, SpeakerProfileRow } from "./database.js";
+import type {
+  DatabaseManager,
+  SpeakerProfileWithEmbedding,
+} from "./database.js";
 import type { WhisperManager } from "./whisper.js";
 import type { ParakeetManager } from "./parakeet.js";
 import type { DiarizationManager } from "./diarization.js";
@@ -1588,21 +1591,16 @@ export class IPCHandlers {
     });
 
     registerSpeakerHandlers(ipcMain, {
-      // SpeakerDatabase narrows the manager surface; upsert's null branch is
-      // not reachable for the promotion paths this vertical drives.
-      databaseManager: this.databaseManager as unknown as SpeakerDatabase,
+      databaseManager: this.databaseManager,
       liveSpeakerIdentifier,
       diarizationManager: this.diarizationManager,
-      retroactiveMapping: (profile) =>
-        this._retroactiveMapping(
-          profile as { id: number; display_name: string; embedding: Buffer }
-        ),
+      retroactiveMapping: (profile) => this._retroactiveMapping(profile),
       tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
       logError: (message, data) => debugLogger.error(message, data, "speaker"),
     });
   }
 
-  _retroactiveMapping(profile: { id: number; display_name: string; embedding: Buffer }): void {
+  _retroactiveMapping(profile: SpeakerProfileWithEmbedding): void {
     setImmediate(async () => {
       try {
         const speakerEmbeddings =
@@ -1704,7 +1702,7 @@ export class IPCHandlers {
         );
         if (!unmapped.length) return;
 
-        let profile: SpeakerProfileRow | null = null;
+        let profile: SpeakerProfileWithEmbedding | null = null;
         for (const emb of unmapped) {
           profile = this.databaseManager.upsertSpeakerProfile(
             displayName,
@@ -1740,7 +1738,7 @@ export class IPCHandlers {
         }
 
         if (profile) {
-          this._retroactiveMapping(profile as SpeakerProfileRow & { embedding: Buffer });
+          this._retroactiveMapping(profile);
         }
 
         debugLogger.info(

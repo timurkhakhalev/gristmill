@@ -85,6 +85,8 @@ export interface DesktopSettingsDeps {
     startControlPanelDrag: () => Promise<unknown>;
     stopControlPanelDrag: () => Promise<unknown>;
     notificationPrefs: Record<string, boolean>;
+    setNotificationPreferences: (prefs: Record<string, boolean>) => void;
+    notificationsGateDetection: () => boolean;
     refreshLocalizedUi?: () => void;
     // Never set by the composition root; the settings seams treat the main
     // window as absent, exactly like the untyped JS did.
@@ -843,22 +845,19 @@ export function registerDesktopSettingsHandlers(
 
   // ---- notification preferences ------------------------------------------------------------------
 
-  ipcMain.handle(desktopSettingsChannels.syncNotificationPreferences, (_event, prefs: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.syncNotificationPreferences, (_event, rawPrefs: unknown) => {
     try {
-      const parsed = notificationPreferencesSchema.safeParse(prefs);
+      const parsed = notificationPreferencesSchema.safeParse(rawPrefs);
       if (!parsed.success) {
         return { success: false, error: "Invalid preferences" };
       }
+      const prefs: Record<string, boolean> = {};
       for (const [k, v] of Object.entries(parsed.data)) {
-        if (NOTIFICATION_PREF_KEYS.has(k)) {
-          windowManager.notificationPrefs[k] = v;
-        }
+        if (NOTIFICATION_PREF_KEYS.has(k)) prefs[k] = v;
       }
+      windowManager.setNotificationPreferences(prefs);
       // Detection only serves the notification, so the toggle also gates the detector.
-      const { notificationsEnabled, notifyMeetingDetection } = windowManager.notificationPrefs;
-      deps.setDetectionGateForNotifications(
-        Boolean(notificationsEnabled && notifyMeetingDetection)
-      );
+      deps.setDetectionGateForNotifications(windowManager.notificationsGateDetection());
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };

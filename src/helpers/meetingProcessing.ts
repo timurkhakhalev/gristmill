@@ -1417,6 +1417,12 @@ export class MeetingProcessingWorker {
     const speakerCorrections = transcriptRunId
       ? this.deps.database.getMeetingRunSpeakerCorrections(transcriptRunId)
       : [];
+    // Authoritative revision from the same transcript source as the visible
+    // corrections: includes cleared tombstones, so it never regresses to a
+    // value a revoked proposal already passed.
+    const speakerCorrectionRevision = transcriptRunId
+      ? this.deps.database.getMeetingRunSpeakerCorrectionRevision(transcriptRunId)
+      : 0;
     const transcript = rawTranscript;
     const summaryRun = run.hasSummary
       ? run
@@ -1427,7 +1433,7 @@ export class MeetingProcessingWorker {
       ? this.deps.storage.readRunArtifact(summaryRun.id, "summary")
       : null;
     const summary = summaryValue === null ? null : meetingSummaryArtifactSchema.parse(summaryValue);
-    return meetingProcessingResultDtoSchema.parse({ run, transcript, summary, speakerCorrections });
+    return meetingProcessingResultDtoSchema.parse({ run, transcript, summary, speakerCorrections, speakerCorrectionRevision });
   }
 
   private publishCurrentSelection(runId: string): void {

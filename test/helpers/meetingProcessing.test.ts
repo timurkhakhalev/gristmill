@@ -9,7 +9,7 @@ const DatabaseManagerClass = (require("./harness/db.ts") as { DatabaseManager: n
 const MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
 const { MeetingProcessingWorker, registerMeetingProcessingHandlers }: typeof import("../../src/helpers/meetingProcessing.ts") = require("../../src/helpers/meetingProcessing.ts");
 const { meetingProcessingChannels }: typeof import("../../src/contracts/meetingProcessing.ts") = require("../../src/contracts/meetingProcessing.ts");
-const { meetingTranscriptArtifactSchema }: typeof import("../../src/contracts/meetingRecording.ts") = require("../../src/contracts/meetingRecording.ts");
+const { meetingTranscriptArtifactSchema, meetingProcessingResultDtoSchema }: typeof import("../../src/contracts/meetingRecording.ts") = require("../../src/contracts/meetingRecording.ts");
 const { createMeetingProcessingBridge }: typeof import("../../src/preload/meetingProcessingBridge.ts") = require("../../src/preload/meetingProcessingBridge.ts");
 const { prepareMeetingAudio }: typeof import("../../src/helpers/meetingAudioMixer.ts") = require("../../src/helpers/meetingAudioMixer.ts");
 const { getFFmpegPath }: typeof import("../../src/helpers/ffmpegUtils.ts") = require("../../src/helpers/ffmpegUtils.ts");
@@ -387,6 +387,60 @@ test("automatic naming revises only model names and rejects stale revisions and 
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(run.id).map(({ displayName, source }: { displayName: string; source: string }) => ({ displayName, source })), [
     { displayName: "User name", source: "user" }, { displayName: "Voice", source: "voice" },
   ]);
+});
+
+// Regression (#177): after a model proposal is withdrawn the DB keeps a
+// cleared tombstone row, so the authoritative revision is 2 while the display
+// list is empty. The result DTO must carry that authoritative revision so the
+// renderer does not sum only the visible corrections (which read 0) and call a
+// fresh Summary stale forever.
+test("the result DTO carries the authoritative revision after a withdrawn model proposal", async (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, recording, run } = createFinishedRecording(db, storage);
+  saveTranscriptArtifact(db, storage, run.id, "Max? The build is fixed.");
+  const worker = workerFor(db, storage, { summarize: async () => "## TLDR\nFresh summary." });
+  t.after(() => worker.stop());
+
+  const revisionOf = (runId: string) =>
+    worker.listForNote(note.id).flatMap((item) => item.runs).find((item) => item.run.id === runId)?.speakerCorrectionRevision;
+  const correctionsOf = (runId: string) =>
+    worker.listForNote(note.id).flatMap((item) => item.runs).find((item) => item.run.id === runId)?.speakerCorrections;
+
+  // No corrections yet: authoritative and visible both read 0.
+  assert.equal(revisionOf(run.id), 0);
+  assert.deepEqual(correctionsOf(run.id), []);
+
+  // A model proposal raises the authoritative revision to 1, then withdrawing
+  // it raises again to 2 while the display list empties.
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 0, [{ speakerId: "speaker_0", profileId: null, displayName: "Max" }], "model"), true);
+  assert.equal(db.applyAutomaticMeetingSpeakerCorrections(run.id, run.id, 1, [], "model", ["speaker_0"]), true);
+  assert.equal(db.getMeetingRunSpeakerCorrectionRevision(run.id), 2);
+  assert.deepEqual(correctionsOf(run.id), []);
+  assert.equal(
+    revisionOf(run.id),
+    2,
+    "the DTO revision must include the cleared tombstone, not just the visible corrections"
+  );
+
+  // A new user correction keeps climbing: a display-only sum that read 0 could
+  // never reach the Summary's recorded revision.
+  assert.equal(db.setMeetingRunSpeakerCorrection(run.id, "speaker_0", null, "User name", "user").success, true);
+  assert.equal(revisionOf(run.id), db.getMeetingRunSpeakerCorrectionRevision(run.id));
+  assert.equal(revisionOf(run.id), 3);
+  assert.equal(recording.id, run.recordingId);
+
+  // The DTO rejects a negative authoritative revision, so the persisted guard
+  // (SUM of nonnegative row revisions) cannot be widened accidentally.
+  const parsed = meetingProcessingResultDtoSchema.safeParse({
+    run: worker.listForNote(note.id)[0].runs.find((item) => item.run.id === run.id)!.run,
+    transcript: null,
+    summary: null,
+    speakerCorrections: [],
+    speakerCorrectionRevision: -1,
+  });
+  assert.equal(parsed.success, false, "negative revision must fail the DTO schema");
 });
 
 test("withdrawing a model proposal preserves increasing revisions and protected names", (t: import("node:test").TestContext) => {

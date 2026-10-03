@@ -753,18 +753,20 @@ export default function SpacesTree({
       for (const folder of folders.filter((item) => item.space_id === space.id)) {
         const folderKey = folderContainerKey(folder.id);
         result.push({ type: "folder", key: folderKey, folder, level: 1 });
+        // Placement-aware key: the same note in two expanded folders must stay
+        // two independent rows for refs and keyboard navigation.
         if (expanded.has(folderKey))
           for (const note of notesByContainer[folderKey] ?? [])
             result.push({
               type: "note",
-              key: `n:${note.id}`,
+              key: `${folderKey}:n:${note.id}`,
               note,
               parentKey: folderKey,
               level: 2,
             });
       }
       for (const note of notesByContainer[spaceKey] ?? [])
-        result.push({ type: "note", key: `n:${note.id}`, note, level: 1 });
+        result.push({ type: "note", key: `${spaceKey}:n:${note.id}`, note, level: 1 });
     }
     return result;
   }, [expanded, folders, notesByContainer, spaces]);
@@ -779,6 +781,27 @@ export default function SpacesTree({
     setFocusedKey(key);
     requestAnimationFrame(() => rowRefs.current.get(key)?.focus());
   };
+  // Keyboard focus survives its placement disappearing (folder collapsed,
+  // placement removed): follow the same note, preferring a placement in the
+  // same space — hopping spaces from one placement of a note is wrong tree
+  // semantics. No placement at all clears focus instead of picking rows[0].
+  useEffect(() => {
+    if (!focusedKey) return;
+    if (rows.some((row) => row.key === focusedKey)) return;
+    const spaceOf = (key: string): number | null => {
+      const container = key.match(/^(.+):n:/)?.[1];
+      if (!container) return null;
+      if (container.startsWith("space:")) return Number(container.slice("space:".length));
+      return folders.find((folder) => folderContainerKey(folder.id) === container)?.space_id ?? null;
+    };
+    const match = focusedKey.match(/^(.+):n:(\d+)$/);
+    const noteId = match ? Number(match[2]) : null;
+    const placements = noteId == null ? [] : rows.filter((row) => row.note?.id === noteId);
+    const lostSpace = spaceOf(focusedKey);
+    setFocusedKey(
+      (placements.find((row) => spaceOf(row.key) === lostSpace) ?? placements[0])?.key ?? null
+    );
+  }, [focusedKey, rows, folders]);
   const a11y = (key: string): RowA11y => ({
     tabIndex: focusedKey === key || (!focusedKey && rows[0]?.key === key) ? 0 : -1,
     rowRef: (el) => {
@@ -914,9 +937,9 @@ export default function SpacesTree({
         <Loader2 size={12} className="animate-spin text-muted" />
       </div>
     );
-  const renderNote = (note: NoteItem, level: 1 | 2) => (
+  const renderNote = (note: NoteItem, level: 1 | 2, containerKey: string) => (
     <NoteRow
-      key={note.id}
+      key={`${containerKey}:n:${note.id}`}
       note={note}
       selected={activeNoteId === note.id}
       level={level}
@@ -964,7 +987,7 @@ export default function SpacesTree({
           },
         });
       }}
-      a11y={a11y(`n:${note.id}`)}
+      a11y={a11y(`${containerKey}:n:${note.id}`)}
       t={t}
       dragState={dragState}
       noteDragHandlers={noteDragHandlers}
@@ -1067,7 +1090,7 @@ export default function SpacesTree({
         a11y={a11y(key)}
         t={t}
       >
-        {(notesByContainer[key] ?? []).map((note) => renderNote(note, 2))}
+        {(notesByContainer[key] ?? []).map((note) => renderNote(note, 2, key))}
       </FolderRow>
     );
   };
@@ -1145,7 +1168,7 @@ export default function SpacesTree({
               {folders
                 .filter((folder) => folder.space_id === space.id)
                 .map((folder) => renderFolder(folder, space))}
-              {(notesByContainer[key] ?? []).map((note) => renderNote(note, 1))}
+              {(notesByContainer[key] ?? []).map((note) => renderNote(note, 1, key))}
             </div>
           );
         })}

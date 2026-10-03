@@ -24,6 +24,11 @@ export function installBrowserGlobals(
     clear: () => values.clear(),
   };
   (globalThis as Record<string, unknown>).localStorage = storage;
+  const originalCSS = (globalThis as { CSS?: unknown }).CSS;
+  if (originalCSS === undefined) {
+    // react-aria's getNonce reads global CSS; harmless stub for the fake DOM.
+    (globalThis as Record<string, unknown>).CSS = { escape: (value: string) => value };
+  }
   (globalThis as Record<string, unknown>).window = {
     innerWidth: 1200,
     localStorage: storage,
@@ -47,6 +52,7 @@ export function installBrowserGlobals(
     else globals.window = originalWindow;
     if (originalLocalStorage === undefined) delete globals.localStorage;
     else globals.localStorage = originalLocalStorage;
+    if (originalCSS === undefined) delete globals.CSS;
   });
   return { window: (globalThis as unknown as { window: FakeWindow }).window, storage };
 }
@@ -71,6 +77,8 @@ interface FakeNode {
   addEventListener(): void;
   removeEventListener(): void;
   contains(candidate: FakeNode | null): boolean;
+  prepend(...nodes: FakeNode[]): void;
+  append(...nodes: FakeNode[]): void;
   readonly firstChild: FakeNode | null;
   readonly lastChild: FakeNode | null;
   readonly options: FakeNode[];
@@ -89,6 +97,7 @@ interface FakeDocument {
   createComment(value: unknown): FakeNode;
   createDocumentFragment(): FakeNode;
   querySelector(): null;
+  getElementById(id: string): FakeNode | null;
   querySelectorAll(): never[];
   createRange(): { setStart(): void; setEnd(): void; createContextualFragment(): FakeNode };
   documentElement: FakeNode;
@@ -110,6 +119,7 @@ export function installHookDom(t: TestContext): FakeNode {
   class Element {}
   class HTMLElement extends Element {}
   class HTMLIFrameElement extends HTMLElement {}
+  class SVGElement extends Element {}
 
   function makeNode(nodeType: number, nodeName: string, namespaceURI = "http://www.w3.org/1999/xhtml"): FakeNode {
     const node: FakeNode = {
@@ -151,6 +161,12 @@ export function installHookDom(t: TestContext): FakeNode {
       },
       get firstChild() { return this.childNodes[0] ?? null; },
       get lastChild() { return this.childNodes.at(-1) ?? null; },
+      prepend(...nodes: FakeNode[]) {
+        for (const node of [...nodes].reverse()) this.insertBefore(node, this.firstChild);
+      },
+      append(...nodes: FakeNode[]) {
+        for (const node of nodes) this.appendChild(node);
+      },
       get options() { return this.childNodes.filter((child) => child.tagName === "OPTION"); },
       get nextSibling() {
         if (!this.parentNode) return null;
@@ -210,6 +226,17 @@ export function installHookDom(t: TestContext): FakeNode {
     },
     querySelector: () => null,
     querySelectorAll: () => [],
+    getElementById(id: string): FakeNode | null {
+      const visit = (node: FakeNode): FakeNode | null => {
+        for (const child of node.childNodes ?? []) {
+          if (child.attributes?.get("id") === id) return child;
+          const found = visit(child);
+          if (found) return found;
+        }
+        return null;
+      };
+      return visit(document as unknown as FakeNode);
+    },
     createRange: () => ({
       setStart() {},
       setEnd() {},
@@ -226,13 +253,20 @@ export function installHookDom(t: TestContext): FakeNode {
   document.body = document.createElement("body");
   document.documentElement.appendChild(document.head);
   document.documentElement.appendChild(document.body);
+  const originalElementClasses = (globalThis as { Element?: unknown; HTMLElement?: unknown; HTMLIFrameElement?: unknown; SVGElement?: unknown });
   Object.assign(globalThis.window as object, {
     Element,
     HTMLElement,
     HTMLIFrameElement,
+    SVGElement,
     document,
     getSelection: () => null,
   });
+  // react-aria's press cleanup reads bare global element constructors on unmount.
+  (globalThis as Record<string, unknown>).Element = Element;
+  (globalThis as Record<string, unknown>).HTMLElement = HTMLElement;
+  (globalThis as Record<string, unknown>).HTMLIFrameElement = HTMLIFrameElement;
+  (globalThis as Record<string, unknown>).SVGElement = SVGElement;
   document.defaultView = globalThis.window;
   document.documentElement = container;
   (globalThis as Record<string, unknown>).document = document;
@@ -250,6 +284,14 @@ export function installHookDom(t: TestContext): FakeNode {
     else globals.requestAnimationFrame = originalRequestAnimationFrame;
     if (originalCancelAnimationFrame === undefined) delete globals.cancelAnimationFrame;
     else globals.cancelAnimationFrame = originalCancelAnimationFrame;
+    if (originalElementClasses.Element === undefined) delete globals.Element;
+    else globals.Element = originalElementClasses.Element;
+    if (originalElementClasses.HTMLElement === undefined) delete globals.HTMLElement;
+    else globals.HTMLElement = originalElementClasses.HTMLElement;
+    if (originalElementClasses.HTMLIFrameElement === undefined) delete globals.HTMLIFrameElement;
+    else globals.HTMLIFrameElement = originalElementClasses.HTMLIFrameElement;
+    if (originalElementClasses.SVGElement === undefined) delete globals.SVGElement;
+    else globals.SVGElement = originalElementClasses.SVGElement;
   });
 
   return container;

@@ -44,6 +44,7 @@
       "test/components/noteBottomBar.test.ts",
       "test/components/spacesTreeDirection.test.ts",
       "test/components/spacesTreeNoteActionClearance.test.ts",
+      "test/components/spacesTreeSharedNoteFocus.test.ts",
       "test/helpers/cliBridgeDictionary.test.ts",
       "test/helpers/cliBridgeSnippets.test.ts",
       "test/helpers/containerIpc.test.ts",

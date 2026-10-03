@@ -306,7 +306,7 @@ export function useModelDownload({
   }, [updateDownload]);
 
   const downloadModel = useCallback(
-    async (modelId: string, onSelectAfterDownload?: (id: string) => void) => {
+    async (modelId: string) => {
       if (
         ownedRequestsRef.current.has(modelId) ||
         downloads[modelId] ||
@@ -348,8 +348,12 @@ export function useModelDownload({
               : await window.electronAPI?.modelDownload?.(modelId);
 
         if (result?.success) {
+          // A completed download only lands the model on disk and refreshes the
+          // inventory. It never changes which route a task uses: the user may
+          // have picked another source while this ran, and applying a deferred
+          // selection would silently override that newer choice. Selecting the
+          // model stays a separate action.
           notifyLocalModelsChanged();
-          onSelectAfterDownload?.(modelId);
         } else if (result?.code === "DOWNLOAD_IN_PROGRESS") {
           isDuplicateRequest = true;
           const activeDownloads = await window.electronAPI?.modelGetActiveDownloads?.();

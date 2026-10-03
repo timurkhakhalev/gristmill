@@ -77,6 +77,33 @@ export class WindowManager {
     notifyMeetingDetection: true,
     notifyCalendarReminders: true,
   };
+
+  // Applies the notification toggles sent from the renderer. Returns nothing —
+  // the detection gate is read separately so a resync of unchanged values does
+  // not look like a change to the caller.
+  setNotificationPreferences(
+    prefs: Partial<{
+      notificationsEnabled: boolean;
+      notifyMeetingDetection: boolean;
+      notifyCalendarReminders: boolean;
+    }>
+  ): void {
+    for (const key of [
+      "notificationsEnabled",
+      "notifyMeetingDetection",
+      "notifyCalendarReminders",
+    ] as const) {
+      const value = prefs[key];
+      if (typeof value === "boolean") this.notificationPrefs[key] = value;
+    }
+  }
+
+  // Meeting detection only serves the notification, so the master toggle and
+  // the meeting toggle together gate the detector.
+  notificationsGateDetection(): boolean {
+    const { notificationsEnabled, notifyMeetingDetection } = this.notificationPrefs;
+    return Boolean(notificationsEnabled && notifyMeetingDetection);
+  }
   tray: TrayManager | null = null;
   hotkeyManager: HotkeyManager;
   dragManager: DragManager;

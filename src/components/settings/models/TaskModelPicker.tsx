@@ -406,7 +406,7 @@ function CloudTab({ task, selection }: { task: ModelTask; selection: TaskSelecti
   );
 }
 
-function LocalRow({ task, entry, selected }: { task: ModelTask; entry: LocalModelEntry; selected: boolean }) {
+export function LocalRow({ task, entry, selected }: { task: ModelTask; entry: LocalModelEntry; selected: boolean }) {
   const { t } = useTranslation();
   const inventory = useLocalModelInventory();
   const state = inventory.downloadState(entry);
@@ -422,7 +422,7 @@ function LocalRow({ task, entry, selected }: { task: ModelTask; entry: LocalMode
   ) : (
     <button
       type="button"
-      onClick={() => inventory.download(entry, () => selectLocalModel(task, { ...entry, downloaded: true }))}
+      onClick={() => inventory.download(entry)}
       className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-foreground outline-none hover:bg-default focus-visible:ring-2 focus-visible:ring-focus"
     >
       <Download size={12} />

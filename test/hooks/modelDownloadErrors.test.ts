@@ -182,7 +182,6 @@ for (const outcome of ["error", "complete", "cancel"]) {
     let snapshotCalls = 0;
     let progressListener!: (event: Record<string, unknown>) => void;
     let refreshes = 0;
-    let selections = 0;
     const renderer = await createDownloadRenderer(t, {
       onModelDownloadProgress(listener) {
         progressListener = listener;
@@ -206,9 +205,7 @@ for (const outcome of ["error", "complete", "cancel"]) {
     await renderer.render(Harness);
     let request!: Promise<unknown>;
     await React.act(async () => {
-      request = download!.downloadModel("model-a", () => {
-        selections += 1;
-      });
+      request = download!.downloadModel("model-a");
     });
     await React.act(async () =>
       duplicateResponse.resolve({ success: false, code: "DOWNLOAD_IN_PROGRESS" })
@@ -237,7 +234,6 @@ for (const outcome of ["error", "complete", "cancel"]) {
       outcome === "error" ? "hooks.modelDownload.errors.notFound" : null
     );
     assert.equal(refreshes, 1);
-    assert.equal(selections, 0, "a refused request must not take over model selection");
   });
 }
 
@@ -277,3 +273,91 @@ for (const modelType of ["whisper", "parakeet", "llm"]) {
     if (modelType !== "llm") assert.equal(download!.downloadProgress.percentage, 42);
   });
 }
+
+// Issue #182: a completed download must only land the model and refresh the
+// inventory — it must never change the task's selected route. The deferred
+// success arrives after the user has moved on, so any auto-select would override
+// a newer choice. This pins the download callback to inventory-only.
+test("a successful download refreshes the inventory and never applies a route selection", async (t: import("node:test").TestContext) => {
+  const request = deferred();
+  let refreshes = 0;
+  const renderer = await createDownloadRenderer(t, {
+    onModelDownloadProgress: () => () => {},
+    modelGetActiveDownloads: async () => [],
+    modelDownload: () => request.promise as Promise<unknown>,
+  });
+  const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
+  let download: ReturnType<typeof useModelDownload> | undefined;
+  function Harness() {
+    download = useModelDownload({
+      modelType: "llm",
+      onDownloadComplete() {
+        refreshes += 1;
+      },
+    });
+    return null;
+  }
+  await renderer.render(Harness);
+
+  let pending!: Promise<unknown>;
+  await React.act(async () => {
+    pending = download!.downloadModel("model-a");
+  });
+  // Main resolves with success only after the user has chosen another route.
+  await React.act(async () => {
+    request.resolve({ success: true });
+    await pending;
+  });
+  assert.equal(refreshes, 1, "the inventory refresh runs exactly once");
+  assert.equal(download!.isDownloading, false);
+});
+
+// Issue #182: a rejected download reports the error and does not select.
+test("a rejected download reports the error and leaves selection untouched", async (t: import("node:test").TestContext) => {
+  const renderer = await createDownloadRenderer(t, {
+    onModelDownloadProgress: () => () => {},
+    modelGetActiveDownloads: async () => [],
+    modelDownload: async () => ({ success: false, error: "ENOTFOUND", code: "ENOTFOUND" }),
+  });
+  const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
+  let download: ReturnType<typeof useModelDownload> | undefined;
+  function Harness() {
+    download = useModelDownload({ modelType: "llm" });
+    return null;
+  }
+  await renderer.render(Harness);
+  await React.act(async () => download!.downloadModel("model-a"));
+  assert.equal(download!.downloadError, "hooks.modelDownload.errors.notFound");
+  assert.equal(download!.isDownloading, false);
+});
+
+// Issue #182: unmounting during a download must not apply a late selection
+// intent — there is none to apply, and the settled download must be a no-op.
+test("unmounting before the download settles applies no stale selection", async (t: import("node:test").TestContext) => {
+  const request = deferred();
+  let refreshes = 0;
+  const renderer = await createDownloadRenderer(t, {
+    onModelDownloadProgress: () => () => {},
+    modelGetActiveDownloads: async () => [],
+    modelDownload: () => request.promise as Promise<unknown>,
+  });
+  const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
+  function Harness() {
+    useModelDownload({
+      modelType: "llm",
+      onDownloadComplete() {
+        refreshes += 1;
+      },
+    });
+    return null;
+  }
+  await renderer.render(Harness);
+  await renderer.unmount();
+  // The download completes after the surface is gone; resolving must not throw
+  // and must not resurrect any selection.
+  await React.act(async () => {
+    request.resolve({ success: true });
+    await Promise.resolve();
+  });
+  assert.equal(refreshes, 0, "an unmounted surface does not refresh");
+});

@@ -155,8 +155,8 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
 
   const withSegments = pieces.every((piece) => piece.transcript.segments !== undefined);
   // Unknown absolute times sort last, after every proven time, by source order.
-  const sortKey = (segment: NoteTranscriptSegment): number =>
-    segment.start_ms === null || segment.end_ms === null ? Infinity : segment.start_ms;
+  // Ordering is by start_ms only; end_ms serves as the tiebreaker below.
+  const sortKey = (segment: NoteTranscriptSegment): number => segment.start_ms ?? Infinity;
   const ordered: Array<{ segment: NoteTranscriptSegment; order: number }> = [];
   if (withSegments) {
     pieces.forEach((piece, pieceIndex) => {

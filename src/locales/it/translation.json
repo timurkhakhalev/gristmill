@@ -1584,6 +1584,7 @@
       "create": "Crea",
       "custom": "Personalizzato",
       "selectFolder": "Seleziona cartella",
+      "noteSaveFailed": "La trascrizione è riuscita, ma il salvataggio della nota non è andato a buon fine. Fai clic su Riprova per salvarla.",
       "transcriptionFailed": "Trascrizione non riuscita",
       "errorOccurred": "Si è verificato un errore",
       "noSpeechDetected": "Nessun parlato rilevato in questo audio.",

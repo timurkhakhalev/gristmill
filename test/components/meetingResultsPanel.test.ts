@@ -49,7 +49,7 @@ const CONFIG = {
   summary: { instruction: "Built-in summary instruction", reasoningMode: "providers", provider: "openai", model: "gpt-4o-mini", credentialRef: "OPENAI_API_KEY" },
 };
 
-interface RunBundle { run: { id: string } & Record<string, unknown>; transcript?: unknown; summary?: unknown; speakerCorrections?: unknown[]; }
+interface RunBundle { run: { id: string } & Record<string, unknown>; transcript?: unknown; summary?: unknown; speakerCorrections?: unknown[]; speakerCorrectionRevision?: number; }
 
 function recording(id: string, groupId: string, startedAt: string, run: RunBundle | null = null, captureState = "ready") {
   return {
@@ -74,6 +74,7 @@ function completeRun(): RunBundle {
     transcript: { text: "Discussion", segments: [{ start: 1, end: 2, speaker: "speaker-1", text: "Discussion" }] },
     summary: { text: "## Decision\nRelease on Friday.", speakerCorrectionRevision: 1 },
     speakerCorrections: [{ speakerId: "speaker-1", profileId: null, displayName: "Alice", source: "model", revision: 1 }],
+    speakerCorrectionRevision: 1,
   };
 }
 
@@ -126,7 +127,7 @@ function textOf(value: unknown): string {
   return node?.props ? textOf((node.props as { children?: unknown }).children) : "";
 }
 
-async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, initialCapturePhase = "idle", noteTranscript }: {
+async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", playback = { success: false, error: "mixer-failed" }, preview = false, mockPipeline, summaryAction, initialCapturePhase = "idle", noteTranscript, failRefreshAfterCorrection = false }: {
   viewMode?: "raw" | "enhanced";
   playback?: { success: boolean; error?: string };
   preview?: boolean;
@@ -134,12 +135,20 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
   summaryAction?: (input: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
   initialCapturePhase?: string;
   noteTranscript?: import("../../src/contracts/noteRead.js").NoteTranscript;
+  // Simulates a post-save re-read that fails (main busy, transient IPC error):
+  // the correction is persisted but the panel cannot observe it, so only its
+  // own optimistic update can flag the Summary stale.
+  failRefreshAfterCorrection?: boolean;
 } = {}) {
   const calls: MountedCalls = { create: [], export: [], delete: [], update: [], playback: [], speaker: [], summaryActions: [], retry: [], cancel: [] };
   let listedItems = items;
+  let correctionSaved = false;
   let setCapturePhase: (phase: string) => void = () => {};
   const api = {
-    meetingProcessingListForNote: async () => ({ success: true, recordings: listedItems }),
+    meetingProcessingListForNote: async () => {
+      if (failRefreshAfterCorrection && correctionSaved) return { success: false, error: "list-failed" };
+      return { success: true, recordings: listedItems };
+    },
     onMeetingProcessingUpdated: () => () => {},
     getSpeakerProfiles: async () => [],
     getNote: async () => ({ participants: JSON.stringify([{ email: "person@example.com" }]) }),
@@ -172,13 +181,16 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     meetingProcessingUpdateBlockedRunConfig: async (input: Record<string, unknown>) => { calls.update.push(input); return { success: true }; },
     meetingProcessingSetSpeakerCorrection: async (input: Record<string, unknown>) => {
       calls.speaker.push(input);
+      correctionSaved = true;
+      // Main persists the correction, so the panel's post-task refresh (runTask
+      // awaits refresh) reads the new revision back from list-for-note.
       listedItems = listedItems.map((item) => {
         const part = item as ReturnType<typeof recording> & { runs: RunBundle[] };
         return { ...part, runs: part.runs.map((bundle) => {
           if (bundle.run.id !== input.runId) return bundle;
           const corrections = (bundle.speakerCorrections ?? []) as Array<Record<string, unknown>>;
           const existing = corrections.find((correction) => correction.speakerId === input.speakerId);
-          return { ...bundle, speakerCorrections: [
+          return { ...bundle, speakerCorrectionRevision: (bundle.speakerCorrectionRevision ?? 0) + 1, speakerCorrections: [
             ...corrections.filter((correction) => correction.speakerId !== input.speakerId),
             { speakerId: input.speakerId, profileId: input.profileId, displayName: input.displayName, source: "user", revision: Number(existing?.revision ?? 0) + 1 },
           ] };
@@ -463,6 +475,62 @@ test("running Summary elapsed time reads SQLite timestamps as UTC", async (t: Te
   const notice = findNode(ui.tree(), (node) => typeof node.props?.progressStartedAt === "number");
   assert.ok(notice);
   assert.ok(Math.abs(Number(notice.props?.progressStartedAt) - startedAt) < 1000);
+});
+
+// Regression (#177): the DB keeps a cleared (display_name = '') tombstone for a
+// revoked model proposal, so the authoritative revision is 2 while the display
+// list is empty. The panel must read the authoritative revision from the result
+// DTO, not sum the visible corrections — otherwise a fresh Summary written at
+// revision 2 looks stale forever.
+test("a revoked model name does not mark a fresh Summary stale", async (t: TestContext) => {
+  const run = completeRun();
+  // Revoked proposal: no visible correction, authoritative revision 2, and the
+  // Summary was regenerated at exactly revision 2.
+  run.speakerCorrections = [];
+  run.speakerCorrectionRevision = 2;
+  run.summary = { text: "## Decision\nRelease on Friday.", speakerCorrectionRevision: 2 };
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], { viewMode: "enhanced" });
+  assert.match(ui.text(), /Release on Friday/);
+  assert.doesNotMatch(ui.text(), /Speaker names changed/, "a fresh Summary at the authoritative revision is not stale");
+});
+
+// Regression (#177): a new user correction bumps the authoritative revision, so
+// the same Summary written at the older revision must show stale again.
+test("a new user correction marks the Summary stale", async (t: TestContext) => {
+  const run = completeRun();
+  run.speakerCorrections = [{ speakerId: "speaker-1", profileId: null, displayName: "Alice", source: "model", revision: 2 }];
+  run.speakerCorrectionRevision = 2;
+  run.summary = { text: "## Decision\nRelease on Friday.", speakerCorrectionRevision: 2 };
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], { viewMode: "enhanced" });
+  await ui.showTranscriptTab();
+  assert.doesNotMatch(ui.text(), /Speaker names changed/);
+  await ui.clickSpeaker("Alice");
+  await ui.changeSpeakerName("Alice Smith");
+  await ui.saveSpeaker();
+  assert.deepEqual(ui.calls.speaker, [{ runId: RUN, speakerId: "speaker-1", displayName: "Alice Smith", profileId: null }]);
+  assert.match(ui.text(), /Speaker names changed/, "a correction past the Summary's revision shows stale");
+});
+
+// Regression (#177 R177-2): the live branch must flag the stale Summary from its
+// own optimistic update, not rely on the post-task re-read. Here the re-read
+// fails after the write is persisted, so without the optimism the notice never
+// appears — the panel's optimistic revision is the only thing that can turn the
+// Summary stale.
+test("a new user correction shows stale even when the post-save re-read fails", async (t: TestContext) => {
+  const run = completeRun();
+  run.speakerCorrections = [{ speakerId: "speaker-1", profileId: null, displayName: "Alice", source: "model", revision: 2 }];
+  run.speakerCorrectionRevision = 2;
+  run.summary = { text: "## Decision\nRelease on Friday.", speakerCorrectionRevision: 2 };
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)], {
+    viewMode: "enhanced",
+    failRefreshAfterCorrection: true,
+  });
+  await ui.showTranscriptTab();
+  assert.doesNotMatch(ui.text(), /Speaker names changed/);
+  await ui.clickSpeaker("Alice");
+  await ui.changeSpeakerName("Alice Smith");
+  await ui.saveSpeaker();
+  assert.match(ui.text(), /Speaker names changed/, "the panel's own update must show stale without a fresh re-read");
 });
 
 test("persisted model provenance drives auto badge; user correction removes it and offers Summary regeneration", async (t: TestContext) => {

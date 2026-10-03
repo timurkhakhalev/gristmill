@@ -226,6 +226,7 @@ function makePreview(scenario: NotesDebugScenario) {
                       : null,
                     summary: hasSummary ? { text: summary } : null,
                     speakerCorrections: [],
+                    speakerCorrectionRevision: 0,
                   },
                 ],
         },

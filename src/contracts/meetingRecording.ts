@@ -326,6 +326,13 @@ export const meetingProcessingResultDtoSchema = z.object({
   transcript: meetingTranscriptArtifactSchema.nullable(),
   summary: meetingSummaryArtifactSchema.nullable(),
   speakerCorrections: z.array(meetingSpeakerCorrectionSchema),
+  // The authoritative transcript-source correction revision: SUM(revision) over
+  // every correction row, including the cleared (display_name = '') tombstones
+  // the display list filters out. Refresh feedback and stale-Summary detection
+  // must compare against this, not the sum of the visible corrections — after a
+  // model name is revoked the DB revision keeps climbing while the display list
+  // is empty.
+  speakerCorrectionRevision: z.number().int().nonnegative(),
 });
 export type MeetingProcessingResultDto = z.infer<typeof meetingProcessingResultDtoSchema>;
 

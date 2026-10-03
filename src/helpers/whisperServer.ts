@@ -659,7 +659,7 @@ export class WhisperServerManager extends EventEmitter {
     if (!this.canConvert) {
       throw new Error("FFmpeg not found - required for audio conversion");
     }
-    finalBuffer = await this._convertToWav(audioBuffer);
+    finalBuffer = await this._convertToWav(audioBuffer, signal);
 
     const boundary = `----WhisperBoundary${Date.now()}`;
     const parts = [];
@@ -794,7 +794,7 @@ export class WhisperServerManager extends EventEmitter {
     });
   }
 
-  async _convertToWav(audioBuffer: Buffer): Promise<Buffer> {
+  async _convertToWav(audioBuffer: Buffer, signal?: AbortSignal): Promise<Buffer> {
     const tempDir = getSafeTempDir();
     const timestamp = Date.now();
     const tempInputPath = path.join(tempDir, `whisper-input-${timestamp}.webm`);
@@ -802,7 +802,7 @@ export class WhisperServerManager extends EventEmitter {
 
     try {
       fs.writeFileSync(tempInputPath, audioBuffer);
-      await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1 });
+      await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1, signal });
       return fs.readFileSync(tempWavPath);
     } finally {
       for (const f of [tempInputPath, tempWavPath]) {

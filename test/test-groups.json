@@ -250,6 +250,7 @@
       "test/components/uploadTempLifetime.test.ts",
       "test/helpers/cliBridgeTranscribe.test.ts",
       "test/helpers/localFileTranscriptionIpc.test.ts",
+      "test/helpers/parakeetPreprocessingCancel.test.ts",
       "test/helpers/parakeetWavNormalization.test.ts",
       "test/helpers/remoteTranscriptionIpc.test.ts",
       "test/helpers/uploadCancelIpc.test.ts",

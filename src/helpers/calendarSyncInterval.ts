@@ -36,9 +36,12 @@ export class CalendarSyncInterval {
   private readonly maxIntervalMs: number;
   private readonly logScope: string;
   private timer: NodeJS.Timeout | null = null;
-  private _running = false;
   private _consecutiveFailures = 0;
   private _lastFocusSync = 0;
+  // Bumped by stop(). An interval tick captures it before syncing so a
+  // completion that races a stop is ignored, while an explicit out-of-band
+  // outcome (wake, selection, focus) still reschedules.
+  private _generation = 0;
 
   constructor(syncFn: () => Promise<CalendarSyncOutcome | void>, { intervalMs, maxIntervalMs, logScope }: CalendarSyncIntervalOptions) {
     this.syncFn = syncFn;
@@ -48,21 +51,22 @@ export class CalendarSyncInterval {
   }
 
   start(): void {
-    this._running = true;
     this._consecutiveFailures = 0;
     this._schedule();
   }
 
   stop(): void {
-    this._running = false;
+    this._generation++;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
   }
 
-  // Resets the backoff after an out-of-band sync that fully succeeded, or
-  // records the failure so the next scheduled run already backs off.
+  // Records an out-of-band sync result (wake, selection, focus) and reschedules
+  // so the next run already backs off, or restores the base interval after a
+  // clean pass. Unlike an interval tick, an explicit call is not racing a stop
+  // and always reschedules.
   notifyOutcome(outcome: CalendarSyncOutcome | void): void {
     if (isCalendarSyncFailure(outcome)) {
       this._recordFailure(outcome as CalendarSyncOutcome);
@@ -70,7 +74,7 @@ export class CalendarSyncInterval {
     }
     if (this._consecutiveFailures > 0) {
       this._consecutiveFailures = 0;
-      this._rescheduleIfRunning();
+      this._schedule();
     }
   }
 
@@ -86,15 +90,19 @@ export class CalendarSyncInterval {
 
     this.syncFn()
       .then((outcome) => this.notifyOutcome(outcome))
-      .catch((err) => {
-        debugLogger.error(
-          "Focus-triggered sync failed",
-          { error: (err as Error).message },
-          this.logScope
-        );
-      });
+      .catch((err) =>
+        this._recordFailure({
+          total: 0,
+          succeeded: 0,
+          failed: 1,
+          errors: [(err as Error).message],
+        })
+      );
   }
 
+  // The single scheduling choke point: every reschedule path routes here.
+  // A tick captures the current generation and ignores its result if a stop
+  // has happened since — a late completion must not re-arm the timer.
   private _schedule(): void {
     if (this.timer) clearInterval(this.timer);
 
@@ -105,10 +113,15 @@ export class CalendarSyncInterval {
       this.logScope
     );
 
+    const generation = this._generation;
     this.timer = setInterval(() => {
       this.syncFn()
-        .then((outcome) => this.notifyOutcome(outcome))
+        .then((outcome) => {
+          if (generation !== this._generation) return;
+          this.notifyOutcome(outcome);
+        })
         .catch((err) => {
+          if (generation !== this._generation) return;
           this._recordFailure({ total: 0, succeeded: 0, failed: 1, errors: [(err as Error).message] });
         });
     }, interval);
@@ -125,12 +138,7 @@ export class CalendarSyncInterval {
       },
       this.logScope
     );
-    this._rescheduleIfRunning();
-  }
-
-  // A completion that lands after stop must not restart the timer.
-  private _rescheduleIfRunning(): void {
-    if (this._running) this._schedule();
+    this._schedule();
   }
 
   private _getInterval(): number {

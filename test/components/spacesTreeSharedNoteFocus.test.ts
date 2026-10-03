@@ -86,6 +86,7 @@ const twoSpaceState = (): TreeState & { notes: Array<{ id: number; title: string
     notesByContainer: {
       ...state.notesByContainer,
       "folder:11": notes,
+      "folder:22": notes,
       "folder:33": notes,
       "space:2": [],
     },

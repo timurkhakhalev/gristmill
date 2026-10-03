@@ -113,10 +113,9 @@ export function ByokProviderStep({
   const currentProvider = providers.find((provider) => provider.id === selectedProvider);
   const models = currentProvider?.models ?? [];
   const testingProvider = selfHosted ? "custom" : selectedProvider;
-  const testingKey = selfHosted ? "" : draftApiKey;
   const fieldsReady = selfHosted
     ? Boolean(draftBaseUrl.trim() && draftCustomModel.trim())
-    : Boolean(selectedProvider && selectedModel && testingKey.trim());
+    : Boolean(selectedProvider && selectedModel && draftApiKey.trim());
 
   const chooseProvider = useCallback(
     (providerId: string) => {
@@ -219,7 +218,7 @@ export function ByokProviderStep({
         )}
 
         <ProviderConnectionTest
-          config={{ provider: testingProvider, apiKey: testingKey, baseUrl: selfHosted ? draftBaseUrl : undefined, model: selfHosted ? draftCustomModel : selectedModel, scope: "transcription" }}
+          config={{ provider: testingProvider, apiKey: draftApiKey, baseUrl: selfHosted ? draftBaseUrl : undefined, model: selfHosted ? draftCustomModel : selectedModel, scope: "transcription" }}
           onSuccessChange={(success) => { setConnected(success); onConnectionChange(success); }}
           variant="inline"
         />

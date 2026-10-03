@@ -234,7 +234,13 @@ async function mountTree(t: TestContext) {
   const container = installHookDom(t);
   const vite = await (vitePromise ??= createRendererServer(
     { after: (close: () => void | Promise<void>) => cleanup.push(close) } as unknown as TestContext,
-    { cachePrefix: "openwhispr-spaces-tree-shared-note-focus-", mockModules: MOCK_MODULES }
+    {
+      cachePrefix: "openwhispr-spaces-tree-shared-note-focus-",
+      mockModules: MOCK_MODULES,
+      // vite SSR externalizes react-i18next by default, which bypasses the
+      // mock and serves the real package nondeterministically (missing dir).
+      noExternal: ["react-i18next"],
+    }
   ));
   const { default: SpacesTree } = await vite.ssrLoadModule("/components/notes/SpacesTree.tsx");
   let tree: unknown;
@@ -296,14 +302,23 @@ test("ArrowDown and ArrowUp traverse both placements of the shared note", async 
   t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
   const ui = await mountTree(t);
 
+  // Tree order: 11, folder:11:n:201, 22, folder:22:n:201, space:1:n:301.
   let rows = await pressAndSettle(ui, row(rowsIn(ui.tree()), "folder:11:n:201"), "ArrowDown");
+  assert.equal(focusedRow(rows).key, "22", "ArrowDown steps to the second folder row first");
+
+  rows = await pressAndSettle(ui, row(rows, "22"), "ArrowDown");
   assert.equal(focusedRow(rows).key, "folder:22:n:201", "ArrowDown reaches the second placement");
 
   rows = await pressAndSettle(ui, row(rows, "folder:22:n:201"), "ArrowDown");
   assert.equal(focusedRow(rows).key, "space:1:n:301", "ArrowDown continues past the second placement");
 
   rows = await pressAndSettle(ui, row(rows, "space:1:n:301"), "ArrowUp");
+  assert.equal(focusedRow(rows).key, "folder:22:n:201", "ArrowUp returns to the second placement");
+
   rows = await pressAndSettle(ui, row(rows, "folder:22:n:201"), "ArrowUp");
+  assert.equal(focusedRow(rows).key, "22", "ArrowUp steps back through the second folder row");
+
+  rows = await pressAndSettle(ui, row(rows, "22"), "ArrowUp");
   assert.equal(focusedRow(rows).key, "folder:11:n:201", "ArrowUp returns to the first placement");
 });
 
@@ -312,6 +327,7 @@ test("outward navigation from a placement focuses that placement's own folder", 
   t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
   const ui = await mountTree(t);
 
+  // Tree order: 11, folder:11:n:201, 22, folder:22:n:201, space:1:n:301.
   let rows = await pressAndSettle(ui, row(rowsIn(ui.tree()), "folder:11:n:201"), "ArrowDown");
   // The focused placement is inside Folder B; outward must target Folder B.
   rows = await pressAndSettle(ui, row(rows, "folder:22:n:201"), "ArrowLeft");
@@ -344,20 +360,30 @@ test("focus follows the note when one placement is collapsed or removed", async 
   await flushTwice(ui);
   assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:11:n:201");
 
-  // Collapse the focused placement's folder: the same note remains visible in
-  // Folder B and keeps the roving tabIndex there. Two flushes: one for the
-  // rows change, one for the retarget effect's own state update.
+  // Collapse the focused placement's folder. Collapse is pure CSS on the
+  // FolderRow wrapper, so the placement's JSX stays rendered; what must
+  // change is the roving tabIndex (the rows memo drops the collapsed row,
+  // which fires the retarget effect) and keyboard reachability.
   setState({ expanded: new Set(["space:1", "folder:22"]) });
   await flushTwice(ui);
-  const afterCollapse = rowsIn(ui.tree());
-  assert.ok(!afterCollapse.some((candidate) => candidate.key === "folder:11:n:201"));
-  assert.equal(focusedRow(afterCollapse).key, "folder:22:n:201");
+  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:201", "focus retargets to the surviving placement");
 
-  // Remove the note from Folder A while the folder stays expanded.
+  // The collapsed placement is out of keyboard order: ArrowUp from the
+  // surviving placement lands on folder 22, never on the hidden row.
+  let rows = await pressAndSettle(ui, row(rowsIn(ui.tree()), "folder:22:n:201"), "ArrowUp");
+  assert.equal(focusedRow(rows).key, "22", "collapsed placement is skipped by keyboard order");
+
+  rows = await pressAndSettle(ui, row(rows, "22"), "ArrowDown");
+  assert.equal(focusedRow(rows).key, "folder:22:n:201", "ArrowDown returns to the surviving placement");
+
+  // Remove the note from Folder A while the folder stays expanded: now the
+  // JSX row genuinely disappears (notesByContainer drops it).
   setState({
     expanded: new Set(["space:1", "folder:11", "folder:22"]),
     notesByContainer: { ...state.notesByContainer, "folder:11": [] },
   });
   await flushTwice(ui);
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:201");
+  const afterRemoval = rowsIn(ui.tree());
+  assert.ok(!afterRemoval.some((candidate) => candidate.key === "folder:11:n:201"), "removed placement leaves the rendered rows");
+  assert.equal(focusedRow(afterRemoval).key, "folder:22:n:201", "focus stays on the surviving placement");
 });

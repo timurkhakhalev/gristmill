@@ -14,6 +14,7 @@ import {
 } from "./audioPathAllowlist.js";
 import { createRetentionSettingsHandler, type RetentionSettings } from "./retentionSettings.js";
 import { mergeAudioSegments } from "./ffmpegUtils.js";
+import { serializeDictionaryEntries } from "./dictionaryImport.js";
 import {
   formatJson,
   formatMd,
@@ -406,7 +407,7 @@ export function registerTranscriptionDataHandlers(
 
       if (result.canceled || !result.filePath) return { success: false };
 
-      fs.writeFileSync(result.filePath, parsed.data.join("\n"), "utf-8");
+      fs.writeFileSync(result.filePath, serializeDictionaryEntries(parsed.data), "utf-8");
       return { success: true };
     } catch (error) {
       logger.error("Error exporting dictionary", { error: (error as Error).message }, "dictionary");

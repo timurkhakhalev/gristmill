@@ -3,14 +3,15 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 
 const load = () => import("../../src/services/tools/snippetTool.js");
 
-const snippets = [
+import type { Snippet } from "../../src/utils/snippets.js";
+const snippets: Snippet[] = [
   { trigger: "investor ask", replacement: "We are raising a $2M seed round." },
   { trigger: "Sign-off", replacement: "Best,\nGabe" },
 ];
 
 test("the description lists every saved trigger so the model can pick one without a call", async () => {
   const { createSnippetTool } = await load();
-  const tool = createSnippetTool(snippets);
+  const tool = createSnippetTool(() => snippets);
 
   assert.equal(tool.name, "get_snippet");
   assert.equal(tool.readOnly, true);
@@ -20,7 +21,7 @@ test("the description lists every saved trigger so the model can pick one withou
 
 test("a trigger resolves case-insensitively to its saved text", async () => {
   const { createSnippetTool } = await load();
-  const tool = createSnippetTool(snippets);
+  const tool = createSnippetTool(() => snippets);
 
   const result = await tool.execute({ trigger: " sign-off " });
 
@@ -33,7 +34,7 @@ test("a trigger resolves case-insensitively to its saved text", async () => {
 
 test("an unknown trigger fails with the saved triggers so the model can retry", async () => {
   const { createSnippetTool } = await load();
-  const tool = createSnippetTool(snippets);
+  const tool = createSnippetTool(() => snippets);
 
   const result = await tool.execute({ trigger: "intro" });
 
@@ -80,6 +81,54 @@ test("registry exposes the vocabulary tools, and get_snippet only when snippets 
   assert.equal(withoutSnippets.get("get_snippet"), undefined);
   assert.equal(withoutSnippets.get("update_snippets")?.readOnly, false);
   assert.equal(noVocabulary.get("update_dictionary"), undefined);
+});
+
+test("get_snippet reads the current snippets, not the registry-creation snapshot", async () => {
+  const { createSnippetTool } = await load();
+  let current = snippets;
+  const getSnippets = () => current;
+  const tool = createSnippetTool(getSnippets);
+
+  const updated = await tool.execute({ trigger: "sign-off" });
+  assert.equal((updated.data as { text: string }).text, "Best,\nGabe");
+
+  current = [{ trigger: "Sign-off", replacement: "Warmly,\nGabe" }];
+  const afterReplacement = await tool.execute({ trigger: "sign-off" });
+  assert.equal((afterReplacement.data as { text: string }).text, "Warmly,\nGabe");
+  assert.match(afterReplacement.displayText, /Snippet "Sign-off"/);
+
+  current = [{ trigger: "investor ask", replacement: "We are raising a $2M seed round." }];
+  const afterRemoval = await tool.execute({ trigger: "sign-off" });
+  assert.equal(afterRemoval.success, false);
+  assert.match(afterRemoval.displayText, /Saved triggers: "investor ask"/);
+});
+
+test("a real registry: update_snippets then get_snippet in the same loop returns the new text", async () => {
+  const { createToolRegistry } = await import("../../src/services/tools/index.js");
+  let current = snippets;
+  const registry = createToolRegistry({
+    calendarConnected: false,
+    vocabulary: {
+      getDictionary: () => [],
+      updateDictionary: () => {},
+      getSnippets: () => current,
+      setSnippets: (next) => {
+        current = next;
+      },
+    },
+  });
+
+  const update = await registry.get("update_snippets")?.execute({
+    add: [{ trigger: "sign-off", replacement: "Cheers,\nGabe" }],
+  });
+  assert.equal(update?.success, true);
+
+  const get = await registry.get("get_snippet")?.execute({ trigger: " sign-off " });
+  assert.deepEqual(get, {
+    success: true,
+    data: { trigger: "sign-off", text: "Cheers,\nGabe" },
+    displayText: 'Snippet "sign-off"',
+  });
 });
 
 test("update_snippets replaces an existing trigger, adds a new one, and removes by trigger", async () => {

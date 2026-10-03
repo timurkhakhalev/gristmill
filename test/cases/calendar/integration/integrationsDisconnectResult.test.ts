@@ -13,7 +13,7 @@ const path: typeof import("node:path") = require("node:path");
 const test: typeof import("node:test") = require("node:test");
 const vm: typeof import("node:vm") = require("node:vm");
 
-const root = path.join(__dirname, "../../..");
+const root = path.join(__dirname, "../../../..");
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 // The view closure stand-in: the extracted initializers are installed onto it

@@ -38,11 +38,16 @@ interface RowProbe {
 
 interface TreeState {
   expanded: Set<string>;
+  folders: Array<{ id: number; space_id: number; name: string; is_default: number }>;
+  spaces: Array<{ id: number; kind: string; name: string; sync_status: string }>;
   notesByContainer: Record<string, Array<{ id: number; title: string }>>;
   openedNoteId: number | null;
 }
 
 const GLOBAL_STATE_KEY = "__spacesTreeSharedNoteFocusState";
+
+const SPACE1 = { id: 1, kind: "private", name: "Personal", sync_status: "synced" };
+const SPACE2 = { id: 2, kind: "private", name: "Engineering", sync_status: "synced" };
 
 const baseState = (): TreeState & { notes: Array<{ id: number; title: string }> } => {
   const notes = [
@@ -51,6 +56,11 @@ const baseState = (): TreeState & { notes: Array<{ id: number; title: string }> 
   ];
   return {
     notes,
+    spaces: [SPACE1],
+    folders: [
+      { id: 11, space_id: 1, name: "Folder A", is_default: 0 },
+      { id: 22, space_id: 1, name: "Folder B", is_default: 0 },
+    ],
     expanded: new Set(["space:1", "folder:11", "folder:22"]),
     notesByContainer: {
       "folder:11": [notes[0]],
@@ -61,17 +71,35 @@ const baseState = (): TreeState & { notes: Array<{ id: number; title: string }> 
   };
 };
 
+const twoSpaceState = (): TreeState & { notes: Array<{ id: number; title: string }> } => {
+  const state = baseState();
+  const notes = [{ id: 402, title: "Cross-space note" }];
+  return {
+    ...state,
+    notes: [...state.notes, ...notes],
+    spaces: [SPACE1, SPACE2],
+    folders: [
+      ...state.folders,
+      { id: 33, space_id: 2, name: "Team folder", is_default: 0 },
+    ],
+    expanded: new Set(["space:1", "space:2", "folder:11", "folder:22", "folder:33"]),
+    notesByContainer: {
+      ...state.notesByContainer,
+      "folder:11": notes,
+      "folder:33": notes,
+      "space:2": [],
+    },
+  };
+};
+
 const noteStoreMock = `
   const state = () => globalThis[${JSON.stringify(GLOBAL_STATE_KEY)}];
   export const folderContainerKey = (id) => "folder:" + id;
   export const spaceContainerKey = (id) => "space:" + id;
-  export const useSpaces = () => [{ id: 1, kind: "private", name: "Personal", sync_status: "synced" }];
-  export const useFolders = () => [
-    { id: 11, space_id: 1, name: "Folder A", is_default: 0 },
-    { id: 22, space_id: 1, name: "Folder B", is_default: 0 },
-  ];
-  export const useFolderCounts = () => ({ 11: 1, 22: 1 });
-  export const useSpaceRootCounts = () => ({ 1: 1 });
+  export const useSpaces = () => state().spaces;
+  export const useFolders = () => state().folders;
+  export const useFolderCounts = () => ({ 11: 1, 22: 1, 33: 1 });
+  export const useSpaceRootCounts = () => ({ 1: 1, 2: 0 });
   export const useNotesByContainer = () => state().notesByContainer;
   export const useExpandedContainers = () => state().expanded;
   export const useActiveContext = () => null;
@@ -295,6 +323,16 @@ test("one note in two folders renders two independently focusable placements", a
   // Before any keyboard interaction the first row owns the roving tabIndex;
   // the second placement of the shared note must not carry one too.
   assert.equal(rows.filter((candidate) => candidate.a11y.tabIndex === 0).length, 1);
+
+  // The i18n mock is actually the one served (noExternal keeps vite from
+  // externalizing react-i18next): every useTranslation call saw dir.
+  const probe = (globalThis as Record<string, unknown>).__spacesTreeI18nProbe as
+    Array<{ dirType: string; keys: string[] }> | undefined;
+  assert.ok(probe && probe.length > 0, "react-i18next mock recorded useTranslation calls");
+  assert.ok(
+    probe.every((entry) => entry.dirType === "function" && entry.keys.includes("dir")),
+    "i18n.dir stayed a function on every render"
+  );
 });
 
 test("ArrowDown and ArrowUp traverse both placements of the shared note", async (t: TestContext) => {
@@ -386,4 +424,34 @@ test("focus follows the note when one placement is collapsed or removed", async 
   const afterRemoval = rowsIn(ui.tree());
   assert.ok(!afterRemoval.some((candidate) => candidate.key === "folder:11:n:201"), "removed placement leaves the rendered rows");
   assert.equal(focusedRow(afterRemoval).key, "folder:22:n:201", "focus stays on the surviving placement");
+});
+
+test("retarget prefers a same-space placement before following the note cross-space", async (t: TestContext) => {
+  const state = twoSpaceState();
+  (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] = state;
+  t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
+  const ui = await mountTree(t);
+
+  await React.act(async () => {
+    row(rowsIn(ui.tree()), "folder:11:n:402").a11y.onFocus();
+  });
+  await flushTwice(ui);
+  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:11:n:402");
+
+  // Same space wins: remove the Folder A placement while folder 22 (also
+  // space 1) holds the same note — focus must land there, not hop to the
+  // space-2 folder.
+  setState({
+    notesByContainer: { ...state.notesByContainer, "folder:11": [] },
+  });
+  await flushTwice(ui);
+  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:402", "focus follows the note within the same space");
+
+  // No same-space placement remains: remove the Folder B placement too —
+  // now the cross-space placement in folder 33 is the only follower.
+  setState({
+    notesByContainer: { ...state.notesByContainer, "folder:11": [], "folder:22": [] },
+  });
+  await flushTwice(ui);
+  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:33:n:402", "focus follows the note cross-space as a last resort");
 });

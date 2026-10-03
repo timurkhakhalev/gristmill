@@ -165,6 +165,29 @@ function useSettingsInternal() {
     });
   }, [audioRetentionDays, transcriptRetentionDays, dataRetentionEnabled]);
 
+  // Notification preferences gate meeting detection and reminders in main.
+  // The three toggles are plain store setters, so this effect is what carries
+  // a change to main without a reload — including one that arrived from
+  // another window through the store's storage listener. Main never echoes
+  // these back, so there is no feedback loop.
+  const { notificationsEnabled, notifyMeetingDetection, notifyCalendarReminders } = store;
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.electronAPI?.syncNotificationPreferences) return;
+    window.electronAPI
+      .syncNotificationPreferences({
+        notificationsEnabled,
+        notifyMeetingDetection,
+        notifyCalendarReminders,
+      })
+      .catch((err) =>
+        logger.warn(
+          "Failed to sync notification preferences",
+          { error: (err as Error).message },
+          "settings"
+        )
+      );
+  }, [notificationsEnabled, notifyMeetingDetection, notifyCalendarReminders]);
+
   // Sync startup pre-warming preferences to main process
   const {
     useLocalWhisper,

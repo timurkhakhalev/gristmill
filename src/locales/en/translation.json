@@ -1660,6 +1660,7 @@
       "create": "Create",
       "custom": "Custom",
       "selectFolder": "Select folder",
+      "noteSaveFailed": "The transcription succeeded, but saving the note failed. Click retry to save it.",
       "transcriptionFailed": "Transcription failed",
       "errorOccurred": "An error occurred",
       "noSpeechDetected": "No speech detected in this audio.",

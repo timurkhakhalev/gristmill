@@ -1660,6 +1660,7 @@
       "create": "Erstellen",
       "custom": "Benutzerdefiniert",
       "selectFolder": "Ordner auswählen",
+      "noteSaveFailed": "Die Transkription war erfolgreich, aber das Speichern der Notiz ist fehlgeschlagen. Klicke auf „Wiederholen“, um sie zu speichern.",
       "transcriptionFailed": "Transkription fehlgeschlagen",
       "errorOccurred": "Ein Fehler ist aufgetreten",
       "noSpeechDetected": "In dieser Audiodatei wurde keine Sprache erkannt.",

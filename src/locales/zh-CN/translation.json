@@ -1584,6 +1584,7 @@
       "create": "创建",
       "custom": "自定义",
       "selectFolder": "选择文件夹",
+      "noteSaveFailed": "转录成功，但保存笔记失败。点击重试以保存。",
       "transcriptionFailed": "转录失败",
       "errorOccurred": "发生错误",
       "noSpeechDetected": "未在此音频中检测到语音。",

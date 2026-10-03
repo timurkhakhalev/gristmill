@@ -1660,6 +1660,7 @@
       "create": "Créer",
       "custom": "Personnalisé",
       "selectFolder": "Sélectionner un dossier",
+      "noteSaveFailed": "La transcription a réussi, mais l'enregistrement de la note a échoué. Cliquez sur Réessayer pour l'enregistrer.",
       "transcriptionFailed": "Échec de la transcription",
       "errorOccurred": "Une erreur est survenue",
       "noSpeechDetected": "Aucune parole détectée dans cet audio.",

@@ -631,6 +631,14 @@ export function getActiveFolderIdValue(): number | null {
 }
 
 /** Live (non-hook) reads for deferred callbacks like undo toasts. */
+export function getNotesByContainerValue(): Record<string, NoteItem[]> {
+  return useNoteStore.getState().notesByContainer;
+}
+
+export function getNoteEventsRevisionValue(): number {
+  return useNoteStore.getState().noteEventsRevision;
+}
+
 export function getFoldersValue(): FolderItem[] {
   return useNoteStore.getState().folders;
 }

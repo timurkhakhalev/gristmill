@@ -298,7 +298,11 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const savedSummary = selected?.summary?.text;
   const hasSavedSummary = Boolean(fallbackText.enhanced.trim()) || recordings.some((part) => part.runs.some((item) => item.run.hasSummary));
   const summaryText = savedSummary && mock ? composeMockSummary(savedSummary, mock.tasks, mock.recap) : savedSummary;
-  const speakerCorrectionRevision = selected?.speakerCorrections.reduce((sum, correction) => sum + correction.revision, 0) ?? 0;
+  // The authoritative transcript-source revision, not the sum of the visible
+  // corrections: a cleared model proposal keeps a tombstone row the display
+  // list omits, so summing only what is shown reads 0 after a revoke while the
+  // Summary was written at a higher revision.
+  const speakerCorrectionRevision = selected?.speakerCorrectionRevision ?? 0;
   const summaryIsStale = selected?.summary?.speakerCorrectionRevision !== undefined &&
     selected.summary.speakerCorrectionRevision !== speakerCorrectionRevision;
   // Dismissal is remembered per run and correction state; a newer correction shows the notice again.
@@ -500,7 +504,10 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const correctSpeaker = () => runTask(async () => {
     if (!speakerId || !selected || !speakerName.trim()) return;
     if (previewRecordings) {
-      setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId), participantEmail: participantEmail === "none" ? null : participantEmail, source: "user", revision: (run.speakerCorrections.find((correction) => correction.speakerId === speakerId)?.revision ?? 0) + 1 }] } : run) })));
+      // Optimistic preview update: a user correction adds one revision to the
+      // authoritative total, so a fresh Summary turns stale as it would after
+      // the real IPC response.
+      setRecordings((items) => items.map((item) => ({ ...item, runs: item.runs.map((run) => run.run.id === selected.run.id ? { ...run, speakerCorrectionRevision: (run.speakerCorrectionRevision ?? 0) + 1, speakerCorrections: [...run.speakerCorrections.filter((correction) => correction.speakerId !== speakerId), { speakerId, displayName: speakerName.trim(), profileId: speakerProfileId === "none" ? null : Number(speakerProfileId), participantEmail: participantEmail === "none" ? null : participantEmail, source: "user", revision: (run.speakerCorrections.find((correction) => correction.speakerId === speakerId)?.revision ?? 0) + 1 }] } : run) })));
       setSpeakerId(null);
       setMock((current) => current && { ...current, modelSpeakerIds: current.modelSpeakerIds?.filter((id) => id !== speakerId), summaryStale: Boolean(summaryText) });
       return;

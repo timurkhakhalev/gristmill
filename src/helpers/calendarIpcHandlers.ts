@@ -4,6 +4,7 @@
 // manager/DB work, calls the current operation and projects the result onto
 // the wire DTO. `join-calendar-meeting` belongs to the meeting-detection
 // boundary and stays there; availability has its own module.
+import { type CalendarSyncOutcome } from "./calendarSyncInterval.js";
 import {
   appleConnectResultSchema,
   calendarCommandResultSchema,
@@ -40,7 +41,7 @@ export interface GoogleCalendarManagerLike {
   getCalendars(): unknown[];
   setCalendarSelection(calendarId: string, isSelected: boolean): Promise<void>;
   setPrimaryOnly(value: boolean): Promise<void>;
-  syncEvents(): Promise<void>;
+  syncEvents(): Promise<CalendarSyncOutcome | void>;
 }
 
 export interface MicrosoftCalendarManagerLike {
@@ -179,7 +180,15 @@ export function registerCalendarIntegrationHandlers(
     calendarIntegrationChannels.gcalSyncEvents,
     async (): Promise<CalendarCommandResult> => {
       try {
-        await deps.googleManager.syncEvents();
+        const outcome = await deps.googleManager.syncEvents();
+        if (outcome && outcome.failed > 0) {
+          // Every calendar failed: no successful update, report failure.
+          if (outcome.succeeded === 0) {
+            return { success: false, error: outcome.errors[0] || "Calendar sync failed" };
+          }
+          // Some calendars updated, others failed: incomplete but not false.
+          return { success: true, partial: true };
+        }
         return { success: true };
       } catch (error) {
         const err = error as { message?: string };

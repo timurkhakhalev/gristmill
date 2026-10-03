@@ -1,7 +1,7 @@
 import { net } from "electron";
 import debugLogger from "./debugLogger.js";
 import { MicrosoftCalendarOAuth } from "./microsoftCalendarOAuth.js";
-import { CalendarSyncInterval } from "./calendarSyncInterval.js";
+import { CalendarSyncInterval, type CalendarSyncOutcome } from "./calendarSyncInterval.js";
 import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
 import { extractMeetingUrl } from "./meetingJoinUrl.js";
 import { calendarDescriptionText } from "./calendarDescription.js";
@@ -137,10 +137,11 @@ export class MicrosoftCalendarManager {
     this.databaseManager = databaseManager;
     this.reminderScheduler = reminderScheduler;
     this.oauth = new MicrosoftCalendarOAuth(databaseManager);
-    this.syncRunner = new CalendarSyncInterval(
-      () => this.syncEvents().then(() => this.reminderScheduler.scheduleNextMeeting()),
-      { intervalMs: 2 * 60 * 1000, maxIntervalMs: 30 * 60 * 1000, logScope: "mcal" }
-    );
+    this.syncRunner = new CalendarSyncInterval(() => this.syncEvents(), {
+      intervalMs: 2 * 60 * 1000,
+      maxIntervalMs: 30 * 60 * 1000,
+      logScope: "mcal",
+    });
   }
 
   start(): void {
@@ -260,14 +261,21 @@ export class MicrosoftCalendarManager {
     return allCalendars;
   }
 
-  async syncEvents(): Promise<void> {
+  // Best-effort per calendar: successful calendars still update, but the
+  // whole-pass result is returned so orchestration can back off instead of
+  // treating a fully-failed pass as success.
+  async syncEvents(): Promise<CalendarSyncOutcome> {
     const selectedCalendars = this.databaseManager.getSelectedMicrosoftCalendars();
-    if (selectedCalendars.length === 0) return;
+    if (selectedCalendars.length === 0) return { total: 0, succeeded: 0, failed: 0, errors: [] };
 
+    const errors: string[] = [];
+    let succeeded = 0;
     for (const calendar of selectedCalendars) {
       try {
         await this._syncCalendar(calendar);
+        succeeded++;
       } catch (err) {
+        errors.push((err as Error).message);
         debugLogger.error(
           "Error syncing calendar",
           { calendarId: calendar.id, error: (err as Error).message },
@@ -278,6 +286,7 @@ export class MicrosoftCalendarManager {
 
     sendMcalEventsSynced();
     this.reminderScheduler.scheduleNextMeeting();
+    return { total: selectedCalendars.length, succeeded, failed: errors.length, errors };
   }
 
   private async _syncCalendar(calendar: MicrosoftCalendarRow): Promise<void> {
@@ -440,7 +449,7 @@ export class MicrosoftCalendarManager {
 
   onWakeFromSleep(): void {
     this.syncEvents()
-      .then(() => this.syncRunner.notifySuccess())
+      .then((outcome) => this.syncRunner.notifyOutcome(outcome))
       .catch((err) =>
         debugLogger.error("Post-wake sync failed", { error: (err as Error).message }, "mcal")
       );

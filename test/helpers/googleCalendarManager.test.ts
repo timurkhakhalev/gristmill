@@ -278,6 +278,111 @@ test("_syncCalendar keeps the stored expiry when an incremental sync reuses the 
   );
 });
 
+// Regression: the manager used to resolve syncEvents() even when every
+// calendar failed, so the runner and IPC saw a false success. The real manager
+// must return an explicit whole-pass outcome.
+test("syncEvents reports a full failure when every calendar errors", async () => {
+  const GoogleCalendarManager = loadManagerModule();
+  const databaseManager = {
+    getGoogleAccounts: () => [],
+    getSelectedCalendars: () => [
+      { id: "cal-1", account_email: "a@x.io" },
+      { id: "cal-2", account_email: "a@x.io" },
+    ],
+    removeStaleCalendarEvents: () => {},
+    upsertCalendarEvents: () => {},
+    removeCalendarEvents: () => {},
+    updateCalendarSyncToken: () => {},
+    upsertContacts: () => {},
+  };
+  const manager = new GoogleCalendarManager(databaseManager, null, {
+    scheduleNextMeeting: () => {},
+    reset: () => {},
+  });
+  manager._apiGet = async () => {
+    throw new Error("provider down");
+  };
+
+  const outcome = await manager.syncEvents();
+
+  assert.equal(outcome.total, 2);
+  assert.equal(outcome.succeeded, 0);
+  assert.equal(outcome.failed, 2);
+  assert.deepEqual(outcome.errors, ["provider down", "provider down"]);
+});
+
+// Regression: a partial pass must keep the successful calendar's updates and
+// report the pass as incomplete, not silently as a clean success.
+test("syncEvents keeps successful updates and reports a partial outcome", async () => {
+  const GoogleCalendarManager = loadManagerModule();
+  const upsertedIds: string[] = [];
+  const databaseManager = {
+    getGoogleAccounts: () => [],
+    getSelectedCalendars: () => [
+      { id: "cal-ok", account_email: "a@x.io" },
+      { id: "cal-bad", account_email: "a@x.io" },
+    ],
+    removeStaleCalendarEvents: () => {},
+    upsertCalendarEvents: (events: Array<{ id: string }>) => {
+      upsertedIds.push(...events.map((event) => event.id));
+    },
+    removeCalendarEvents: () => {},
+    updateCalendarSyncToken: () => {},
+    upsertContacts: () => {},
+  };
+  const manager = new GoogleCalendarManager(databaseManager, null, {
+    scheduleNextMeeting: () => {},
+    reset: () => {},
+  });
+  manager._apiGet = async (path: string) => {
+    if (path.includes("/calendars/cal-bad/")) throw new Error("calendar b failed");
+    return {
+      items: [
+        {
+          id: "evt-ok",
+          summary: "Kept",
+          start: { dateTime: "2026-08-12T10:00:00Z" },
+          end: { dateTime: "2026-08-12T10:30:00Z" },
+        },
+      ],
+      nextSyncToken: "token-ok",
+    };
+  };
+
+  const outcome = await manager.syncEvents();
+
+  assert.equal(outcome.total, 2);
+  assert.equal(outcome.succeeded, 1);
+  assert.equal(outcome.failed, 1);
+  assert.deepEqual(outcome.errors, ["calendar b failed"]);
+  assert.deepEqual(upsertedIds, ["evt-ok"], "the successful calendar's update persists");
+});
+
+test("syncEvents reports a clean outcome when every calendar succeeds", async () => {
+  const GoogleCalendarManager = loadManagerModule();
+  const databaseManager = {
+    getGoogleAccounts: () => [],
+    getSelectedCalendars: () => [{ id: "cal-1", account_email: "a@x.io" }],
+    removeStaleCalendarEvents: () => {},
+    upsertCalendarEvents: () => {},
+    removeCalendarEvents: () => {},
+    updateCalendarSyncToken: () => {},
+    upsertContacts: () => {},
+  };
+  const manager = new GoogleCalendarManager(databaseManager, null, {
+    scheduleNextMeeting: () => {},
+    reset: () => {},
+  });
+  manager._apiGet = async () => ({ items: [], nextSyncToken: "token" });
+
+  assert.deepEqual(await manager.syncEvents(), {
+    total: 1,
+    succeeded: 1,
+    failed: 0,
+    errors: [],
+  });
+});
+
 test("_syncCalendar preserves meeting links from Google event location and description", async () => {
   const GoogleCalendarManager = loadManagerModule();
 

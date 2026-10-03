@@ -143,8 +143,11 @@ const commandFailureSchema = z.object({
 });
 export type CalendarCommandFailure = z.infer<typeof commandFailureSchema>;
 
+// A sync command reports `partial: true` when some calendars updated and
+// others failed — the pass is incomplete but the successful updates persist.
+// A fully-failed pass is a failure. `partial` is absent on every other command.
 export const calendarCommandResultSchema = z.union([
-  z.object({ success: z.literal(true) }),
+  z.object({ success: z.literal(true), partial: z.literal(true).optional() }),
   commandFailureSchema,
 ]);
 export type CalendarCommandResult = z.infer<typeof calendarCommandResultSchema>;

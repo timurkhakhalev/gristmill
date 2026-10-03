@@ -4,7 +4,8 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const CalendarSyncInterval = require("../../src/helpers/calendarSyncInterval.ts");
 const { FOCUS_SYNC_THROTTLE_MS } = CalendarSyncInterval;
 
-function createRunner(syncFn: () => Promise<void>, overrides: Record<string, unknown> = {}) {
+type Outcome = { total: number; succeeded: number; failed: number; errors: string[] };
+function createRunner(syncFn: () => Promise<Outcome | void>, overrides: Record<string, unknown> = {}) {
   return new CalendarSyncInterval(syncFn, {
     intervalMs: 1000,
     maxIntervalMs: 4000,
@@ -16,6 +17,9 @@ function createRunner(syncFn: () => Promise<void>, overrides: Record<string, unk
 function flushPromises() {
   return new Promise((resolve) => setImmediate(resolve));
 }
+
+const FAILURE = { total: 2, succeeded: 0, failed: 2, errors: ["provider down", "provider down"] };
+const PARTIAL = { total: 2, succeeded: 1, failed: 1, errors: ["calendar b failed"] };
 
 test("backoff doubles the interval per consecutive failure up to the cap", () => {
   const runner = createRunner(() => Promise.resolve());
@@ -37,6 +41,108 @@ test("notifySuccess resets the backoff to the base interval", () => {
 
   assert.equal(runner._getInterval(), 1000);
   runner.stop();
+});
+
+// Regression: the managers resolve with `failed > 0` instead of rejecting on a
+// full provider outage. The runner must treat that resolved outcome as failure
+// and back off, not as a successful pass.
+test("a resolved outcome with failures backs off even though the promise fulfilled", async (t: import("node:test").TestContext) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let calls = 0;
+  const runner = createRunner(() => {
+    calls += 1;
+    return Promise.resolve(FAILURE);
+  });
+
+  runner.start();
+  t.mock.timers.tick(1000);
+  assert.equal(calls, 1);
+  await flushPromises();
+
+  // 1000ms interval was replaced by a 2000ms one after the resolved failure.
+  assert.equal(runner._consecutiveFailures, 1);
+  t.mock.timers.tick(1000);
+  assert.equal(calls, 1);
+  t.mock.timers.tick(1000);
+  assert.equal(calls, 2);
+
+  runner.stop();
+});
+
+// Regression: a partial outcome (some calendars updated) must also back off —
+// an incomplete pass is not a healthy pass.
+test("a partially failed outcome backs off", async (t: import("node:test").TestContext) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let calls = 0;
+  const runner = createRunner(() => {
+    calls += 1;
+    return Promise.resolve(PARTIAL);
+  });
+
+  runner.start();
+  t.mock.timers.tick(1000);
+  assert.equal(calls, 1);
+  await flushPromises();
+  assert.equal(runner._consecutiveFailures, 1);
+
+  runner.stop();
+});
+
+// Regression: recovery (a clean outcome after failures) restores the base
+// interval. Without the reset the timer stays backed off after the provider
+// recovers, delaying every later sync.
+test("a clean outcome after failures restores the normal interval", async (t: import("node:test").TestContext) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let calls = 0;
+  let fail = true;
+  const runner = createRunner(() => {
+    calls += 1;
+    return Promise.resolve(fail ? FAILURE : { total: 2, succeeded: 2, failed: 0, errors: [] });
+  });
+
+  runner.start();
+  t.mock.timers.tick(1000);
+  await flushPromises();
+  assert.equal(runner._consecutiveFailures, 1);
+
+  // Provider recovers: the next run at the backed-off 2000ms succeeds.
+  fail = false;
+  t.mock.timers.tick(2000);
+  assert.equal(calls, 2);
+  await flushPromises();
+  await flushPromises();
+  assert.equal(runner._consecutiveFailures, 0);
+  assert.equal(runner._getInterval(), 1000);
+
+  runner.stop();
+});
+
+// Regression: a sync that resolves after stop() must not restart the timer.
+// The old reschedule-on-failure path re-armed setInterval unconditionally, so a
+// late failure resurrected a stopped runner.
+test("a late resolved failure after stop does not restart the timer", async (t: import("node:test").TestContext) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let resolveSync: (value: Outcome) => void = () => {};
+  let calls = 0;
+  const runner = createRunner(() => {
+    calls += 1;
+    return new Promise<Outcome>((resolve) => {
+      resolveSync = resolve;
+    });
+  });
+
+  runner.start();
+  t.mock.timers.tick(1000);
+  assert.equal(calls, 1);
+
+  runner.stop();
+  resolveSync(FAILURE);
+  await flushPromises();
+  await flushPromises();
+
+  t.mock.timers.tick(100000);
+  assert.equal(calls, 1, "stopped runner must ignore the late completion");
+  assert.equal(runner.timer, null);
 });
 
 test("a failed sync reschedules the next run at the backed-off interval", async (t: import("node:test").TestContext) => {

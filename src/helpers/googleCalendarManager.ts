@@ -2,7 +2,7 @@ import { net } from "electron";
 import debugLogger from "./debugLogger.js";
 import { GoogleCalendarOAuth } from "./googleCalendarOAuth.js";
 import { fetchGooglePeople, lacksPeopleAccess, type GooglePersonProfile } from "./googlePeople.js";
-import { CalendarSyncInterval } from "./calendarSyncInterval.js";
+import { CalendarSyncInterval, type CalendarSyncOutcome } from "./calendarSyncInterval.js";
 import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
 import { extractMeetingUrl } from "./meetingJoinUrl.js";
 import { calendarDescriptionText } from "./calendarDescription.js";
@@ -118,10 +118,11 @@ export class GoogleCalendarManager {
     this.databaseManager = databaseManager;
     this.reminderScheduler = reminderScheduler;
     this.oauth = new GoogleCalendarOAuth(databaseManager);
-    this.syncRunner = new CalendarSyncInterval(
-      () => this.syncEvents().then(() => this.reminderScheduler.scheduleNextMeeting()),
-      { intervalMs: 2 * 60 * 1000, maxIntervalMs: 30 * 60 * 1000, logScope: "gcal" }
-    );
+    this.syncRunner = new CalendarSyncInterval(() => this.syncEvents(), {
+      intervalMs: 2 * 60 * 1000,
+      maxIntervalMs: 30 * 60 * 1000,
+      logScope: "gcal",
+    });
   }
 
   start(): void {
@@ -256,14 +257,21 @@ export class GoogleCalendarManager {
     return allCalendars;
   }
 
-  async syncEvents(): Promise<void> {
+  // Best-effort per calendar: successful calendars still update, but the
+  // whole-pass result is returned so orchestration can back off and the IPC
+  // can report failure instead of a false success.
+  async syncEvents(): Promise<CalendarSyncOutcome> {
     const selectedCalendars = this.databaseManager.getSelectedCalendars();
-    if (selectedCalendars.length === 0) return;
+    if (selectedCalendars.length === 0) return { total: 0, succeeded: 0, failed: 0, errors: [] };
 
+    const errors: string[] = [];
+    let succeeded = 0;
     for (const calendar of selectedCalendars) {
       try {
         await this._syncCalendar(calendar);
+        succeeded++;
       } catch (err) {
+        errors.push((err as Error).message);
         debugLogger.error(
           "Error syncing calendar",
           { calendarId: calendar.id, error: (err as Error).message },
@@ -275,6 +283,7 @@ export class GoogleCalendarManager {
     sendGcalEventsSynced();
     this.reminderScheduler.scheduleNextMeeting();
     void this.syncPeople();
+    return { total: selectedCalendars.length, succeeded, failed: errors.length, errors };
   }
 
   /**
@@ -446,7 +455,7 @@ export class GoogleCalendarManager {
 
   onWakeFromSleep(): void {
     this.syncEvents()
-      .then(() => this.syncRunner.notifySuccess())
+      .then((outcome) => this.syncRunner.notifyOutcome(outcome))
       .catch((err) =>
         debugLogger.error("Post-wake sync failed", { error: (err as Error).message }, "gcal")
       );
@@ -463,8 +472,8 @@ export class GoogleCalendarManager {
 
   async setCalendarSelection(calendarId: string, isSelected: boolean): Promise<void> {
     this.databaseManager.updateCalendarSelection(calendarId, isSelected);
-    await this.syncEvents();
-    this.syncRunner.notifySuccess();
+    const outcome = await this.syncEvents();
+    this.syncRunner.notifyOutcome(outcome);
     this.reminderScheduler.scheduleNextMeeting();
   }
 

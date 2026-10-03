@@ -315,6 +315,69 @@ test("selection and primary-only validate args before calling the manager", asyn
   ]);
 });
 
+// Regression: the manager keeps best-effort updates and now returns the
+// whole-pass outcome instead of throwing. The IPC must turn a full failure
+// into success:false, a partial pass into success:true + partial:true, and a
+// clean pass into a plain success.
+test("gcal sync reports full failure, partial failure and success from the manager outcome", async () => {
+  const outcomes = [
+    { total: 2, succeeded: 0, failed: 2, errors: ["provider down", "provider down"] },
+    { total: 2, succeeded: 1, failed: 1, errors: ["calendar b failed"] },
+    { total: 2, succeeded: 2, failed: 0, errors: [] },
+  ];
+  let callIndex = 0;
+  const { call } = setup({
+    google: {
+      startOAuth: async () => ({ success: true }),
+      disconnect: () => {},
+      getConnectionStatus: () => ({ connected: false, email: null }),
+      getCalendars: () => [],
+      setCalendarSelection: async () => {},
+      setPrimaryOnly: async () => {},
+      syncEvents: async () => outcomes[callIndex++],
+    },
+  });
+
+  assert.deepEqual(await call("gcal-sync-events"), {
+    success: false,
+    error: "provider down",
+  });
+  assert.deepEqual(await call("gcal-sync-events"), { success: true, partial: true });
+  assert.deepEqual(await call("gcal-sync-events"), { success: true });
+});
+
+// Regression: a manager that still throws must surface a failure, not a false
+// success, and a manager with nothing to sync (void/empty outcome) succeeds.
+test("gcal sync surfaces a thrown manager error and accepts an empty outcome", async () => {
+  const { call } = setup({
+    google: {
+      startOAuth: async () => ({ success: true }),
+      disconnect: () => {},
+      getConnectionStatus: () => ({ connected: false, email: null }),
+      getCalendars: () => [],
+      setCalendarSelection: async () => {},
+      setPrimaryOnly: async () => {},
+      syncEvents: async () => {
+        throw new Error("oauth revoked");
+      },
+    },
+  });
+  assert.deepEqual(await call("gcal-sync-events"), { success: false, error: "oauth revoked" });
+
+  const empty = setup({
+    google: {
+      startOAuth: async () => ({ success: true }),
+      disconnect: () => {},
+      getConnectionStatus: () => ({ connected: false, email: null }),
+      getCalendars: () => [],
+      setCalendarSelection: async () => {},
+      setPrimaryOnly: async () => {},
+      syncEvents: async () => undefined,
+    },
+  });
+  assert.deepEqual(await empty.call("gcal-sync-events"), { success: true });
+});
+
 // --- Provider-neutral reads --------------------------------------------------------
 
 test("upcoming events: projection keeps consumer fields and drops internals", async () => {

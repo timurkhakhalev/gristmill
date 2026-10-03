@@ -176,8 +176,12 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
         });
       });
     });
-    // Equal times keep source order so output is deterministic; unknown times keep source order.
-    ordered.sort((a, b) => sortKey(a.segment) - sortKey(b.segment) || a.order - b.order);
+    // Equal times keep source order so output is deterministic; unknown times sort last by source order.
+    ordered.sort((a, b) =>
+      sortKey(a.segment) - sortKey(b.segment) ||
+      (a.segment.end_ms ?? Infinity) - (b.segment.end_ms ?? Infinity) ||
+      a.order - b.order
+    );
   }
   const segments = ordered.map((item) => item.segment);
 

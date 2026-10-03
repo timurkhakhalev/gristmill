@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNotesByContainer } from "../../stores/noteStore";
+import { useNoteEventsRevision } from "../../stores/noteStore";
 import { useNotesTreeActions } from "../../hooks/useNotesTreeActions";
 import { useHomeChat } from "../../hooks/useHomeChat";
 import { useUpcomingEvents } from "../../hooks/useUpcomingEvents";
@@ -31,13 +31,17 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
   const { t } = useTranslation();
   const upcoming = useUpcomingEvents();
   const { handleMoveNote, handleCreateFolderAndMove, handleDelete } = useNotesTreeActions();
-  const notesByContainer = useNotesByContainer();
+  // React to every confirmed Note event, not the container cache: deleting a
+  // note from an unloaded folder leaves `notesByContainer` identity unchanged,
+  // so the row would otherwise stay until a remount.
+  const noteEventsRevision = useNoteEventsRevision();
   const [notes, setNotes] = useState<NoteItem[] | null>(() => cachedRecentNotes);
   // Fade the list in only when it replaces the skeleton, not on cached remounts.
   const [notesWereLoading] = useState(() => cachedRecentNotes == null);
 
   // The store only holds loaded containers, so the cross-space list is fetched
-  // here and refreshed whenever any container's notes change.
+  // here and refreshed whenever the store signals a confirmed Note event. The
+  // stale guard drops a response that a newer event already superseded.
   useEffect(() => {
     let stale = false;
     window.electronAPI
@@ -52,7 +56,7 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
     return () => {
       stale = true;
     };
-  }, [notesByContainer]);
+  }, [noteEventsRevision]);
 
   const chat = useHomeChat(notes ?? EMPTY_NOTES);
   const [chatMode, setChatMode] = useState<ChatPanelMode>("hidden");

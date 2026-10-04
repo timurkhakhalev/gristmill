@@ -62,6 +62,8 @@ Before you add a test, name the regression that it must find.
 
 ## Selecting checks
 
+For renderer imports and new shared-helper entries, use the [renderer import boundary](../architecture/renderer-boundary.md). Keep its positive and negative probes with changes to the policy. The selected shared graph check runs in the canonical test suite; lint alone checks direct imports.
+
 Use `pnpm test --domain <domain> --kind <kind> --list` to inspect a selection before running it. Omit `--kind` when all kinds in the affected domain are needed. Trace the diff and consumers; file names alone do not establish coverage.
 
 See [project commands](project-commands.md) for selectors and [test runner and fixtures](../runbooks/testing.md) when adding tests or changing harnesses.

@@ -73,6 +73,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 
 ## Run creation
 
+- Finish sends only the Note ID to main. The processing worker selects available finalized parts in chronological order and uses the latest eligible part's initial config snapshot. Main owns repeated-Finish deduplication and the persisted processing gate. Explicit reprocess and Summary controls remain separate operations.
 - Before the first captured frame, main saves the selected configuration.
 - Capture does no ASR and no provider request.
 - Stop closes both source epochs, recovers their frame counts and gaps, finalizes the recording and creates its initial run.
@@ -176,3 +177,9 @@ A missing source without full intentional coverage stays an error.
 - The existing Local, Self-Hosted and direct provider routes stay on their existing surfaces.
 - Debug scenario controls are available only in development builds. Their synthetic states stay in memory.
 - The live UI reads the persisted run and Chat state.
+
+## Speaker recognition
+
+Capture has no realtime ASR or live speaker identifier. After Stop, processing uses recorded tracks and saved note embeddings. Manual speaker mappings promote those saved embeddings into shared voice profiles and update matching notes.
+
+New Local recording snapshots enable diarization. Existing saved processing configurations keep their explicit options, including `diarize: false`. The removed Models preference does not control new snapshots. See [ADR-0006](../adr/0006-remove-live-transcription.md).

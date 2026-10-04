@@ -57,14 +57,6 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     ...(overrides.database as any),
   };
 
-  const live = {
-    getSpeakerEmbedding: () => null,
-    mapSpeaker: (...args: unknown[]) => {
-      calls.mapSpeaker = args;
-    },
-    ...(overrides.live as any),
-  };
-
   const diarization = {
     downloadModels: async (onProgress: any) => {
       onProgress({ type: "progress", stage: "embedding", percentage: 40 });
@@ -82,7 +74,6 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     { handle: (c: unknown, fn: unknown) => handlers.set(c, fn) },
     {
       databaseManager: database,
-      liveSpeakerIdentifier: live,
       diarizationManager: diarization,
       retroactiveMapping: (profile: unknown) => {
         calls.retroactive.push(profile);
@@ -114,37 +105,17 @@ test("set-speaker-mapping promotes the note embedding into a profile", async () 
   const result = await h.invoke(speakerChannels.setSpeakerMapping, 1, "speaker_0", "Alice", null, null);
 
   assert.deepEqual(result, { success: true, profileId: 11 });
-  // The note embedding (not a live one) fed the profile upsert.
+  // The saved note embedding feeds profile promotion.
   assert.equal(h.calls.profiles[0].displayName, "Alice");
   assert.equal(h.calls.profiles[0].profileId, null);
   assert.ok(h.calls.profiles[0].embedding instanceof Buffer);
   assert.equal(h.calls.retroactive.length, 1);
   assert.deepEqual(h.calls.setMapping, [1, "speaker_0", 11, "Alice"]);
-  assert.deepEqual(h.calls.mapSpeaker, ["speaker_0", 11, "Alice", 1]);
-});
-
-test("set-speaker-mapping falls back to the live embedding when the note has none", async () => {
-  const liveEmbedding = new Float32Array([0.25, 0.25, 0.25, 0.25]);
-  const h = createHarness({
-    database: { getNoteSpeakerEmbeddings: () => [] },
-    live: { getSpeakerEmbedding: () => liveEmbedding },
-  });
-  const result = await h.invoke(speakerChannels.setSpeakerMapping, 5, "speaker_2", "Bob", "b@x.io", 3);
-
-  // An explicit profileId is honored and the profile is still refreshed.
-  assert.deepEqual(result, { success: true, profileId: 11 });
-  assert.deepEqual(h.calls.profiles[0], {
-    displayName: "Bob",
-    email: "b@x.io",
-    profileId: 3,
-    embedding: Buffer.from(liveEmbedding.buffer),
-  });
 });
 
 test("set-speaker-mapping without any embedding only writes the mapping", async () => {
   const h = createHarness({
     database: { getNoteSpeakerEmbeddings: () => [] },
-    live: { getSpeakerEmbedding: () => null },
   });
   const result = await h.invoke(speakerChannels.setSpeakerMapping, 1, "speaker_0", "Carol", null, 7);
 

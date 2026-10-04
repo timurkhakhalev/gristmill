@@ -11,7 +11,7 @@ The cleanup decision is [ADR-0002](../adr/0002-cleanup-scope.md).
 - The full embedded Note chat stays, with its tools that create and edit notes and its local cross-note tools (full-text search). Only `web_search` is removed.
 - All direct ASR and LLM providers (BYOK) stay, with their models, keys and custom endpoints. Direct AWS, Azure and Vertex credentials stay. The Local runtime, model downloads and the supported Self-Hosted routes stay.
 - Realtime microphone and system recording, Audio Upload, import of the audio formats offered by the picker (including WebM) and direct media URLs, and FFmpeg stay.
-- All speaker recognition stays: live recognition, voice fingerprints across meetings, contacts, manual corrections and the local diarization.
+- Speaker recognition runs after Stop: local diarization, voice fingerprints across meetings, contacts and manual corrections stay. New Local recording snapshots enable diarization. The Models page has no live speaker recognition switch; see [ADR-0006](../adr/0006-remove-live-transcription.md).
 - Dictionary and Snippets stay: their data, their embedded chat tools and their management screen.
 - Calendars stay: Apple (EventKit helper), Google and Microsoft (direct OAuth). Call detection, reminders, calendar vocabulary and participants stay. A calendar participant is a hint. It is not proof of speaker identity.
 - The meeting hotkey, the recording pill, the tray and notifications stay.

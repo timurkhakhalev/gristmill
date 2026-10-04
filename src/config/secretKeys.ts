@@ -87,7 +87,7 @@ export const BYOK_API_KEYS = [
     storeKey: "cortiApiKey",
   },
   // `get`/`save` are taken verbatim, never derived from `base`, so these keep
-  // the capitalisation realtimeTokenProviders.ts already calls them by.
+  // the names that provider IPC callers use.
   {
     base: "deepgram",
     env: "DEEPGRAM_API_KEY",

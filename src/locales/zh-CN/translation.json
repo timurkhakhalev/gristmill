@@ -49,12 +49,6 @@
         "FILE_TOO_LARGE": "此文件过大,无法导入。",
         "generic": "读取文件时出错。"
       }
-    },
-    "meeting": {
-      "speakerDetection": {
-        "title": "识别并标记发言者",
-        "description": "关闭后，转写会显示\"你\"和\"其他人\""
-      }
     }
   },
   "tray": {

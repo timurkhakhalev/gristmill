@@ -442,24 +442,39 @@ export class MeetingProcessingWorker {
     return result;
   }
 
+  finishForNote(noteId: number): MeetingProcessingResultDto | null {
+    meetingProcessingListRequestSchema.parse({ noteId });
+    if (this.isCapturing()) throw new Error("Meeting processing starts after capture stops");
+    const parts = this.deps.database.listMeetingRecordingsForNote(noteId)
+      .filter((part) => part.audioState === "available" && ["ready", "incomplete"].includes(part.captureState) && part.captureErrorCode !== "recording-audio-unavailable")
+      .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
+    if (!parts.length) return null;
+    const latest = parts[parts.length - 1];
+    const initial = this.deps.database.listMeetingProcessingRuns(latest.id).find((run) => run.kind === "initial");
+    return this.createSelectedRun({
+      recordingId: parts[0].id,
+      sourceRecordingIds: parts.map((part) => part.id),
+      kind: "reprocess",
+      config: initial?.config ?? null,
+      configError: initial?.configError ?? null,
+    }, true);
+  }
+
   createRun(input: unknown): MeetingProcessingResultDto {
+    return this.createSelectedRun(input);
+  }
+
+  private createSelectedRun(input: unknown, gateAfterStop = false): MeetingProcessingResultDto {
     const parsed = meetingProcessingCreateRunRequestSchema.parse(input);
-    if (parsed.gateAfterStop && parsed.kind !== "reprocess") {
-      throw new Error("Only end-of-meeting transcription can use the processing gate");
-    }
     const recording = this.deps.database.getMeetingRecording(parsed.recordingId);
     if (!recording) throw new Error("Meeting recording not found");
-    const sourceRecordingIds = parsed.gateAfterStop
-      ? this.deps.database.listMeetingRecordingsForNote(recording.noteId)
-        .filter((part) => part.audioState === "available" && ["ready", "incomplete"].includes(part.captureState) && part.captureErrorCode !== "recording-audio-unavailable")
-        .map((part) => part.id)
-      : parsed.sourceRecordingIds ?? [parsed.recordingId];
+    const sourceRecordingIds = parsed.sourceRecordingIds ?? [parsed.recordingId];
     const orderedSourceIds = sourceRecordingIds.map((id) => {
       const source = this.deps.database.getMeetingRecording(id);
       if (!source || source.noteId !== recording.noteId) throw new Error("Meeting audio is unavailable for a selected part");
       return source;
     }).sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id)).map((part) => part.id);
-    if (parsed.kind === "reprocess" && !parsed.gateAfterStop && this.isCapturing()) {
+    if (parsed.kind === "reprocess" && !gateAfterStop && this.isCapturing()) {
       throw new Error("Transcription starts after the end-of-meeting wait");
     }
     const sameSources = (run: MeetingProcessingRunDto) =>
@@ -470,15 +485,15 @@ export class MeetingProcessingWorker {
       (run.status === "pending" || run.status === "running" || run.status === "blocked") &&
       run.sourceRecordingIds.some((id) => sourceRecordingIds.includes(id))
     );
-    if (activeGate && sameSources(activeGate) && (parsed.gateAfterStop || Date.parse(activeGate.retryAt as string) > this.now().getTime())) {
+    if (activeGate && sameSources(activeGate) && (gateAfterStop || Date.parse(activeGate.retryAt as string) > this.now().getTime())) {
       const result = this.getResult(activeGate);
       this.notify(activeGate);
       return result;
     }
-    if (activeGate && Date.parse(activeGate.retryAt as string) > this.now().getTime() && !parsed.gateAfterStop) {
+    if (activeGate && Date.parse(activeGate.retryAt as string) > this.now().getTime() && !gateAfterStop) {
       throw new Error("Transcription starts after the end-of-meeting wait");
     }
-    if (parsed.kind === "reprocess" && !parsed.gateAfterStop) {
+    if (parsed.kind === "reprocess" && !gateAfterStop) {
       const latestStop = sourceRecordingIds
         .map((id) => this.deps.database.getMeetingRecording(id)?.endedAt)
         .filter((value): value is string => value !== null && value !== undefined)
@@ -489,7 +504,7 @@ export class MeetingProcessingWorker {
         throw new Error("Transcription starts after the end-of-meeting wait");
       }
     }
-    if (parsed.gateAfterStop) {
+    if (gateAfterStop) {
       const existing = this.deps.database.listMeetingProcessingRuns(parsed.recordingId).find((run) =>
         run.kind === "reprocess" &&
         run.status !== "cancelled" &&
@@ -526,7 +541,7 @@ export class MeetingProcessingWorker {
       config: parsed.config,
       configError: parsed.configError ?? null,
       sourceRunId: parsed.sourceRunId ?? null,
-      retryAt: parsed.gateAfterStop ? new Date(this.now().getTime() + MEETING_ASR_GATE_MS).toISOString() : null,
+      retryAt: gateAfterStop ? new Date(this.now().getTime() + MEETING_ASR_GATE_MS).toISOString() : null,
     });
     const result = this.getResult(run);
     this.notify(run);
@@ -1795,6 +1810,15 @@ export function registerMeetingProcessingHandlers(
     if (!parsed.success) return { success: false, error: "Invalid meeting processing list request" };
     try {
       return meetingProcessingListResponseSchema.parse({ success: true, recordings: worker.listForNote(parsed.data.noteId) });
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle(meetingProcessingChannels.finishForNote, (_event, ...args) => {
+    try {
+      const { noteId } = meetingProcessingListRequestSchema.parse(args[0]);
+      const result = worker.finishForNote(noteId);
+      return meetingProcessingRunResponseSchema.parse(result ? { success: true, result } : { success: true });
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

@@ -114,15 +114,6 @@ test("compiled route and ESM constants load in plain Node without a TS loader", 
   assert.deepEqual(JSON.parse(result), { transport: "local" });
 });
 
-test("record-then-process build excludes unreachable realtime ASR modules", () => {
-  for (const name of [
-    "openaiRealtimeStreaming", "assemblyAiStreaming", "deepgramStreaming",
-    "cortiStreaming", "tinfoilRealtimeStreaming", "realtimeTokenProviders", "meetingStreamingProviders",
-  ]) {
-    assert.equal(fs.existsSync(path.join(output, "src/helpers", `${name}.js`)), false, `${name} has no runtime consumer`);
-  }
-});
-
 test("compiled native audio and PCM modules keep their CommonJS consumer shapes", () => {
   const result = execFileSync(
     process.execPath,
@@ -139,7 +130,6 @@ test("compiled native audio and PCM modules keep their CommonJS consumer shapes"
     };
     const AudioActivity = require('./dist-main/src/helpers/audioActivityDetector.js');
     const AudioTap = require('./dist-main/src/helpers/audioTapManager.js');
-    const Echo = require('./dist-main/src/helpers/meetingEchoLeakDetector.js');
     const Watchdog = require('./dist-main/src/helpers/meetingSystemAudioWatchdog.js');
     const Timeline = require('./dist-main/src/helpers/meetingAudioTimeline.js');
     const SystemDefault = require('./dist-main/src/helpers/systemDefaultMicrophone.js');
@@ -148,7 +138,6 @@ test("compiled native audio and PCM modules keep their CommonJS consumer shapes"
       direct: {
         activity: AudioActivity === AudioActivity.AudioActivityDetector,
         tap: AudioTap === AudioTap.AudioTapManager,
-        echo: Echo === Echo.MeetingEchoLeakDetector,
         watchdog: Watchdog === Watchdog.createMeetingSystemAudioWatchdog,
         timeline: Timeline === Timeline.createMeetingAudioTimeline,
       },
@@ -166,7 +155,6 @@ test("compiled native audio and PCM modules keep their CommonJS consumer shapes"
     direct: {
       activity: true,
       tap: true,
-      echo: true,
       watchdog: true,
       timeline: true,
     },

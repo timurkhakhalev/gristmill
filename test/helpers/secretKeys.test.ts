@@ -83,7 +83,7 @@ test("openrouter is a first-class secret", async () => {
 });
 
 // The accessor names come verbatim from the manifest rather than from `base`,
-// and realtimeTokenProviders.ts / stt-canary.mjs call these exact spellings —
+// and provider IPC callers use these exact spellings —
 // a base-derived rename would give getAssemblyaiKey and break them silently.
 test("the STT accessors keep the spellings their callers use", () => {
   const env = new EnvironmentManager();

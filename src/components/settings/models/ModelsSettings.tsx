@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "../../../stores/settingsStore";
 import { SettingsCard, SettingsCardRow } from "../../ui/SettingsSection";
-import { Toggle } from "../../ui/toggle";
 import { LocalModelInventoryProvider } from "./LocalModelInventory";
 import { useLocalModelInventory } from "./inventoryContext";
 import { TaskModelControl } from "./TaskModelPicker";
@@ -20,8 +19,6 @@ function ModelsContent({ focus }: { focus?: string }) {
   const { t } = useTranslation();
   useTranscriptionPolicies(useLocalModelInventory().sherpaSupported);
   const rootRef = useRef<HTMLDivElement>(null);
-  const speakerDetection = useSettingsStore((state) => state.speakerDiarizationEnabled);
-  const setSpeakerDetection = useSettingsStore((state) => state.setSpeakerDiarizationEnabled);
   const chatPrompt = useSettingsStore((state) => state.customPrompts.chatAgent);
   const setCustomPrompt = useSettingsStore((state) => state.setCustomPrompt);
 
@@ -43,9 +40,6 @@ function ModelsContent({ focus }: { focus?: string }) {
             </SettingsCardRow>
           </div>
         ))}
-        <SettingsCardRow label={t("settings.meeting.speakerDetection.title")} description={t("settings.meeting.speakerDetection.description")}>
-          <Toggle checked={speakerDetection} onChange={setSpeakerDetection} />
-        </SettingsCardRow>
       </SettingsCard>
 
       <SettingsCard title={t("modelsSettings.chatPrompt")}>

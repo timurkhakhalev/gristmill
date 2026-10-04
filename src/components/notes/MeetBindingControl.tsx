@@ -19,9 +19,9 @@ export function MeetBindingControl() {
     const update = (value: CompanionStatus) => {
       if (active) setStatus(value);
     };
-    const unsubscribe = window.electronAPI?.onMeetCompanionStatus?.(update);
+    const unsubscribe = window.electronAPI?.onMeetCompanionStatus(update);
     void window.electronAPI
-      ?.getMeetCompanionStatus?.()
+      ?.getMeetCompanionStatus()
       .then(update)
       .catch(() => {});
     return () => {
@@ -38,7 +38,7 @@ export function MeetBindingControl() {
     try {
       setFailed(
         !(
-          await window.electronAPI?.confirmMeetCompanionBinding?.({
+          await window.electronAPI?.confirmMeetCompanionBinding({
             expected: { recordingId, sessionId },
             candidate: { connectionId: candidate.connectionId, ref: candidate.ref },
           })

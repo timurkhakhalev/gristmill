@@ -20,14 +20,15 @@ function folder(id: number, name: string, spaceId = 1): FolderItem {
   return { id, name, space_id: spaceId, is_default: false } as unknown as FolderItem;
 }
 
-function space(id: number, name: string): SpaceItem {
-  return { id, name, kind: "private" } as unknown as SpaceItem;
+function space(id: number, name: string, kind: SpaceItem["kind"] = "private"): SpaceItem {
+  return { id, name, kind } as unknown as SpaceItem;
 }
 
 
 interface Harness {
   typeQuery(value: string): Promise<void>;
   targetLabels(): string[];
+  fullText(): string;
   createFolder(name: string): Promise<void>;
   renameFolder(id: number, name: string): Promise<void>;
   deleteFolder(id: number): Promise<void>;
@@ -43,16 +44,20 @@ async function mountSearch(
   installBrowserGlobals(t, { window: {
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
     electronAPI: {
-      getFolders: async () => folderRows,
+      // IPC-like serialization: fresh copies every read and every mutation
+      // produces new row objects. Sharing live arrays with the component
+      // would alias the store and defeat the stale-snapshot regression (an
+      // in-place mutation would "fix" even the mount-only component).
+      getFolders: async () => folderRows.map((row) => ({ ...row })),
       createFolder: async (name: string, spaceId: number) => {
         const created = folder(folderRows.length + 1, name, spaceId);
         folderRows.push(created);
-        return { success: true, folder: created };
+        return { success: true, folder: { ...created } };
       },
       renameFolder: async (id: number, name: string) => {
         const target = folderRows.find((f) => f.id === id);
         if (target) (target as { name: string }).name = name;
-        return { success: true, folder: target };
+        return { success: true, folder: target ? { ...target } : null };
       },
       deleteFolder: async (id: number) => {
         const idx = folderRows.findIndex((f) => f.id === id);
@@ -62,10 +67,10 @@ async function mountSearch(
       updateSpace: async (id: number, updates: { name?: string }) => {
         const target = spaceRows.find((sp) => sp.id === id);
         if (target && updates.name != null) (target as { name: string }).name = updates.name;
-        return { success: true, space: target };
+        return { success: true, space: target ? { ...target } : null };
       },
       getFolderNoteCounts: async () => [],
-      getSpaces: async () => spaceRows,
+      getSpaces: async () => spaceRows.map((row) => ({ ...row })),
       getNotes: async () => [],
       searchNotes: async () => [],
       searchNoteTranscripts: async () => [],
@@ -158,6 +163,7 @@ async function mountSearch(
 
   return {
     typeQuery,
+    fullText: () => textOf(captured.tree),
     targetLabels: () =>
       findNodes(captured.tree, (n) => typeof n.props?.target === "object" && n.props?.target !== null)
         .map((row) => textOf((row.props?.target as { label: string }).label)),
@@ -211,19 +217,26 @@ test("a deleted folder disappears from the jump targets", async (t) => {
   assert.deepEqual(harness.targetLabels(), [], "the removed folder is no longer offered");
 });
 
-// Space names never appear in jump targets (private spaces always carry the
-// personal label), but the space lookup feeding note breadcrumbs and the
-// scope switcher must stay current: rename through the store and check the
-// scope label source.
-test("the store's spaces stay current for scope and breadcrumbs", async (t) => {
-  const harness = await mountSearch(t, { folders: [folder(2, "Docs", 7)], spaces: [space(1, "Personal"), space(7, "Team")] });
+// A named (non-personal) space's label is its name; renaming it through the
+// store must show the new name both as a jump target and in the scope
+// switcher, which reads the same store references.
+test("a space rename is reflected in jump targets and the scope switcher", async (t) => {
+  const harness = await mountSearch(t, {
+    folders: [folder(2, "Docs", 7)],
+    spaces: [space(1, "Personal"), space(7, "Team", "team")],
+  });
 
-  await harness.typeQuery("docs");
-  assert.deepEqual(harness.targetLabels(), ["Docs"]);
+  await harness.typeQuery("team");
+  assert.deepEqual(harness.targetLabels(), ["Team"]);
 
   await harness.renameSpace(7, "Squad");
   await harness.typeQuery("");
-  await harness.typeQuery("docs");
+  await harness.typeQuery("squad");
 
-  assert.deepEqual(harness.targetLabels(), ["Docs"], "the folder survives its space rename");
+  assert.deepEqual(harness.targetLabels(), ["Squad"], "the renamed space is offered under its new name");
+
+  // The scope switcher (space dropdown items) shows the new name too.
+  const allText = JSON.stringify(harness.fullText());
+  assert.ok(allText.includes("Squad"), "the scope switcher shows the renamed space");
+  assert.ok(!allText.includes('"Team"'), "the old space name is gone from the switcher");
 });

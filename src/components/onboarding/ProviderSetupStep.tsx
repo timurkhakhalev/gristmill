@@ -59,6 +59,8 @@ interface ByokProviderStepProps {
   onSelfHostedChange?: (requested: boolean) => void;
   onConnectionChange: (connected: boolean) => void;
   onProceed: () => void;
+  /** The footer's Continue runs the same confirmed save-then-proceed transition. */
+  onFooterContinue?: (commitAndProceed: () => Promise<void>, isSaving: boolean) => void;
   resumeState?: OnboardingByokDraft;
   onResumeStateChange?: (state: OnboardingByokDraft) => void;
 }
@@ -69,6 +71,7 @@ export function ByokProviderStep({
   onSelfHostedChange = () => {},
   onConnectionChange,
   onProceed,
+  onFooterContinue,
   resumeState,
   onResumeStateChange,
 }: ByokProviderStepProps) {
@@ -89,6 +92,17 @@ export function ByokProviderStep({
   const [saveError, setSaveError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const latestDraft = useRef<OnboardingByokDraft | null>(null);
+  // Stable identity: ProviderConnectionTest resets on onSuccessChange identity,
+  // so a fresh inline callback per render cancelled the success it reported
+  // (issue #180).
+  const handleSuccessChange = useCallback(
+    (success: boolean) => {
+      setConnected(success);
+      onConnectionChange(success);
+    },
+    [onConnectionChange]
+  );
+
 
   useEffect(() => {
     onConnectionChange(false);
@@ -159,6 +173,10 @@ export function ByokProviderStep({
       setIsSaving(false);
     }
   };
+  // The footer's Continue runs the same confirmed transition as Proceed; a
+  // failed secure save stays on the step. Assigned during render so the
+  // parent's footer always holds the current commit (TopBar-props pattern).
+  onFooterContinue?.(commitAndProceed, isSaving);
 
   return (
     <section className="mx-auto mt-5 w-full max-w-[30rem] rounded-[1.125rem] border border-[var(--onboarding-control-border)] bg-[var(--onboarding-surface)] px-3 py-4">
@@ -219,7 +237,7 @@ export function ByokProviderStep({
 
         <ProviderConnectionTest
           config={{ provider: testingProvider, apiKey: draftApiKey, baseUrl: selfHosted ? draftBaseUrl : undefined, model: selfHosted ? draftCustomModel : selectedModel, scope: "transcription" }}
-          onSuccessChange={(success) => { setConnected(success); onConnectionChange(success); }}
+          onSuccessChange={handleSuccessChange}
           variant="inline"
         />
         {saveError && (

@@ -1,5 +1,5 @@
 import { ProfileNameField } from "./settings/ProfileNameField";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePermissions } from "../hooks/usePermissions";
 import { useSystemAudioPermission } from "../hooks/useSystemAudioPermission";
@@ -23,6 +23,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const { t } = useTranslation();
   const [step, setStep] = useState<Step>("permissions");
   const [providerConnected, setProviderConnected] = useState(false);
+  // The provider step's confirmed save-then-proceed, wired to the footer.
+  const providerCommitRef = useRef<() => Promise<void>>(async () => {});
   const store = useSettingsStore();
   const [languages, setLanguages] = useState<string[]>(store.spokenLanguages ?? []);
   const permissions = usePermissions();
@@ -65,13 +67,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 onSelfHostedChange={() => {}}
                 onConnectionChange={setProviderConnected}
                 onProceed={() => setStep("languages")}
+                onFooterContinue={(commit) => { providerCommitRef.current = commit; }}
               />
             </div>
             <Button variant="ghost" className="shrink-0" onClick={() => setStep("languages")}>{t("cleanupSettings.configureLater")}</Button>
             <Footer
               back={() => setStep("profile")}
               continueDisabled={!providerConnected}
-              onContinue={() => setStep("languages")}
+              onContinue={() => void providerCommitRef.current()}
             />
           </>
         )}

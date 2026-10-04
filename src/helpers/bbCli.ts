@@ -27,29 +27,37 @@ function binaryPath(): string {
 }
 
 async function execute(args: string[], input?: string, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
+    let failure: Error | undefined;
     let stdout = "";
     let stderr = "";
     const child = spawn(process.execPath, [binaryPath(), ...args], {
       stdio: ["pipe", "pipe", "pipe"], signal, timeout: 30_000,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     });
+    const failAndKill = (error: Error) => {
+      failure ??= error;
+      child.kill();
+    };
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      if (failure) return;
       stdout += chunk;
       if (stdout.length > 8_000_000) {
-        child.kill();
-        reject(new BbCliError("bb-response-too-large", "bb response exceeded the size limit"));
+        failAndKill(new BbCliError("bb-response-too-large", "bb response exceeded the size limit"));
       }
     });
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
       stderr = (stderr + chunk).slice(-2000);
     });
-    child.stdin.on("error", (error) => reject(new BbCliError("bb-stdin-error", error.message)));
+    child.stdin.on("error", (error) => failAndKill(new BbCliError("bb-stdin-error", error.message)));
     child.on("error", (error: NodeJS.ErrnoException) => {
-      if (error.name === "AbortError") return reject(error);
-      reject(new BbCliError(error.code === "ENOENT" ? "bb-not-installed" : "bb-cli-error", error.message));
+      failure ??= error.name === "AbortError" ? error
+        : new BbCliError(error.code === "ENOENT" ? "bb-not-installed" : "bb-cli-error", error.message);
     });
     child.on("close", (code) => {
+      // AbortError can arrive while the child is still alive. Settlement owns close.
+      if (failure) return reject(failure);
       if (code === 0) resolve(stdout.trim());
       else {
         try {

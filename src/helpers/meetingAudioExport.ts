@@ -36,15 +36,20 @@ interface MeetingAudioOperation {
 
 export function createMeetingAudioOperationRegistry() {
   const active = new Map<string, Set<MeetingAudioOperation>>();
+  let stopped = false;
   return {
     run<T>(recordingId: string, task: (signal: AbortSignal) => Promise<T>): Promise<T> {
+      if (stopped) return Promise.reject(new Error("Meeting audio operations are stopped"));
       const controller = new AbortController();
       let operations = active.get(recordingId);
       if (!operations) {
         operations = new Set();
         active.set(recordingId, operations);
       }
-      const operation = Promise.resolve().then(() => task(controller.signal));
+      const operation = Promise.resolve().then(() => {
+        controller.signal.throwIfAborted();
+        return task(controller.signal);
+      });
       const entry: MeetingAudioOperation = {
         abort: () => controller.abort(),
         settled: operation.then(() => undefined, () => undefined).finally(() => {
@@ -54,6 +59,12 @@ export function createMeetingAudioOperationRegistry() {
       };
       operations.add(entry);
       return operation;
+    },
+    async stop(): Promise<void> {
+      stopped = true;
+      const operations = [...active.values()].flatMap((entries) => [...entries]);
+      for (const operation of operations) operation.abort();
+      await Promise.all(operations.map(({ settled }) => settled));
     },
     async cancelAndWait(recordingId: string): Promise<void> {
       const operations = [...(active.get(recordingId) ?? [])];

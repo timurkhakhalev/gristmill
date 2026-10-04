@@ -4,7 +4,8 @@ import path from "path";
 import crypto from "crypto";
 import debugLogger from "./debugLogger.js";
 import { isPortAvailable } from "../utils/serverUtils.js";
-import { sendNoteAdded, sendNoteUpdated } from "./notesEvents.js";
+import { saveNoteArgsSchema, updateNoteArgsSchema } from "../contracts/notes.js";
+import type { NoteWriteService } from "./noteWriteService.js";
 import { sendDictionaryUpdated, sendSnippetsUpdated } from "./vocabularyEvents.js";
 import { sendFolderCreated } from "./containerEvents.js";
 import type { NoteRow, FolderRow } from "./database.js";
@@ -37,15 +38,6 @@ export interface CliBridgeOperations {
     getNotes(noteType?: string | null, limit?: number, folderId?: number | null, spaceId?: number | null): NoteRow[];
     searchNotes(query: unknown, limit?: number, spaceId?: number | null, folderId?: number | null): NoteRow[];
     getNote(id: number | bigint): NoteRow | null;
-    saveNote(
-      title: string,
-      content: string,
-      noteType?: string,
-      sourceFile?: string | null,
-      audioDuration?: number | null,
-      folderId?: number | null
-    ): { success: boolean; note: NoteRow | null };
-    updateNote(id: number, updates: Record<string, unknown>): { success: boolean; error?: string; note?: NoteRow | null };
     getFolders(spaceId?: number | null): FolderRow[];
     createFolder(name: unknown, spaceId?: number | null): { success: boolean; error?: string; folder?: FolderRow };
     getDictionary(): string[];
@@ -61,7 +53,7 @@ export interface CliBridgeOperations {
   };
   deleteNoteInternal(id: number): Promise<{ success: boolean }>;
   deleteTranscriptionInternal(id: number): { success: boolean };
-  mirrorWriteNote(note: NoteRow): unknown;
+  noteWrites: Pick<NoteWriteService, "saveNote" | "updateNote">;
   approveAudioPath(filePath: string): void;
   transcribeLocalFile(filePath: string, options?: Record<string, unknown>): Promise<TranscriptionResponse>;
   listLocalTranscriptionModels(): Array<{
@@ -537,27 +529,27 @@ export class CliBridge {
         "POST",
         "/v1/notes/create",
         ({ body }) => {
-          const result = db.saveNote(
-            (body.title as string) ?? "Untitled Note",
-            (body.content as string) ?? "",
-            (body.note_type as string) ?? "personal",
-            (body.source_file as string) ?? null,
-            (body.audio_duration_seconds as number) ?? null,
-            (body.folder_id as number) ?? null
+          const args = saveNoteArgsSchema.safeParse([
+            body.title ?? "Untitled Note", body.content ?? "", body.note_type ?? "personal",
+            body.source_file ?? null, body.audio_duration_seconds ?? null,
+            body.folder_id ?? null, null,
+          ]);
+          if (!args.success) throw routeError("Invalid Note creation fields", "VALIDATION");
+          const result = ipc.noteWrites.saveNote(
+            args.data[0], args.data[1], args.data[2], args.data[3] ?? null,
+            args.data[4] ?? null, args.data[5] ?? null, args.data[6] ?? null
           );
           const note = unwrapMutationResult<NoteRow>(result, "note");
-          setImmediate(() => sendNoteAdded(note));
-          ipc.mirrorWriteNote(note);
           return { data: note };
         },
         201
       ),
       param("PATCH", "/v1/notes/", "", "id", ({ params, body }) => {
         const id = requireId(params, "note");
-        const result = db.updateNote(id, body || {});
+        const args = updateNoteArgsSchema.safeParse([id, body]);
+        if (!args.success) throw routeError("Invalid Note update fields", "VALIDATION");
+        const result = ipc.noteWrites.updateNote(args.data[0], args.data[1]);
         const note = unwrapMutationResult<NoteRow>(result, "note");
-        setImmediate(() => sendNoteUpdated(note));
-        ipc.mirrorWriteNote(note);
         return { data: note };
       }),
       param("DELETE", "/v1/notes/", "", "id", async ({ params }) => {

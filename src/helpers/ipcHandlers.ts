@@ -23,6 +23,7 @@ import whisperVadDefaults from "../constants/whisperVad.json";
 import { MAX_SPEAKER_COUNT } from "../constants/speakerDetection.json";
 import { approveAudioPath, resolveAllowedAudioPath } from "./audioPathAllowlist.js";
 import { openSystemSettings } from "./systemSettingsLauncher.js";
+import { NoteWriteService } from "./noteWriteService.js";
 import { registerNotesHandlers } from "./notesIpcHandlers.js";
 import { registerUrlDownloadHandlers } from "./urlDownloadIpcHandlers.js";
 import { registerMeetingCompanionHandlers } from "./meetingCompanionWindow.js";
@@ -198,6 +199,7 @@ function runGeminiFile(request: Parameters<typeof transcribeGeminiFile>[0]) {
 export class IPCHandlers {
   environmentManager: EnvironmentManagerWithByok;
   databaseManager: DatabaseManager;
+  readonly noteWrites: NoteWriteService;
   whisperManager: WhisperManager;
   parakeetManager: ParakeetManager;
   diarizationManager: DiarizationManager;
@@ -274,6 +276,12 @@ export class IPCHandlers {
         error: error instanceof Error ? error.message : String(error),
       }, "meeting");
     }
+    this.noteWrites = new NoteWriteService({
+      database: this.databaseManager,
+      mirrorWrite: (note) => this._asyncMirrorWrite(note),
+      refreshMeetingSpeakerConfigFromNote: (noteId, note) =>
+        this._meetingCoordinator?.refreshMeetingSpeakerConfigFromNote(noteId, note),
+    });
     this._setupRetentionCleanup();
     this.setupHandlers();
   }
@@ -432,10 +440,16 @@ export class IPCHandlers {
       return;
     }
     setImmediate(() => {
-      const folderName = this._getFolderName(note.folder_id);
-      markdownMirror.writeNote(note, folderName);
-      if (note.transcript) {
-        markdownMirror.writeTranscript(note, folderName, this._buildSpeakerMappings(note.id));
+      try {
+        const folderName = this._getFolderName(note.folder_id);
+        markdownMirror.writeNote(note, folderName);
+        if (note.transcript) {
+          markdownMirror.writeTranscript(note, folderName, this._buildSpeakerMappings(note.id));
+        }
+      } catch (error) {
+        debugLogger.error("Note mirror failed after commit", {
+          noteId: note.id, error: error instanceof Error ? error.message : String(error),
+        }, "note-files");
       }
     });
   }
@@ -1037,21 +1051,11 @@ export class IPCHandlers {
     // Notes DB channels live in the typed module; pass only what they need.
     const noteReader = new NoteReadService(this.databaseManager, this.audioStorageManager.meetingRecordings);
     registerNotesHandlers(ipcMain, {
-      saveNote: (title, content, noteType, sourceFile, audioDuration, folderId, spaceId) =>
-        this.databaseManager.saveNote(
-          title,
-          content,
-          noteType,
-          sourceFile,
-          audioDuration,
-          folderId,
-          spaceId
-        ),
+      noteWrites: this.noteWrites,
       getNote: (id) => this.databaseManager.getNote(id),
       getNotes: (noteType, limit, folderId, spaceId) =>
         this.databaseManager.getNotes(noteType, limit, folderId, spaceId),
       getNotesForSpace: (spaceId, limit) => this.databaseManager.getNotesForSpace(spaceId, limit),
-      updateNote: (id, updates) => this.databaseManager.updateNote(id, updates),
       deleteNoteInternal: (id) => this.deleteNoteInternal(id),
       searchNotes: (query, limit, spaceId, folderId) =>
         this.databaseManager.searchNotes(query, limit, spaceId, folderId),
@@ -1066,10 +1070,6 @@ export class IPCHandlers {
           return note && (spaceId === null || note.space_id === spaceId) ? [{ note, matches: hit.matches }] : [];
         }),
       getNoteTranscript: (noteId) => noteReader.transcript(noteId),
-      asyncMirrorWrite: (note) => this._asyncMirrorWrite(note),
-      tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
-      refreshMeetingSpeakerConfigFromNote: (noteId, note) =>
-        this._meetingCoordinator?.refreshMeetingSpeakerConfigFromNote(noteId, note),
     });
 
     // Container (folders/spaces) channels live in the typed module.

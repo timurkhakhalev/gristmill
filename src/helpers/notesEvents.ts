@@ -1,5 +1,5 @@
 // The single sender for the three Notes events. Every producer — the typed
-// handlers in notesIpcHandlers.ts, the CLI bridge, meeting detection and
+// editable-Note service, meeting detection, processing and
 // deleteNoteInternal — goes through here so a malformed payload from JS-land
 // is dropped and diagnosed instead of reaching renderers.
 //

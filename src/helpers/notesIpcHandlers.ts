@@ -1,16 +1,11 @@
-// The seven Notes DB channels, moved out of ipcHandlers.js. Registration order,
-// positional arguments, return shapes and side effects match the previous JS
-// implementations; SQL stays in DatabaseManager. Arguments are accepted as
-// unknown, validated with the shared tuple schemas, and only the typed
-// result reaches the DB deps; DB rows come back as unknown and are validated
-// before use.
+// Notes IPC validates transport arguments. NoteWriteService owns committed
+// edits and their effects; DatabaseManager owns reads and SQL.
 import type { ZodType } from "zod";
 import {
   deleteNoteArgsSchema,
   getNoteArgsSchema,
   getNotesArgsSchema,
   getSpaceNotesArgsSchema,
-  noteMutationResultSchema,
   noteDeleteResultSchema,
   noteOrNullResultSchema,
   noteListResultSchema,
@@ -20,22 +15,12 @@ import {
   transcriptSearchHitSchema,
   updateNoteArgsSchema,
   type NoteItem,
-  type NoteMutationResult,
-  type NoteUpdate,
 } from "../contracts/notes.js";
-import { sendNoteAdded, sendNoteUpdated } from "./notesEvents.js";
+import type { NoteWriteService } from "./noteWriteService.js";
 import { noteTranscriptSchema } from "../contracts/noteRead.js";
 
 export interface NotesHandlerDeps {
-  saveNote: (
-    title: string,
-    content: string,
-    noteType: string | undefined,
-    sourceFile: string | null,
-    audioDuration: number | null,
-    folderId: number | null,
-    spaceId: number | null
-  ) => unknown;
+  noteWrites: Pick<NoteWriteService, "saveNote" | "updateNote">;
   getNote: (id: number) => unknown;
   getNotes: (
     noteType: string | null | undefined,
@@ -44,7 +29,6 @@ export interface NotesHandlerDeps {
     spaceId: number | null
   ) => unknown;
   getNotesForSpace: (spaceId: number, limit: number | undefined) => unknown;
-  updateNote: (id: number, updates: NoteUpdate) => unknown;
   deleteNoteInternal: (id: number) => unknown;
   searchNotes: (
     query: string,
@@ -55,9 +39,6 @@ export interface NotesHandlerDeps {
   searchNoteContent: (query: string, spaceId: number | null) => unknown;
   searchNoteTranscripts: (query: string, spaceId: number | null) => unknown;
   getNoteTranscript: (noteId: number) => unknown;
-  asyncMirrorWrite: (note: NoteItem) => void;
-  tryAutoLabelOneOnOne: (noteId: number) => void;
-  refreshMeetingSpeakerConfigFromNote: (noteId: number, note: NoteItem) => void;
 }
 
 // Throw before the DB is touched when the renderer sent a wrong-shaped call.
@@ -69,16 +50,7 @@ function parseArgs<T>(schema: ZodType<T>, args: unknown): T {
   return result.data;
 }
 
-// DB rows and mutation results come from untyped JS. Validate before use so a
-// shape drift surfaces as a validation error, not a silently-typed lie.
-function parseNoteResult(raw: unknown): NoteMutationResult {
-  const result = noteMutationResultSchema.safeParse(raw);
-  if (!result.success) {
-    throw new Error("DatabaseManager returned an unexpected note mutation result");
-  }
-  return result.data;
-}
-
+// Validate untyped read results before returning them to the renderer.
 function parseNoteList(raw: unknown): NoteItem[] {
   const result = noteListResultSchema.safeParse(raw);
   if (!result.success) {
@@ -108,22 +80,10 @@ export function registerNotesHandlers(
         saveNoteArgsSchema,
         args
       );
-      const result = parseNoteResult(
-        deps.saveNote(
-          title,
-          content,
-          noteType,
-          sourceFile ?? null,
-          audioDuration ?? null,
-          folderId ?? null,
-          spaceId ?? null
-        )
+      return deps.noteWrites.saveNote(
+        title, content, noteType, sourceFile ?? null, audioDuration ?? null,
+        folderId ?? null, spaceId ?? null
       );
-      if (result.success) {
-        setImmediate(() => sendNoteAdded(result.note));
-        deps.asyncMirrorWrite(result.note);
-      }
-      return result;
     }
   );
 
@@ -144,19 +104,7 @@ export function registerNotesHandlers(
 
   ipcMain.handle("db-update-note", async (_event, ...args: unknown[]) => {
     const [id, whitelistedUpdates] = parseArgs(updateNoteArgsSchema, args);
-    const updates: NoteUpdate = whitelistedUpdates;
-    const result = parseNoteResult(deps.updateNote(id, updates));
-    if (result.success) {
-      setImmediate(() => sendNoteUpdated(result.note));
-      deps.asyncMirrorWrite(result.note);
-      // "[]" is truthy in JS-land and used to trigger the speaker callbacks;
-      // keep that exact condition.
-      if (updates.participants) {
-        deps.tryAutoLabelOneOnOne(id);
-        deps.refreshMeetingSpeakerConfigFromNote(id, result.note);
-      }
-    }
-    return result;
+    return deps.noteWrites.updateNote(id, whitelistedUpdates);
   });
 
   ipcMain.handle("db-delete-note", async (_event, ...args: unknown[]) => {

@@ -18,6 +18,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
   return originalLoad.call(this, request, parent, isMain);
 };
 
+const { NoteWriteService } = require("../../src/helpers/noteWriteService.ts");
 const CliBridge = require("../../src/helpers/cliBridge.ts");
 
 Module._load = originalLoad;
@@ -65,16 +66,32 @@ function makeResponse(): {
   };
 }
 
+function noteRow(content = ""): import("../../src/contracts/notes.ts").NoteItem {
+  return {
+    id: 1, title: "T", content, note_type: "personal",
+    source_file: null, audio_duration_seconds: null,
+    created_at: "2026-10-04T00:00:00Z", updated_at: "2026-10-04T00:00:00Z",
+    enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null,
+    folder_id: null, folder_ids: [], space_id: 1, transcript: null,
+    calendar_event_id: null, participants: null, diarization_enabled: null, expected_speaker_count: null,
+  };
+}
+
+function noteWrites(saveNote: (title: string, content: string) => unknown) {
+  return new NoteWriteService({
+    database: { saveNote, updateNote: () => ({ success: false }) },
+    mirrorWrite: () => {}, refreshMeetingSpeakerConfigFromNote: () => {},
+  });
+}
+
 test("CLI request body limit counts UTF-8 bytes, not JavaScript characters", async () => {
   let saveCalls = 0;
   const bridge = new CliBridge({
-    databaseManager: {
-      saveNote() {
-        saveCalls += 1;
-        return { success: true, note: { id: 1 } };
-      },
-    },
-    mirrorWriteNote() {},
+    databaseManager: {},
+    noteWrites: noteWrites(() => {
+      saveCalls += 1;
+      return { success: true, note: noteRow() };
+    }),
   }, process.cwd());
   bridge.token = "test-token";
   bridge.port = 8200;
@@ -97,7 +114,7 @@ test("CLI request body limit counts UTF-8 bytes, not JavaScript characters", asy
 
 test("read token is rejected by the bridge before a write route runs", async () => {
   let writes = 0;
-  const bridge = new CliBridge({ databaseManager: { saveNote: () => { writes++; return { success: true, note: {} }; } } }, process.cwd());
+  const bridge = new CliBridge({ databaseManager: {}, noteWrites: noteWrites(() => { writes++; return { success: true, note: noteRow() }; }) }, process.cwd());
   bridge.token = "write-token";
   bridge.readToken = "read-token";
   bridge.port = 8200;
@@ -113,37 +130,11 @@ test("read token is rejected by the bridge before a write route runs", async () 
 test("multibyte content split across request chunks is preserved", async () => {
   let savedContent = null;
   const bridge = new CliBridge({
-    databaseManager: {
-      saveNote(_title: string, content: string) {
-        savedContent = content;
-        // The shape the Notes event sender validates before broadcasting.
-        return {
-          success: true,
-          note: {
-            id: 1,
-            title: "T",
-            content: "",
-            note_type: "personal",
-            source_file: null,
-            audio_duration_seconds: null,
-            created_at: "2026-09-14T00:00:00Z",
-            updated_at: "2026-09-14T00:00:00Z",
-            enhanced_content: null,
-            enhancement_prompt: null,
-            enhanced_at_content_hash: null,
-            folder_id: null,
-            folder_ids: [],
-            space_id: 1,
-            transcript: null,
-            calendar_event_id: null,
-            participants: null,
-            diarization_enabled: null,
-            expected_speaker_count: null,
-          },
-        };
-      },
-    },
-    mirrorWriteNote() {},
+    databaseManager: {},
+    noteWrites: noteWrites((_title, content) => {
+      savedContent = content;
+      return { success: true, note: noteRow(content) };
+    }),
   }, process.cwd());
   bridge.token = "test-token";
   bridge.port = 8200;
@@ -164,13 +155,11 @@ test("multibyte content split across request chunks is preserved", async () => {
 test("a JSON body exactly at the byte limit is accepted", async () => {
   let saveCalls = 0;
   const bridge = new CliBridge({
-    databaseManager: {
-      saveNote() {
-        saveCalls += 1;
-        return { success: true, note: { id: 1 } };
-      },
-    },
-    mirrorWriteNote() {},
+    databaseManager: {},
+    noteWrites: noteWrites(() => {
+      saveCalls += 1;
+      return { success: true, note: noteRow() };
+    }),
   }, process.cwd());
   bridge.token = "test-token";
   bridge.port = 8200;

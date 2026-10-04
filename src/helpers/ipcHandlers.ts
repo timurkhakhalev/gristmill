@@ -279,7 +279,6 @@ export class IPCHandlers {
     this.noteWrites = new NoteWriteService({
       database: this.databaseManager,
       mirrorWrite: (note) => this._asyncMirrorWrite(note),
-      tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
       refreshMeetingSpeakerConfigFromNote: (noteId, note) =>
         this._meetingCoordinator?.refreshMeetingSpeakerConfigFromNote(noteId, note),
     });

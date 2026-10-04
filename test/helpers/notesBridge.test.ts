@@ -130,7 +130,6 @@ async function createFixture(t: import("node:test").TestContext) {
       noteWrites: new NoteWriteService({
         database: db,
         mirrorWrite: () => {},
-        tryAutoLabelOneOnOne: () => {},
         refreshMeetingSpeakerConfigFromNote: () => {},
       }),
       getNote: (id) => db.getNote(id),

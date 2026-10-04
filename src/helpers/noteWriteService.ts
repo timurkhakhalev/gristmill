@@ -17,7 +17,6 @@ export interface NoteWriteDeps {
     updateNote(id: number, updates: NoteUpdate): unknown;
   };
   mirrorWrite(note: NoteItem): void;
-  tryAutoLabelOneOnOne(noteId: number): void;
   refreshMeetingSpeakerConfigFromNote(noteId: number, note: NoteItem): void;
 }
 
@@ -42,10 +41,9 @@ export class NoteWriteService {
     const result = this.parseResult(this.deps.database.updateNote(id, updates));
     if (!result.success) return result;
     this.publish(result.note, sendNoteUpdated);
-    // A manual participant edit uses the existing UI policy: "[]" triggers
-    // callbacks; null and "" only update the stored value and projections.
+    // Participant edits refresh capture configuration. Speaker names belong
+    // to processing-run corrections, not generic Note edits.
     if (updates.participants) {
-      this.afterCommit("participant auto-label", id, () => this.deps.tryAutoLabelOneOnOne(id));
       this.afterCommit("speaker configuration", id, () =>
         this.deps.refreshMeetingSpeakerConfigFromNote(id, result.note));
     }

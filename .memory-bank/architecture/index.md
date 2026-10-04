@@ -13,5 +13,6 @@ The decisions and their reasons are in the [ADRs](../adr/index.md).
 - [companion-telemost.md](companion-telemost.md) — Telemost adapter: DOM markers, Leave, limits.
 - [bb-integration.md](bb-integration.md) — bb route: harness selection, runtime contract, thread binding, JSON repair, CLI update.
 - [note-writes.md](note-writes.md) — editable Note write effects, participant edits and separate calendar, processing and deletion policies.
+- [renderer-boundary.md](renderer-boundary.md) — renderer import restrictions, permitted shared helpers and selected runtime graph checks.
 
 Read in this sequence: overview → recording-processing → post-stop-processing → the document for your task.

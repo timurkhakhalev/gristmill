@@ -3393,18 +3393,21 @@ export class DatabaseManager {
     expires_at: number;
     scope: string;
   }): { success: boolean } {
-    this.sql
-      .prepare(
-        "INSERT INTO google_calendar_tokens (google_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?) ON CONFLICT(google_email) DO UPDATE SET access_token = excluded.access_token, refresh_token = excluded.refresh_token, expires_at = excluded.expires_at, scope = excluded.scope, updated_at = CURRENT_TIMESTAMP"
-      )
-      .run(
-        tokens.google_email,
-        encryptCalendarToken(tokens.access_token),
-        encryptCalendarToken(tokens.refresh_token),
-        tokens.expires_at,
-        tokens.scope
-      );
+    const accessToken = encryptCalendarToken(tokens.access_token);
+    const refreshToken = encryptCalendarToken(tokens.refresh_token);
+    this.sql.transaction(() => {
+      this.sql.prepare("DELETE FROM google_calendar_tokens WHERE google_email = ?").run(tokens.google_email);
+      this.sql.prepare(
+        "INSERT INTO google_calendar_tokens (google_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?)"
+      ).run(tokens.google_email, accessToken, refreshToken, tokens.expires_at, tokens.scope);
+    })();
     return { success: true };
+  }
+  refreshGoogleTokens(accountId: number, tokens: Pick<GoogleTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">): { success: boolean } {
+    const result = this.sql.prepare(
+      "UPDATE google_calendar_tokens SET access_token = ?, refresh_token = ?, expires_at = ?, scope = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).run(encryptCalendarToken(tokens.access_token), encryptCalendarToken(tokens.refresh_token), tokens.expires_at, tokens.scope, accountId);
+    return { success: result.changes === 1 };
   }
   getGoogleTokens(): GoogleTokenRow | null {
     return this.getAllGoogleTokens()[0] ?? null;
@@ -3487,18 +3490,21 @@ export class DatabaseManager {
     expires_at: number;
     scope: string;
   }): { success: boolean } {
-    this.sql
-      .prepare(
-        "INSERT INTO microsoft_calendar_tokens (microsoft_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?) ON CONFLICT(microsoft_email) DO UPDATE SET access_token = excluded.access_token, refresh_token = excluded.refresh_token, expires_at = excluded.expires_at, scope = excluded.scope, updated_at = CURRENT_TIMESTAMP"
-      )
-      .run(
-        tokens.microsoft_email,
-        encryptCalendarToken(tokens.access_token),
-        encryptCalendarToken(tokens.refresh_token),
-        tokens.expires_at,
-        tokens.scope
-      );
+    const accessToken = encryptCalendarToken(tokens.access_token);
+    const refreshToken = encryptCalendarToken(tokens.refresh_token);
+    this.sql.transaction(() => {
+      this.sql.prepare("DELETE FROM microsoft_calendar_tokens WHERE microsoft_email = ?").run(tokens.microsoft_email);
+      this.sql.prepare(
+        "INSERT INTO microsoft_calendar_tokens (microsoft_email, access_token, refresh_token, expires_at, scope) VALUES (?, ?, ?, ?, ?)"
+      ).run(tokens.microsoft_email, accessToken, refreshToken, tokens.expires_at, tokens.scope);
+    })();
     return { success: true };
+  }
+  refreshMicrosoftTokens(accountId: number, tokens: Pick<MicrosoftTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">): { success: boolean } {
+    const result = this.sql.prepare(
+      "UPDATE microsoft_calendar_tokens SET access_token = ?, refresh_token = ?, expires_at = ?, scope = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).run(encryptCalendarToken(tokens.access_token), encryptCalendarToken(tokens.refresh_token), tokens.expires_at, tokens.scope, accountId);
+    return { success: result.changes === 1 };
   }
   getMicrosoftTokensByEmail(email: string): MicrosoftTokenRow | null {
     const row = this.sql

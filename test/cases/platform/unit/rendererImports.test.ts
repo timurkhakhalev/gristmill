@@ -96,6 +96,24 @@ test("static imports, re-exports and aliases cannot reach Node or main implement
     ["no-restricted-imports"]
   );
   assert.deepEqual(await messages('export { resolveChatRoute } from "@/helpers/chatRouting";'), []);
+  for (const specifier of [
+    "./localReasoningBridge",
+    "./localReasoningBridge.js",
+    "@/services/localReasoningBridge",
+  ]) {
+    assert.deepEqual(
+      (await messages(`import "${specifier}";`, "services/Probe.ts")).map((error) => error.ruleId),
+      ["no-restricted-imports"],
+      specifier
+    );
+    assert.deepEqual(
+      (
+        await messages(`export const load = () => import("${specifier}");`, "services/Probe.ts")
+      ).map((error) => error.ruleId),
+      ["no-restricted-syntax"],
+      specifier
+    );
+  }
 });
 
 test("literal dynamic imports and Node globals cannot bypass the renderer boundary", async () => {

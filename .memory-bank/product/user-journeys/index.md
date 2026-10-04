@@ -15,7 +15,7 @@ The checks are review scenarios, not evidence that a runtime test passed.
 - [speakers.md](speakers.md) — corrections and stale Summary.
 - [dictionary-snippets.md](dictionary-snippets.md) — vocabulary and reusable text.
 - [calendars.md](calendars.md) — connections and reminders.
-- [note-files.md](note-files.md) — partial Markdown mirror integration.
+- [note-files.md](note-files.md) — Markdown mirror activation and local files.
 - [local-api.md](local-api.md) — CLI and internal write bridge.
 - [providers.md](providers.md) — task-specific processing routes.
 

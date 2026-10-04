@@ -84,7 +84,7 @@ export function registerNoteFilesHandlers(
       }
       const [enabled, customPath, options] = parsed.data;
       try {
-        deps.setNoteFilesEnabled(enabled);
+        deps.setNoteFilesEnabled(false);
         if (!enabled) return { success: true };
         const basePath = customPath || deps.getDefaultNotesPath();
         if (options?.skipRebuild) {
@@ -92,8 +92,10 @@ export function registerNoteFilesHandlers(
         } else {
           deps.rebuildMirror(basePath);
         }
+        deps.setNoteFilesEnabled(true);
         return { success: true };
       } catch (error) {
+        deps.setNoteFilesEnabled(false);
         deps.logError("Failed to set note-files enabled", { error: (error as Error).message }, "note-files");
         return { success: false, error: (error as Error).message };
       }
@@ -112,6 +114,7 @@ export function registerNoteFilesHandlers(
         deps.rebuildMirror(parsed.data[0]);
         return { success: true };
       } catch (error) {
+        deps.setNoteFilesEnabled(false);
         deps.logError("Failed to set note-files path", { error: (error as Error).message }, "note-files");
         return { success: false, error: (error as Error).message };
       }
@@ -124,6 +127,7 @@ export function registerNoteFilesHandlers(
       deps.rebuildMirror();
       return { success: true };
     } catch (error) {
+      deps.setNoteFilesEnabled(false);
       deps.logError("Failed to rebuild note files", { error: (error as Error).message }, "note-files");
       return { success: false, error: (error as Error).message };
     }

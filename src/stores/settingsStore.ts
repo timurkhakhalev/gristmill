@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { NoteFilesCommandResult } from "../contracts/noteFiles";
 import { API_ENDPOINTS } from "../config/constants.mts";
 import i18n, { normalizeUiLanguage } from "../i18n";
 import { ensureAgentNameInDictionary } from "../utils/agentName";
@@ -784,6 +785,8 @@ export interface SettingsState
   keepTranscriptionInClipboard: boolean;
   noteFilesEnabled: boolean;
   noteFilesPath: string;
+  noteFilesUpdating: boolean;
+  noteFilesError: string | null;
 
   transcriptionMode: InferenceMode;
   remoteTranscriptionType: SelfHostedType;
@@ -1021,8 +1024,8 @@ export interface SettingsState
   setPanelStartPosition: (position: "bottom-right" | "center" | "bottom-left") => void;
   setAutoPasteEnabled: (value: boolean) => void;
   setKeepTranscriptionInClipboard: (value: boolean) => void;
-  setNoteFilesEnabled: (value: boolean) => void;
-  setNoteFilesPath: (value: string) => void;
+  setNoteFilesEnabled: (value: boolean) => Promise<NoteFilesCommandResult>;
+  setNoteFilesPath: (value: string) => Promise<NoteFilesCommandResult>;
   setIsSignedIn: (value: boolean) => void;
 
   setChatAgentModel: (value: string) => void;
@@ -1439,7 +1442,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   })(),
   autoPasteEnabled: readBoolean("autoPasteEnabled", true),
   keepTranscriptionInClipboard: readBoolean("keepTranscriptionInClipboard", false),
-  noteFilesEnabled: readBoolean("noteFilesEnabled", false),
+  noteFilesEnabled: false,
+  noteFilesUpdating: false,
+  noteFilesError: null,
   noteFilesPath: readString("noteFilesPath", ""),
   isSignedIn: readBoolean("isSignedIn", false),
 
@@ -2068,8 +2073,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   setAutoPasteEnabled: createBooleanSetter("autoPasteEnabled"),
   setKeepTranscriptionInClipboard: createBooleanSetter("keepTranscriptionInClipboard"),
-  setNoteFilesEnabled: createBooleanSetter("noteFilesEnabled"),
-  setNoteFilesPath: createStringSetter("noteFilesPath"),
+  setNoteFilesEnabled: (enabled) => applyNoteFilesConfiguration({ enabled }),
+  setNoteFilesPath: (path) => applyNoteFilesConfiguration({ path }),
 
   setIsSignedIn: (value: boolean) => {
     if (isBrowser) localStorage.setItem("isSignedIn", String(value));
@@ -2374,6 +2379,41 @@ export function getEffectiveCleanupModel() {
   return selectResolvedLLMConfig(getSettings(), "cleanup").model;
 }
 
+// One store owner serializes hydration and edits. Only confirmed configurations
+// become effective; a failed activation leaves the persisted choice for retry.
+let noteFilesQueue: Promise<unknown> = Promise.resolve();
+let noteFilesPending = 0;
+
+function applyNoteFilesConfiguration(change: { enabled?: boolean; path?: string }): Promise<NoteFilesCommandResult> {
+  noteFilesPending++;
+  useSettingsStore.setState({ noteFilesUpdating: true });
+  const operation = noteFilesQueue.then(async (): Promise<NoteFilesCommandResult> => {
+    const state = useSettingsStore.getState();
+    const enabled = change.enabled ?? state.noteFilesEnabled;
+    const path = change.path ?? state.noteFilesPath;
+    try {
+      if (!isBrowser || !window.electronAPI?.noteFilesSetEnabled) {
+        throw new Error("Note files bridge unavailable");
+      }
+      const result = await window.electronAPI.noteFilesSetEnabled(enabled, path);
+      if (!result.success) throw new Error(result.error || "Failed to configure note files");
+      localStorage.setItem("noteFilesEnabled", String(enabled));
+      localStorage.setItem("noteFilesPath", path);
+      useSettingsStore.setState({ noteFilesEnabled: enabled, noteFilesPath: path, noteFilesError: null });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      useSettingsStore.setState({ noteFilesEnabled: false, noteFilesError: message });
+      return { success: false, error: message };
+    } finally {
+      noteFilesPending--;
+      useSettingsStore.setState({ noteFilesUpdating: noteFilesPending > 0 });
+    }
+  });
+  noteFilesQueue = operation;
+  return operation;
+}
+
 // --- Initialization ---
 
 // Hydrate scope custom keys from the secure store. The stale-secret sweep
@@ -2392,6 +2432,7 @@ export async function initializeSettings(): Promise<void> {
     localStorage.removeItem(key);
   }
 
+  await applyNoteFilesConfiguration({ enabled: readBoolean("noteFilesEnabled", false), path: readString("noteFilesPath", "") });
   const state = useSettingsStore.getState();
 
   if (window.electronAPI) {

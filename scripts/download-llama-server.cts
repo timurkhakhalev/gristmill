@@ -70,7 +70,16 @@ async function downloadBinary(
   const requiredLibs = config.libPattern
     ? findLibrariesInDir(BIN_DIR, config.libPattern, { maxDepth: 1 })
     : [];
-  const complete = fs.existsSync(outputPath) && requiredLibs.length > 0;
+  // Executability is part of completeness: a truncated copy or a missed
+  // chmod from older revisions self-heals through a normal retry.
+  let executable = false;
+  try {
+    fs.accessSync(outputPath, fs.constants.X_OK);
+    executable = true;
+  } catch {
+    executable = false;
+  }
+  const complete = fs.existsSync(outputPath) && executable && requiredLibs.length > 0;
   if (complete && !isForce) {
     console.log(`  ${key}: Already exists (use --force to re-download)`);
     return true;
@@ -114,8 +123,16 @@ async function downloadBinary(
           console.log(`  ${key}: Published library ${libName}`);
         }
       }
-      fs.copyFileSync(binaryPath, outputPath);
-      setExecutable(outputPath);
+      // Copy + chmod in the staging directory, then a single rename: the
+      // commit is atomic, so a kill can never leave a truncated or
+      // non-executable binary at the published path (#160).
+      // Copy + chmod in the staging directory, then a single rename: the
+      // commit is atomic, so a kill can never leave a truncated or
+      // non-executable binary at the published path (#160).
+      const stagedBinary = path.join(extractDir, config.outputName);
+      fs.copyFileSync(binaryPath, stagedBinary);
+      setExecutable(stagedBinary);
+      fs.renameSync(stagedBinary, outputPath);
       console.log(`  ${key}: Installed to ${config.outputName}`);
     } else {
       console.error(`  ${key}: Binary '${binaryName}' not found in archive`);
@@ -161,6 +178,12 @@ async function main() {
     const allInstalled = entries.every(([, config]) => {
       const outputPath = path.join(BIN_DIR, config.outputName);
       if (!fs.existsSync(outputPath)) return false;
+      // Executability self-heals kits left by older revisions (#160).
+      try {
+        fs.accessSync(outputPath, fs.constants.X_OK);
+      } catch {
+        return false;
+      }
       const libs = config.libPattern
         ? findLibrariesInDir(BIN_DIR, config.libPattern, { maxDepth: 1 })
         : [outputPath];

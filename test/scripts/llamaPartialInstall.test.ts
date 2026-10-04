@@ -280,3 +280,87 @@ test("staging-directory libraries never satisfy the skip check", async (t) => {
   assert.equal(fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8"), "fresh-binary", "the kit was repaired");
   assert.equal(fs.existsSync(path.join(binDir, "libggml.dylib")), true, "the libraries were installed at the top level");
 });
+
+// R160-3: executability is part of completeness. A truncated binary with full
+// libraries (killed mid non-atomic copy) and a non-executable binary with full
+// libraries (missed chmod from an older revision) both used to read as
+// complete; the skip check must report them incomplete and the retry must
+// repair them.
+async function seedAndRepair(t: import("node:test").TestContext, seedBinary: (outputPath: string) => void) {
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "llama-execheck-"));
+  t.after(() => fs.rmSync(binDir, { recursive: true, force: true }));
+  seedBinary(path.join(binDir, OUTPUT_NAME));
+  fs.writeFileSync(path.join(binDir, "libggml.dylib"), "lib");
+
+  const vmModule: { exports: unknown } = { exports: {} };
+  const lines: string[] = [];
+  const injectedRequire = (name: string) => {
+    if (name === "./lib/download-utils.cts") {
+      return {
+        copyLibraries: (extractDir: string, destDir: string) => {
+          fs.copyFileSync(path.join(extractDir, "libggml.dylib"), path.join(destDir, "libggml.dylib"));
+          return ["libggml.dylib"];
+        },
+        downloadFile: async (url: string, file: string) => {
+          fs.writeFileSync(file, "fake-archive");
+        },
+        extractArchive: async (zip: string, extractDir: string) => {
+          fs.mkdirSync(path.join(extractDir, "build", "bin"), { recursive: true });
+          fs.writeFileSync(path.join(extractDir, "build", "bin", "llama-server"), "fresh-binary");
+          fs.writeFileSync(path.join(extractDir, "libggml.dylib"), "fresh-lib");
+        },
+        fetchLatestRelease: async () => ({
+          tag: "b-test",
+          assets: [{ name: "llama-b-test-bin-macos-arm64.tar.gz", url: "https://example.invalid/llama.tar.gz" }],
+        }),
+        findBinaryInDir: () => null,
+        findLibrariesInDir: (dir: string) =>
+          fs.existsSync(dir)
+            ? fs.readdirSync(dir).filter((f: string) => f.endsWith(".dylib")).map((f: string) => path.join(dir, f))
+            : [],
+        matchesPattern: () => true,
+        parseArgs: () => ({ isCurrent: true, platformArch: "darwin-arm64", isForce: false, shouldCleanup: false }),
+        setExecutable: () => {},
+        cleanupFiles: () => {},
+      };
+    }
+    return require(name);
+  };
+  (injectedRequire as unknown as { main: unknown }).main = vmModule;
+  vm.runInNewContext(stripTypeScriptTypes(fs.readFileSync(SCRIPT, "utf8")), {
+    module: vmModule,
+    require: injectedRequire,
+    console: {
+      log: (line: string) => { lines.push(line); },
+      error: (line: string) => { lines.push(line); },
+    },
+    process: { ...process, env: { ...process.env, GRISTMILL_LOCAL_BIN_DIR: binDir }, exitCode: 0 },
+    __dirname: path.dirname(SCRIPT),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  return {
+    repaired: () => lines.some((line) => line.includes("Installed to")),
+    skipped: () => lines.some((line) => line.includes("Already exists")),
+    content: () => fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8"),
+  };
+}
+
+test("a truncated binary with full libraries is incomplete; the retry repairs it", async (t) => {
+  const run = await seedAndRepair(t, (outputPath) => {
+    fs.writeFileSync(outputPath, "trunc"); // killed mid-copy
+  });
+
+  assert.equal(run.skipped(), false, "the truncated kit did not satisfy the skip check");
+  assert.equal(run.repaired(), true, "the retry republished the binary");
+  assert.equal(run.content(), "fresh-binary");
+});
+
+test("a non-executable binary with full libraries is incomplete; the retry repairs it", async (t) => {
+  const run = await seedAndRepair(t, (outputPath) => {
+    fs.writeFileSync(outputPath, "stale-binary"); // chmod missed: defaults non-executable
+  });
+
+  assert.equal(run.skipped(), false, "the non-executable kit did not satisfy the skip check");
+  assert.equal(run.repaired(), true, "the retry republished the binary");
+  assert.equal(run.content(), "fresh-binary");
+});

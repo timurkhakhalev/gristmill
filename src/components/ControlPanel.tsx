@@ -18,6 +18,7 @@ import {
   initializeNotes,
   initializeNotesTree,
   navigateToContainer,
+  openNoteRow,
   setActiveFolderId,
   setActiveNoteId,
   useActiveContext,
@@ -155,7 +156,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
       const data = await window.electronAPI?.getPendingMeetingNoteNavigation?.();
       if (!data) return;
       setActiveFolderId(data.folderId);
-      setActiveNoteId(data.noteId);
+      // The pending note may sit outside the container caches (#185).
+      void openNoteRow({ id: data.noteId } as NoteItem);
       setActiveView("personal-notes");
       setMeetingRecordingRequest({ noteId: data.noteId, folderId: data.folderId, event: data.event });
       initializeNotes(null, 50, data.folderId);
@@ -180,7 +182,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
         setActiveFolderId(data.folderId);
         initializeNotes(null, 50, data.folderId);
       }
-      setActiveNoteId(data.noteId);
+      // The pending note may sit outside the container caches (#185).
+      void openNoteRow({ id: data.noteId } as NoteItem);
       setActiveView("personal-notes");
     };
     void drainNote();
@@ -209,7 +212,9 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const openNote = useCallback((note: NoteItem) => {
     if (note.folder_id != null) setActiveFolderId(note.folder_id);
     else navigateToContainer(note.space_id, null);
-    setActiveNoteId(note.id);
+    // Hold the full row: search/chat results can sit outside the newest-50
+    // container caches, and the editor needs the row, not just the id (#185).
+    void openNoteRow(note);
     setActiveView("personal-notes");
   }, []);
 
@@ -428,7 +433,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   onReturnToNote={() => {
                     setActiveView("personal-notes");
                     setActiveFolderId(recordingFolderId);
-                    setActiveNoteId(recordingNoteId);
+                    // The recording note may sit outside the caches (#185).
+                    void openNoteRow({ id: recordingNoteId } as NoteItem);
                   }}
                 />
               }
@@ -481,7 +487,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                 <Suspense fallback={null}>
                   <UploadAudioView
                     onNoteCreated={(noteId, folderId) => {
-                      setActiveNoteId(noteId);
+                      // The fresh row may land in an unloaded container (#185).
+                      void openNoteRow({ id: noteId } as NoteItem);
                       if (folderId != null) setActiveFolderId(folderId);
                       setActiveView("personal-notes");
                     }}
@@ -500,7 +507,9 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           onNoteSelect={(id, folderId, spaceId) => {
             if (folderId != null) setActiveFolderId(folderId);
             else if (spaceId != null) navigateToContainer(spaceId, null);
-            setActiveNoteId(id);
+            // Search can surface Notes past the container caches (#185): the
+            // row is held or fetched by id inside openNoteRow.
+            void openNoteRow({ id } as NoteItem);
             setActiveView("personal-notes");
           }}
           onContainerSelect={(spaceId, folderId) => {

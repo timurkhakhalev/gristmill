@@ -39,6 +39,7 @@ class FakeBrowserWindow extends EventEmitter {
       send: (channel: string, payload: unknown) => this.messages.push({ channel, payload }),
       setWindowOpenHandler() {},
       isCrashed: () => false,
+      isLoading: () => false,
     });
     createdWindows.push(this);
   }

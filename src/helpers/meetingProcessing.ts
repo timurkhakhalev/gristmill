@@ -341,7 +341,8 @@ export class MeetingProcessingWorker {
   async cancelRecordingForDeletion(recordingId: string): Promise<void> {
     const runs = this.deps.database.listAllMeetingProcessingRuns().filter((run) =>
       run.sourceRecordingIds.includes(recordingId) && (run.stage === "prepare" || run.stage === "asr" ||
-        (run.stage === "normalize" && run.config?.transcription.mode === "local")));
+        (run.stage === "normalize" && (run.config?.transcription.mode === "local" ||
+          (this.active?.runId === run.id && this.deps.recognizeSpeakers !== undefined)))));
     await this.cancelRunsForDeletion(runs, "audio-deletion-requested");
   }
 

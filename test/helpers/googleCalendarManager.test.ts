@@ -83,6 +83,7 @@ test("_syncCalendar fetches all pages when nextPageToken is returned", async () 
   const prunedEventsMap: unknown[] = [];
 
   const databaseManager = {
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     removeStaleCalendarEvents: (provider: string, calendarId: string, keptIds: string[]) => {
       prunedEventsMap.push({ provider, calendarId, keptIds });
@@ -163,6 +164,7 @@ test("_syncCalendar preserves incremental sync parameters across pages", async (
   const GoogleCalendarManager = loadManagerModule();
 
   const databaseManager = {
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     removeStaleCalendarEvents: () => {},
     upsertCalendarEvents: () => {},
@@ -206,6 +208,7 @@ test("_syncCalendar discards an expired sync token and re-runs a full window syn
 
   let savedToken = null;
   const databaseManager = {
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     removeStaleCalendarEvents: () => {},
     upsertCalendarEvents: () => {},
@@ -248,6 +251,7 @@ test("_syncCalendar keeps the stored expiry when an incremental sync reuses the 
 
   let savedToken = null;
   const databaseManager = {
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     removeStaleCalendarEvents: () => {},
     upsertCalendarEvents: () => {},
@@ -284,6 +288,7 @@ test("_syncCalendar keeps the stored expiry when an incremental sync reuses the 
 test("syncEvents reports a full failure when every calendar errors", async () => {
   const GoogleCalendarManager = loadManagerModule();
   const databaseManager = {
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     getSelectedCalendars: () => [
       { id: "cal-1", account_email: "a@x.io" },
@@ -317,6 +322,7 @@ test("syncEvents keeps successful updates and reports a partial outcome", async 
   const GoogleCalendarManager = loadManagerModule();
   const upsertedIds: string[] = [];
   const databaseManager = {
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     getSelectedCalendars: () => [
       { id: "cal-ok", account_email: "a@x.io" },
@@ -361,6 +367,7 @@ test("syncEvents keeps successful updates and reports a partial outcome", async 
 test("syncEvents reports a clean outcome when every calendar succeeds", async () => {
   const GoogleCalendarManager = loadManagerModule();
   const databaseManager = {
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     getSelectedCalendars: () => [{ id: "cal-1", account_email: "a@x.io" }],
     removeStaleCalendarEvents: () => {},
@@ -388,6 +395,7 @@ test("_syncCalendar preserves meeting links from Google event location and descr
 
   const upsertedEvents: import("../../src/helpers/database.js").CalendarEventInput[] = [];
   const databaseManager = {
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     removeStaleCalendarEvents: () => {},
     upsertCalendarEvents: (events: import("../../src/helpers/database.js").CalendarEventInput[]) => {

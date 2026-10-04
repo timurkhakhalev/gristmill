@@ -20,6 +20,7 @@ As a Gristmill user, I want to see meetings and receive recording prompts.
 - Reminders are scheduled one minute before events with attendees or a meeting link. They depend on notification settings and show a recording prompt, not automatic recording.
 - An active meeting suppresses prompts; recording/cooldown can queue them.
 - Calendar notes store event participants. Known local names can enrich them, but participants remain identity hints.
+- Disconnect invalidates pending token refresh, calendar-list and event-sync results. Reconnecting the same email creates a new connection identity; old results cannot change it.
 - Google/Microsoft normally refresh every two minutes with error backoff. Apple follows EventKit changes and periodic snapshots.
 
 ## What to check

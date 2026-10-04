@@ -31,6 +31,7 @@ export interface GoogleOAuthDb {
   getGoogleTokens(): GoogleTokenRow | null;
   getGoogleTokensByEmail(email: string): GoogleTokenRow | null;
   getAllGoogleTokens(): GoogleTokenRow[];
+  refreshGoogleTokens(accountId: number, tokens: Pick<GoogleTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">): { success: boolean };
   saveGoogleTokens(tokens: {
     google_email: string;
     access_token: string;
@@ -48,6 +49,7 @@ function isConfiguredError(): Error & { code: string } {
 
 export class GoogleCalendarOAuth {
   private readonly databaseManager: GoogleOAuthDb;
+  private readonly _refreshInFlight = new Map<number, Promise<string>>();
 
   constructor(databaseManager: GoogleOAuthDb) {
     this.databaseManager = databaseManager;
@@ -163,27 +165,26 @@ export class GoogleCalendarOAuth {
       throw new Error(`No Google tokens found${accountEmail ? ` for ${accountEmail}` : ""}`);
 
     const fiveMinutes = 5 * 60 * 1000;
-    if (tokens.expires_at - fiveMinutes < Date.now()) {
-      const refreshed = await this.refreshAccessToken(tokens.refresh_token);
-      if (refreshed.error) {
-        throw new Error(
-          `Token refresh failed: ${refreshed.error_description || refreshed.error}`
-        );
-      }
-
-      const newExpiresAt = Date.now() + (refreshed.expires_in ?? 0) * 1000;
-      this.databaseManager.saveGoogleTokens({
-        google_email: tokens.google_email,
-        access_token: refreshed.access_token as string,
-        refresh_token: tokens.refresh_token,
-        expires_at: newExpiresAt,
-        scope: tokens.scope,
-      });
-
-      return refreshed.access_token as string;
+    if (tokens.expires_at - fiveMinutes >= Date.now()) return tokens.access_token;
+    let pending = this._refreshInFlight.get(tokens.id);
+    if (!pending) {
+      pending = this._refreshAndSaveTokens(tokens).finally(() => this._refreshInFlight.delete(tokens.id));
+      this._refreshInFlight.set(tokens.id, pending);
     }
+    return pending;
+  }
 
-    return tokens.access_token;
+  private async _refreshAndSaveTokens(tokens: GoogleTokenRow): Promise<string> {
+    const refreshed = await this.refreshAccessToken(tokens.refresh_token);
+    if (refreshed.error) throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
+    const result = this.databaseManager.refreshGoogleTokens(tokens.id, {
+      access_token: refreshed.access_token as string,
+      refresh_token: refreshed.refresh_token || tokens.refresh_token,
+      expires_at: Date.now() + (refreshed.expires_in ?? 0) * 1000,
+      scope: refreshed.scope || tokens.scope,
+    });
+    if (!result.success) throw new Error("Google account changed during token refresh");
+    return refreshed.access_token as string;
   }
 
   async revokeToken(token: string): Promise<void> {

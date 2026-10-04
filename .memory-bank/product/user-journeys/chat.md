@@ -21,6 +21,10 @@ As a Gristmill user, I want to ask questions and work with saved notes.
 - BB uses its own tool route. A BB Note turn receives the current Note ID instead of the full renderer note context.
 - Normal turns use at most the last 20 messages. Follow-up uses an action turn without tools or prior conversation history and sends no external message.
 
+- Switching a conversation or starting New Chat cancels the active turn and rejects late history results. Replies never move into the newly opened conversation.
+- AI starts only after the user message is saved. A failed save leaves the text visible with a retry action. Failed assistant saves retain the generated answer; retry saves it without another AI request. Resolve a failed save before sending the next message.
+- Stop does not persist a partial assistant reply. Leaving the mounted chat can save the visible partial reply to its original conversation.
+
 ## What to check
 
 - Home and Note history have different scopes.

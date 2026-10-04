@@ -50,7 +50,10 @@ test("message sender reports whether the submission lock accepted the send", asy
   const persistence = {
     messages: [],
     setMessages() {},
-    async saveUserMessage() {},
+    getSession: () => ({generation:0,conversationId:null}),
+    isCurrent: () => true,
+    async saveUserMessage() {return true;},
+    async saveAssistantMessage() {return true;},
   };
   let sentOptions: { conversationId?: number } | undefined;
   const streaming = { async sendToAI(_text: string, _messages: unknown, options: { conversationId?: number }) { sentOptions = options; } };
@@ -58,7 +61,6 @@ test("message sender reports whether the submission lock accepted the send", asy
 
   function Harness() {
     sendMessage = useChatMessageSender({
-      conversationId: null,
       persistence,
       streaming,
       createConversation: async () => createConversation,
@@ -90,12 +92,14 @@ test("an action turn persists a normal Chat user message with one-turn options",
   const persistence = {
     messages: [previousMessage],
     setMessages() {},
-    async saveUserMessage(text: string) { saved.push(text); },
+    getSession: () => ({generation:0,conversationId:12}),
+    isCurrent: () => true,
+    async saveUserMessage(_session: unknown, message: {content:string}) { saved.push(message.content); return true; },
+    async saveAssistantMessage() {return true;},
   };
   let sendMessage: any;
   function Harness() {
     sendMessage = useChatMessageSender({
-      conversationId: 12,
       persistence,
       streaming: { async sendToAI(...args: unknown[]) { streamed.push(args); } },
       createConversation: async () => { throw new Error("an existing note conversation is reused"); },
@@ -113,5 +117,8 @@ test("an action turn persists a normal Chat user message with one-turn options",
     ["assistant", "old context"],
     ["user", "Draft a follow-up"],
   ]);
-  assert.deepEqual(streamed[0][2], { ...options, conversationId: 12 });
+  const sentOptions = streamed[0][2] as Record<string,unknown>;
+  assert.equal(typeof sentOptions.onComplete,"function");
+  const {onComplete:_completion,...rest}=sentOptions;
+  assert.deepEqual(rest, { ...options, conversationId: 12 });
 });

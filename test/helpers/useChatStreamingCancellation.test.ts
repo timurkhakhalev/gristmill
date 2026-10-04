@@ -115,7 +115,6 @@ async function renderChatStreaming(
     captured = useChatStreaming({
       messages,
       setMessages,
-      onStreamComplete,
       noteId,
       noteContext,
     });
@@ -140,7 +139,7 @@ async function renderChatStreaming(
 
   if (!captured) throw new Error("Chat streaming hook did not render");
   return {
-    captured: captured as ChatStreamingHandle,
+    captured: { ...(captured as ChatStreamingHandle), sendToAI: (text: string, history: import("../../src/components/chat/types.ts").Message[], options?: import("../../src/components/chat/useChatStreaming.ts").ChatSendOptions) => (captured as ChatStreamingHandle).sendToAI(text, history, {...options, onComplete: onStreamComplete}) },
     getMessages: () => messages,
     unmount,
   };

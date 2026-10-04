@@ -2213,6 +2213,8 @@
     },
     "chat": {
       "errorPrefix": "エラー",
+      "saveFailed": "メッセージを保存できませんでした。テキストは引き続き利用できます。",
+      "retrySave": "保存を再試行",
       "emptyResponse": "モデルから応答がありませんでした。"
     },
     "input": {

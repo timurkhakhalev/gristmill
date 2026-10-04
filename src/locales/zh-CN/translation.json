@@ -2213,6 +2213,8 @@
     },
     "chat": {
       "errorPrefix": "错误",
+      "saveFailed": "消息未保存。文本仍然可用。",
+      "retrySave": "重试保存",
       "emptyResponse": "模型没有返回任何回复。"
     },
     "input": {

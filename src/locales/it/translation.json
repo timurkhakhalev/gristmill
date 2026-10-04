@@ -2213,6 +2213,8 @@
     },
     "chat": {
       "errorPrefix": "Errore",
+      "saveFailed": "Il messaggio non è stato salvato. Il testo è ancora disponibile.",
+      "retrySave": "Riprova a salvare",
       "emptyResponse": "Il modello non ha restituito alcuna risposta."
     },
     "input": {

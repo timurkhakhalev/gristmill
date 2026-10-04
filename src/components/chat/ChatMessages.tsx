@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 import { useStickToBottom } from "../../hooks/useStickToBottom";
 import { ChatMessage } from "./ChatMessage";
@@ -7,9 +8,11 @@ interface ChatMessagesProps {
   messages: Message[];
   emptyState?: React.ReactNode;
   onOpenNote?: (noteId: number) => void;
+  onRetrySave?: (id: string) => Promise<void>;
 }
 
-export function ChatMessages({ messages, emptyState, onOpenNote }: ChatMessagesProps) {
+export function ChatMessages({ messages, emptyState, onOpenNote, onRetrySave }: ChatMessagesProps) {
+  const { t } = useTranslation();
   // Follow the stream only while the user is at the bottom; scrolling up to
   // re-read must not be yanked back down by the next token.
   const {
@@ -38,14 +41,30 @@ export function ChatMessages({ messages, emptyState, onOpenNote }: ChatMessagesP
           {messages
             .filter((msg) => msg.role !== "tool")
             .map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                role={msg.role as "user" | "assistant"}
-                content={msg.content}
-                isStreaming={msg.isStreaming}
-                toolCalls={msg.toolCalls}
-                onOpenNote={onOpenNote}
-              />
+              <div key={msg.id}>
+                <ChatMessage
+                  role={msg.role as "user" | "assistant"}
+                  content={msg.content}
+                  isStreaming={msg.isStreaming}
+                  toolCalls={msg.toolCalls}
+                  onOpenNote={onOpenNote}
+                />
+                {msg.persistenceError && (
+                  <div role="alert" className="mt-1 text-xs text-danger">
+                    <p>{t("agentMode.chat.saveFailed")}</p>
+                    {onRetrySave && (
+                      <button
+                        type="button"
+                        disabled={msg.isSaving}
+                        onClick={() => void onRetrySave(msg.id)}
+                        className="mt-1 underline disabled:opacity-50"
+                      >
+                        {t("agentMode.chat.retrySave")}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             ))}
         </div>
       )}

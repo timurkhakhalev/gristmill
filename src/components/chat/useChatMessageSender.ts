@@ -10,10 +10,9 @@ interface PersistedMessageContext {
 }
 
 interface UseChatMessageSenderOptions {
-  conversationId: number | null;
   persistence: ChatPersistence;
   streaming: Pick<ChatStreaming, "sendToAI">;
-  createConversation: (text: string) => Promise<number>;
+  createConversation: (text: string) => Promise<number | null>;
   onBeforeSend?: () => void;
   onMessagePersisted?: (context: PersistedMessageContext) => void | Promise<void>;
   onSendingChange?: (sending: boolean) => void;
@@ -41,7 +40,6 @@ export function createMessageSubmissionLock(): MessageSubmissionLock {
 }
 
 export function useChatMessageSender({
-  conversationId,
   persistence,
   streaming,
   createConversation,
@@ -49,18 +47,24 @@ export function useChatMessageSender({
   onMessagePersisted,
   onSendingChange,
 }: UseChatMessageSenderOptions): (text: string, sendOptions?: ChatSendOptions) => Promise<boolean> {
-  const submissionLockRef = useRef<MessageSubmissionLock | null>(null);
-  if (submissionLockRef.current === null) {
-    submissionLockRef.current = createMessageSubmissionLock();
-  }
+  const submissionLockRef = useRef<{
+    generation: number;
+    lock: MessageSubmissionLock;
+  } | null>(null);
 
   return useCallback(
     async (text: string, sendOptions?: ChatSendOptions) => {
-      return await submissionLockRef.current!.run(async () => {
+      const generation = persistence.getSession().generation;
+      if (submissionLockRef.current?.generation !== generation) {
+        submissionLockRef.current = { generation, lock: createMessageSubmissionLock() };
+      }
+      return await submissionLockRef.current.lock.run(async () => {
         onSendingChange?.(true);
         try {
           onBeforeSend?.();
-          const convId = conversationId ?? (await createConversation(text));
+          const session = persistence.getSession();
+          if (persistence.messages.some((message) => message.persistenceError || message.isSaving))
+            return;
           const previousMessages = persistence.messages;
           const userMessage: Message = {
             id: crypto.randomUUID(),
@@ -68,28 +72,48 @@ export function useChatMessageSender({
             content: text,
             isStreaming: false,
           };
-
           persistence.setMessages((messages) => [...messages, userMessage]);
-          await persistence.saveUserMessage(text);
-          await onMessagePersisted?.({
-            conversationId: convId,
-            text,
-            isFirstMessage: previousMessages.length === 0,
-          });
-          await streaming.sendToAI(text, [...previousMessages, userMessage], { ...sendOptions, conversationId: convId });
+          try {
+            const convId = session.conversationId ?? (await createConversation(text));
+            if (convId === null) return;
+            const destination = { ...session, conversationId: convId };
+            if (!persistence.isCurrent(destination)) return;
+            if (
+              !(await persistence.saveUserMessage(destination, userMessage)) ||
+              !persistence.isCurrent(destination)
+            )
+              return;
+            await onMessagePersisted?.({
+              conversationId: convId,
+              text,
+              isFirstMessage: previousMessages.length === 0,
+            });
+            if (!persistence.isCurrent(destination)) return;
+            await streaming.sendToAI(text, [...previousMessages, userMessage], {
+              ...sendOptions,
+              conversationId: convId,
+              onComplete: async (id, content, toolCalls) => {
+                await persistence.saveAssistantMessage(destination, id, content, toolCalls);
+              },
+            });
+          } catch (error) {
+            if (persistence.isCurrent(session))
+              persistence.setMessages((messages) =>
+                messages.map((message) =>
+                  message.id === userMessage.id
+                    ? {
+                        ...message,
+                        persistenceError: error instanceof Error ? error.message : String(error),
+                      }
+                    : message
+                )
+              );
+          }
         } finally {
           onSendingChange?.(false);
         }
       });
     },
-    [
-      conversationId,
-      createConversation,
-      onBeforeSend,
-      onMessagePersisted,
-      onSendingChange,
-      persistence,
-      streaming,
-    ]
+    [createConversation, onBeforeSend, onMessagePersisted, onSendingChange, persistence, streaming]
   );
 }

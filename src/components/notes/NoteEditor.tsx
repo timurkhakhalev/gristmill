@@ -656,6 +656,7 @@ export default function NoteEditor({
     agentState: embeddedChat.agentState,
     onTextSubmit: sendChatMessage,
     onCancel: debugPreview ? () => {} : embeddedChat.cancelStream,
+    onRetrySave: debugPreview ? undefined : embeddedChat.retrySaveMessage,
     conversations: debugPreview ? undefined : embeddedChat.noteConversations,
     activeConversationId: embeddedChat.activeConversationId,
     onSwitchConversation: debugPreview ? undefined : embeddedChat.switchConversation,

@@ -4,6 +4,7 @@ import MeetingNotificationOverlay from "./components/MeetingNotificationOverlay"
 import MeetingCompanion from "./components/MeetingCompanion";
 import { useTheme } from "./hooks/useTheme";
 import { useControlPanelWindowDrag } from "./hooks/useControlPanelWindowDrag";
+import { initializeNoteFiles } from "./stores/settingsStore";
 
 const ControlPanel = React.lazy(() => import("./components/ControlPanel"));
 const OnboardingFlow = React.lazy(() => import("./components/OnboardingFlow"));
@@ -26,6 +27,7 @@ export default function AppRouter() {
 
 function MainApp() {
   useControlPanelWindowDrag(true);
+  useEffect(() => { void initializeNoteFiles(); }, []);
   const [showOnboarding, setShowOnboarding] = useState(
     () => localStorage.getItem("onboardingCompleted") !== "true"
   );

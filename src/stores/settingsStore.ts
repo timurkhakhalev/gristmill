@@ -2383,6 +2383,17 @@ export function getEffectiveCleanupModel() {
 // become effective; a failed activation leaves the persisted choice for retry.
 let noteFilesQueue: Promise<unknown> = Promise.resolve();
 let noteFilesPending = 0;
+let noteFilesHydration: Promise<NoteFilesCommandResult> | null = null;
+
+// MainApp calls this; notification and Companion documents only hydrate
+// their common settings and never configure the main-owned mirror.
+export function initializeNoteFiles(): Promise<NoteFilesCommandResult> {
+  noteFilesHydration ??= applyNoteFilesConfiguration({
+    enabled: readBoolean("noteFilesEnabled", false),
+    path: readString("noteFilesPath", ""),
+  });
+  return noteFilesHydration;
+}
 
 function applyNoteFilesConfiguration(change: { enabled?: boolean; path?: string }): Promise<NoteFilesCommandResult> {
   noteFilesPending++;
@@ -2432,7 +2443,6 @@ export async function initializeSettings(): Promise<void> {
     localStorage.removeItem(key);
   }
 
-  await applyNoteFilesConfiguration({ enabled: readBoolean("noteFilesEnabled", false), path: readString("noteFilesPath", "") });
   const state = useSettingsStore.getState();
 
   if (window.electronAPI) {

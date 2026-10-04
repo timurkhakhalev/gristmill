@@ -11,13 +11,14 @@ As a Gristmill user, I want to inspect a local Markdown projection of notes.
 
 ## Behavior and limits
 
-- The settings store owns configuration. It serializes hydration and enabled/path changes through the note-files IPC bridge. Multiple settings hooks do not trigger multiple rebuilds.
+- The ControlPanel settings store owns configuration. MainApp triggers its hydration once; notification and Companion documents hydrate common settings without configuring the mirror. The store serializes enabled/path changes through the note-files IPC bridge.
 - Main becomes enabled only after directory initialization and rebuilding succeed. A failed activation leaves main disabled and the renderer reports the error. Only confirmed configuration changes persist. On restart, the last confirmed preference is applied again before it becomes effective.
 - Custom path selection and explicit rebuilding exist as IPC operations, without Settings controls. The store path setter applies the complete configuration through the same owner.
 - Default storage is the notes directory under Electron userData. A note uses a Markdown file with metadata and Summary or manual content; transcript is a separate file.
 - The mirror is a projection of SQLite, not two-way synchronization. Editing a mirror file does not edit a note.
 - The backend groups by folder name rather than space hierarchy. Equal folder names share a directory; root notes use Personal. Folder rename reprojects assigned notes rather than renaming a shared directory. Root notes remain in Personal when a real folder of that name changes or is deleted.
 - Disabling mirroring stops future operations, including queued writes, and keeps existing files.
+- Granola imports keep their committed counts if the mirror fails; their result includes a projection error.
 - Initialization and rebuild errors reach the caller. Unsafe descendant directories and file symlinks are rejected. Ordinary writes after a database commit remain best effort and log failures; they do not roll back SQLite.
 
 ## BDD acceptance criteria

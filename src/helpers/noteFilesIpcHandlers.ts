@@ -249,7 +249,17 @@ export function registerNoteFilesHandlers(
     if (!pending) return { success: false, error: "NO_PENDING_IMPORT" };
     try {
       const result = deps.importNotes(pending.notes);
-      if (result.imported > 0 && deps.isNoteFilesEnabled()) deps.rebuildMirror();
+      if (result.imported > 0 && deps.isNoteFilesEnabled()) {
+        try {
+          deps.rebuildMirror();
+        } catch (error) {
+          // SQLite already committed the import. Report the projection failure
+          // alongside its counts instead of reporting that the import failed.
+          const message = (error as Error).message;
+          deps.logError("Note mirror failed after Granola import", { error: message }, "note-files");
+          result.errors.push({ error: `Note files mirror: ${message}` });
+        }
+      }
       const run: GranolaRunResult = {
         success: true,
         imported: result.imported,

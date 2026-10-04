@@ -84,6 +84,8 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }: { systemAud
       mode: systemAudioMode,
       strategy: systemAudioStrategy,
     }),
+    onMeetManualMute: () => () => {},
+    onMeetPlatformMute: () => () => {},
     meetingTranscriptionStart: async (): Promise<MeetingStartResult> => ({
       success: true,
       recordingId: RECORDING_ID,

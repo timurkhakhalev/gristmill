@@ -179,6 +179,8 @@ test("renderer gate holds the healthy device and keeps frame origin across recov
   const noopListener = () => () => {};
   installBrowserGlobals(t, { window: { electronAPI: {
     checkSystemAudioAccess: async () => ({ granted: false, status: "unsupported", mode: "unsupported", strategy: "unsupported" }),
+    onMeetManualMute: () => () => {},
+    onMeetPlatformMute: () => () => {},
     meetingTranscriptionStart: async () => ({
       success: true, recordingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       originAt: "2026-10-01T00:00:00.000Z", systemAudioMode: "unsupported", systemAudioStrategy: "unsupported",

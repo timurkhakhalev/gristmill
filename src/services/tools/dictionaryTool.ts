@@ -47,8 +47,15 @@ export function createUpdateDictionaryTool(actions: DictionaryActions): ToolDefi
       const has = (word: string) => existing.has(word.toLowerCase());
       const requestedAdd = cleanWordList(args.add);
       const requestedRemove = cleanWordList(args.remove);
-      const add = requestedAdd.filter((word) => !has(word));
-      const alreadyPresent = requestedAdd.filter(has);
+      // Corrections ({add:["OpenAI"], remove:["openai"]}) name the same word
+      // twice: additions are judged against the dictionary state AFTER the
+      // requested removals, so the corrected spelling is kept instead of the
+      // add being discarded as "already present" while the removal deletes
+      // the word outright.
+      const removing = new Set(requestedRemove.map((word) => word.toLowerCase()));
+      const isAddNew = (word: string) => !has(word) || removing.has(word.toLowerCase());
+      const add = requestedAdd.filter(isAddNew);
+      const alreadyPresent = requestedAdd.filter((word) => !isAddNew(word));
       const remove = requestedRemove.filter(has);
       const notFound = requestedRemove.filter((word) => !has(word));
 

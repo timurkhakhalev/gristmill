@@ -54,6 +54,14 @@ Transcription and recording stay on their existing routes.
 - Model and reasoning changes go with `tell`. A change of the BB harness needs a new Chat.
 - Direct API, Local and Self-Hosted chat routes continue to use the local conversation history, not an external thread ID.
 
+### Renderer conversation identity and persistence
+
+`useChatPersistence` owns the visible conversation ID and generation. Note changes, conversation loads and New Chat invalidate older reads before they can publish. Home and Note hosts do not keep a second ID. Each turn captures its destination; switch and New Chat cancel the stream, and an old turn cannot save into a different conversation.
+
+The sender awaits and checks the saved user row before it starts AI. Completion awaits the assistant write. A failed write leaves its text and a retry action in the visible history. Retry uses the current validated destination and does not run AI again. A pending or failed write prevents the next submission. The submission lock includes conversation creation, streaming and completion persistence.
+
+Explicit Stop discards partial persistence. Unmount can save a visible partial reply to the originating conversation. An invalidated stream does not update tool activity or cancel a newer stream. Main retains BB turn/Stop serialization across windows.
+
 ### Bridges and tokens
 
 - A profile-local `.bb-connection.json`, outside the BB project directory, contains the loopback CLI bridge port and token. It has owner-only permissions.

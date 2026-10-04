@@ -2213,6 +2213,8 @@
     },
     "chat": {
       "errorPrefix": "Erreur",
+      "saveFailed": "Le message n’a pas été enregistré. Votre texte reste disponible.",
+      "retrySave": "Réessayer l’enregistrement",
       "emptyResponse": "Le modèle n'a renvoyé aucune réponse."
     },
     "input": {

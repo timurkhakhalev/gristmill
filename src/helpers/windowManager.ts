@@ -333,18 +333,16 @@ export class WindowManager {
   }
 
   async createControlPanelWindow({ show = true }: { show?: boolean } = {}): Promise<void> {
-    if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
+    const existingWindow = this.controlPanelWindow;
+    if (existingWindow && !existingWindow.isDestroyed()) {
       if (!show) return;
       this._controlPanelShowRequested = true;
       this._clearControlPanelVisibilityTimer();
-      if (this._controlPanelLoadFailed || this.controlPanelWindow.webContents.isCrashed()) await this.loadControlPanel();
-      if (this.controlPanelWindow.isMinimized()) {
-        this.controlPanelWindow.restore();
-      }
-      if (!this.controlPanelWindow.isVisible()) {
-        this.controlPanelWindow.show();
-      }
-      this.controlPanelWindow.focus();
+      if (this._controlPanelLoadFailed || existingWindow.webContents.isCrashed()) await this.loadControlPanel();
+      if (!this._controlPanelShowRequested || this.controlPanelWindow !== existingWindow || existingWindow.isDestroyed()) return;
+      if (existingWindow.isMinimized()) existingWindow.restore();
+      if (!existingWindow.isVisible()) existingWindow.show();
+      existingWindow.focus();
       dockManager.setControlPanelVisible(true);
       return;
     }
@@ -476,12 +474,15 @@ export class WindowManager {
   }
 
   async loadControlPanel(): Promise<void> {
+    const window = this.controlPanelWindow;
     this._controlPanelLoadFailed = false;
     try {
-      await this.loadWindowContent(this.controlPanelWindow, true);
+      await this.loadWindowContent(window, true);
     } catch (error) {
-      this._controlPanelLoadFailed = true;
-      this.setOnboardingActive(true);
+      if (this.controlPanelWindow === window) {
+        this._controlPanelLoadFailed = true;
+        this.setOnboardingActive(true);
+      }
       throw error;
     }
   }

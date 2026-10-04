@@ -46,6 +46,10 @@ Live microphone and system capture and power-loss tail limits need an isolated h
 - Playback releases its file when it ends, when the recording changes, when the user leaves the Note or when the renderer stops.
 - Pause keeps the file of the current player for seek and resume.
 - Export removes its temporary mix in `finally`.
+- Single-source export requires full proven alignment of the chosen track. Unknown peer alignment cannot block it or supply a guessed endpoint.
+- Export length retains the saved common frame extent (or historical UTC duration) and fully proven later epoch ends. This keeps source gaps and trailing silence; it does not promise an exact physical Stop boundary.
+- An open epoch on either source blocks export. An empty selected track is not synthesized as silence.
+- Mixed playback, mixed export, ASR preparation and part composition remain strict for all nonempty epochs. See [ADR-0008](../adr/0008-source-export-alignment.md).
 - Startup removes abandoned derived directories before processing continues.
 
 ## Legacy PCM profiles

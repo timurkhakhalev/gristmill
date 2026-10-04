@@ -159,7 +159,7 @@ A missing source without full intentional coverage stays an error.
 - The selection of a completed result updates the Note transcript and the generated-content projection atomically. `note.content` does not change.
 - Raw JSON and earlier run artifacts stay available.
 - Playback and mixed export use the selected derived timeline.
-- Microphone and system exports rebuild the separate source epochs with their saved gaps.
+- Microphone and system exports rebuild the selected source with full proven alignment and saved gaps. Unknown peer alignment does not block source export; common saved extent and fully proven later peer ends preserve trailing silence ([audio storage](audio-storage.md#playback-and-export)).
 - Main selects the export target. It writes through a temporary file and then renames it.
 
 ## Retention and deletion

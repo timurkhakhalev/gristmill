@@ -206,7 +206,7 @@ test("the full bundled preload chain round-trips folders and spaces", async (t: 
   assert.ok(Array.isArray(counts));
 
   const deleted = await api.deleteFolder(created.folder.id);
-  assert.deepEqual(plain(deleted), { success: true });
+  assert.equal(plain(deleted).success, true);
   // Drain the deferred folder-deleted send before this fixture's dispatch
   // loop is replaced by the next test, or it leaks into that test's listeners.
   await flush();

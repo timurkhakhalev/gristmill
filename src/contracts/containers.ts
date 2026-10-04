@@ -92,7 +92,11 @@ export const spaceMutationResultSchema = z.object({
 export type SpaceMutationResult = z.infer<typeof spaceMutationResultSchema>;
 
 // deleteFolder never carries the row back; the DB layer reports plain success.
-export const folderDeleteResultSchema = z.object({ success: z.boolean() });
+export const folderDeleteResultSchema = z.object({
+  success: z.boolean(),
+  // Notes whose primary folder was the deleted one, for the mirror rewrite.
+  relocatedNoteIds: z.array(z.number().int()).optional(),
+});
 
 export const folderListResultSchema = z.array(folderSchema);
 export const spaceListResultSchema = z.array(spaceSchema);

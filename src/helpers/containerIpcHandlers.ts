@@ -54,7 +54,7 @@ export interface ContainerHandlerDeps {
   mirrorWriteNote: (note: NoteItem) => void;
   mirrorEnsureFolder: (name: string) => void;
   mirrorRenameFolder: (oldName: string, newName: string) => void;
-  mirrorDeleteFolderIfUnshared: (name: string) => void;
+  mirrorDeleteFolderIfUnshared: (name: string, relocatedNoteIds: number[]) => void;
 }
 
 type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
@@ -120,10 +120,13 @@ export function registerContainerHandlers(
       "folder delete result"
     );
     if (result.success) {
+      // The relocated ids close over this call: a second delete in the same
+      // tick must not swap them out from under the deferred callback.
+      const relocatedNoteIds = result.relocatedNoteIds ?? [];
       setImmediate(() => {
         const payload: FolderDeletedPayload = { id };
         sendFolderDeleted(payload);
-        if (folderName) deps.mirrorDeleteFolderIfUnshared(folderName);
+        if (folderName) deps.mirrorDeleteFolderIfUnshared(folderName, relocatedNoteIds);
       });
     }
     return result;

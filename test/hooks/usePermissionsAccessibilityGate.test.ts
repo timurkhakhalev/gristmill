@@ -19,11 +19,12 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
   let accessibilityGranted = false;
   const requests: string[] = [];
   let micStatus = "not-determined";
-  let onFocus: (() => void) | undefined;
+  const focusListeners: Array<() => void> = [];
+  const onFocus = () => focusListeners.forEach((listener) => listener());
   installBrowserGlobals(t, {
     window: {
       addEventListener: (name: string, listener: () => void) => {
-        if (name === "focus") onFocus = listener;
+        if (name === "focus") focusListeners.push(listener);
       },
       electronAPI: {
         getPlatform: () => "darwin",
@@ -137,4 +138,134 @@ test("macOS accessibility checks follow the onboarding feature gate", async (t: 
   await render();
   assert.equal(accessibilityChecks, 4);
   assert.equal(activeIntervals.size, 0);
+});
+
+// Issue #179: an Accessibility grant can be revoked in System Settings while
+// the screen stays open. A window focus must re-check (like mic), flipping
+// the stored granted state back to missing — without ever prompting.
+test("focus re-checks a revoked Accessibility permission without prompting", async (t: import("node:test").TestContext) => {
+  let root: ReturnType<typeof createRoot> | null = null;
+  t.after(async () => {
+    if (root) await React.act(async () => root.unmount());
+  });
+
+  let accessibilityGranted = true;
+  const requests: string[] = [];
+  const focusListeners: Array<() => void> = [];
+  const onFocus = () => focusListeners.forEach((listener) => listener());
+  installBrowserGlobals(t, {
+    window: {
+      addEventListener: (name: string, listener: () => void) => {
+        if (name === "focus") focusListeners.push(listener);
+      },
+      electronAPI: {
+        getPlatform: () => "darwin",
+        checkAccessibilityPermission: async (prompt?: boolean) => {
+          if (prompt) requests.push("check(prompt)");
+          return accessibilityGranted;
+        },
+        checkMicrophoneAccess: async () => ({ granted: true, status: "granted" }),
+        promptAccessibilityPermission: async () => { requests.push("prompt"); return false; },
+        openAccessibilitySettings: async () => { requests.push("settings"); return { success: true }; },
+      },
+    },
+  });
+  const container = installHookDom(t);
+
+  const vite = await createRendererServer(t, {
+    cachePrefix: "openwhispr-permissions-accessibility-revoke-",
+    noExternal: ["react-i18next"],
+    mockModules: {
+      "react-i18next": `
+        const t = (key) => key;
+        export const initReactI18next = { type: "3rdParty", init() {} };
+        export function useTranslation() { return { t }; }
+      `,
+    },
+  });
+  const { usePermissions: usePermissionsApi } = (await vite.ssrLoadModule("/hooks/usePermissions.ts") as typeof import("../../src/hooks/usePermissions.ts"));
+
+  let permissions: ReturnType<typeof usePermissionsApi> | undefined;
+  function Harness() {
+    permissions = usePermissionsApi();
+    return null;
+  }
+  root = createRoot(container as unknown as Element);
+  await React.act(async () => {
+    root!.render(React.createElement(Harness));
+    await Promise.resolve();
+  });
+
+  // Granted at mount; no prompt was ever requested.
+  assert.equal(permissions!.accessibilityPermissionGranted, true);
+  assert.deepEqual(requests, ["check(prompt)"]);
+
+  // Revoked in System Settings while the screen stayed open: returning to the
+  // window (focus) re-checks and flips the state back to missing.
+  accessibilityGranted = false;
+  await React.act(async () => { onFocus(); await Promise.resolve(); });
+  assert.equal(permissions!.accessibilityPermissionGranted, false, "the revocation is picked up on focus");
+  assert.deepEqual(requests, ["check(prompt)", "check(prompt)"], "only re-checks ran — no prompt, no Settings");
+
+  // Re-granting is picked up the same way.
+  accessibilityGranted = true;
+  await React.act(async () => { onFocus(); await Promise.resolve(); });
+  assert.equal(permissions!.accessibilityPermissionGranted, true);
+  assert.deepEqual(requests, ["check(prompt)", "check(prompt)", "check(prompt)"]);
+});
+
+// The gate still protects the focus re-check: with macAccessibilityChecks
+// disabled (closed onboarding gate), a focus fires no protected check.
+test("focus re-check respects the macAccessibilityChecksEnabled gate", async (t: import("node:test").TestContext) => {
+  let root: ReturnType<typeof createRoot> | null = null;
+  t.after(async () => {
+    if (root) await React.act(async () => root.unmount());
+  });
+
+  let accessibilityChecks = 0;
+  const focusListeners: Array<() => void> = [];
+  const onFocus = () => focusListeners.forEach((listener) => listener());
+  installBrowserGlobals(t, {
+    window: {
+      addEventListener: (name: string, listener: () => void) => {
+        if (name === "focus") focusListeners.push(listener);
+      },
+      electronAPI: {
+        getPlatform: () => "darwin",
+        checkAccessibilityPermission: async () => {
+          accessibilityChecks += 1;
+          return false;
+        },
+        checkMicrophoneAccess: async () => ({ granted: false, status: "denied" }),
+      },
+    },
+  });
+  const container = installHookDom(t);
+
+  const vite = await createRendererServer(t, {
+    cachePrefix: "openwhispr-permissions-accessibility-gate-focus-",
+    noExternal: ["react-i18next"],
+    mockModules: {
+      "react-i18next": `
+        const t = (key) => key;
+        export const initReactI18next = { type: "3rdParty", init() {} };
+        export function useTranslation() { return { t }; }
+      `,
+    },
+  });
+  const { usePermissions: usePermissionsApi } = (await vite.ssrLoadModule("/hooks/usePermissions.ts") as typeof import("../../src/hooks/usePermissions.ts"));
+
+  let macAccessibilityChecksEnabled = false;
+  function Harness() {
+    usePermissionsApi(undefined, { macAccessibilityChecksEnabled });
+    return null;
+  }
+  root = createRoot(container as unknown as Element);
+  await React.act(async () => {
+    root!.render(React.createElement(Harness));
+    await Promise.resolve();
+  });
+
+  await React.act(async () => { onFocus(); await Promise.resolve(); });
+  assert.equal(accessibilityChecks, 0, "the closed gate keeps focus from touching the protected check");
 });

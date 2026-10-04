@@ -230,6 +230,22 @@ export const usePermissions = (
     });
   }, [macAccessibilityChecksEnabled, setAccessibilityPermissionGranted]);
 
+  // A granted Accessibility grant can be revoked in System Settings while the
+  // screen stays open (like the mic recheck above, a focus event catches the
+  // return from Settings). Only re-checks — never prompts (#179).
+  const macAccessibilityChecksRef = useRef(macAccessibilityChecksEnabled);
+  macAccessibilityChecksRef.current = macAccessibilityChecksEnabled;
+  useEffect(() => {
+    const refresh = () => {
+      if (!macAccessibilityChecksRef.current) return;
+      void window.electronAPI?.checkAccessibilityPermission?.(true).then((granted) => {
+        setAccessibilityPermissionGranted(granted);
+      });
+    };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [setAccessibilityPermissionGranted]);
+
   // Poll for accessibility permission changes on macOS (e.g. user grants in System Settings)
   useEffect(() => {
     if (!macAccessibilityChecksEnabled) return;

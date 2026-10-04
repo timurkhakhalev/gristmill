@@ -8,6 +8,8 @@ test("settings switch the live microphone without stopping or replacing the reco
   const noopListener = () => () => {};
   installBrowserGlobals(t, { window: { electronAPI: {
     checkSystemAudioAccess: async () => ({ granted: true, status: "granted", mode: "native", strategy: "native" }),
+    onMeetManualMute: () => () => {},
+    onMeetPlatformMute: () => () => {},
     meetingTranscriptionStart: async () => { starts += 1; return { success: true, recordingId: "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1", originAt: new Date().toISOString(), systemAudioMode: "native", systemAudioStrategy: "native" }; },
     meetingTranscriptionStop: async () => { stops += 1; return { success: true, captureState: "ready" }; },
     meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),

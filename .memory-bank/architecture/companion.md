@@ -54,6 +54,17 @@ It is different from the Google Meet Companion mode.
 
 ## Trust and lifecycle
 
+### Desktop IPC
+
+`contracts/meetingCoordinator.ts` owns desktop channel names and the required
+Companion methods on `MeetingCoordinatorApi`. `contracts/companion.ts` owns
+setup, status, selection, reminder and mute payload schemas. The meeting bridge
+validates results and events and returns an unsubscribe function for each listener.
+An unavailable extension is represented by setup/status, not an absent API method.
+Setup registration stays with host installation in `IPCHandlers`; recording-scoped
+commands stay with the coordinator and retain sender and current-session checks.
+These desktop operations do not change the browser/native wire protocol.
+
 ### Protocol
 
 - Browser-to-native and host-to-app messages use versioned strict schemas.

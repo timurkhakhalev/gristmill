@@ -89,16 +89,16 @@ export function createMeetingCoordinatorBridge(
     ipcRenderer.invoke(channel, ...args).then((raw) => parseResult(schema, raw, channel));
 
   return {
-    finishPausedMeetRecording: (recordingId) => invokeParse(simpleSuccessResultSchema, "meet-recording-finish-paused", recordingId),
-    getMeetIntegrationSetup: () => invokeParse(companionSetupSchema, "meet-integration-setup"),
-    configureMeetIntegration: (action) => invokeParse(simpleSuccessResultSchema, "meet-integration-configure", action),
-    respondMeetContextReminder: (request) => invokeParse(simpleSuccessResultSchema, "meet-context-reminder-respond", request),
-    claimMeetingAutoEnd: (sessionId) => invokeParse(simpleSuccessResultSchema, "meeting-auto-end-claim", sessionId),
-    getMeetCompanionStatus: () => invokeParse(companionStatusSchema, "meet-companion-status"),
-    confirmMeetCompanionBinding: (request) => invokeParse(simpleSuccessResultSchema, "meet-companion-select", request),
-    onMeetCompanionStatus: (callback) => subscribe(ipcRenderer, "meet-companion-status", companionStatusSchema, callback),
-    onMeetManualMute: (callback) => subscribe(ipcRenderer, "meet-manual-mute", companionPlatformMuteSchema, callback),
-    onMeetPlatformMute: (callback) => subscribe(ipcRenderer, "meet-platform-mute", companionPlatformMuteSchema, callback),
+    finishPausedMeetRecording: (recordingId) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.finishPausedMeetRecording, recordingId),
+    getMeetIntegrationSetup: () => invokeParse(companionSetupSchema, meetingCoordinatorChannels.getMeetIntegrationSetup),
+    configureMeetIntegration: (action) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.configureMeetIntegration, action),
+    respondMeetContextReminder: (request) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.respondMeetContextReminder, request),
+    claimMeetingAutoEnd: (sessionId) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.claimMeetingAutoEnd, sessionId),
+    getMeetCompanionStatus: () => invokeParse(companionStatusSchema, meetingCoordinatorChannels.getMeetCompanionStatus),
+    confirmMeetCompanionBinding: (request) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.confirmMeetCompanionBinding, request),
+    onMeetCompanionStatus: (callback) => subscribe(ipcRenderer, meetingCoordinatorEventChannels.meetCompanionStatus, companionStatusSchema, callback),
+    onMeetManualMute: (callback) => subscribe(ipcRenderer, meetingCoordinatorEventChannels.meetManualMute, companionPlatformMuteSchema, callback),
+    onMeetPlatformMute: (callback) => subscribe(ipcRenderer, meetingCoordinatorEventChannels.meetPlatformMute, companionPlatformMuteSchema, callback),
     meetingTranscriptionPrepare: (options) =>
       invokeParse(
         meetingPrepareResultSchema,

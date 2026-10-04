@@ -1,4 +1,4 @@
-import type { CompanionSetup, CompanionStatus, CompanionCandidateKey, CompanionRecordingScope } from "./companion.js";
+import type { CompanionSetup, CompanionStatus, CompanionConfigureAction, CompanionReminderResponse, CompanionSelection, CompanionPlatformMute } from "./companion.js";
 // Single source of truth for the meeting coordinator boundary: recording
 // prepare/start/send/stop/cancel, system-audio availability, recording locks,
 // the mic warm hold, detection preferences, session speaker configuration,
@@ -15,6 +15,13 @@ import type { MeetingProcessingConfig, MeetingProcessingConfigError, MeetingSour
 // ---- channels -----------------------------------------------------------------
 
 export const meetingCoordinatorChannels = {
+  finishPausedMeetRecording: "meet-recording-finish-paused",
+  getMeetIntegrationSetup: "meet-integration-setup",
+  configureMeetIntegration: "meet-integration-configure",
+  respondMeetContextReminder: "meet-context-reminder-respond",
+  claimMeetingAutoEnd: "meeting-auto-end-claim",
+  getMeetCompanionStatus: "meet-companion-status",
+  confirmMeetCompanionBinding: "meet-companion-select",
   meetingTranscriptionPrepare: "meeting-transcription-prepare",
   meetingTranscriptionStart: "meeting-transcription-start",
   meetingTranscriptionSend: "meeting-transcription-send",
@@ -42,6 +49,9 @@ export const meetingCoordinatorChannels = {
 } as const;
 
 export const meetingCoordinatorEventChannels = {
+  meetCompanionStatus: "meet-companion-status",
+  meetManualMute: "meet-manual-mute",
+  meetPlatformMute: "meet-platform-mute",
   meetingTranscriptionStopRequested: "meeting-transcription-stop-requested",
   meetingTranscriptionSegment: "meeting-transcription-segment",
   meetingTranscriptionError: "meeting-transcription-error",
@@ -532,16 +542,16 @@ export const meetingAutoEndRestartRequestEventSchema = z.object({
 // ---- renderer-facing surface ------------------------------------------------------
 
 export interface MeetingCoordinatorApi {
-  finishPausedMeetRecording?(recordingId: string): Promise<{ success: boolean }>;
-  getMeetIntegrationSetup?(): Promise<CompanionSetup>;
-  configureMeetIntegration?(action: "enable" | "disable" | "reveal"): Promise<{ success: boolean; error?: string }>;
-  respondMeetContextReminder?(request: CompanionRecordingScope & { action: "stop" | "dismiss" }): Promise<{ success: boolean }>;
-  claimMeetingAutoEnd?(sessionId: string): Promise<{ success: boolean }>;
-  getMeetCompanionStatus?(): Promise<CompanionStatus>;
-  confirmMeetCompanionBinding?(request: { expected: CompanionRecordingScope; candidate: CompanionCandidateKey }): Promise<{ success: boolean }>;
-  onMeetCompanionStatus?(callback: (status: CompanionStatus) => void): () => void;
-  onMeetManualMute?(callback: (request: CompanionRecordingScope & { muted: boolean }) => void): () => void;
-  onMeetPlatformMute?(callback: (request: CompanionRecordingScope & { muted: boolean }) => void): () => void;
+  finishPausedMeetRecording(recordingId: string): Promise<{ success: boolean }>;
+  getMeetIntegrationSetup(): Promise<CompanionSetup>;
+  configureMeetIntegration(action: CompanionConfigureAction): Promise<{ success: boolean; error?: string }>;
+  respondMeetContextReminder(request: CompanionReminderResponse): Promise<{ success: boolean }>;
+  claimMeetingAutoEnd(sessionId: string): Promise<{ success: boolean }>;
+  getMeetCompanionStatus(): Promise<CompanionStatus>;
+  confirmMeetCompanionBinding(request: CompanionSelection): Promise<{ success: boolean }>;
+  onMeetCompanionStatus(callback: (status: CompanionStatus) => void): () => void;
+  onMeetManualMute(callback: (request: CompanionPlatformMute) => void): () => void;
+  onMeetPlatformMute(callback: (request: CompanionPlatformMute) => void): () => void;
   meetingTranscriptionPrepare?(
     options?: MeetingTranscriptionPrepareOptions
   ): Promise<MeetingPrepareResult>;

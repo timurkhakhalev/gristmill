@@ -125,7 +125,7 @@ function floatBuffer(values: number[]) {
   return Buffer.from(array.buffer, array.byteOffset, array.byteLength);
 }
 
-test("the current run projects transcript and summary without replacing manual content", async (t: import("node:test").TestContext) => {
+test("speaker correction updates the selected transcript without replacing manual content or Summary", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -134,6 +134,11 @@ test("the current run projects transcript and summary without replacing manual c
     text: "First transcript",
     segments: [{ speaker: "speaker_0", text: "First transcript", start: 2.5, end: 4.25 }],
   }, { text: "First generated notes" });
+  assert.equal(db.selectMeetingProcessingRun(recording.id, initialRun.id, {
+    transcript: JSON.stringify([{ speaker: "speaker_0", text: "First transcript", timestamp: 2.5, endTimestamp: 4.25 }]),
+    summary: "First generated notes",
+    summaryPrompt: config.summary.instruction,
+  }).success, true);
   const projectedNoteIds: number[] = [];
   const worker = createWorker(db, storage, { onNoteProjectionChanged: (noteId) => projectedNoteIds.push(noteId) });
   t.after(() => worker.stop());

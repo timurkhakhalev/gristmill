@@ -34,7 +34,7 @@ test("applies title, content, and enhanced mutations only for the draft owner", 
       field: "title",
       value: "Edited title",
     }),
-    { ...original, title: "Edited title" }
+    { ...original, title: "Edited title", dirtyTitle: true }
   );
   assert.deepEqual(
     applyNoteDraftMutation(original, {
@@ -42,7 +42,7 @@ test("applies title, content, and enhanced mutations only for the draft owner", 
       field: "content",
       value: "Edited body",
     }),
-    { ...original, content: "Edited body" }
+    { ...original, content: "Edited body", dirtyContent: true }
   );
   assert.deepEqual(
     applyNoteDraftMutation(original, {
@@ -316,7 +316,13 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
       { noteId: 1, title: "Event title", content: "early snapshot", enhancedContent: null },
       { noteId: 1, mode: "replace", draft: { content: "early snapshot plus ABC" } }
     ),
-    { noteId: 1, title: "Event title", content: "early snapshot plus ABC", enhancedContent: null }
+    {
+      noteId: 1,
+      title: "Event title",
+      content: "early snapshot plus ABC",
+      enhancedContent: null,
+      dirtyContent: true,
+    }
   );
 
   // Existing note: the manual content is kept, the typed text appends.
@@ -330,6 +336,7 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
       title: "Manual title",
       content: "Manual content\n\nfirst input",
       enhancedContent: null,
+      dirtyContent: true,
     }
   );
 
@@ -358,4 +365,163 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
     applyEventDraftHandoff(draft, { noteId: 5, mode: "replace", draft: { title: "T", content: "C" } }),
     draft
   );
+});
+
+// Issue #157: autosave must track dirty fields so a content-only edit never
+// republishes a stale title over an externally-updated one, and vice versa.
+
+test("external updates fill untouched fields and keep the user's dirty ones", async () => {
+  const { acceptExternalNoteUpdate } = await load();
+
+  // Content-only edit: the externally-generated title is accepted, the typed
+  // content stays for the pending save.
+  const contentEdit = {
+    noteId: 1,
+    title: "Old title",
+    content: "Typed body",
+    enhancedContent: null,
+    dirtyContent: true,
+  };
+  const accepted = acceptExternalNoteUpdate(contentEdit, {
+    title: "Generated title",
+    content: "Ignored external content",
+  });
+  assert.deepEqual(accepted.draft, {
+    noteId: 1,
+    title: "Generated title",
+    content: "Typed body",
+    enhancedContent: null,
+    dirtyContent: true,
+    dirtyTitle: false,
+  });
+  assert.deepEqual(accepted.droppedDirty, { title: false, content: true });
+
+  // Title-only edit: the externally-updated content is accepted.
+  const titleEdit = {
+    noteId: 2,
+    title: "Typed title",
+    content: "Old body",
+    enhancedContent: null,
+    dirtyTitle: true,
+  };
+  const acceptedTitle = acceptExternalNoteUpdate(titleEdit, {
+    title: "Ignored external title",
+    content: "Chat-tool content",
+  });
+  assert.deepEqual(acceptedTitle.draft, {
+    noteId: 2,
+    title: "Typed title",
+    content: "Chat-tool content",
+    enhancedContent: null,
+    dirtyTitle: true,
+    dirtyContent: false,
+  });
+  assert.deepEqual(acceptedTitle.droppedDirty, { title: true, content: false });
+
+  // No dirty fields: the update replaces the complete draft (old behavior).
+  const clean = acceptExternalNoteUpdate(
+    { noteId: 3, title: "T", content: "C", enhancedContent: null },
+    { title: "T2", content: "C2" }
+  );
+  assert.deepEqual(clean.draft, {
+    noteId: 3,
+    title: "T2",
+    content: "C2",
+    enhancedContent: null,
+    dirtyTitle: false,
+    dirtyContent: false,
+  });
+
+  // Empty external values are real values and clear the matching dirtiness.
+  const empty = acceptExternalNoteUpdate(
+    { noteId: 4, title: "T", content: "Typed", enhancedContent: null, dirtyContent: true },
+    { content: "" }
+  );
+  assert.deepEqual(empty.draft, {
+    noteId: 4,
+    title: "T",
+    content: "Typed",
+    enhancedContent: null,
+    dirtyContent: true,
+  });
+  const emptyClean = acceptExternalNoteUpdate(
+    { noteId: 5, title: "T", content: "C", enhancedContent: null },
+    { content: "" }
+  );
+  assert.equal(emptyClean.draft.content, "");
+});
+
+test("dirty-trimmed snapshots write only the fields the user edited", async () => {
+  const { collectPendingNoteWrites, captureDocumentSnapshot } = await load();
+
+  // A content-only edit writes only content: an external title survives.
+  assert.deepEqual(
+    collectPendingNoteWrites(
+      { noteId: 1, content: "Typed body" },
+      null
+    ),
+    [{ noteId: 1, updates: { content: "Typed body" } }]
+  );
+
+  // A title-only edit writes only title: an external content survives.
+  assert.deepEqual(
+    collectPendingNoteWrites(
+      { noteId: 2, title: "Typed title" },
+      null
+    ),
+    [{ noteId: 2, updates: { title: "Typed title" } }]
+  );
+
+  // Both fields dirty: both are written (the old full-document shape).
+  assert.deepEqual(
+    collectPendingNoteWrites(
+      { noteId: 3, title: "T", content: "C" },
+      { noteId: 3, enhancedContent: null }
+    ),
+    [
+      {
+        noteId: 3,
+        updates: { title: "T", content: "C", enhanced_content: null },
+      },
+    ]
+  );
+
+  // A different-owner enhanced write stays separate (unchanged policy).
+  assert.deepEqual(
+    collectPendingNoteWrites(
+      { noteId: 1, content: "C" },
+      { noteId: 2, enhancedContent: "E" }
+    ),
+    [
+      { noteId: 1, updates: { content: "C" } },
+      { noteId: 2, updates: { enhanced_content: "E" } },
+    ]
+  );
+
+  // captureDocumentSnapshot: the transition/unmount flush captures only the
+  // dirty fields, and nothing when nothing was edited.
+  assert.deepEqual(
+    captureDocumentSnapshot({
+      noteId: 9,
+      title: "Local title",
+      content: "Local body",
+      enhancedContent: null,
+      dirtyTitle: true,
+    }),
+    { noteId: 9, title: "Local title" }
+  );
+  assert.deepEqual(
+    captureDocumentSnapshot({
+      noteId: 9,
+      title: "T",
+      content: "C",
+      enhancedContent: null,
+    }),
+    { noteId: 9 }
+  );
+
+  // A fully clean snapshot flushes no document write at all.
+  assert.deepEqual(collectPendingNoteWrites({ noteId: 9 }, null), [
+    { noteId: 9, updates: {} },
+  ]);
 });

@@ -599,6 +599,7 @@ export function registerMeetingCoordinatorHandlers(
           if (startFrame === null) throw new Error("Native audio tap clock cannot be mapped to the recording origin");
           generationFrameOrigin = startFrame;
           const epochIndex = capture.beginSourceEpoch("system", ++sourceGeneration, 0, startFrame);
+          meetingSystemAudioWatchdog.recordStarted();
           if (generation) evidence?.bindClock(generation, epochIndex, startFrame);
           else evidence?.invalidate("clock-generation-missing");
         },

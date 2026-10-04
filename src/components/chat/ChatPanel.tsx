@@ -31,6 +31,7 @@ interface ChatPanelProps {
   agentState: AgentState;
   onTextSubmit: (text: string) => void;
   onCancel: () => void;
+  onRetrySave?: (id: string) => Promise<void>;
   conversations?: ConversationRow[];
   activeConversationId?: number | null;
   onSwitchConversation?: (id: number) => void;
@@ -72,6 +73,7 @@ export default function ChatPanel({
   agentState,
   onTextSubmit,
   onCancel,
+  onRetrySave,
   conversations,
   activeConversationId,
   onSwitchConversation,
@@ -213,6 +215,7 @@ export default function ChatPanel({
         <ChatMessages
           messages={messages}
           onOpenNote={onOpenNote}
+          onRetrySave={activeConversationId != null ? onRetrySave : undefined}
           emptyState={
             <div className="flex h-full flex-col items-center justify-center gap-3 px-2 text-center select-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-300">
               <span className="flex size-9 items-center justify-center rounded-full bg-accent-soft text-primary">

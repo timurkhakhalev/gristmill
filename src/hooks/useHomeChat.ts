@@ -15,6 +15,7 @@ interface UseHomeChatReturn {
   agentState: AgentState;
   sendMessage: (text: string) => Promise<void>;
   cancelStream: () => void;
+  retrySaveMessage: (id: string) => Promise<void>;
   conversations: ConversationRow[];
   activeConversationId: number | null;
   switchConversation: (id: number) => Promise<void>;
@@ -26,12 +27,10 @@ interface UseHomeChatReturn {
  * Home lists. Each Home mount starts fresh; history lists every conversation.
  */
 export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
-  const [conversationId, setConversationId] = useState<number | null>(null);
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
 
-  const persistence = useChatPersistence({
-    onConversationCreated: (id) => setConversationId(id),
-  });
+  const persistence = useChatPersistence();
+  const conversationId = persistence.conversationId;
 
   const noteContext = useMemo(() => {
     const header = `The user is on the Home screen, which lists their ${notes.length} most recent notes across all spaces.`;
@@ -46,9 +45,6 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
     messages: persistence.messages,
     setMessages: persistence.setMessages,
     noteContext,
-    onStreamComplete: (_id, content, toolCalls) => {
-      persistence.saveAssistantMessage(content, toolCalls);
-    },
   });
 
   const fetchConversations = useCallback(async (isStale?: () => boolean) => {
@@ -71,16 +67,16 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
 
   const switchConversation = useCallback(
     async (id: number) => {
+      streaming.cancelStream();
       await persistence.loadConversation(id);
-      setConversationId(id);
     },
-    [persistence]
+    [persistence, streaming]
   );
 
   const startNewChat = useCallback(() => {
+    streaming.cancelStream();
     persistence.handleNewChat();
-    setConversationId(null);
-  }, [persistence]);
+  }, [persistence, streaming]);
 
   const createConversation = useCallback(
     async (text: string) => {
@@ -91,7 +87,6 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
     [fetchConversations, persistence]
   );
   const sendMessageWithResult = useChatMessageSender({
-    conversationId,
     persistence,
     streaming,
     createConversation,
@@ -108,6 +103,7 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
     agentState: streaming.agentState,
     sendMessage,
     cancelStream: streaming.cancelStream,
+    retrySaveMessage: persistence.retrySaveMessage,
     conversations,
     activeConversationId: conversationId,
     switchConversation,

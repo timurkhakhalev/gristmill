@@ -132,6 +132,7 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
             agentState={chat.agentState}
             onTextSubmit={chat.sendMessage}
             onCancel={chat.cancelStream}
+            onRetrySave={chat.retrySaveMessage}
             conversations={chat.conversations}
             activeConversationId={chat.activeConversationId}
             onSwitchConversation={chat.switchConversation}

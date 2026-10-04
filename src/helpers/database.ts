@@ -1947,7 +1947,7 @@ export class DatabaseManager {
     source: "voice" | "platform" | "model" | "user" = "user",
     participantEmail?: string,
     platform?: MeetingPlatform
-  ): { success: boolean } {
+  ): { success: boolean; noteId?: number } {
     meetingRecordingIdSchema.parse(runId);
     const run = this.getMeetingProcessingRun(runId);
     if (source === "platform" && !platform) return { success: false };
@@ -1957,15 +1957,20 @@ export class DatabaseManager {
       const recording = this.sql
         .prepare("SELECT note_id, current_run_id FROM meeting_recordings WHERE id = ?")
         .get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
-      if (!recording || this.isMeetingNoteDeletionPending(recording.note_id)) return false;
+      if (!recording || this.isMeetingNoteDeletionPending(recording.note_id)) return { success: false };
       this.sql.prepare(
         "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, participant_email, source, platform, revision) VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = excluded.participant_email, source = excluded.source, platform = excluded.platform, revision = meeting_run_speaker_corrections.revision + 1"
       ).run(runId, speakerId, profileId, displayName.trim(), participantEmail?.toLowerCase() ?? null, source, source === "platform" ? platform : null);
       if (participantEmail) this.rememberContactName(participantEmail, displayName);
-      if (recording.current_run_id === runId) {
+      const selected = recording.current_run_id
+        ? this.getMeetingProcessingRun(recording.current_run_id)
+        : null;
+      const selectedTranscriptRunId = selected?.kind === "summary" ? selected.sourceRunId : selected?.id;
+      let noteId: number | undefined;
+      if (selectedTranscriptRunId === runId) {
         const note = this.sql
-          .prepare("SELECT content, transcript FROM notes WHERE id = ?")
-          .get(recording.note_id) as { content: string; transcript: string | null } | undefined;
+          .prepare("SELECT transcript FROM notes WHERE id = ?")
+          .get(recording.note_id) as { transcript: string | null } | undefined;
         if (note?.transcript) {
           try {
             const segments = JSON.parse(note.transcript) as Array<Record<string, unknown>>;
@@ -1984,17 +1989,18 @@ export class DatabaseManager {
             if (changed) {
               const transcript = JSON.stringify(segments);
               this.sql.prepare(
-                "UPDATE notes SET transcript = ?, enhanced_at_content_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-              ).run(transcript, noteContentHash(`${note.content}\n${transcript}`), recording.note_id);
+                "UPDATE notes SET transcript = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+              ).run(transcript, recording.note_id);
+              noteId = recording.note_id;
             }
           } catch (error) {
             throw new Error("Meeting transcript projection is invalid", { cause: error });
           }
         }
       }
-      return true;
+      return { success: true, ...(noteId === undefined ? {} : { noteId }) };
     });
-    return { success: transaction() };
+    return transaction();
   }
 
   getMeetingRunSpeakerCorrections(runId: string): Array<{

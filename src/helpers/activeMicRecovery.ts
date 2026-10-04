@@ -292,6 +292,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
           stopStream(replacement);
           return false;
         }
+        this.detachTrack();
         await this.onRecovered(replacement, oldStream, reason);
         if (!this.started || generation !== this.generation) {
           stopStream(replacement);

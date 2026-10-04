@@ -89,7 +89,7 @@ test("Stop waits for an in-flight mic boundary commit and rejects later controls
   assert.equal(intervals[0].endFrame, 2_400);
 });
 
-for (const mode of ["open", "manual", "meet", "replacement-muted", "changed-during-ack", "old-intent-pending", "manual-during-drain"] as const) {
+for (const mode of ["open", "manual", "meet", "replacement-muted", "changed-during-ack", "old-intent-pending", "manual-during-drain", "ended-setup-retry"] as const) {
 test(`renderer recovery ${mode} keeps the gated analyser and current track intent`, async (t: import("node:test").TestContext) => {
   installMicCaptureGlobals(t);
   let currentRenderFrame = 50_400;
@@ -174,6 +174,7 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
       super();
       this.gateClosed = options.processorOptions.gateClosed;
       processors.push(this);
+      if (mode === "ended-setup-retry" && processors.length === 2) tracks[1].readyState = "ended";
       this.port = {
         onmessage: null,
         postMessage: (message) => {
@@ -330,6 +331,12 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
       assert.equal(intentRequests.length, intentCount, "mute controls wait for the whole handoff");
       releaseDrain();
     }
+    if (mode === "ended-setup-retry") {
+      await new Promise(setImmediate);
+      assert.equal(store.useMeetingRecordingStore.getState().micCaptureStatus, "unavailable");
+      assert.equal(acquired, 2);
+      assert.equal(intentRequests.some((request) => request.sourceGeneration === 2), false, "ended replacement never commits an intent");
+    }
     await recoveryIntent;
     if (mode === "changed-during-ack" || mode === "manual-during-drain") {
       assert.equal(store.useMeetingRecordingStore.getState().micCaptureStatus, "reconnecting", "changed mute must wait for its own persisted intent ACK");
@@ -337,27 +344,29 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
       releaseLateIntent();
       if (duringDrainIntent) assert.equal(await duringDrainIntent, true);
     }
-    assert.equal(acquired, 2);
+    const recoveredGeneration = mode === "ended-setup-retry" ? 3 : 2;
+    const recoveredIndex = recoveredGeneration - 1;
+    assert.equal(acquired, recoveredGeneration);
     await new Promise(setImmediate);
-    const recoveredIntent = [...intentRequests].reverse().find((request) => request.sourceGeneration === 2)!;
+    const recoveredIntent = [...intentRequests].reverse().find((request) => request.sourceGeneration === recoveredGeneration)!;
     assert.ok(recoveredIntent);
-    assert.equal(recoveredIntent.effectiveMuted, mode !== "open" && mode !== "old-intent-pending");
+    assert.equal(recoveredIntent.effectiveMuted, mode !== "open" && mode !== "old-intent-pending" && mode !== "ended-setup-retry");
     assert.equal(recoveredIntent.boundaryFrame, 192_000, "replacement worklet uses the same AudioContext frame origin");
     assert.equal(store.useMeetingRecordingStore.getState().micCaptureStatus, "active");
     assert.equal(store.useMeetingRecordingStore.getState().manualMicMuted, mode === "manual" || mode === "manual-during-drain");
     assert.equal(store.useMeetingRecordingStore.getState().platformMicMuted, mode === "meet" || mode === "replacement-muted" || mode === "changed-during-ack");
-    assert.deepEqual([...(analyser as unknown as FakeAnalyser).inputs], [processors[1]], "initial and recovered analyser must read only the active gated processor");
-    assert.equal(level(), mode === "open" || mode === "old-intent-pending" ? 0.25 : 0);
+    assert.deepEqual([...(analyser as unknown as FakeAnalyser).inputs], [processors[recoveredIndex]], "initial and recovered analyser must read only the active gated processor");
+    assert.equal(level(), mode === "open" || mode === "old-intent-pending" || mode === "ended-setup-retry" ? 0.25 : 0);
     assert.equal(destinations[0].level(), 0, "both audio paths keep the silent gain sink");
     if (mode === "meet") meetMute(false);
     if (mode === "replacement-muted" || mode === "changed-during-ack") { tracks[1].muted = false; tracks[1].dispatch("unmute"); }
     assert.equal(await store.setManualMicMuted(false), true);
     assert.equal(level(), 0.25, "unmute restores microphone level after recovery");
-    assert.equal(tracks[0].stopCount, 1, "old device stops only after its replacement graph is attached");
+    assert.equal(tracks[0].stopCount, mode === "ended-setup-retry" ? 2 : 1, "old device stops only after its replacement graph is attached");
 
     await store.stopRecording();
-    assert.deepEqual(stopBoundary, { sourceGeneration: 2, sourceFrame: 192_000, alignment: null }, "Stop persists the recovered microphone's flush boundary");
-    assert.equal(tracks[1].stopCount, 1, "Stop releases the healthy replacement device");
+    assert.deepEqual(stopBoundary, { sourceGeneration: recoveredGeneration, sourceFrame: 192_000, alignment: null }, "Stop persists the recovered microphone's flush boundary");
+    assert.equal(tracks[recoveredIndex].stopCount, 1, "Stop releases the healthy replacement device");
   } finally {
     releaseDrain();
     releaseLateIntent();

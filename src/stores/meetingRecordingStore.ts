@@ -1200,6 +1200,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           onRecovered: async (replacement, previous) => {
             if (
               !isRecordingFlag ||
+              micIntentClosing ||
               activeRecordingSessionId !== sessionId ||
               !micContext ||
               !micProcessor
@@ -1213,8 +1214,8 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             // Serialize drain, replacement setup and its intent with mute controls.
             // Controls queued during the handoff run against the replacement track.
             micHandoffActive = true;
-            const handoff = micIntentQueue.then(async (accepted) => {
-              if (!accepted || !isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
+            const handoff = micIntentQueue.then(async () => {
+              if (micIntentClosing || !isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
                 throw new Error("Meeting recording stopped before switching microphones");
               }
               const lastSequence = await flushAndDisconnectProcessor(previousProcessor);

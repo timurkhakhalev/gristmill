@@ -43,6 +43,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
 };
 process.env.NODE_ENV = "test";
 
+const { NoteWriteService } = require("../../src/helpers/noteWriteService.ts");
 const DatabaseManager = require("../../src/helpers/database.ts");
 
 test.after(() => {
@@ -66,7 +67,7 @@ async function loadModules() {
   return { registerNotesHandlers, events };
 }
 
-async function createFixture(t: import("node:test").TestContext) {
+async function createFixture(t: import("node:test").TestContext, mirrorError?: Error) {
   const { registerNotesHandlers } = await loadModules();
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-ipc-"));
   let db;
@@ -87,13 +88,16 @@ async function createFixture(t: import("node:test").TestContext) {
 
   const effects: { mirrorWrites: number[]; mirrorDeletes: number[]; autoLabels: number[]; speakerRefreshes: [number, number][] } = { mirrorWrites: [], mirrorDeletes: [], autoLabels: [], speakerRefreshes: [] };
   const deps: NotesHandlerDeps = {
-    saveNote: (title, content, noteType, sourceFile, audioDuration, folderId, spaceId) =>
-      db.saveNote(title, content, noteType, sourceFile, audioDuration, folderId, spaceId),
+    noteWrites: new NoteWriteService({
+      database: db,
+      mirrorWrite: (note: import("../../src/contracts/notes.ts").NoteItem) => { effects.mirrorWrites.push(note.id); if (mirrorError) throw mirrorError; },
+      tryAutoLabelOneOnOne: (id: number) => { effects.autoLabels.push(id); },
+      refreshMeetingSpeakerConfigFromNote: (id: number, note: import("../../src/contracts/notes.ts").NoteItem) => { effects.speakerRefreshes.push([id, note.id]); },
+    }),
     getNote: (id) => db.getNote(id),
     getNotes: (noteType, limit, folderId, spaceId) =>
       db.getNotes(noteType, limit, folderId, spaceId),
     getNotesForSpace: (spaceId, limit) => db.getNotesForSpace(spaceId, limit),
-    updateNote: (id, updates) => db.updateNote(id, updates),
     deleteNoteInternal: () => {
       throw new Error("replaced below");
     },
@@ -102,9 +106,7 @@ async function createFixture(t: import("node:test").TestContext) {
     searchNoteContent: () => [],
     searchNoteTranscripts: () => [],
     getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
-    asyncMirrorWrite: (note) => { effects.mirrorWrites.push(note.id); },
-    tryAutoLabelOneOnOne: (id) => { effects.autoLabels.push(id); },
-    refreshMeetingSpeakerConfigFromNote: (id, note) => { effects.speakerRefreshes.push([id, note.id]); },
+
   };
   const deleteCalls: unknown[] = [];
   const realDelete = (id: number) => {
@@ -123,7 +125,7 @@ async function createFixture(t: import("node:test").TestContext) {
 
   const call = async (channel: string, ...args: unknown[]) => handlers.get(channel)(null, ...args);
   const flush = () => new Promise((resolve) => setImmediate(resolve));
-  return { db, call, sent, effects, deleteCalls, flush };
+  return { db, call, sent, effects, deleteCalls, flush, noteWrites: deps.noteWrites };
 }
 
 test("save → get → update → search/list → delete round-trips through real handlers", async (t: import("node:test").TestContext) => {
@@ -220,19 +222,21 @@ test("participants update triggers auto-label then speaker refresh, after mirror
   registerNotesHandlers(
     { handle: (channel, listener) => newHandlers.set(channel, listener) },
     {
-      saveNote: (...a) => db1.saveNote(...a),
+      noteWrites: new NoteWriteService({
+        database: db1,
+        mirrorWrite: (n: import("../../src/contracts/notes.ts").NoteItem) => order.push(["mirror", n.id]),
+        tryAutoLabelOneOnOne: (id: number) => order.push(["label", id]),
+        refreshMeetingSpeakerConfigFromNote: (id: number, n: import("../../src/contracts/notes.ts").NoteItem) => order.push(["refresh", id, n.id]),
+      }),
       getNote: (id) => db1.getNote(id),
       getNotes: (...a) => db1.getNotes(...a),
       getNotesForSpace: (...a) => db1.getNotesForSpace(...a),
-      updateNote: (...a) => db1.updateNote(...a),
       deleteNoteInternal: (id) => ctx.deleteCalls.push(id),
       searchNotes: (...a) => db1.searchNotes(...a),
       searchNoteContent: () => [],
       searchNoteTranscripts: () => [],
       getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
-      asyncMirrorWrite: (n) => order.push(["mirror", n.id]),
-      tryAutoLabelOneOnOne: (id) => order.push(["label", id]),
-      refreshMeetingSpeakerConfigFromNote: (id, n) => order.push(["refresh", id, n.id]),
+
     }
   );
   const traceCall = (channel: string, ...args: unknown[]) => newHandlers.get(channel)(null, ...args);
@@ -317,4 +321,30 @@ test("exactly one broadcast per success and none on failure", async (t: import("
   assert.equal(sent.length, 2);
   assert.equal(sent[1].channel, "note-deleted");
   void db;
+});
+
+// Regression: a projection failure must not turn a committed edit into a
+// failed IPC save, suppress its event, or skip participant configuration.
+test("mirror failure preserves durable edits, events and participant callbacks", async (t: import("node:test").TestContext) => {
+  const ctx = await createFixture(t, new Error("Mirror folder unavailable"));
+  if (!ctx) return;
+  const saved = await ctx.call("db-save-note", "", "", "personal", null, null, null, null);
+  assert.equal(saved.success, true);
+  assert.equal(ctx.db.getNote(saved.note.id).content, "");
+  const updated = await ctx.call("db-update-note", saved.note.id, { title: "Saved", participants: "[]" });
+  assert.equal(updated.success, true);
+  assert.equal(ctx.db.getNote(saved.note.id).title, "Saved");
+  assert.deepEqual(ctx.effects.autoLabels, [saved.note.id]);
+  assert.deepEqual(ctx.effects.speakerRefreshes, [[saved.note.id, saved.note.id]]);
+  await ctx.flush();
+  assert.deepEqual(ctx.sent.map((event) => event.channel), ["note-added", "note-updated"]);
+});
+
+test("a thrown database write publishes no event or mirror", async (t: import("node:test").TestContext) => {
+  const ctx = await createFixture(t);
+  if (!ctx) return;
+  await assert.rejects(() => ctx.call("db-save-note", "N", "", "personal", null, null, null, 987654), /Space not found/);
+  await ctx.flush();
+  assert.deepEqual(ctx.sent, []);
+  assert.deepEqual(ctx.effects.mirrorWrites, []);
 });

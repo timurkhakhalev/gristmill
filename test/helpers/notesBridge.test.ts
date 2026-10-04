@@ -120,17 +120,22 @@ async function createFixture(t: import("node:test").TestContext) {
   }
   t.after(() => db.close());
 
+  const { NoteWriteService } = await import("../../src/helpers/noteWriteService.ts");
   const { registerNotesHandlers } = await import("../../src/helpers/notesIpcHandlers.ts");
   const handlers = activeHandlers;
   assert.ok(handlers);
   registerNotesHandlers(
     { handle: (channel, listener) => handlers.set(channel, listener) },
     {
-      saveNote: (...args) => db.saveNote(...args),
+      noteWrites: new NoteWriteService({
+        database: db,
+        mirrorWrite: () => {},
+        tryAutoLabelOneOnOne: () => {},
+        refreshMeetingSpeakerConfigFromNote: () => {},
+      }),
       getNote: (id) => db.getNote(id),
       getNotes: (...args) => db.getNotes(...args),
       getNotesForSpace: (...args) => db.getNotesForSpace(...args),
-      updateNote: (...args) => db.updateNote(...args),
       deleteNoteInternal: (id) => {
         const result = db.deleteNote(id);
         if (result?.success) {
@@ -144,9 +149,7 @@ async function createFixture(t: import("node:test").TestContext) {
       searchNoteContent: () => [],
       searchNoteTranscripts: () => [],
       getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
-      asyncMirrorWrite: () => {},
-      tryAutoLabelOneOnOne: () => {},
-      refreshMeetingSpeakerConfigFromNote: () => {},
+
     }
   );
 

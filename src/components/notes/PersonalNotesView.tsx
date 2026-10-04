@@ -38,6 +38,7 @@ import { defaultFolderDisplayName, notesEmptyTitleKey } from "./shared";
 import { isMeetingAutoEndEligible } from "../../helpers/meetingRecordingSession";
 import { handleMeetingRecordingRequest } from "../../helpers/meetingRecordingRequest";
 import {
+  acceptExternalNoteUpdate,
   applyNoteDraftMutation,
   applyEventDraftHandoff,
   collectPendingNoteWrites,
@@ -51,15 +52,6 @@ import {
 
 function makeContentHash(content: string): string {
   return String(content.length) + "-" + content.slice(0, 50);
-}
-
-function draftFromNote(note: NoteItem): NoteEditorDraft {
-  return {
-    noteId: note.id,
-    title: note.title,
-    content: note.content,
-    enhancedContent: note.enhanced_content ?? null,
-  };
 }
 
 interface PendingDocumentSave extends PendingDocumentSnapshot {
@@ -254,9 +246,14 @@ export default function PersonalNotesView({
       pendingDocumentRef.current?.noteId === activeNote.id ||
       pendingEnhancedRef.current?.noteId === activeNote.id;
     if (!hasPendingLocalSave) {
-      // External update (e.g. AI chat tool) — replace the complete draft only
-      // when it has no local save pending.
-      commitDraft(draftFromNote(activeNote));
+      // External update (e.g. AI chat tool): fields the user never typed
+      // accept the external value; dirty user fields keep the local value so
+      // their pending save still lands (#157).
+      const { draft: merged } = acceptExternalNoteUpdate(currentDraft, {
+        title: activeNote.title,
+        content: activeNote.content,
+      });
+      commitDraft(merged);
     }
   }, [activeNote, commitDraft, transitionToNote]);
 
@@ -264,19 +261,31 @@ export default function PersonalNotesView({
     const current = pendingDocumentRef.current;
     if (current) clearTimeout(current.timer);
 
+    // Only the fields the user edited are captured: a debounced write must
+    // not republish fields an external update (chat tool, processing) just
+    // changed under us (#157).
     const pending: PendingDocumentSave = {
       noteId: snapshot.noteId,
-      title: snapshot.title,
-      content: snapshot.content,
+      title: snapshot.dirtyTitle ? snapshot.title : undefined,
+      content: snapshot.dirtyContent ? snapshot.content : undefined,
       timer: setTimeout(async () => {
         if (pendingDocumentRef.current !== pending) return;
         pendingDocumentRef.current = null;
         setIsSaving(true);
         try {
           await window.electronAPI.updateNote(pending.noteId, {
-            title: pending.title,
-            content: pending.content,
+            ...(pending.title !== undefined ? { title: pending.title } : {}),
+            ...(pending.content !== undefined ? { content: pending.content } : {}),
           });
+          // The write landed: the editor state matches the row again.
+          const draft = draftRef.current;
+          if (draft?.noteId === pending.noteId) {
+            commitDraft({
+              ...draft,
+              ...(pending.title !== undefined && draft.dirtyTitle ? { dirtyTitle: false } : {}),
+              ...(pending.content !== undefined && draft.dirtyContent ? { dirtyContent: false } : {}),
+            });
+          }
         } catch (err) {
           logger.warn("Failed to save note", { error: (err as Error).message }, "notes");
         } finally {
@@ -285,7 +294,7 @@ export default function PersonalNotesView({
       }, 1000),
     };
     pendingDocumentRef.current = pending;
-  }, []);
+  }, [commitDraft]);
 
   const scheduleEnhancedSave = useCallback((snapshot: NoteEditorDraft) => {
     const current = pendingEnhancedRef.current;

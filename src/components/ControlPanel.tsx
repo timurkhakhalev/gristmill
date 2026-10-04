@@ -487,7 +487,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                 <Suspense fallback={null}>
                   <UploadAudioView
                     onNoteCreated={(noteId, folderId) => {
-                      setActiveNoteId(noteId);
+                      // The fresh row may land in an unloaded container (#185).
+                      void openNoteRow({ id: noteId } as NoteItem);
                       if (folderId != null) setActiveFolderId(folderId);
                       setActiveView("personal-notes");
                     }}

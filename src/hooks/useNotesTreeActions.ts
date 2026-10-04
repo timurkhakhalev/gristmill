@@ -12,6 +12,7 @@ import {
   getNoteFromStore,
   initializeNotes,
   loadFolders,
+  openNoteRow,
   revealContainer,
   setActiveContext,
   setActiveNoteId,
@@ -70,7 +71,8 @@ export function useNotesTreeActions() {
       if (result.success && result.note) {
         setActiveContext(result.note.space_id, result.note.folder_id);
         revealContainer(result.note.space_id, result.note.folder_id);
-        setActiveNoteId(result.note.id);
+        // Hold the full row in case the container is not loaded (#185).
+        void openNoteRow(result.note);
         // A new note is a recording waiting to happen: start it unless one is already live.
         if (!isTranscribing) void startRecordingForNote(result.note);
         return result.note;

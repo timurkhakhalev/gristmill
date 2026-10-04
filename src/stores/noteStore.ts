@@ -626,6 +626,11 @@ export async function openNoteRow(note: NoteItem): Promise<void> {
     useNoteStore.setState({ selectedNote: cached, activeNoteId: cached.id });
     return;
   }
+  // A caller-supplied full row (search result, chat citation) is held as-is.
+  if (note.title !== undefined && note.content !== undefined) {
+    useNoteStore.setState({ selectedNote: note, activeNoteId: note.id });
+    return;
+  }
   const fetched = await window.electronAPI.getNote(note.id);
   if (generation !== selectedNoteFetchGeneration) return;
   if (fetched) {

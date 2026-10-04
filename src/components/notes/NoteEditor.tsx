@@ -43,7 +43,7 @@ import { openSettings } from "../../utils/openSettings";
 import EmptyStateCard from "../ui/EmptyStateCard";
 import { Button } from "../ui/button";
 import ChatPanel, { type ChatPanelMode } from "../chat/ChatPanel";
-import { setActiveFolderId, setActiveNoteId } from "../../stores/noteStore";
+import { openNoteRow, setActiveFolderId, setActiveNoteId } from "../../stores/noteStore";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
 import type { Message } from "../chat/types";
 import { formatNoteDate, formatShortDateTime } from "../../utils/dateFormatting";
@@ -255,7 +255,10 @@ export default function NoteEditor({
   const openChatNote = useCallback(async (noteId: number) => {
     const target = await window.electronAPI.getNote(noteId);
     if (target?.folder_id) setActiveFolderId(target.folder_id);
-    setActiveNoteId(noteId);
+    // Chat citations can sit outside the container caches (#185): the row is
+    // already in hand — hold it directly instead of id-only selection.
+    if (target) void openNoteRow(target);
+    else setActiveNoteId(noteId);
   }, []);
   const titleRef = useRef<HTMLDivElement>(null);
   const prevNoteIdRef = useRef<number>(note.id);

@@ -1,3 +1,4 @@
+import { refreshTinfoilCatalogAndReconcileSelections } from "../../../models/tinfoilModels";
 import type { InferenceProvider } from "./types";
 import { TOKEN_LIMITS } from "../../../config/constants.mts";
 import { withRetry, createApiRetryStrategy } from "../../../utils/retry";
@@ -13,9 +14,10 @@ export const tinfoilProvider: InferenceProvider = {
     logger.logReasoning("TINFOIL_START", { model, agentName });
 
     const apiKey = await ctx.getApiKey("tinfoil");
-    // The client verifies enclave attestation before every request and
-    // refuses to send anything over an unverified transport.
-    const client = await getTinfoilChatClient(apiKey);
+    if (!apiKey?.trim()) throw new Error("Tinfoil API key not configured");
+    // A fresh persisted cache is applied synchronously; a network refresh is
+    // background work for later operations. Shape this request before SDK setup.
+    void refreshTinfoilCatalogAndReconcileSelections().catch(() => {});
 
     const systemPrompt = config.systemPrompt || ctx.getSystemPrompt(agentName);
     const userContent = config.systemPrompt ? text : wrapCleanupTranscript(text);
@@ -38,6 +40,10 @@ export const tinfoilProvider: InferenceProvider = {
 
     const requestBody: Record<string, unknown> = { model, messages };
     applyChatCompletionsParams(requestBody, { model, provider: "tinfoil", config, maxTokens });
+
+    // The client verifies enclave attestation before every request and
+    // refuses to send anything over an unverified transport.
+    const client = await getTinfoilChatClient(apiKey);
 
     // Keep SDK-internal retries off so withRetry stays the single retry layer.
     const timeoutMs = getLlmRequestTimeoutSeconds() * 1000;

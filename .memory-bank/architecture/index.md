@@ -16,3 +16,5 @@ The decisions and their reasons are in the [ADRs](../adr/index.md).
 - [renderer-boundary.md](renderer-boundary.md) — renderer import restrictions, permitted shared helpers and selected runtime graph checks.
 
 Read in this sequence: overview → recording-processing → post-stop-processing → the document for your task.
+
+- [tinfoil-catalog.md](tinfoil-catalog.md) — explicit catalog effects, cache and request snapshots.

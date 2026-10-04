@@ -240,6 +240,7 @@ interface ActiveRun {
   mode: MeetingProcessingConfig["transcription"]["mode"] | "summary-local" | "summary-remote";
   controller: AbortController;
   settled: Promise<void>;
+  usesAudio: boolean;
 }
 
 interface MeetingSummaryActionContext {
@@ -339,10 +340,13 @@ export class MeetingProcessingWorker {
   }
 
   async cancelRecordingForDeletion(recordingId: string): Promise<void> {
-    const runs = this.deps.database.listAllMeetingProcessingRuns().filter((run) =>
-      run.sourceRecordingIds.includes(recordingId) && (run.stage === "prepare" || run.stage === "asr" ||
-        (run.stage === "normalize" && (run.config?.transcription.mode === "local" ||
-          (this.active?.runId === run.id && this.deps.recognizeSpeakers !== undefined)))));
+    const runs = this.deps.database.listAllMeetingProcessingRuns().filter((run) => {
+      if (!run.sourceRecordingIds.includes(recordingId)) return false;
+      if (this.active?.runId === run.id) return this.active.usesAudio;
+      return run.stage === "prepare" || run.stage === "asr" ||
+        (run.stage === "normalize" && !run.hasTranscript && run.config?.transcription.mode === "local" &&
+          run.config.transcription.local?.options?.diarize !== false);
+    });
     await this.cancelRunsForDeletion(runs, "audio-deletion-requested");
   }
 
@@ -669,7 +673,7 @@ export class MeetingProcessingWorker {
       : config?.transcription.mode ?? "providers";
     let settle!: () => void;
     const settled = new Promise<void>((resolve) => { settle = resolve; });
-    const active: ActiveRun = { runId, stage: run.stage, mode, controller: new AbortController(), settled };
+    const active: ActiveRun = { runId, stage: run.stage, mode, controller: new AbortController(), settled, usesAudio: run.stage === "prepare" || run.stage === "asr" };
     this.active = active;
     try {
       if (run.stage === "prepare") {
@@ -889,6 +893,7 @@ export class MeetingProcessingWorker {
       result = normalizeLocalResponse(raw);
       if (result.success && result.text?.trim() && config.local?.options?.diarize !== false) {
         if (this.isCapturing()) return this.pause(run, "normalize");
+        if (this.active?.runId === run.id) this.active.usesAudio = true;
         const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id);
         await this.ensureAudio(run, recording, "mono", signal);
         const note = this.deps.database.getNote(recording.noteId);
@@ -944,6 +949,7 @@ export class MeetingProcessingWorker {
       throw new MeetingProcessingFailure("transcript-state-not-saved", "failed");
     }
     if (this.deps.recognizeSpeakers && recording.audioState === "available" && transcript.segments?.length) {
+      if (this.active?.runId === run.id) this.active.usesAudio = true;
       const layout = config.mode === "local" ? "mono" : "system";
       const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layout);
       await this.ensureAudio(run, recording, layout, signal);
@@ -967,6 +973,7 @@ export class MeetingProcessingWorker {
         )) this.publishCurrentSelection(run.id);
       }
     }
+    if (this.active?.runId === run.id) this.active.usesAudio = false;
     this.publishCurrentSelection(run.id);
     if (!transcript.text.trim()) this.setState(run.id, "summary", "complete", null, null);
     else await this.continueReadyTranscript(run, recording, transcript, signal);
@@ -1813,12 +1820,13 @@ export class MeetingProcessingWorker {
   private isCurrentNoteAudioVersion(run: MeetingProcessingRunDto): boolean {
     const recording = this.deps.database.getMeetingRecording(run.recordingId);
     if (!recording || run.kind === "summary") return false;
+    const hasTranscript = this.deps.database.getMeetingProcessingRun(run.id)?.hasTranscript === true;
     const parts = this.deps.database.listMeetingRecordingsForNote(recording.noteId)
-      .filter((part) => part.audioState === "available" && part.captureErrorCode !== "recording-audio-unavailable")
+      // Removing source files does not invalidate text already derived from them.
+      .filter((part) => (part.audioState === "available" || (hasTranscript && run.sourceRecordingIds.includes(part.id))) &&
+        part.captureErrorCode !== "recording-audio-unavailable")
       .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
-    if (parts.some((part) =>
-      (part.captureState !== "ready" && part.captureState !== "incomplete") || part.audioState !== "available"
-    )) return false;
+    if (parts.some((part) => part.captureState !== "ready" && part.captureState !== "incomplete")) return false;
     const currentIds = parts.map((part) => part.id).sort();
     const sourceIds = [...run.sourceRecordingIds].sort();
     return currentIds.length === sourceIds.length && currentIds.every((id, index) => id === sourceIds[index]);

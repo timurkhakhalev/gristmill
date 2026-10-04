@@ -3190,3 +3190,49 @@ test("audio deletion waits for local speaker recognition after cloud ASR", async
   assert.equal(db.getMeetingProcessingRun(run.id).status, "cancelled");
   assert.equal(db.getMeetingRunSpeakerCorrections(run.id).some((item: { displayName: string }) => item.displayName === "Late name"), false);
 });
+
+for (const mode of ["providers", "local"] as const) {
+  test(`audio deletion preserves text-only naming after ${mode} normalization`, async (t) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const config: MeetingProcessingConfig = mode === "providers" ? validConfig : {
+      ...validConfig,
+      transcription: { mode: "local", language: "en", local: { provider: "whisper", model: "base", options: { diarize: true } } },
+    };
+    const { note, recording, run } = createFinishedRecording(db, storage, config, "Manual notes", false, 180);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let start!: () => void;
+    const started = new Promise<void>((resolve) => { start = resolve; });
+    let namingSignal: AbortSignal | undefined;
+    let recognitions = 0;
+    const worker = workerFor(db, storage, {
+      transcribeRemote: async (_request, saveRaw) => { await saveRaw(longTranscriptResponse()); return { success: true }; },
+      transcribeLocal: async () => ({ success: true, text: "x".repeat(2500) }),
+      diarizeLocal: async () => [{ speaker: "speaker_0", start: 0, end: 1 }],
+      recognizeSpeakers: async () => { recognitions++; return []; },
+      nameSpeakers: async (_input, _config, _run, signal) => {
+        namingSignal = signal;
+        start();
+        await gate;
+        return { speakers: [] };
+      },
+      summarize: async () => "## TLDR\nSummary survives audio deletion.",
+    });
+    t.after(async () => { release(); await worker.stop(); });
+    worker.onRetentionReady();
+    await started;
+    assert.equal(recognitions, 1);
+    const intent = db.beginMeetingAudioDeletion(recording.id);
+    assert.ok(intent);
+    await worker.cancelRecordingForDeletion(recording.id);
+    assert.equal(namingSignal?.aborted, false);
+    storage.removeRecordingAudio(recording.id);
+    assert.equal(db.completeMeetingAudioDeletion(intent.id).success, true);
+    release();
+    await worker.waitForIdle();
+    assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+    assert.match(db.getNote(note.id).enhanced_content, /Summary survives/);
+  });
+}

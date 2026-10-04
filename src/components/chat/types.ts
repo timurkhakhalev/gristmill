@@ -14,6 +14,8 @@ export interface Message {
   content: string;
   isStreaming: boolean;
   toolCalls?: ToolCallInfo[];
+  persistenceError?: string;
+  isSaving?: boolean;
 }
 
 export type AgentState =

@@ -2,114 +2,186 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { Message, ToolCallInfo } from "./types";
 import type { ContainerScope } from "../../types/chat";
 
-interface UseChatPersistenceOptions {
-  conversationId?: number | null;
-  onConversationCreated?: (id: number, title: string) => void;
+export interface ChatSession {
+  generation: number;
+  conversationId: number | null;
 }
 
 export interface ChatPersistence {
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   conversationId: number | null;
+  getSession: () => ChatSession;
+  isCurrent: (session: ChatSession) => boolean;
   createConversation: (
     title: string,
     noteId?: number | null,
     scope?: ContainerScope
-  ) => Promise<number>;
+  ) => Promise<number | null>;
   loadConversation: (id: number) => Promise<void>;
-  saveUserMessage: (text: string) => Promise<void>;
-  saveAssistantMessage: (content: string, toolCalls?: ToolCallInfo[]) => Promise<void>;
+  saveUserMessage: (session: ChatSession, message: Message) => Promise<boolean>;
+  saveAssistantMessage: (
+    session: ChatSession,
+    id: string,
+    content: string,
+    toolCalls?: ToolCallInfo[]
+  ) => Promise<boolean>;
+  retrySaveMessage: (id: string) => Promise<void>;
   handleNewChat: () => void;
 }
 
-export function useChatPersistence(options: UseChatPersistenceOptions = {}): ChatPersistence {
+/** One owner for the visible conversation and the identity of pending work. */
+export function useChatPersistence({ noteId }: { noteId?: number | null } = {}): ChatPersistence {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [conversationId, setConversationId] = useState<number | null>(
-    options.conversationId ?? null
-  );
-  const conversationIdRef = useRef(conversationId);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const conversationIdRef = useRef<number | null>(null);
+  const generation = useRef(0);
+  const mounted = useRef(true);
+  const [previousNoteId, setPreviousNoteId] = useState(noteId);
+  const saving = useRef(new Set<string>());
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
 
   useEffect(() => {
-    conversationIdRef.current = conversationId;
-  }, [conversationId]);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const getSession = useCallback(
+    (): ChatSession => ({
+      generation: generation.current,
+      conversationId: conversationIdRef.current,
+    }),
+    []
+  );
+  const isCurrent = useCallback(
+    (session: ChatSession) =>
+      session.generation === generation.current &&
+      session.conversationId === conversationIdRef.current,
+    []
+  );
+  const handleNewChat = useCallback(() => {
+    generation.current++;
+    conversationIdRef.current = null;
+    setConversationId(null);
+    setMessages([]);
+  }, []);
+
+  // Invalidate before effects: callbacks from the old Note cannot publish into
+  // the new Note during the interval before its history request starts.
+  if (noteId !== previousNoteId) {
+    setPreviousNoteId(noteId);
+    handleNewChat();
+  }
 
   const createConversation = useCallback(
-    async (title: string, noteId?: number | null, scope?: ContainerScope): Promise<number> => {
-      const conv = await window.electronAPI?.createAgentConversation?.(
+    async (title: string, scopeNoteId?: number | null, scope?: ContainerScope) => {
+      const session = getSession();
+      const conv = await window.electronAPI.createAgentConversation(
         title,
-        noteId ?? undefined,
+        scopeNoteId ?? undefined,
         scope?.spaceId,
         scope?.folderId ?? undefined
       );
-      if (!conv) {
-        throw new Error("Conversation scope is no longer available");
-      }
-      const id = conv.id;
-      conversationIdRef.current = id;
-      setConversationId(id);
-      options.onConversationCreated?.(id, title);
-      return id;
+      if (!mounted.current || !isCurrent(session)) return null;
+      if (!conv) throw new Error("Conversation scope is no longer available");
+      conversationIdRef.current = conv.id;
+      setConversationId(conv.id);
+      return conv.id;
     },
-    [options]
+    [getSession, isCurrent]
   );
 
-  const loadConversation = useCallback(async (id: number) => {
-    const conv = await window.electronAPI?.getAgentConversation?.(id);
-    if (!conv) {
-      // The conversation was deleted elsewhere (e.g. ControlPanel history).
-      // Clear the id, or every subsequent save silently no-ops against the
-      // tombstoned row and the session is never persisted.
-      conversationIdRef.current = null;
-      setConversationId(null);
-      return;
-    }
-    conversationIdRef.current = id;
-    setConversationId(id);
-    const loaded: Message[] = conv.messages.map((m) => {
-      const parsed = m.metadata ? tryParseMetadata(m.metadata) : undefined;
-      const toolCalls = parsed?.toolCalls as ToolCallInfo[] | undefined;
-      return {
-        id: crypto.randomUUID(),
-        role: m.role as Message["role"],
-        content: m.content,
-        isStreaming: false,
-        ...(toolCalls ? { toolCalls } : {}),
+  const loadConversation = useCallback(
+    async (id: number) => {
+      handleNewChat();
+      const session = getSession();
+      const conv = await window.electronAPI.getAgentConversation(id);
+      if (!mounted.current || !isCurrent(session)) return;
+      if (!conv) return;
+      if (conv.id !== id || (noteId != null && conv.note_id !== noteId))
+        throw new Error("Unexpected conversation identity");
+      const loaded: Message[] = conv.messages.map((m) => {
+        const parsed = m.metadata ? tryParseMetadata(m.metadata) : undefined;
+        const toolCalls = parsed?.toolCalls as ToolCallInfo[] | undefined;
+        return {
+          id: crypto.randomUUID(),
+          role: m.role as Message["role"],
+          content: m.content,
+          isStreaming: false,
+          ...(toolCalls ? { toolCalls } : {}),
+        };
+      });
+      conversationIdRef.current = id;
+      setConversationId(id);
+      setMessages(loaded);
+    },
+    [getSession, handleNewChat, isCurrent, noteId]
+  );
+
+  const saveMessage = useCallback(
+    async (session: ChatSession, message: Message): Promise<boolean> => {
+      if (!isCurrent(session) || session.conversationId === null || saving.current.has(message.id))
+        return false;
+      saving.current.add(message.id);
+      const update = (changes: Partial<Message>) => {
+        if (mounted.current && isCurrent(session))
+          setMessages((messages) =>
+            messages.map((m) => (m.id === message.id ? { ...m, ...changes } : m))
+          );
       };
-    });
-    setMessages(loaded);
-  }, []);
-
-  const saveUserMessage = useCallback(async (text: string) => {
-    if (conversationIdRef.current) {
-      window.electronAPI?.addAgentMessage?.(conversationIdRef.current, "user", text);
-    }
-  }, []);
-
-  const saveAssistantMessage = useCallback(async (content: string, toolCalls?: ToolCallInfo[]) => {
-    if (conversationIdRef.current) {
-      window.electronAPI?.addAgentMessage?.(
-        conversationIdRef.current,
-        "assistant",
-        content,
-        toolCalls?.length ? { toolCalls } : undefined
-      );
-    }
-  }, []);
-
-  const handleNewChat = useCallback(() => {
-    setMessages([]);
-    conversationIdRef.current = null;
-    setConversationId(null);
-  }, []);
+      update({ isSaving: true });
+      try {
+        const saved = await window.electronAPI.addAgentMessage(
+          session.conversationId,
+          message.role === "user" ? "user" : "assistant",
+          message.content,
+          message.toolCalls?.length ? { toolCalls: message.toolCalls } : undefined
+        );
+        if (!saved || saved.conversation_id !== session.conversationId)
+          throw new Error("Message was not saved");
+        update({ persistenceError: undefined });
+        return true;
+      } catch (error) {
+        update({ persistenceError: error instanceof Error ? error.message : String(error) });
+        return false;
+      } finally {
+        saving.current.delete(message.id);
+        update({ isSaving: false });
+      }
+    },
+    [isCurrent]
+  );
+  const saveUserMessage = useCallback(
+    (session: ChatSession, message: Message) => saveMessage(session, message),
+    [saveMessage]
+  );
+  const saveAssistantMessage = useCallback(
+    (session: ChatSession, id: string, content: string, toolCalls?: ToolCallInfo[]) =>
+      saveMessage(session, { id, role: "assistant", content, isStreaming: false, toolCalls }),
+    [saveMessage]
+  );
+  const retrySaveMessage = useCallback(
+    async (id: string) => {
+      const message = messagesRef.current.find((m) => m.id === id && m.persistenceError);
+      if (message) await saveMessage(getSession(), message);
+    },
+    [getSession, saveMessage]
+  );
 
   return {
     messages,
     setMessages,
     conversationId,
+    getSession,
+    isCurrent,
     createConversation,
     loadConversation,
     saveUserMessage,
     saveAssistantMessage,
+    retrySaveMessage,
     handleNewChat,
   };
 }

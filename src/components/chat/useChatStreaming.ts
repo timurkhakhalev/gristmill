@@ -20,6 +20,7 @@ const LOCAL_TOOL_MIN_PARAMS_B = 4;
 export interface ChatSendOptions {
   /** Persisted local conversation, including the very first message's newly created ID. */
   conversationId?: number;
+  onComplete?: (assistantId: string, content: string, toolCalls?: ToolCallInfo[]) => void | Promise<void>;
   /** Complete system prompt for a one-off action in the existing conversation. */
   systemPrompt?: string;
   /** Do not expose application tools to this turn. */
@@ -42,7 +43,6 @@ interface UseChatStreamingOptions {
   noteId?: number;
   /** Optional container scope applied to the search_notes tool (container overview chat). */
   searchScope?: ContainerScope;
-  onStreamComplete?: (assistantId: string, content: string, toolCalls?: ToolCallInfo[]) => void;
   /** bb's generated title for the thread that answered the latest turn. */
   onThreadTitle?: (title: string, conversationId: number) => void;
 }
@@ -64,7 +64,6 @@ export function useChatStreaming({
   noteContext: externalNoteContext,
   noteId,
   searchScope,
-  onStreamComplete,
   onThreadTitle,
 }: UseChatStreamingOptions): ChatStreaming {
   const { t } = useTranslation();
@@ -134,12 +133,11 @@ export function useChatStreaming({
   // how sendToAI tells a user's cancel from an unmount mid-stream.
   const explicitCancelGenerationRef = useRef(0);
   const cancelStream = useCallback(() => {
-    if (disabled) return;
     sendGenerationRef.current += 1;
     if (mountedRef.current) {
       explicitCancelGenerationRef.current = sendGenerationRef.current;
     }
-    ReasoningService.cancelActiveStream();
+    if (!disabled) ReasoningService.cancelActiveStream();
     setAgentState("idle");
     clearToolActivity();
   }, [clearToolActivity, disabled]);
@@ -160,6 +158,7 @@ export function useChatStreaming({
 
   const sendToAI = useCallback(
     async (userText: string, allMessages: Message[], sendOptions?: ChatSendOptions) => {
+      if (disabled || !mountedRef.current) return;
       const sendGeneration = ++sendGenerationRef.current;
       const cancelled = () => sendGeneration !== sendGenerationRef.current;
       clearToolActivity();
@@ -278,10 +277,7 @@ export function useChatStreaming({
         );
 
         for await (const chunk of stream) {
-          if (!mountedRef.current) {
-            ReasoningService.cancelActiveStream();
-            break;
-          }
+          if (cancelled() || !mountedRef.current) break;
           if (chunk.type === "content") {
             if (chunk.text) announceResponse();
             fullContent += chunk.text;
@@ -353,7 +349,7 @@ export function useChatStreaming({
           const explicitlyCancelled = explicitCancelGenerationRef.current > sendGeneration;
           if (!explicitlyCancelled && fullContent.trim().length > 0) {
             const finalMsg = messagesRef.current.find((m) => m.id === assistantId);
-            onStreamComplete?.(assistantId, fullContent, finalMsg?.toolCalls);
+            await sendOptions?.onComplete?.(assistantId, fullContent, finalMsg?.toolCalls);
           }
           return;
         }
@@ -374,7 +370,7 @@ export function useChatStreaming({
         );
 
         const finalMsg = messagesRef.current.find((m) => m.id === assistantId);
-        onStreamComplete?.(assistantId, fullContent, finalMsg?.toolCalls);
+        await sendOptions?.onComplete?.(assistantId, fullContent, finalMsg?.toolCalls);
       } catch (error) {
         if (cancelled()) {
           setMessages((prev) =>
@@ -398,14 +394,16 @@ export function useChatStreaming({
         }
       }
 
-      setAgentState("idle");
-      completeToolActivity();
+      if (!cancelled() && mountedRef.current) {
+        setAgentState("idle");
+        completeToolActivity();
+      }
     },
     [
       t,
+      disabled,
       setMessages,
-      onStreamComplete,
-      onThreadTitle,
+          onThreadTitle,
       noteId,
       clearToolActivity,
       beginToolActivity,

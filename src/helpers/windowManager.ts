@@ -62,6 +62,7 @@ export class WindowManager {
   controlPanelWindow: BrowserWindow | null = null;
   _controlPanelVisibilityTimer: NodeJS.Timeout | null = null;
   _controlPanelShowRequested = true;
+  _controlPanelLoadFailed = false;
   _onboardingRestoreBounds: WindowBounds | null = null;
   _onboardingWindowMode: string | null = null;
   _onboardingWindowState: OnboardingWindowState | null = null;
@@ -336,6 +337,7 @@ export class WindowManager {
       if (!show) return;
       this._controlPanelShowRequested = true;
       this._clearControlPanelVisibilityTimer();
+      if (this._controlPanelLoadFailed) await this.loadControlPanel();
       if (this.controlPanelWindow.isMinimized()) {
         this.controlPanelWindow.restore();
       }
@@ -463,11 +465,25 @@ export class WindowManager {
       }
     });
 
-    await this.loadControlPanel();
+    try {
+      await this.loadControlPanel();
+    } catch (error) {
+      if (show) throw error;
+      this._controlPanelLoadFailed = true;
+      this.setOnboardingActive(true);
+      debugLogger.error("Hidden control panel failed to load", { error: (error as Error).message }, "window");
+    }
   }
 
   async loadControlPanel(): Promise<void> {
-    await this.loadWindowContent(this.controlPanelWindow, true);
+    this._controlPanelLoadFailed = false;
+    try {
+      await this.loadWindowContent(this.controlPanelWindow, true);
+    } catch (error) {
+      this._controlPanelLoadFailed = true;
+      this.setOnboardingActive(true);
+      throw error;
+    }
   }
 
   setOnboardingActive(active: unknown): boolean {

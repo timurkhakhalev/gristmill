@@ -147,7 +147,7 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
     };
   }
   if (request === "./debugLogger" || request === "./debugLogger.js") {
-    return { info: () => undefined, warn: () => undefined };
+    return { info: () => undefined, warn: () => undefined, error: () => undefined };
   }
   if (request === "./hotkeyManager" || request === "./hotkeyManager.js") {
     return { HotkeyManager: FakeHotkeyManager };
@@ -894,4 +894,28 @@ test("visible startup keeps the load backstop and explicit hide cancels it", asy
   manager.setOnboardingWindowMode("restore");
   timers.runAll();
   assert.equal(manager.controlPanelWindow.isVisible(), false);
+});
+
+test("hidden load rejection settles bootstrap gated and explicit open retries", async (t) => {
+  const timers = installFakeTimers();
+  t.after(() => timers.restore());
+  const manager = new WindowManager();
+  t.after(() => manager._clearControlPanelVisibilityTimer());
+  let loads = 0;
+  manager.loadControlPanel = async () => {
+    loads++;
+    if (loads === 1) throw new Error("renderer unavailable");
+    manager.controlPanelWindow.webContents.emit("did-finish-load");
+    manager.setOnboardingActive(false);
+    manager.setOnboardingWindowMode("restore");
+  };
+  await manager.createControlPanelWindow({ show: false });
+  assert.equal(manager._controlPanelLoadFailed, true);
+  assert.equal(manager.isMeetingInputAllowed(), false);
+  timers.runAll();
+  assert.equal(manager.controlPanelWindow.showCount, 0);
+  await manager.createControlPanelWindow();
+  assert.equal(loads, 2);
+  assert.equal(manager.isMeetingInputAllowed(), true);
+  assert.equal(manager.controlPanelWindow.isVisible(), true);
 });

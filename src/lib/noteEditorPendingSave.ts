@@ -3,6 +3,9 @@ export interface NoteEditorDraft {
   readonly title: string;
   readonly content: string;
   readonly enhancedContent: string | null;
+  /** The user typed in this field since the last accepted external value. */
+  readonly dirtyTitle?: boolean;
+  readonly dirtyContent?: boolean;
 }
 
 export type NoteDraftMutation =
@@ -11,8 +14,8 @@ export type NoteDraftMutation =
 
 export interface PendingDocumentSnapshot {
   readonly noteId: number;
-  readonly title: string;
-  readonly content: string;
+  title?: string;
+  content?: string;
 }
 
 export interface PendingEnhancedSnapshot {
@@ -60,34 +63,67 @@ export function applyNoteDraftMutation(
     return { ...draft, enhancedContent: mutation.value };
   }
 
-  return { ...draft, [mutation.field]: mutation.value };
+  return {
+    ...draft,
+    [mutation.field]: mutation.value,
+    ...(mutation.field === "title" ? { dirtyTitle: true } : { dirtyContent: true }),
+  };
 }
 
+// An external update (chat tool, processing) meets the user's dirty fields:
+// a field the user typed keeps the local value and stays dirty (its pending
+// save will land); untouched fields accept the external value, so autosave
+// never republishes stale text over fresher data (#157). The dropped dirty
+// flags tell the caller an in-flight snapshot of that field may still carry
+// stale text and should be resaved after the pending write lands.
+export function acceptExternalNoteUpdate(
+  draft: NoteEditorDraft,
+  external: { title?: string; content?: string }
+): { draft: NoteEditorDraft; droppedDirty: { title: boolean; content: boolean } } {
+  const next = { ...draft };
+  const droppedDirty = { title: false, content: false };
+  if (external.title !== undefined) {
+    if (draft.dirtyTitle) {
+      droppedDirty.title = true;
+    } else {
+      next.title = external.title;
+      next.dirtyTitle = false;
+    }
+  }
+  if (external.content !== undefined) {
+    if (draft.dirtyContent) {
+      droppedDirty.content = true;
+    } else {
+      next.content = external.content;
+      next.dirtyContent = false;
+    }
+  }
+  return { draft: next, droppedDirty };
+}
+
+// Trims a pending snapshot to the fields the user actually edited, so a
+// debounced write never republishes fields it did not capture — an external
+// update to those fields must survive the autosave (#157).
 export function collectPendingNoteWrites(
   document: PendingDocumentSnapshot | null,
   enhanced: PendingEnhancedSnapshot | null
 ): PendingNoteWrite[] {
-  if (document && enhanced && document.noteId === enhanced.noteId) {
-    return [
-      {
-        noteId: document.noteId,
-        updates: {
-          title: document.title,
-          content: document.content,
-          enhanced_content: enhanced.enhancedContent,
-        },
-      },
-    ];
-  }
-
   const writes: PendingNoteWrite[] = [];
   if (document) {
-    writes.push({
-      noteId: document.noteId,
-      updates: { title: document.title, content: document.content },
-    });
-  }
-  if (enhanced) {
+    const updates: { title?: string; content?: string; enhanced_content?: string | null } = {};
+    if (document.title !== undefined) updates.title = document.title;
+    if (document.content !== undefined) updates.content = document.content;
+    if (enhanced && enhanced.noteId === document.noteId) {
+      updates.enhanced_content = enhanced.enhancedContent;
+    }
+    writes.push({ noteId: document.noteId, updates });
+    if (enhanced && enhanced.noteId !== document.noteId) {
+      writes.push({
+        noteId: enhanced.noteId,
+        updates: { enhanced_content: enhanced.enhancedContent },
+      });
+    }
+  } else if (enhanced) {
     writes.push({
       noteId: enhanced.noteId,
       updates: { enhanced_content: enhanced.enhancedContent },
@@ -143,5 +179,13 @@ export function applyEventDraftHandoff(
   // existing note's title; an untouched field leaves the note's value alone.
   const title = pending.title === undefined ? draft.title : pending.title;
   if (title === draft.title && content === draft.content) return draft;
-  return { ...draft, title, content };
+  return {
+    ...draft,
+    title,
+    content,
+    // The handoff is the user's input even though the editor never saw the
+    // keystroke: the changed fields must be persisted by the next save.
+    ...(title !== draft.title ? { dirtyTitle: true } : {}),
+    ...(content !== draft.content ? { dirtyContent: true } : {}),
+  };
 }

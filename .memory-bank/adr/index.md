@@ -17,3 +17,4 @@ Use the [template](template.md). Name the file `NNNN-short-slug.md`.
 | [0005](0005-typescript-toolchain.md) | Native TypeScript 7 for typecheck and build. TypeScript 6 only for the Compiler API | Accepted |
 | [0006](0006-remove-live-transcription.md) | Remove unused live transcription and speaker recognition. Enable diarization in new Local snapshots | Accepted, 2026-10-04 |
 | [0007](0007-explicit-tinfoil-catalog.md) | Explicit Tinfoil catalog effects and request snapshots | Accepted, 2026-10-04 |
+| [0008](0008-source-export-alignment.md) | Source-scoped export alignment with saved timeline duration | Accepted, 2026-10-04 |

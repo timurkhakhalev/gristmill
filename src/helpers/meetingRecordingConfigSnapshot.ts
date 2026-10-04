@@ -41,7 +41,7 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
         mode: "local",
         language,
         dictionaryHints: state.customDictionary ?? [],
-        local: { provider, model, options: { diarize: state.speakerDiarizationEnabled !== false } },
+        local: { provider, model, options: { diarize: true } },
       };
     } else if (meeting.transcriptionMode === "providers") {
       transcription = {

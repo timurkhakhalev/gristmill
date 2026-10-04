@@ -12,7 +12,7 @@ const {
   setExecutable,
 }: import("./lib/download-utils.cts").API = require("./lib/download-utils.cts");
 // Plain Node (this script runs from the pack hook, not under tsx) still
-// loads the pure-ESM helper via Node type-stripping — same as stt-canary.
+// loads the pure-ESM helper via Node type-stripping.
 const {
   PARAKEET_MINIMUM_MACOS_VERSION,
   compareVersions,

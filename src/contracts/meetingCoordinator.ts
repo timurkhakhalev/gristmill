@@ -28,7 +28,6 @@ export const meetingCoordinatorChannels = {
   micWarmHoldChanged: "mic-warm-hold-changed",
   meetingDetectionGetPreferences: "meeting-detection-get-preferences",
   meetingDetectionSetPreferences: "meeting-detection-set-preferences",
-  setSpeakerDiarizationEnabled: "meeting-set-speaker-diarization-enabled",
   setMeetingSessionSpeakerConfig: "meeting-set-session-speaker-config",
   meetingNotificationRespond: "meeting-notification-respond",
   meetingAutoEndCompleted: "meeting-auto-end-completed",
@@ -569,7 +568,6 @@ export interface MeetingCoordinatorApi {
   meetingDetectionSetPreferences?(
     prefs: Record<string, boolean>
   ): Promise<SimpleSuccessResult>;
-  setSpeakerDiarizationEnabled?(enabled: boolean): Promise<SimpleSuccessResult>;
   setMeetingSessionSpeakerConfig?(config: {
     enabled: boolean;
     expectedCount: number;

@@ -360,17 +360,11 @@
       "test/helpers/activeMicRecovery.test.ts",
       "test/helpers/audioStorageFilename.test.ts",
       "test/helpers/audioTapManagerWarnings.test.ts",
-      "test/helpers/liveSpeakerIdPolicy.test.ts",
-      "test/helpers/liveSpeakerIdentifier.test.ts",
       "test/helpers/meetingAudioActivityMonitor.test.ts",
       "test/helpers/meetingAudioParts.test.ts",
       "test/helpers/meetingAudioTimeline.test.ts",
       "test/helpers/meetingAutoEndController.test.ts",
-      "test/helpers/meetingEchoLeakDetector.test.ts",
-      "test/helpers/meetingMicGate.test.ts",
-      "test/helpers/meetingMicHoldback.test.ts",
       "test/helpers/meetingRecordingSession.test.ts",
-      "test/helpers/meetingStreamingSpeakerLabels.test.ts",
       "test/helpers/meetingStreamingWiring.test.ts",
       "test/helpers/meetingSystemAudioWatchdog.test.ts",
       "test/helpers/micDeviceSelection.test.ts",
@@ -382,7 +376,6 @@
       "test/helpers/speakerAssignmentPolicy.test.ts",
       "test/helpers/speakerCount.test.ts",
       "test/helpers/speakerMerge.test.ts",
-      "test/helpers/streamingConnectionLifecycle.test.ts",
       "test/helpers/systemDefaultMicrophone.test.ts",
       "test/utils/segmentSpeakerName.test.ts"
     ]
@@ -484,36 +477,6 @@
       "test/helpers/googleCalendarManager.test.ts",
       "test/helpers/microsoftCalendarManager.test.ts",
       "test/utils/calendarAttendees.test.ts"
-    ]
-  },
-  {
-    "domains": [
-      "ai",
-      "recording",
-      "transcription"
-    ],
-    "kind": "unit",
-    "buildMain": false,
-    "files": [
-      "test/helpers/assemblyAiStreaming.test.ts",
-      "test/helpers/cortiStreaming.test.ts",
-      "test/helpers/deepgramStreaming.test.ts",
-      "test/helpers/meetingStreamingProviders.test.ts",
-      "test/helpers/openaiRealtimeStreaming.test.ts",
-      "test/helpers/realtimeTokenProviders.test.ts",
-      "test/helpers/tinfoilRealtimeStreaming.test.ts"
-    ]
-  },
-  {
-    "domains": [
-      "ai",
-      "recording",
-      "transcription"
-    ],
-    "kind": "integration",
-    "buildMain": false,
-    "files": [
-      "test/helpers/geminiLiveStreaming.test.ts"
     ]
   },
   {
@@ -666,7 +629,6 @@
       "test/helpers/ffmpegUtils.test.ts",
       "test/helpers/meetingDiarizationInput.test.ts",
       "test/helpers/meetingTranscriptionLifecycle.test.ts",
-      "test/helpers/meetingTranscriptionRouting.test.ts",
       "test/helpers/transcriptFormatter.test.ts",
       "test/helpers/transcriptText.test.ts",
       "test/utils/audioDeviceUtils.test.ts",
@@ -1180,8 +1142,7 @@
     "kind": "types",
     "buildMain": false,
     "files": [
-      "test/scripts/type-probes/downloads.test.ts",
-      "test/scripts/type-probes/realtime-streaming.test.ts"
+      "test/scripts/type-probes/downloads.test.ts"
     ]
   },
   {

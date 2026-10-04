@@ -192,8 +192,6 @@ build/
 resources/bin/
 resources/local-engine-installers/
 resources/cli/
-native/meeting-aec-helper/build/
-native/meeting-aec-helper/third_party/
 
 # macOS
 .DS_Store

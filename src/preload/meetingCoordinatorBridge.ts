@@ -169,12 +169,6 @@ export function createMeetingCoordinatorBridge(
         meetingCoordinatorChannels.meetingDetectionSetPreferences,
         prefs
       ),
-    setSpeakerDiarizationEnabled: (enabled) =>
-      invokeParse(
-        simpleSuccessResultSchema,
-        meetingCoordinatorChannels.setSpeakerDiarizationEnabled,
-        { enabled }
-      ),
     setMeetingSessionSpeakerConfig: (config) =>
       invokeParse(
         simpleSuccessResultSchema,

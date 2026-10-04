@@ -49,12 +49,6 @@
         "FILE_TOO_LARGE": "此檔案太大,無法匯入。",
         "generic": "讀取檔案時發生錯誤。"
       }
-    },
-    "meeting": {
-      "speakerDetection": {
-        "title": "辨識並標記發言者",
-        "description": "關閉後，逐字稿會顯示「你」和「其他人」"
-      }
     }
   },
   "tray": {

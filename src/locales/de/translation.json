@@ -49,12 +49,6 @@
         "FILE_TOO_LARGE": "Diese Datei ist zu groß zum Importieren.",
         "generic": "Beim Lesen der Datei ist ein Fehler aufgetreten."
       }
-    },
-    "meeting": {
-      "speakerDetection": {
-        "title": "Sprecher erkennen und beschriften",
-        "description": "Wenn deaktiviert, zeigen Transkripte „Du“ und „Andere“"
-      }
     }
   },
   "tray": {

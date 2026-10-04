@@ -60,17 +60,6 @@ export interface SpeakerDatabase {
   ): unknown;
 }
 
-// Narrow live-identifier surface.
-export interface LiveIdentifierLike {
-  getSpeakerEmbedding(speakerId: string): Float32Array | null;
-  mapSpeaker(
-    speakerId: string,
-    profileId: number | null,
-    displayName: string | null,
-    noteId?: number | null
-  ): boolean;
-}
-
 // Narrow diarization-manager surface.
 export interface DiarizationModelsLike {
   downloadModels(
@@ -85,7 +74,6 @@ export interface DiarizationModelsLike {
 
 export interface SpeakerIpcDeps {
   databaseManager: SpeakerDatabase;
-  liveSpeakerIdentifier: LiveIdentifierLike;
   diarizationManager: DiarizationModelsLike;
   // Retroactive/auto-label propagation owned by the orchestrating IPC class.
   retroactiveMapping(profile: SpeakerProfileWithEmbedding): void;
@@ -142,10 +130,7 @@ export function registerSpeakerHandlers(
       const database = deps.databaseManager;
       const noteEmbeddings = database.getNoteSpeakerEmbeddings(noteId);
       const noteSpeakerEmbedding = noteEmbeddings.find((e) => e.speaker_id === speakerId);
-      const liveSpeakerEmbedding = deps.liveSpeakerIdentifier.getSpeakerEmbedding(speakerId);
-      const speakerEmbeddingBuffer: Buffer | null =
-        (noteSpeakerEmbedding?.embedding as Buffer | undefined) ||
-        (liveSpeakerEmbedding ? Buffer.from(liveSpeakerEmbedding.buffer) : null);
+      const speakerEmbeddingBuffer = noteSpeakerEmbedding?.embedding ?? null;
 
       let resolvedProfileId = profileId ?? null;
       if (speakerEmbeddingBuffer) {
@@ -162,7 +147,6 @@ export function registerSpeakerHandlers(
       }
 
       database.setSpeakerMapping(noteId, speakerId, resolvedProfileId, displayName);
-      deps.liveSpeakerIdentifier.mapSpeaker(speakerId, resolvedProfileId, displayName, noteId);
       return { success: true, profileId: resolvedProfileId };
     }
   );

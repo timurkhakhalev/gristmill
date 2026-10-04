@@ -112,7 +112,7 @@ export interface MeetingProcessingDatabase {
   listMeetingAudioClockAnchors: import("./database.js").DatabaseManager["listMeetingAudioClockAnchors"];
   getMeetingPlatformCoverage: import("./database.js").DatabaseManager["getMeetingPlatformCoverage"];
   applyMeetingPlatformDecisions: import("./database.js").DatabaseManager["applyMeetingPlatformDecisions"];
-  setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string, source?: "voice" | "platform" | "model" | "user", participantEmail?: string): { success: boolean };
+  setMeetingRunSpeakerCorrection(runId: string, speakerId: string, profileId: number | null, displayName: string, source?: "voice" | "platform" | "model" | "user", participantEmail?: string): { success: boolean; noteId?: number };
   getContactProfiles(emails: string[]): Array<{ email: string; display_name: string | null }>;
   rememberContactName(email: string, name: string): void;
   applyAutomaticMeetingSpeakerCorrections(runId: string, expectedCurrentRunId: string, expectedRevision: number, corrections: Array<{ speakerId: string; profileId: number | null; displayName: string }>, source: "voice" | "platform" | "model", rejectedModelSpeakerIds?: string[]): boolean;
@@ -375,12 +375,7 @@ export class MeetingProcessingWorker {
       input.participantEmail
     );
     if (!updated.success) return false;
-    const recording = this.deps.database.getMeetingRecording(run.recordingId);
-    if (recording?.currentRunId === run.id || recording?.currentRunId === transcriptRunId) {
-      const currentRunId = recording.currentRunId;
-      if (currentRunId) this.publishCurrentSelection(currentRunId);
-      this.deps.onNoteProjectionChanged?.(recording.noteId);
-    }
+    if (updated.noteId !== undefined) this.deps.onNoteProjectionChanged?.(updated.noteId);
     this.notify(run);
     return true;
   }

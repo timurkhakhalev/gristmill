@@ -3236,3 +3236,71 @@ for (const mode of ["providers", "local"] as const) {
     assert.match(db.getNote(note.id).enhanced_content, /Summary survives/);
   });
 }
+
+for (const summaryOnly of [false, true]) {
+  test(`${summaryOnly ? "Summary-only" : "Transcript"} speaker correction updates the selected transcript without replacing manual Summary`, async (t) => {
+    const { NoteReadService }: typeof import("../../src/helpers/noteReadService.ts") = require("../../src/helpers/noteReadService.ts");
+    const { formatJson }: typeof import("../../src/helpers/transcriptFormatter.ts") = require("../../src/helpers/transcriptFormatter.ts");
+    const db = createDb(t);
+    assert.ok(db);
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const { note, recording, run: source } = createFinishedRecording(db, storage);
+    saveTranscriptArtifact(db, storage, source.id, "Release on Friday.", "system:A");
+    db.setMeetingProcessingRunState(source.id, { stage: "summary", status: "complete" });
+    const selected = summaryOnly
+      ? db.createMeetingProcessingRun(recording.id, { kind: "summary", sourceRunId: source.id, config: validConfig })
+      : source;
+    const artifact = { text: "## TLDR\nArtifact Summary.", speakerCorrectionRevision: 0 };
+    storage.writeRunArtifact(selected.id, "summary", artifact);
+    assert.equal(db.setMeetingRunArtifact(selected.id, "summary").success, true);
+    db.setMeetingProcessingRunState(selected.id, { stage: "summary", status: "complete" });
+    db.selectMeetingProcessingRun(recording.id, selected.id, {
+      transcript: JSON.stringify([{ speaker: "system:A", text: "Release on Friday.", timestamp: 0, endTimestamp: 0.5, speakerName: "Old name", speakerPlatform: "google-meet" }]),
+      summary: artifact.text,
+      summaryPrompt: "Saved prompt",
+    });
+    assert.equal(db.updateNote(note.id, { enhanced_content: "## TLDR\nManual edits stay here." }).success, true);
+    const before = db.getNote(note.id)!;
+    const notifications: number[] = [];
+    const worker = workerFor(db, storage, { onNoteProjectionChanged: (id) => notifications.push(id) });
+    t.after(() => worker.stop());
+    const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+    registerMeetingProcessingHandlers({ handle: (channel, handler) => handlers.set(channel, handler) }, worker);
+    const bridge = createMeetingProcessingBridge({ invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args), on: () => {}, removeListener: () => {} });
+    // The renderer sends the source run ID even when a Summary-only result is selected.
+    assert.deepEqual(await bridge.meetingProcessingSetSpeakerCorrection({ runId: source.id, speakerId: "system:A", displayName: "Corrected name", profileId: null }), { success: true });
+    const after = db.getNote(note.id)!;
+    assert.equal(after.enhanced_content, "## TLDR\nManual edits stay here.");
+    assert.equal(after.enhanced_content, before.enhanced_content);
+    assert.equal(after.enhancement_prompt, before.enhancement_prompt);
+    assert.equal(after.enhanced_at_content_hash, before.enhanced_at_content_hash);
+    assert.deepEqual(storage.readRunArtifact(selected.id, "summary"), artifact);
+    assert.deepEqual(notifications, [note.id]);
+    const segments = JSON.parse(after.transcript!);
+    assert.equal(segments[0].speakerName, "Corrected name");
+    assert.equal(segments[0].speakerPlatform, undefined);
+    assert.equal(segments[0].speakerLockSource, "user");
+    assert.equal(JSON.parse(formatJson(after, segments, {})).segments[0].speaker, "Corrected name");
+    const output = new NoteReadService(db, storage).readOutput({ noteId: note.id, scope: "run", runId: selected.id });
+    assert.equal(output.scope, "run");
+    if (output.scope !== "run") throw new Error("Expected run output");
+    assert.equal(output.result!.speakerCorrections[0].displayName, "Corrected name");
+    assert.equal(output.result!.speakerCorrectionRevision, 1);
+    assert.equal(output.result!.summary!.speakerCorrectionRevision, 0);
+    assert.equal(output.summaryFreshness.status, "stale");
+    assert.ok(output.summaryFreshness.reasons.includes("speaker-corrections-changed"));
+
+    const other = db.createMeetingProcessingRun(recording.id, { kind: "reprocess", config: validConfig });
+    saveTranscriptArtifact(db, storage, other.id, "Another version.", "system:A");
+    db.selectMeetingProcessingRun(recording.id, selected.id, null);
+    const selectedNote = db.getNote(note.id)!;
+    assert.equal((await bridge.meetingProcessingSetSpeakerCorrection({ runId: other.id, speakerId: "system:A", displayName: "Other name", profileId: null })).success, true);
+    assert.deepEqual(db.getNote(note.id), selectedNote, "a correction of another transcript must not touch the Note");
+    assert.deepEqual(notifications, [note.id]);
+    const reopened = new DatabaseManagerClass();
+    t.after(() => reopened.db.close());
+    assert.deepEqual(reopened.getNote(note.id), selectedNote);
+    assert.equal(reopened.getMeetingRecording(recording.id)?.currentRunId, selected.id);
+    assert.equal(JSON.parse(formatJson(reopened.getNote(note.id)!, JSON.parse(reopened.getNote(note.id)!.transcript!), {})).segments[0].speaker, "Corrected name");
+  });
+}

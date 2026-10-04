@@ -51,3 +51,7 @@ Capture does not use the network.
 - Speakers: [speaker evidence](speaker-evidence.md).
 - Browser integration: [Companion](companion.md), [Telemost](companion-telemost.md).
 - BB route: [BB integration](bb-integration.md).
+
+## Local engine startup
+
+The llama.cpp and Whisper managers own each stop, spawn and readiness operation before it can yield. Identical pending requests share their result. Different model or startup settings requests wait and then check the loaded identity again. Stop invalidates queued starts and waits for their settlement; a new request waits for teardown. Llama context can grow and a smaller request can reuse the loaded context. Whisper captures VAD/thread options for wake rewarming.

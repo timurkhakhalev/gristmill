@@ -140,34 +140,26 @@ const mainProbes = {
 registerNotesHandlers(
   { handle() {} },
   {
-    saveNote: (title: number) => null,
+    noteWrites: { saveNote: (title: number) => ({ success: false }), updateNote: () => ({ success: false }) },
     getNote: (id: number) => null,
     getNotes: () => null,
     getNotesForSpace: () => null,
-    updateNote: () => null,
     deleteNoteInternal: () => null,
     searchNotes: () => null,
-    asyncMirrorWrite: () => {},
-    tryAutoLabelOneOnOne: () => {},
-    refreshMeetingSpeakerConfigFromNote: () => {},
   }
 );
 `,
   validDeps: `import { registerNotesHandlers, type NotesHandlerDeps } from "./src/helpers/notesIpcHandlers.js";
 const deps: NotesHandlerDeps = {
-  saveNote: () => null,
+  noteWrites: { saveNote: () => ({ success: false }), updateNote: () => ({ success: false }) },
   getNote: () => null,
   getNotes: () => null,
   getNotesForSpace: () => null,
-  updateNote: () => null,
   deleteNoteInternal: () => null,
   searchNotes: () => null,
   searchNoteContent: () => null,
   searchNoteTranscripts: () => null,
   getNoteTranscript: () => null,
-  asyncMirrorWrite: () => {},
-  tryAutoLabelOneOnOne: () => {},
-  refreshMeetingSpeakerConfigFromNote: () => {},
 };
 registerNotesHandlers({ handle() {} }, deps);
 `,

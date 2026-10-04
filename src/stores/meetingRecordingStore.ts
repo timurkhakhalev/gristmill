@@ -1149,7 +1149,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         }
         micRecovery = new ActiveMicRecoveryController({
           mediaDevices: navigator.mediaDevices,
-          onPlatformMuteChange: (deviceMuted) => {
+          onPlatformMuteChange: async (deviceMuted) => {
             if (activeRecordingSessionId !== sessionId) return;
             deviceMicMuted = deviceMuted;
             const muted = deviceMicMuted || meetMicMuted;
@@ -1158,7 +1158,12 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             requestedPlatformMicMuted = muted;
             const manualMuted = requestedManualMicMuted;
             micRecovery?.setIntentionalMute(manualMuted || muted);
-            if (previousPlatformMute !== muted && micProcessor) void setPlatformMicMuted(muted);
+            if (micProcessor) {
+              const accepted = previousPlatformMute !== muted
+                ? await setPlatformMicMuted(muted)
+                : await micIntentQueue;
+              if (!accepted) throw new Error("Device microphone mute was not acknowledged");
+            }
           },
           acquire: async (reason) => {
             try {
@@ -1195,6 +1200,11 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             }
             const previousProcessor = micProcessor;
             const context = micContext;
+            // The old track can emit mute and ended together. Finish its intent
+            // before changing the processor and source generation.
+            if (!await micIntentQueue || !isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
+              throw new Error("Meeting recording stopped before switching microphones");
+            }
             const lastSequence = await flushAndDisconnectProcessor(previousProcessor);
             if (!isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
               throw new Error("Meeting recording stopped while switching microphones");
@@ -1210,10 +1220,19 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             }
             const nextSource = nextPipeline.source;
             micProcessor = nextPipeline.processor;
-            if (micAnalyser) nextSource.connect(micAnalyser);
+            if (micAnalyser) nextPipeline.processor.connect(micAnalyser);
             previous?.getTracks().forEach((track) => track.stop());
             micSource = nextSource;
             micStream = replacement;
+            const replacementTrack = replacement.getAudioTracks()[0];
+            if (!replacementTrack || replacementTrack.readyState === "ended") {
+              throw new Error("Recovered microphone track ended during setup");
+            }
+            // Device mute belongs to this track. Manual and Meet mute remain
+            // independent and still hold the replacement gate closed.
+            deviceMicMuted = replacementTrack.muted;
+            requestedPlatformMicMuted = deviceMicMuted || meetMicMuted;
+            useMeetingRecordingStore.setState({ platformMicMuted: requestedPlatformMicMuted });
             if (!await queueMicIntent(requestedManualMicMuted, requestedPlatformMicMuted)) {
               throw new Error("Recovered microphone intent was not acknowledged");
             }

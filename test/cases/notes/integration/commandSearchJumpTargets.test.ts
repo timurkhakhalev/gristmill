@@ -20,7 +20,7 @@ function folder(id: number, name: string, spaceId = 1): FolderItem {
   return { id, name, space_id: spaceId, is_default: false } as unknown as FolderItem;
 }
 
-function space(id: number, name: string, kind: SpaceItem["kind"] = "private"): SpaceItem {
+function space(id: number, name: string, kind: "private" | "team" = "private"): SpaceItem {
   return { id, name, kind } as unknown as SpaceItem;
 }
 

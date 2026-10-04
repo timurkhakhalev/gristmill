@@ -61,6 +61,8 @@ export class WindowManager {
   private devRendererSettingsSeeded = false;
   controlPanelWindow: BrowserWindow | null = null;
   _controlPanelVisibilityTimer: NodeJS.Timeout | null = null;
+  _controlPanelShowRequested = true;
+  _controlPanelLoadFailed = false;
   _onboardingRestoreBounds: WindowBounds | null = null;
   _onboardingWindowMode: string | null = null;
   _onboardingWindowState: OnboardingWindowState | null = null;
@@ -330,20 +332,23 @@ export class WindowManager {
     });
   }
 
-  async createControlPanelWindow(): Promise<void> {
-    if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
-      if (this.controlPanelWindow.isMinimized()) {
-        this.controlPanelWindow.restore();
-      }
-      if (!this.controlPanelWindow.isVisible()) {
-        this.controlPanelWindow.show();
-      }
-      this.controlPanelWindow.focus();
+  async createControlPanelWindow({ show = true }: { show?: boolean } = {}): Promise<void> {
+    const existingWindow = this.controlPanelWindow;
+    if (existingWindow && !existingWindow.isDestroyed()) {
+      if (!show) return;
+      this._controlPanelShowRequested = true;
+      this._clearControlPanelVisibilityTimer();
+      if (this._controlPanelLoadFailed || existingWindow.webContents.isCrashed()) await this.loadControlPanel();
+      if (!this._controlPanelShowRequested || this.controlPanelWindow !== existingWindow || existingWindow.isDestroyed()) return;
+      if (existingWindow.isMinimized()) existingWindow.restore();
+      if (!existingWindow.isVisible()) existingWindow.show();
+      existingWindow.focus();
       dockManager.setControlPanelVisible(true);
       return;
     }
 
-    this.controlPanelWindow = new BrowserWindow(CONTROL_PANEL_CONFIG);
+    this._controlPanelShowRequested = show;
+    this.controlPanelWindow = new BrowserWindow({ ...CONTROL_PANEL_CONFIG, show: false });
     this.controlPanelWindow.setMinimumSize(
       CONTROL_PANEL_MIN_SIZE.width,
       CONTROL_PANEL_MIN_SIZE.height
@@ -388,9 +393,11 @@ export class WindowManager {
     // backstop if the renderer never gets that far — it loads but throws, a lazy
     // chunk fails, or auth/policy resolution never settles — so it must outlive
     // did-finish-load. Only a real show cancels it.
-    this._controlPanelVisibilityTimer = setTimeout(() => {
-      this._showControlPanel();
-    }, 10000);
+    if (show) {
+      this._controlPanelVisibilityTimer = setTimeout(() => {
+        this._showControlPanel();
+      }, 10000);
+    }
 
     this.controlPanelWindow.on("close", (event) => {
       if (!this.isQuitting) {
@@ -427,7 +434,7 @@ export class WindowManager {
         if (!isMainFrame) {
           return;
         }
-        if (process.env.NODE_ENV !== "development") {
+        if (this._controlPanelShowRequested && process.env.NODE_ENV !== "development") {
           this.showLoadFailureDialog("Control panel", errorCode, errorDescription, validatedURL);
         }
         // Show it regardless: a failed load can't reach the renderer path that
@@ -456,11 +463,28 @@ export class WindowManager {
       }
     });
 
-    await this.loadControlPanel();
+    try {
+      await this.loadControlPanel();
+    } catch (error) {
+      if (show) throw error;
+      this._controlPanelLoadFailed = true;
+      this.setOnboardingActive(true);
+      debugLogger.error("Hidden control panel failed to load", { error: (error as Error).message }, "window");
+    }
   }
 
   async loadControlPanel(): Promise<void> {
-    await this.loadWindowContent(this.controlPanelWindow, true);
+    const window = this.controlPanelWindow;
+    this._controlPanelLoadFailed = false;
+    try {
+      await this.loadWindowContent(window, true);
+    } catch (error) {
+      if (this.controlPanelWindow === window) {
+        this._controlPanelLoadFailed = true;
+        this.setOnboardingActive(true);
+      }
+      throw error;
+    }
   }
 
   setOnboardingActive(active: unknown): boolean {
@@ -479,6 +503,7 @@ export class WindowManager {
   }
 
   _showControlPanel(): void {
+    if (!this._controlPanelShowRequested) return;
     const win = this.controlPanelWindow;
     if (!win || win.isDestroyed()) return;
     // Cancel the backstop either way: once the window has been shown on purpose,
@@ -604,6 +629,7 @@ export class WindowManager {
       return;
     }
 
+    this._controlPanelShowRequested = false;
     // An explicit hide is authoritative: the visibility backstop exists to
     // rescue a window that never got shown, and letting it fire now would
     // pull the panel (and the Dock icon) back out of the tray.
@@ -924,22 +950,13 @@ export class WindowManager {
 
   }
 
-  async showControlPanelForTray(): Promise<void> {
-    await this.createControlPanelWindow();
-    const win = this.controlPanelWindow;
-    if (!win || win.isDestroyed()) return;
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
-  }
-
   async requestNewNote(): Promise<void> {
-    await this.showControlPanelForTray();
+    await this.createControlPanelWindow();
     this.sendToControlPanel("tray-new-note");
   }
 
   async requestOpenCalendarEvent(event: unknown): Promise<void> {
-    await this.showControlPanelForTray();
+    await this.createControlPanelWindow();
     this.sendToControlPanel("tray-open-event", event);
   }
 

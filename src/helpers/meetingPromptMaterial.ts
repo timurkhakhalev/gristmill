@@ -58,3 +58,17 @@ export function formatMeetingMaterial(material: {
     `Actual meeting transcript:\n<transcript>\n${formatMeetingTranscript(material.transcriptSegments)}\n</transcript>`,
   ].join("\n\n");
 }
+
+/** The saved calendar roster is prompt context, not proof of attendance. */
+export function parseMeetingParticipants(value: string | null): Array<{ name: string | null; email: string | null }> {
+  if (!value) return [];
+  const decoded: unknown = JSON.parse(value);
+  if (!Array.isArray(decoded)) throw new Error("calendar-participants-invalid");
+  return decoded.map(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("calendar-participants-invalid");
+    const attendee = item as Record<string, unknown>;
+    const email = typeof attendee.email === "string" && attendee.email.trim() ? attendee.email.trim() : null;
+    const displayName = typeof attendee.displayName === "string" && attendee.displayName.trim() ? attendee.displayName.trim() : null;
+    return { name: displayName && !/^[^\s@]+@[^\s@]+$/.test(displayName) && displayName.toLowerCase() !== email?.toLowerCase() ? displayName : null, email };
+  });
+}

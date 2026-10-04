@@ -31,12 +31,15 @@ export const getNoteTool: ToolDefinition = {
         };
       }
 
+      const output = await window.electronAPI.getNoteOutput({ noteId: id, scope: "note" });
+      if (output.scope !== "note" || output.noteId !== id) throw new Error("Unexpected Note output identity");
+
       return {
         success: true,
         data: {
           id: note.id,
           title: note.title,
-          content: note.enhanced_content || note.content,
+          content: output.summary || output.manual.text,
           type: note.note_type,
           folder_id: note.folder_id,
           created_at: note.created_at,

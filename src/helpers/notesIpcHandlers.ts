@@ -1,7 +1,10 @@
+import { noteOutputRequestSchema, noteOutputSchema, type NoteOutputRequest } from "../contracts/noteOutput.js";
 // Notes IPC validates transport arguments. NoteWriteService owns committed
-// edits and their effects; DatabaseManager owns reads and SQL.
+// edits and their effects; NoteReadService owns output assembly, and
+// DatabaseManager owns SQL.
 import type { ZodType } from "zod";
 import {
+  noteChannels,
   deleteNoteArgsSchema,
   getNoteArgsSchema,
   getNotesArgsSchema,
@@ -39,6 +42,7 @@ export interface NotesHandlerDeps {
   searchNoteContent: (query: string, spaceId: number | null) => unknown;
   searchNoteTranscripts: (query: string, spaceId: number | null) => unknown;
   getNoteTranscript: (noteId: number) => unknown;
+  getNoteOutput: (request: NoteOutputRequest) => unknown;
 }
 
 // Throw before the DB is touched when the renderer sent a wrong-shaped call.
@@ -86,6 +90,11 @@ export function registerNotesHandlers(
       );
     }
   );
+
+  ipcMain.handle(noteChannels.getNoteOutput, (_event, ...args) => {
+    const [request] = parseArgs(noteOutputRequestSchema.array().length(1), args);
+    return noteOutputSchema.parse(deps.getNoteOutput(request));
+  });
 
   ipcMain.handle("db-get-note", async (_event, ...args: unknown[]) => {
     const [id] = parseArgs(getNoteArgsSchema, args);

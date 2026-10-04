@@ -1072,6 +1072,7 @@ export class IPCHandlers {
           return note && (spaceId === null || note.space_id === spaceId) ? [{ note, matches: hit.matches }] : [];
         }),
       getNoteTranscript: (noteId) => noteReader.transcript(noteId),
+      getNoteOutput: (request) => noteReader.readOutput(request),
     });
 
     // Container (folders/spaces) channels live in the typed module.

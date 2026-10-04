@@ -923,7 +923,8 @@ test("hidden load rejection settles bootstrap gated and actual tray open retries
   assert.equal(manager.controlPanelWindow.isVisible(), true);
 });
 
-test("hide during deferred retry remains authoritative when load completes", async (t) => {
+for (const action of ["tray", "new-note", "calendar-event"]) {
+ test(`hide during ${action} deferred retry remains authoritative when load completes`, async (t) => {
   const timers = installFakeTimers();
   t.after(() => timers.restore());
   const manager = new WindowManager();
@@ -942,7 +943,9 @@ test("hide during deferred retry remains authoritative when load completes", asy
   };
   const tray = new TrayManager();
   tray.setWindowManager(manager);
-  const opening = tray.showControlPanelFromTray();
+  const opening = action === "tray" ? tray.showControlPanelFromTray()
+    : action === "new-note" ? manager.requestNewNote()
+    : manager.requestOpenCalendarEvent({ id: "event" });
   manager.hideControlPanelToTray();
   load.resolve();
   await opening;
@@ -950,3 +953,5 @@ test("hide during deferred retry remains authoritative when load completes", asy
   assert.equal(panel.isVisible(), false);
   assert.equal(panel.showCount, shownBefore);
 });
+
+}

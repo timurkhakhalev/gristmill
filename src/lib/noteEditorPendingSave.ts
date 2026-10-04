@@ -150,18 +150,6 @@ export function planNoteTransition(
   };
 }
 
-// A captured document snapshot restricted to the fields the user edited, so
-// switch/overview/unmount flushes keep the same dirty-field policy as the
-// debounced write (#157). A snapshot with no dirty fields produces no write.
-export function captureDocumentSnapshot(draft: NoteEditorDraft): PendingDocumentSnapshot {
-  const snapshot: { noteId: number; title?: string; content?: string } = {
-    noteId: draft.noteId,
-  };
-  if (draft.dirtyTitle) snapshot.title = draft.title;
-  if (draft.dirtyContent) snapshot.content = draft.content;
-  return snapshot;
-}
-
 export type EventDraftHandoffMode = "replace" | "append";
 
 // What a calendar-event draft hands to the note owner that replaces it: the

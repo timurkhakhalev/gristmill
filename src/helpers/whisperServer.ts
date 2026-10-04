@@ -221,6 +221,10 @@ export function buildWhisperServerArgs({
 }
 
 export class WhisperServerManager extends EventEmitter {
+  private startupIdentity: string | null = null;
+  private activeStartIdentity: string | null = null;
+  private stopGeneration = 0;
+
   constructor() {
     super();
     this.process = null;
@@ -375,44 +379,46 @@ export class WhisperServerManager extends EventEmitter {
   }
 
   async start(modelPath: string, options: Record<string, unknown> = {}): Promise<void> {
-    if (this.startupPromise) return this.startupPromise;
-
-    // Remember the options so a wake re-warm can reload with the same VAD/thread
-    // signature and survive start()'s no-op guard on the next dictation. See #766.
-    this.lastStartOptions = { ...options };
-
-    const threadResolution = resolveWhisperThreads(options);
+    const requestedOptions: Record<string, unknown> = { ...options,
+      ...(options.vadConfig ? { vadConfig: sanitizeWhisperVadConfig(options.vadConfig as Record<string, unknown>) } : {}),
+    };
+    const threadResolution = resolveWhisperThreads(requestedOptions);
     const nextThreadSignature = getThreadSignature(threadResolution);
-    const nextVadSignature = getVadSignature(options);
-    if (
-      this.ready &&
-      this.modelPath === modelPath &&
-      !this.isRemote &&
-      this.vadSignature === nextVadSignature &&
-      this.threadSignature === nextThreadSignature
-    ) {
-      return;
-    }
-
-    if (this.process || this.isRemote) {
-      await this.stop();
-    }
-
-    this.isRemote = false;
-    this.hostname = "127.0.0.1";
-    this.vadSignature = nextVadSignature;
-    this.threadSignature = nextThreadSignature;
-    this.startupPromise = this._doStart(modelPath, { ...options, threadResolution });
+    const nextVadSignature = getVadSignature(requestedOptions);
+    const identity = JSON.stringify([modelPath, nextThreadSignature, threadResolution.source, nextVadSignature, requestedOptions.language || "auto"]);
+    if (this.startupPromise && this.startupIdentity === identity) return this.startupPromise;
+    const generation = this.stopGeneration;
+    const previous = this.startupPromise as Promise<void> | null;
+    const operation = (previous ?? Promise.resolve()).catch(() => {}).then(async () => {
+      if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
+      this.lastStartOptions = requestedOptions;
+      if (this.ready && !this.isRemote && this.activeStartIdentity === identity) return;
+      if (this.process || this.isRemote) await this.stopProcess();
+      if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
+      this.isRemote = false;
+      this.hostname = "127.0.0.1";
+      this.vadSignature = nextVadSignature;
+      this.threadSignature = nextThreadSignature;
+      await this._doStart(modelPath, { ...requestedOptions, threadResolution }, generation);
+      if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
+      this.activeStartIdentity = identity;
+    });
+    this.startupPromise = operation;
+    this.startupIdentity = identity;
     try {
-      await this.startupPromise;
+      await operation;
     } finally {
-      this.startupPromise = null;
+      if (this.startupPromise === operation) {
+        this.startupPromise = null;
+        this.startupIdentity = null;
+      }
     }
   }
 
   async _doStart(
     modelPath: string,
-    options: Record<string, unknown> & { threadResolution?: ThreadResolution } = {}
+    options: Record<string, unknown> & { threadResolution?: ThreadResolution } = {},
+    generation = this.stopGeneration
   ): Promise<void> {
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
     this.startGeneration += 1;
@@ -426,7 +432,9 @@ export class WhisperServerManager extends EventEmitter {
     const resolvedBinary = serverBinary ?? this.getServerBinaryPath();
     if (!resolvedBinary) throw new Error("whisper-server binary not found");
 
-    this.port = await this.findAvailablePort();
+    const port = await this.findAvailablePort();
+    if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
+    this.port = port;
     this.modelPath = modelPath;
 
     // Check for FFmpeg first - only use --convert flag if FFmpeg is available
@@ -517,16 +525,17 @@ export class WhisperServerManager extends EventEmitter {
           availableParallelism: threadResolution.availableParallelism,
           stderr: stderrBuffer.slice(0, 200),
         });
-        await this.stop();
+        await this.stopProcess();
         this.threadSignature = getThreadSignature(threadResolution);
         return this._doStart(modelPath, {
           ...options,
           threadResolution: defaultThreadResolution,
-        });
+        }, generation);
       }
       throw err;
     }
 
+    if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
     this.startHealthCheck();
 
     debugLogger.info("whisper-server started successfully", {
@@ -816,6 +825,23 @@ export class WhisperServerManager extends EventEmitter {
   }
 
   async stop(): Promise<void> {
+    this.stopGeneration += 1;
+    const pending = this.startupPromise as Promise<void> | null;
+    const operation = Promise.all([this.stopProcess(), pending?.catch(() => {})]).then(() => {
+      this.stopHealthCheck();
+      this.ready = false;
+      this.activeStartIdentity = null;
+    });
+    this.startupPromise = operation;
+    this.startupIdentity = null;
+    try {
+      await operation;
+    } finally {
+      if (this.startupPromise === operation) this.startupPromise = null;
+    }
+  }
+
+  private async stopProcess(): Promise<void> {
     this._stopRequested = true;
     this.stopHealthCheck();
 

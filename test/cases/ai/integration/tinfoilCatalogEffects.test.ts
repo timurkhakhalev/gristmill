@@ -147,3 +147,15 @@ test("missing key triggers neither catalog refresh nor inference transport", asy
   assert.equal(f.fetches(), 0);
   assert.equal(f.bodies.length + f.streams.length, 0);
 });
+
+
+test("Self-Hosted with saved Tinfoil provider and tools needs no Tinfoil key or catalog", async t => {
+  const f = await fixture(t);
+  const service = (await f.vite.ssrLoadModule("/services/ReasoningService.ts") as typeof import("../../../../src/services/ReasoningService.ts")).default;
+  t.after(() => service.destroy());
+  for await (const _chunk of service.processTextStreamingAI([{ role: "user", content: "text" }],
+    "local-model", "tinfoil", { systemPrompt: "system", lanUrl: "http://127.0.0.1:8080", customApiKey: "" }, {})) { /* consume */ }
+  assert.equal(f.fetches(), 0);
+  assert.equal(f.streams.length, 1);
+  assert.equal((f.streams[0].model as {modelId:string}).modelId, "local-model");
+});

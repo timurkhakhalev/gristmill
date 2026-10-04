@@ -523,3 +523,37 @@ test("shutdown blocks new capture and waits for an in-flight start before safe f
   assert.equal(harness.databaseManager.finalized.length, 1);
   assert.equal((await invoke(harness, "meeting-transcription-start", START_EVENT(), START)).success, false);
 });
+
+test("native ACK arms first-chunk recovery without restarting a slow pre-ACK start", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1_000_000 });
+  let starts = 0;
+  let releaseInitial!: () => void;
+  const initialReady = new Promise<void>((resolve) => { releaseInitial = resolve; });
+  const harness = buildHarness({ audioTapManager: {
+    isSupported: () => true,
+    getClockOrigin: () => null,
+    probeClock: async () => { throw new Error("No probe"); },
+    start: async (options = {}) => {
+      starts++;
+      if (starts === 1) await initialReady;
+      options.onStart?.({ type: "start", generation: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", monotonicOriginNs: String(1_000_000_000_000_000n + BigInt(starts) * 100_000_000n), originFrame: 0 });
+    },
+    stop: async () => {},
+  } });
+  try {
+    const starting = invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+    await new Promise(setImmediate);
+    for (let i = 0; i < 6; i++) { t.mock.timers.tick(2000); await new Promise(setImmediate); }
+    assert.equal(starts, 1, "no restart before actual helper ACK");
+    releaseInitial();
+    assert.equal((await starting).success, true);
+    for (let i = 0; i < 4; i++) { t.mock.timers.tick(2000); await new Promise(setImmediate); }
+    assert.equal(starts, 2, "zero full chunks after ACK triggers recovery");
+    assert.equal(harness.runtime.isRecording(), true);
+    assert.ok(currentWindow.messages.some((message: { channel: string; payload?: unknown }) => message.channel === "meeting-system-audio-interrupted"));
+    assert.equal(harness.databaseManager.finalized.length, 0);
+  } finally {
+    releaseInitial();
+    await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: START.sessionId, lastSequence: {} });
+  }
+});

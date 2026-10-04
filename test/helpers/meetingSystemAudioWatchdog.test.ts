@@ -66,9 +66,10 @@ const createHarness = ({ startImpl, stopImpl }: { startImpl?: () => Promise<void
 };
 
 // Real ordering: attach, arm, then the first chunk proves the stream delivers.
-const startNative = (harness: any, { deliver = true } = {}) => {
+const startNative = (harness: any, { deliver = true, confirmed = true } = {}) => {
   harness.attach();
   harness.watchdog.start({ systemAudioStrategy: "native", watchesDelivery: true });
+  if (confirmed) harness.watchdog.recordStarted();
   if (deliver) harness.deliver(true);
 };
 
@@ -267,12 +268,10 @@ test("delivery gaps are ignored for strategies that may legitimately go idle", a
   assert.deepEqual(h.interruptions, []);
 });
 
-// Capture that never produced a single chunk belongs to the one-shot silence
-// warning. Judging it here would restart during startup, before the renderer
-// has even registered its listener.
-test("a stream that has never delivered is not judged on delivery", async () => {
+// A pending native start has no first-delivery deadline.
+test("an unconfirmed start is not judged on delivery", async () => {
   const h = createHarness();
-  startNative(h, { deliver: false });
+  startNative(h, { deliver: false, confirmed: false });
 
   await h.advance(STALL_MS * 10);
   assert.deepEqual(h.calls, []);
@@ -507,4 +506,47 @@ test("starting again clears the previous session's attempt count", async () => {
   await h.advance(STALL_MS + TICK_MS);
 
   assert.equal(h.restarts(), MAX_RESTARTS + 1);
+});
+
+test("confirmed start without a complete chunk recovers at the first-delivery deadline", async () => {
+  const h = createHarness();
+  startNative(h, { deliver: false });
+  await h.advance(STALL_MS);
+  assert.equal(h.restarts(), 0);
+  await h.advance(TICK_MS);
+  assert.equal(h.restarts(), 1);
+  assert.deepEqual(h.interruptions, [{ systemAudioStrategy: "native", reason: "no_audio_delivered", recovering: true }]);
+  assert.equal(h.resumed.length, 0, "an ACK alone is not recovered delivery");
+  h.deliver(false);
+  assert.equal(h.resumed.length, 1);
+});
+
+test("sleep rebases the deadline before the first chunk", async () => {
+  const h = createHarness();
+  startNative(h, { deliver: false });
+  await h.advance(TICK_MS);
+  h.jump(TICK_GAP_MS * 4);
+  h.watchdog.tick();
+  await flush();
+  await h.advance(STALL_MS);
+  assert.equal(h.restarts(), 0);
+  await h.advance(TICK_MS);
+  assert.equal(h.restarts(), 1);
+});
+
+test("replacement ACK without chunks has its own bounded delivery window", async () => {
+  const h = createHarness({ startImpl: () => h.watchdog.recordStarted() });
+  startNative(h, { deliver: false });
+  for (let attempt = 1; attempt <= MAX_RESTARTS; attempt++) {
+    await h.advance(STALL_MS + TICK_MS);
+    assert.equal(h.restarts(), attempt);
+    assert.equal(h.resumed.length, 0);
+  }
+  await h.advance(STALL_MS + TICK_MS);
+  assert.equal(h.restarts(), MAX_RESTARTS);
+  assert.equal(h.interruptions.at(-1).recovering, false);
+  h.watchdog.stop();
+  h.watchdog.recordStarted();
+  await h.advance(STALL_MS + TICK_MS);
+  assert.equal(h.restarts(), MAX_RESTARTS);
 });

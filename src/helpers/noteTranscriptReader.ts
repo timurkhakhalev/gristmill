@@ -57,10 +57,16 @@ function absent(noteId: number, status: NoteTranscript["status"], diagnostics: s
  * Coverage is shared across the Note so combined runs replace their per-part runs.
  */
 export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): NoteTranscript {
+  return readNoteTranscriptOutput(deps, noteId).transcript;
+}
+
+export function readNoteTranscriptOutput(deps: NoteTranscriptDeps, noteId: number): {
+  transcript: NoteTranscript; sources: Array<{ runId: string; recordingIds: string[] }>;
+} {
   const recordings = deps.listRecordings(noteId)
     .slice()
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
-  if (!recordings.length) return readProjection(deps, noteId);
+  if (!recordings.length) return { transcript: readProjection(deps, noteId), sources: [] };
 
   const diagnostics: string[] = [];
 
@@ -128,7 +134,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
 
   if (!pieces.length) {
     const status = pending ? "pending" : failed ? "error" : uncovered || !durationKnown ? "partial" : "absent";
-    return { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null) };
+    return { transcript: { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null) }, sources: [] };
   }
 
   // Proven offsets ascend; unknown offsets keep start order after proven ones.
@@ -185,7 +191,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   }
   const segments = ordered.map((item) => item.segment);
 
-  return {
+  return { sources: pieces.map(piece => ({ runId: piece.runId, recordingIds: piece.sourceIds })), transcript: {
     note_id: noteId,
     status: pending || failed || uncovered || !durationKnown ? "partial" : "ready",
     timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null),
@@ -193,7 +199,7 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
     text: withSegments ? segments.map((segment) => segment.text).join("\n") : pieces.map((piece) => piece.transcript.text).join("\n"),
     segments: withSegments ? segments : null,
     diagnostics,
-  };
+  } };
 }
 
 function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscript {

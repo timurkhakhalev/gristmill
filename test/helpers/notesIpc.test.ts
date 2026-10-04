@@ -42,6 +42,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
   return originalLoad.call(this, request, parent, isMain);
 };
 process.env.NODE_ENV = "test";
+const { NoteReadService }: typeof import("../../src/helpers/noteReadService.ts") = require("../../src/helpers/noteReadService.ts");
 
 const { NoteWriteService } = require("../../src/helpers/noteWriteService.ts");
 const DatabaseManager = require("../../src/helpers/database.ts");
@@ -106,7 +107,8 @@ async function createFixture(t: import("node:test").TestContext, mirrorError?: E
       db.searchNotes(query, limit, spaceId, folderId),
     searchNoteContent: () => [],
     searchNoteTranscripts: () => [],
-    getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
+    getNoteOutput: request => new NoteReadService(db, { readRunArtifact: () => null } as never).readOutput(request),
+      getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
 
   };
   const deleteCalls: unknown[] = [];
@@ -250,6 +252,7 @@ test("participants update refreshes speaker configuration after mirror without n
       searchNotes: (...a) => db1.searchNotes(...a),
       searchNoteContent: () => [],
       searchNoteTranscripts: () => [],
+      getNoteOutput: request => new NoteReadService(db1, { readRunArtifact: () => null } as never).readOutput(request),
       getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
 
     }

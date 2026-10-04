@@ -1,3 +1,4 @@
+import { useNoteOutput } from "../../hooks/useNoteOutput";
 import { useMeetingPlayback } from "../../hooks/useMeetingPlayback";
 import { meetingPlatformLabel } from "../../contracts/meetingRecording";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -9,7 +10,6 @@ import { Pause } from "../icons/primitives";
 import type { MeetingProcessingRecordingResult } from "../../contracts/meetingProcessing";
 import { MEETING_ASR_GATE_MS } from "../../contracts/meetingRecording";
 import type { MeetingProcessingConfig, MeetingProcessingResultDto } from "../../contracts/meetingRecording";
-import type { NoteTranscript } from "../../contracts/noteRead";
 import { snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
 import { initializeActions } from "../../stores/actionStore";
 import { ConfirmDialog } from "../ui/dialog";
@@ -122,8 +122,16 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   const { t } = useTranslation();
   const { dateFormat, timeFormat } = useDateTimePreferences();
   const tr = (key: string, fallback: string, values?: Record<string, string | number>) => t(`meetingResults.${key}`, { defaultValue: fallback, ...values });
-  const [recordings, setRecordings] = useState(previewRecordings ?? []);
-  const [sharedTranscript, setSharedTranscript] = useState<NoteTranscript | null>(null);
+  const [recordingState, setRecordingState] = useState({ noteId, items: previewRecordings ?? [] });
+  const recordings = useMemo(() => recordingState.noteId === noteId ? recordingState.items : [], [recordingState, noteId]);
+  const setRecordings = useCallback((next: MeetingProcessingRecordingResult[] | ((items: MeetingProcessingRecordingResult[]) => MeetingProcessingRecordingResult[])) => {
+    setRecordingState(current => ({ noteId, items: typeof next === "function" ? next(current.noteId === noteId ? current.items : []) : next }));
+  }, [noteId]);
+  const activeNote = useRef(noteId);
+  activeNote.current = noteId;
+  const refreshRevision = useRef(0);
+  const invalidateRefresh = useCallback(() => { refreshRevision.current++; }, []);
+
   const [runId, setRunId] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
@@ -211,18 +219,18 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
 
   const refresh = useCallback(async () => {
     if (previewRecordings) return;
+    const expected = ++refreshRevision.current;
     const result = await window.electronAPI.meetingProcessingListForNote(noteId);
+    if (activeNote.current !== noteId || refreshRevision.current !== expected) return;
     if (result.success) setRecordings(result.recordings ?? []);
     else notify(result.error || t("meetingResults.loadError"), "destructive");
-    try { setSharedTranscript(await window.electronAPI.getNoteTranscript(noteId)); }
-    catch (error) { notify(error instanceof Error ? error.message : String(error), "destructive"); }
-  }, [noteId, previewRecordings, t, notify]);
+  }, [noteId, previewRecordings, t, notify, setRecordings]);
   useEffect(() => {
     if (previewRecordings) { setRecordings(previewRecordings); return; }
     void refresh();
     const unsubscribe = window.electronAPI.onMeetingProcessingUpdated(() => void refresh());
-    return unsubscribe;
-  }, [previewRecordings, refresh]);
+    return () => { invalidateRefresh(); unsubscribe(); };
+  }, [previewRecordings, refresh, setRecordings, invalidateRefresh]);
   useEffect(() => {
     if (capturePhase === "recording" || capturePhase === "saved" || capturePhase === "incomplete") void refresh();
   }, [capturePhase, refresh]);
@@ -268,10 +276,18 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   }, [groups, previewRecordings]);
   const recordedRuns = recordings.flatMap((part) => part.runs);
   const versions = useMemo(() => recordings.flatMap((part) => part.runs).filter((item) => item.transcript).sort((a, b) => b.run.createdAt.localeCompare(a.run.createdAt)), [recordings]);
-  const selected = versions.find((item) => item.run.id === runId)
+  const selectedVersion = versions.find((item) => item.run.id === runId)
     ?? versions.find((item) => recordings.some((part) => part.recording.currentRunId === item.run.id))
     ?? versions[0];
-  const displayedRun = recordedRuns.find((item) => item.run.id === runId)?.run ?? selected?.run;
+  const output = useNoteOutput(noteId, selectedVersion?.run.id ?? "", !previewRecordings, selectedVersion?.speakerCorrectionRevision ?? 0);
+  const persistedSelection = previewRecordings || !output.run ? selectedVersion : output.run.result ?? undefined;
+  // A confirmed local correction remains visible while its persisted reread is
+  // pending. It can only advance the authoritative revision, never lower it.
+  const selected = persistedSelection && selectedVersion && selectedVersion.speakerCorrectionRevision > persistedSelection.speakerCorrectionRevision
+    ? { ...persistedSelection, speakerCorrections: selectedVersion.speakerCorrections, speakerCorrectionRevision: selectedVersion.speakerCorrectionRevision }
+    : persistedSelection;
+  const sharedTranscript = output.note?.transcript ?? null;
+  const displayedRun = recordedRuns.find((item) => item.run.id === runId)?.run ?? selectedVersion?.run;
   const currentGroup = recordings.find((item) => item.recording.id === displayedRun?.recordingId)?.recording.groupId ?? latestGroup?.id;
   const selectedSourceIds = displayedRun?.sourceRecordingIds ?? [];
   const parts = selectedSourceIds.length > 1
@@ -303,14 +319,18 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
   // list omits, so summing only what is shown reads 0 after a revoke while the
   // Summary was written at a higher revision.
   const speakerCorrectionRevision = selected?.speakerCorrectionRevision ?? 0;
-  const summaryIsStale = selected?.summary?.speakerCorrectionRevision !== undefined &&
-    selected.summary.speakerCorrectionRevision !== speakerCorrectionRevision;
+  const summaryIsStale = previewRecordings
+    ? selected?.summary?.speakerCorrectionRevision !== undefined && selected.summary.speakerCorrectionRevision !== speakerCorrectionRevision
+    : output.run?.summaryFreshness.status === "stale" || (selected?.summary?.speakerCorrectionRevision !== undefined && selected.summary.speakerCorrectionRevision !== speakerCorrectionRevision);
+
   // Dismissal is remembered per run and correction state; a newer correction shows the notice again.
-  const staleDismissKey = `staleSummaryDismissed:${selected?.run.id}:${speakerCorrectionRevision}`;
+  const staleDismissKey = `staleSummaryDismissed:${selected?.run.id}:${speakerCorrectionRevision}:${output.run?.summaryFreshness.revision ?? ""}`;
   const [, rerenderAfterDismiss] = useState(0);
   const staleNoticeHidden = localStorage.getItem(staleDismissKey) !== null;
+  const noteSummary = previewRecordings ? fallbackText.enhanced : output.note?.summary ?? "";
+  // The fallback view belongs to the editor and can include an unsaved enhancement.
   const copyText = viewMode === "enhanced" ? summaryText || fallbackText.enhanced : fallbackText.raw;
-  const transcriptCopyText = groups.length > 1 ? sharedTranscript?.text ?? fallbackText.transcript : selected?.transcript?.text || fallbackText.transcript;
+  const transcriptCopyText = groups.length > 1 ? sharedTranscript?.text ?? fallbackText.transcript : selected?.transcript?.text || (previewRecordings ? fallbackText.transcript : sharedTranscript?.text ?? "");
   const [copied, setCopied] = useState(false);
   const [transcriptCopied, setTranscriptCopied] = useState(false);
   const copyTranscript = async () => {
@@ -805,10 +825,14 @@ export default function MeetingResultsPanel({ noteId, locale, previewRecordings,
         </Popover>
       </div>}
       {summaryText && summaryIsStale && !staleNoticeHidden && <SummaryStaleNotice
+        sourceChanged={output.run?.summaryFreshness.reasons.some(reason => reason !== "speaker-corrections-changed") ?? false}
         onRegenerate={() => openRun("summary")}
         onDismiss={() => { localStorage.setItem(staleDismissKey, "1"); rerenderAfterDismiss((n) => n + 1); }}
       />}
       {mock && summaryText && !summaryIsStale && <MockSummaryNotices mock={mock} onRegenerate={() => { notify("Mock: Summary regenerated with the new names"); patchMock({ summaryStale: false }); }} />}
+      {!previewRecordings && output.loading && <p role="status" className="text-xs text-muted">{tr("loadingOutput", "Loading saved output…")}</p>}
+      {!previewRecordings && output.error && <p role="alert" className="text-xs text-danger">{tr("outputReadError", "Could not read saved output.")}</p>}
+      {!previewRecordings && !summaryText && noteSummary && <p className="mb-2 text-xs text-muted">{tr("savedNoteSummary", "Note Summary")}</p>}
       {summaryText ? <article className="note-prose"><ReactMarkdown>{summaryText}</ReactMarkdown></article> : <>
         {mock?.autoSummarySkipped && <NoteNotice status="accent" title={tr("autoSummarySkipped", "Automatic Summary skipped")} description={tr("autoSummarySkippedReason", "This meeting is short ({{seconds}} s, {{chars}} characters). Automatic Summary starts after 180 s and 2500 characters. You can create one now.", mock.autoSummarySkipped)} />}
         {fallbackSummary(summaryAction)}
@@ -856,12 +880,12 @@ function MockSummaryNotices({ mock, onRegenerate }: { mock: MockPipeline; onRege
   />;
 }
 
-function SummaryStaleNotice({ onRegenerate, onDismiss }: { onRegenerate: () => void; onDismiss: () => void }) {
+function SummaryStaleNotice({ onRegenerate, onDismiss, sourceChanged = false }: { onRegenerate: () => void; onDismiss: () => void; sourceChanged?: boolean }) {
   const { t } = useTranslation();
   return <NoteNotice
     status="warning"
-    title={t("meetingResults.summaryStale", { defaultValue: "Speaker names changed" })}
-    description={t("meetingResults.summaryStaleReason", { defaultValue: "This Summary was written with the earlier names and is unchanged." })}
+    title={sourceChanged ? t("meetingResults.summarySourceChanged", { defaultValue: "Summary source changed" }) : t("meetingResults.summaryStale", { defaultValue: "Speaker names changed" })}
+    description={sourceChanged ? t("meetingResults.summarySourceChangedReason", { defaultValue: "Saved notes or meeting context changed after this Summary was generated." }) : t("meetingResults.summaryStaleReason", { defaultValue: "This Summary was written with the earlier names and is unchanged." })}
     actions={<Button size="sm" variant="secondary" onPress={onRegenerate}>{t("meetingResults.regenerateSummary", { defaultValue: "Regenerate Summary" })}</Button>}
     onDismiss={onDismiss}
   />;

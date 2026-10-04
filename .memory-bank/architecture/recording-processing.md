@@ -72,6 +72,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - A replacement microphone starts with its gate closed. Its actual track mute state replaces the old device mute; manual and Meet mute keep their own intent. Recovery reports active only after the live track and its current persisted intent are accepted.
 - The intent queue owns the whole microphone handoff, including drain and replacement setup. Controls received during handoff apply to the replacement; old track listeners detach before setup.
 - Initial and replacement microphone analysers read the Worklet output. A closed gate gives zero microphone level; system audio can still move the Companion bars. Each output path keeps a zero-gain sink.
+- The native system-audio watchdog arms its first-delivery deadline only after a validated helper start ACK. Silent PCM counts as delivery; sleep and each replacement rebase the deadline. An ACK alone does not report recovered audio.
 - The pipeline reports the microphone flush boundary through a typed callback. The session stop barrier waits for the drain. Then it sends the last sequences and that boundary to main.
 
 ## Run creation

@@ -26,6 +26,7 @@ Decision: [ADR-0004](../adr/0004-opus-capture.md). The product is macOS Apple Si
 - A torn or corrupt tail is counted separately.
 - An epoch without an end-of-stream is marked as interrupted.
 - Startup finalizes an interrupted capture as incomplete. Then a new recording can start.
+- Main saves full-capture microphone mute proof before capture. The first effective unmute or microphone source error removes that proof permanently. Recovery can retain an intentionally empty mic without a guessed clock mapping, only when no mic frames exist.
 
 250 ms pages and a one-second fsync interval are settings.
 They do not guarantee a maximum loss after an app crash or a power loss.

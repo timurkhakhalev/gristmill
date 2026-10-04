@@ -19,6 +19,7 @@ export interface MeetingCaptureDatabase {
     id?: string,
     groupId?: string
   ): MeetingRecordingDto;
+  setMeetingRecordingMicIntentionallyEmpty(recordingId: string, intentionallyEmpty: boolean): void;
   createMeetingRecordingEpoch(
     recordingId: string,
     source: MeetingSource,
@@ -147,6 +148,7 @@ export class MeetingCaptureSession {
     );
     this.micManualMuted = manualMicMuted;
     this.micAlwaysMuted = manualMicMuted;
+    if (manualMicMuted) this.database.setMeetingRecordingMicIntentionallyEmpty(recordingId, true);
     if (manualMicMuted) this.database.openMeetingIntentionalInterval(recordingId, "mic", 1, 0, "manual-muted", null);
   }
 
@@ -170,7 +172,8 @@ export class MeetingCaptureSession {
   initializePlatformMute(muted: boolean): void {
     if (this.epochs.size || this.micControlSequence || this.stopPromise) throw new Error("Capture already started");
     this.micPlatformMuted = muted;
-    this.micAlwaysMuted = this.micManualMuted || muted;
+    this.micAlwaysMuted = (this.micManualMuted || muted) && !this.sourceErrors.has("mic");
+    this.database.setMeetingRecordingMicIntentionallyEmpty(this.recordingId, this.micAlwaysMuted);
     if (muted) this.database.openMeetingIntentionalInterval(this.recordingId, "mic", 1, 0, "platform-muted", null);
   }
 
@@ -200,12 +203,24 @@ export class MeetingCaptureSession {
     return Number.isSafeInteger(Math.round(frame)) && frame >= 0 ? Math.round(frame) : null;
   }
 
-  markSourceUnavailable(source: MeetingSource, errorCode: string): void {
-    if (this.stopPromise) return;
+  private invalidateMicEmptyProof(): void {
+    if (!this.micAlwaysMuted) return;
+    this.database.setMeetingRecordingMicIntentionallyEmpty(this.recordingId, false);
+    this.micAlwaysMuted = false;
+  }
+
+  private setSourceError(source: MeetingSource, errorCode: string): void {
+    if (source === "mic") this.invalidateMicEmptyProof();
     this.sourceErrors.set(source, errorCode);
   }
 
+  markSourceUnavailable(source: MeetingSource, errorCode: string): void {
+    if (this.stopPromise) return;
+    this.setSourceError(source, errorCode);
+  }
+
   markCaptureFailure(errorCode: string): void {
+    this.invalidateMicEmptyProof();
     this.captureError ??= errorCode;
   }
 
@@ -223,6 +238,7 @@ export class MeetingCaptureSession {
       const message = error instanceof Error ? error.message : "";
       if (message !== "Stale microphone intent transition" &&
           message !== "Microphone intent boundary precedes captured audio") {
+        this.invalidateMicEmptyProof();
         this.captureError ??= "mic-intent-transition-failed";
       }
     });
@@ -246,7 +262,6 @@ export class MeetingCaptureSession {
     const current = { manualMuted: input.manualMuted, platformMuted: input.platformMuted };
     const wasMuted = previous.manualMuted || previous.platformMuted;
     const isMuted = current.manualMuted || current.platformMuted;
-    this.micAlwaysMuted &&= isMuted;
     const epoch = this.epochs.get("mic");
     const generationChanged = input.sourceGeneration !== this.micSourceGeneration;
     const epochEnd = epoch && epoch.sourceGeneration === this.micSourceGeneration
@@ -254,10 +269,12 @@ export class MeetingCaptureSession {
       : 0;
     if (!generationChanged && input.boundaryFrame < epochEnd) throw new Error("Microphone intent boundary precedes captured audio");
 
+    if (!isMuted) this.invalidateMicEmptyProof();
+
     if (generationChanged) {
       if (epoch) {
         await this.closeEpoch("mic", epoch);
-        this.sourceErrors.set("mic", "source-restarted");
+        this.setSourceError("mic", "source-restarted");
       }
       for (const [reason, active] of [["manual-muted", previous.manualMuted], ["platform-muted", previous.platformMuted]] as const) {
         if (!active) continue;
@@ -273,7 +290,7 @@ export class MeetingCaptureSession {
       this.allowIntentionalMicEpoch = isMuted;
     }
     if (!wasMuted && isMuted && this.micUnmuteBoundary !== null) {
-      this.sourceErrors.set("mic", "mic-source-unavailable");
+      this.setSourceError("mic", "mic-source-unavailable");
       this.micUnmuteBoundary = null;
     }
     if (wasMuted !== isMuted && isMuted && epoch) {
@@ -322,7 +339,7 @@ export class MeetingCaptureSession {
     }
     if (current) {
       void this.closeEpoch(source, current);
-      this.sourceErrors.set(source, "source-restarted");
+      this.setSourceError(source, "source-restarted");
     }
     this.sourceGenerations.set(source, sourceGeneration);
     this.openEpoch(source, index, sourceGeneration, sourceStartFrame, timelineStartFrame);
@@ -363,9 +380,9 @@ export class MeetingCaptureSession {
         }
         if (source === "mic") {
           if (packet.sourceGeneration !== this.micSourceGeneration) throw new Error("Microphone packet has a stale source generation");
-          if (epoch && !this.allowIntentionalMicEpoch) this.sourceErrors.set(source, "source-restarted");
+          if (epoch && !this.allowIntentionalMicEpoch) this.setSourceError(source, "source-restarted");
           this.allowIntentionalMicEpoch = false;
-        } else if (epoch) this.sourceErrors.set(source, "source-restarted");
+        } else if (epoch) this.setSourceError(source, "source-restarted");
         if (packet.sourceGeneration !== (this.sourceGenerations.get(source) ?? 1)) this.sourceGenerations.set(source, packet.sourceGeneration);
         epoch = this.openEpoch(source, packet.epochIndex, packet.sourceGeneration, packet.sourceFrameStart, null);
       } else if (packet.epochSourceStartFrame !== epoch.sourceStartFrame || packet.sourceGeneration !== epoch.sourceGeneration) {
@@ -392,7 +409,7 @@ export class MeetingCaptureSession {
           throw new Error("Microphone samples precede the acknowledged unmute boundary");
         }
         if (packet.sourceFrameStart > this.micUnmuteBoundary.frame) {
-          this.sourceErrors.set("mic", "mic-source-unavailable");
+          this.setSourceError("mic", "mic-source-unavailable");
         }
         this.micUnmuteBoundary = null;
       }
@@ -407,7 +424,7 @@ export class MeetingCaptureSession {
       }
     } catch (error) {
       this.captureError ??= "audio-write-failed";
-      this.sourceErrors.set(source, "audio-write-failed");
+      this.setSourceError(source, "audio-write-failed");
       throw error;
     }
   }
@@ -463,7 +480,7 @@ export class MeetingCaptureSession {
     let errorCode = this.captureError ?? input.errorCode ?? null;
     for (const source of ["mic", "system"] as const) {
       if (source === "mic" && this.micUnmuteBoundary !== null) {
-        this.sourceErrors.set("mic", "mic-source-unavailable");
+        this.setSourceError("mic", "mic-source-unavailable");
       }
       const epoch = this.epochs.get(source);
       const receivedLastSequence = input.lastSequence[source];
@@ -473,19 +490,19 @@ export class MeetingCaptureSession {
         receivedLastSequence !== undefined &&
         receivedLastSequence !== epoch.nextSequence - 1
       ) {
-        this.sourceErrors.set(source, "capture-drain-incomplete");
+        this.setSourceError(source, "capture-drain-incomplete");
       }
       if (!epoch || epoch.frameCount === 0) {
         const intervals = this.database.listMeetingIntentionalIntervals(this.recordingId).filter((item) => item.source === source);
         const intentionallyCovered = source === "mic" && (this.micManualMuted || this.micPlatformMuted) &&
           intervals.some((item) => item.sourceGeneration === this.micSourceGeneration && item.sourceStartFrame === 0 && item.sourceEndFrame === null);
-        if (!intentionallyCovered) this.sourceErrors.set(source, this.sourceErrors.get(source) ?? "source-unavailable");
+        if (!intentionallyCovered) this.setSourceError(source, this.sourceErrors.get(source) ?? "source-unavailable");
       }
       if (epoch) {
         try {
           await this.closeEpoch(source, epoch);
         } catch {
-          this.sourceErrors.set(source, "audio-flush-failed");
+          this.setSourceError(source, "audio-flush-failed");
         }
         try {
           const recovered = this.storage.recoverEpoch(this.recordingId, source, epoch.index);
@@ -496,7 +513,7 @@ export class MeetingCaptureSession {
             errorCode: epochError,
           });
         } catch {
-          this.sourceErrors.set(source, "audio-recovery-failed");
+          this.setSourceError(source, "audio-recovery-failed");
         }
       }
     }
@@ -555,15 +572,15 @@ export class MeetingCaptureSession {
         await this.storage.closeEpochWriter(this.recordingId, source, epoch.index);
       } catch {
         this.captureError ??= "audio-flush-failed";
-        this.sourceErrors.set(source, "audio-flush-failed");
+        this.setSourceError(source, "audio-flush-failed");
       }
       try {
         const recovered = this.storage.recoverEpoch(this.recordingId, source, epoch.index);
         this.database.updateMeetingRecordingEpochRecovery(this.recordingId, source, epoch.index, recovered);
-        if (recovered.errorCode) this.sourceErrors.set(source, recovered.errorCode);
+        if (recovered.errorCode) this.setSourceError(source, recovered.errorCode);
       } catch {
         this.captureError ??= "audio-recovery-failed";
-        this.sourceErrors.set(source, "audio-recovery-failed");
+        this.setSourceError(source, "audio-recovery-failed");
       }
     })();
     this.closingEpochs.push(closing);

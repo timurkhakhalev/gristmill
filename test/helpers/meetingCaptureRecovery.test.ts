@@ -25,6 +25,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
       this.recordings.push(recording);
       return recording;
     },
+    setMeetingRecordingMicIntentionallyEmpty() {},
     createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, sourceGeneration: number, startFrame: number) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },

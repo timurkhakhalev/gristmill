@@ -41,7 +41,7 @@ const rendererHelpers = [
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const nodeModules = [...new Set(builtinModules.map((name) => name.replace(/^node:/, "")))];
 const nodeImports = `^(?:node:|electron(?:/|$)|(?:${nodeModules.map(escapeRegex).join("|")})(?:/|$))`;
-const mainImports = `(?:^|/)(?:helpers/(?!(?:${rendererHelpers.join("|")})(?:\\.[cm]?[jt]sx?)?$)|preload/|workers/|utils/(?:process|serverUtils)(?:\\.[cm]?[jt]s)?$|services/localReasoningBridge(?:\\.[cm]?[jt]s)?$)|^(?:\\.\\./)+(?:main|preload)(?:\\.[cm]?[jt]s)?$`;
+const mainImports = `(?:^|/)(?:helpers/(?!(?:${rendererHelpers.join("|")})(?:\\.[cm]?[jt]sx?)?$)|preload/|workers/|utils/(?:process|serverUtils)(?:\\.[cm]?[jt]s)?$|localReasoningBridge(?:\\.[cm]?[jt]s)?$)|^(?:\\.\\./)+(?:main|preload)(?:\\.[cm]?[jt]s)?$`;
 const boundaryMessage =
   "Renderer cannot import Node/Electron or main implementation. Use window.electronAPI, a shared contract, or an approved browser-safe helper.";
 

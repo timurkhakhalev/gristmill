@@ -748,7 +748,7 @@ class ReasoningService extends BaseReasoningService {
     // OpenRouter ids are never in the local registry, so the supportsThinking
     // exemption below can't apply — honor the toggle directly.
     const openrouterDisableThinking = provider === "openrouter" && config.disableThinking === true;
-    if (provider === "tinfoil") {
+    if (aiProvider === "tinfoil") {
       if (!apiKey?.trim()) throw new Error("Tinfoil API key not configured");
       // Cache-hit application is synchronous. Network repair affects later
       // settings resolution, not this operation's model or request parameters.

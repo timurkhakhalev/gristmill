@@ -76,6 +76,9 @@ interface FakeNode {
   removeAttribute(name: string): void;
   addEventListener(): void;
   removeEventListener(): void;
+  focus(): void;
+  querySelector(): null;
+  querySelectorAll(): never[];
   contains(candidate: FakeNode | null): boolean;
   prepend(...nodes: FakeNode[]): void;
   append(...nodes: FakeNode[]): void;
@@ -156,6 +159,11 @@ export function installHookDom(t: TestContext): FakeNode {
       removeAttribute(name) { this.attributes.delete(name); },
       addEventListener: noop,
       removeEventListener: noop,
+      // React calls these on host elements (autoFocus, ref-driven scroll and
+      // query helpers); they are no-ops in the fake DOM.
+      focus: noop,
+      querySelector: () => null,
+      querySelectorAll: () => [],
       contains(candidate) {
         return candidate === this || this.childNodes.some((child) => child.contains?.(candidate));
       },

@@ -259,6 +259,7 @@ test("tentative Apple events remain visible in upcoming meetings", (t: import("n
   const db = createDb(t) as DbUnderTest;
   if (!db) return;
 
+  db.db.prepare("INSERT INTO apple_calendars (id, title) VALUES (?, ?)").run("apple-calendar", "Apple");
   const now = Date.now();
   db.upsertCalendarEvents([
     appleEvent("tentative-event", {
@@ -426,5 +427,50 @@ test("google sync token persists alongside its expiry", (t: import("node:test").
   const calendar = db.getGoogleCalendars().find((row) => row.id === "google-calendar");
   assert.equal(calendar!.sync_token, "sync-token");
   assert.equal(calendar!.sync_token_expires_at, expiresAt);
+  db.db.close();
+});
+
+test("removing an account excludes only its events from live queries and keeps by-ID history", (t: import("node:test").TestContext) => {
+  const db = createDb(t) as DbUnderTest;
+  if (!db) return;
+
+  insertCalendar(db, "google", "a-calendar");
+  insertCalendar(db, "google", "b-calendar");
+  db.db.prepare("UPDATE google_calendars SET account_email = 'b@example.com' WHERE id = 'b-calendar'").run();
+  const future = {
+    start_time: new Date(Date.now() + 5 * 60_000).toISOString(),
+    end_time: new Date(Date.now() + 35 * 60_000).toISOString(),
+  };
+  db.upsertCalendarEvents([
+    restEvent("google", "a-calendar", "a-event", future),
+    restEvent("google", "b-calendar", "b-event", future),
+  ]);
+
+  db.removeGoogleAccount("google@example.com");
+
+  assert.equal(db.getUpcomingEvents(60).some((e: { id: string }) => e.id === "a-event"), false);
+  assert.equal(db.getUpcomingEvents(60).some((e: { id: string }) => e.id === "b-event"), true);
+  assert.equal(db.getActiveEvents().some((e: { id: string }) => e.id === "a-event"), false);
+  // Note-linked history stays available by ID.
+  assert.equal(db.getCalendarEventById("a-event")?.summary, "a-event");
+  db.db.close();
+});
+
+test("after the last account is removed no orphaned events reach live queries", (t: import("node:test").TestContext) => {
+  const db = createDb(t) as DbUnderTest;
+  if (!db) return;
+
+  insertCalendar(db, "microsoft", "ms-calendar");
+  const future = {
+    start_time: new Date(Date.now() + 5 * 60_000).toISOString(),
+    end_time: new Date(Date.now() + 35 * 60_000).toISOString(),
+  };
+  db.upsertCalendarEvents([restEvent("microsoft", "ms-calendar", "ms-event", future)]);
+  assert.equal(db.getUpcomingEvents(60).length, 1);
+
+  db.removeMicrosoftAccount("microsoft@example.com");
+
+  assert.equal(db.getUpcomingEvents(60).length, 0);
+  assert.equal(db.getActiveEvents().length, 0);
   db.db.close();
 });

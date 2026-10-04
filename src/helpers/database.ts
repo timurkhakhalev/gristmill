@@ -3579,7 +3579,10 @@ export class DatabaseManager {
     return (this.sql
       .prepare(
         dedupedEventsQuery(
-          "datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now') AND is_all_day = 0 AND status IN ('confirmed', 'tentative')"
+          // Live queries (tray, reminders) see only events from calendars that
+          // still exist and are selected: a disconnected account's rows lose
+          // their calendar entries and must not surface anymore (#164).
+          `datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now') AND is_all_day = 0 AND status IN ('confirmed', 'tentative') AND ${selectedCalendarFilter()}`
         )
       )
       .all() as Array<CalendarEventRow & { has_synced: number }>).map(stripDedupeColumn);
@@ -3588,7 +3591,10 @@ export class DatabaseManager {
     const rows = this.sql
       .prepare(
         dedupedEventsQuery(
-          "((datetime(start_time) > datetime('now') AND datetime(start_time) <= datetime('now', '+' || ? || ' minutes')) OR (datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now'))) AND is_all_day = 0 AND status IN ('confirmed', 'tentative')"
+          // Same live-selection rule as getActiveEvents: orphaned events of a
+          // disconnected account never reach tray or reminders (#164).
+          "((datetime(start_time) > datetime('now') AND datetime(start_time) <= datetime('now', '+' || ? || ' minutes')) OR (datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now'))) AND is_all_day = 0 AND status IN ('confirmed', 'tentative') AND " +
+            selectedCalendarFilter()
         )
       )
       .all(windowMinutes) as Array<CalendarEventRow & { has_synced: number }>;

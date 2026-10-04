@@ -201,6 +201,7 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
   return originalLoad.call(this, request, parent, isMain);
 };
 const WindowManager = require("../../src/helpers/windowManager");
+const TrayManager = require("../../src/helpers/tray.ts");
 Module._load = originalLoad;
 
 const notificationWindowFor = (index: number) => createdWindows[index];
@@ -896,7 +897,7 @@ test("visible startup keeps the load backstop and explicit hide cancels it", asy
   assert.equal(manager.controlPanelWindow.isVisible(), false);
 });
 
-test("hidden load rejection settles bootstrap gated and explicit open retries", async (t) => {
+test("hidden load rejection settles bootstrap gated and actual tray open retries", async (t) => {
   const timers = installFakeTimers();
   t.after(() => timers.restore());
   const manager = new WindowManager();
@@ -914,7 +915,9 @@ test("hidden load rejection settles bootstrap gated and explicit open retries", 
   assert.equal(manager.isMeetingInputAllowed(), false);
   timers.runAll();
   assert.equal(manager.controlPanelWindow.showCount, 0);
-  await manager.createControlPanelWindow();
+  const tray = new TrayManager();
+  tray.setWindowManager(manager);
+  await tray.showControlPanelFromTray();
   assert.equal(loads, 2);
   assert.equal(manager.isMeetingInputAllowed(), true);
   assert.equal(manager.controlPanelWindow.isVisible(), true);

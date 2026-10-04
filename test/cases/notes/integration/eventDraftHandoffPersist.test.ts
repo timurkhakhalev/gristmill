@@ -198,3 +198,22 @@ test("a content-only edit's debounced write does not republish the title over an
   assert.equal(calls[0].updates.title, undefined, "the externally-generated title is not overwritten");
   assert.equal(calls[0].updates.content, "Typed body");
 });
+
+test("an external update lands even while a save is queued", async (t) => {
+  const stored = noteFixture(10, "Original title", "Original body");
+  const harness = await mountNotesView(t, [stored], async (id) => (id === 10 ? stored : null), null);
+
+  await harness.openNote(10);
+  await harness.typeContent("Typed body");
+
+  // Processing publishes a new title while the debounce is still queued.
+  stored.title = "Generated title";
+  await harness.fireExternalUpdate(stored);
+
+  // The editor draft shows the external title (untouched field accepts it).
+  const calls = harness.updateNoteCalls();
+  await wait(1100);
+  assert.equal(calls.length, 1, "only the dirty field is written");
+  assert.equal(calls[0].updates.title, undefined, "the externally-generated title is not overwritten");
+  assert.equal(calls[0].updates.content, "Typed body");
+});

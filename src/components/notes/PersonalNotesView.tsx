@@ -242,19 +242,15 @@ export default function PersonalNotesView({
       return;
     }
 
-    const hasPendingLocalSave =
-      pendingDocumentRef.current?.noteId === activeNote.id ||
-      pendingEnhancedRef.current?.noteId === activeNote.id;
-    if (!hasPendingLocalSave) {
-      // External update (e.g. AI chat tool): fields the user never typed
-      // accept the external value; dirty user fields keep the local value so
-      // their pending save still lands (#157).
-      const { draft: merged } = acceptExternalNoteUpdate(currentDraft, {
-        title: activeNote.title,
-        content: activeNote.content,
-      });
-      commitDraft(merged);
-    }
+    // External update (e.g. AI chat tool), even while a save is queued: the
+    // queued write is field-scoped, so fields the user never typed accept the
+    // external value and dirty user fields keep the local value for their
+    // pending save (#157).
+    const { draft: merged } = acceptExternalNoteUpdate(currentDraft, {
+      title: activeNote.title,
+      content: activeNote.content,
+    });
+    commitDraft(merged);
   }, [activeNote, commitDraft, transitionToNote]);
 
   const scheduleDocumentSave = useCallback((snapshot: NoteEditorDraft) => {
@@ -263,7 +259,12 @@ export default function PersonalNotesView({
 
     // Only the fields the user edited are captured: a debounced write must
     // not republish fields an external update (chat tool, processing) just
-    // changed under us (#157).
+    // changed under us (#157). Nothing dirty means nothing to write — an
+    // empty updateNote({}) would fail server-side and heal nothing.
+    if (!snapshot.dirtyTitle && !snapshot.dirtyContent) {
+      pendingDocumentRef.current = null;
+      return;
+    }
     const pending: PendingDocumentSave = {
       noteId: snapshot.noteId,
       title: snapshot.dirtyTitle ? snapshot.title : undefined,

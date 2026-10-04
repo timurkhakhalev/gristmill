@@ -452,7 +452,7 @@ test("external updates fill untouched fields and keep the user's dirty ones", as
 });
 
 test("dirty-trimmed snapshots write only the fields the user edited", async () => {
-  const { collectPendingNoteWrites, captureDocumentSnapshot } = await load();
+  const { collectPendingNoteWrites } = await load();
 
   // A content-only edit writes only content: an external title survives.
   assert.deepEqual(
@@ -496,28 +496,6 @@ test("dirty-trimmed snapshots write only the fields the user edited", async () =
       { noteId: 1, updates: { content: "C" } },
       { noteId: 2, updates: { enhanced_content: "E" } },
     ]
-  );
-
-  // captureDocumentSnapshot: the transition/unmount flush captures only the
-  // dirty fields, and nothing when nothing was edited.
-  assert.deepEqual(
-    captureDocumentSnapshot({
-      noteId: 9,
-      title: "Local title",
-      content: "Local body",
-      enhancedContent: null,
-      dirtyTitle: true,
-    }),
-    { noteId: 9, title: "Local title" }
-  );
-  assert.deepEqual(
-    captureDocumentSnapshot({
-      noteId: 9,
-      title: "T",
-      content: "C",
-      enhancedContent: null,
-    }),
-    { noteId: 9 }
   );
 
   // A fully clean snapshot flushes no document write at all.

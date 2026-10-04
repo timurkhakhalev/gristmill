@@ -54,7 +54,16 @@ export function createUpdateDictionaryTool(actions: DictionaryActions): ToolDefi
       // the word outright.
       const removing = new Set(requestedRemove.map((word) => word.toLowerCase()));
       const isAddNew = (word: string) => !has(word) || removing.has(word.toLowerCase());
-      const add = requestedAdd.filter(isAddNew);
+      // One spelling per word: case-variant duplicates in the same add list
+      // would both pass isAddNew and both persist (the UNIQUE index is
+      // case-sensitive).
+      const addedSeen = new Set<string>();
+      const add = requestedAdd.filter((word) => {
+        const lower = word.toLowerCase();
+        if (!isAddNew(word) || addedSeen.has(lower)) return false;
+        addedSeen.add(lower);
+        return true;
+      });
       const alreadyPresent = requestedAdd.filter((word) => !isAddNew(word));
       const remove = requestedRemove.filter(has);
       const notFound = requestedRemove.filter((word) => !has(word));

@@ -12,5 +12,6 @@ The decisions and their reasons are in the [ADRs](../adr/index.md).
 - [companion.md](companion.md) — Chrome extension: channels and builds, trust model, protocol, recording lifecycle, Google Meet adapter.
 - [companion-telemost.md](companion-telemost.md) — Telemost adapter: DOM markers, Leave, limits.
 - [bb-integration.md](bb-integration.md) — bb route: harness selection, runtime contract, thread binding, JSON repair, CLI update.
+- [note-writes.md](note-writes.md) — editable Note write effects, participant edits and separate calendar, processing and deletion policies.
 
 Read in this sequence: overview → recording-processing → post-stop-processing → the document for your task.

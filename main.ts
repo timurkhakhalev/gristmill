@@ -501,7 +501,7 @@ async function startApp(): Promise<void> {
     noteReadService: new NoteReadService(initializedHandlers.databaseManager, initializedHandlers.audioStorageManager.meetingRecordings),
     deleteNoteInternal: (id) => initializedHandlers.deleteNoteInternal(id),
     deleteTranscriptionInternal: (id) => initializedHandlers.deleteTranscriptionInternal(id),
-    mirrorWriteNote: (note) => initializedHandlers._asyncMirrorWrite(note),
+    noteWrites: initializedHandlers.noteWrites,
     approveAudioPath: (filePath) => initializedHandlers.approveAudioPath(filePath),
     transcribeLocalFile: (filePath, options) =>
       initializedHandlers.transcribeLocalFile(filePath, options),

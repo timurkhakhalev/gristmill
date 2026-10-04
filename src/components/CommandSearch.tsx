@@ -17,6 +17,7 @@ import type { FolderItem, SpaceItem } from "../contracts/containers";
 import type { TranscriptionItem } from "../contracts/transcriptionData.js";
 import type { NoteItem, TranscriptSearchHit } from "../contracts/notes";
 import { formatRelativeTime } from "../utils/dateFormatting";
+import { useFolders, useSpaces } from "../stores/noteStore";
 import { useDateTimePreferences } from "../hooks/useDateTimePreferences";
 import { defaultFolderDisplayName, folderMatchesQuery } from "./notes/shared";
 
@@ -69,8 +70,12 @@ export default function CommandSearch({
   const [noteTranscriptHits, setNoteTranscriptHits] = useState<TranscriptSearchHit[]>([]);
   const [searchError, setSearchError] = useState(false);
   const [transcriptSearchPending, setTranscriptSearchPending] = useState(false);
-  const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [spaces, setSpaces] = useState<SpaceItem[]>([]);
+  // Live store references: create/rename/delete land here (createFolder,
+  // renameFolder, deleteFolder, loadFolders, loadSpaces all write the store),
+  // so jump targets stay current even though ControlPanel keeps this
+  // component mounted while search is closed — no second cache owner (#178).
+  const folders = useFolders();
+  const spaces = useSpaces();
   const [scopeSpaceId, setScopeSpaceId] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -80,17 +85,6 @@ export default function CommandSearch({
   const [prevOpen, setPrevOpen] = useState(open);
   const [prevNotes, setPrevNotes] = useState(notes);
   const [prevQuery, setPrevQuery] = useState(query);
-
-  useEffect(() => {
-    window.electronAPI
-      .getFolders()
-      .then(setFolders)
-      .catch(() => {});
-    window.electronAPI
-      .getSpaces?.()
-      .then((items) => setSpaces(items ?? []))
-      .catch(() => {});
-  }, []);
 
   if (open && !prevOpen) {
     setPrevOpen(open);

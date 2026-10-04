@@ -34,6 +34,8 @@ const testSecretCrypto = {
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
+      net: {},
+      BrowserWindow: { getAllWindows: () => [] },
       app: {
         getPath: () => userDataDir,
         getAppPath: () => process.cwd(),
@@ -474,3 +476,106 @@ test("after the last account is removed no orphaned events reach live queries", 
   assert.equal(db.getActiveEvents().length, 0);
   db.db.close();
 });
+
+// A request belongs to the connection that started it, including when a new
+// connection uses the same email. Exercise the real encrypted SQLite store.
+for (const provider of ["google", "microsoft"] as const) {
+  for (const reconnect of [false, true]) {
+    for (const operation of ["refresh", "list", "events"] as const) {
+      test(`${provider} late ${operation} cannot restore or overwrite ${reconnect ? "reconnected" : "disconnected"} account`, async (t) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gm-calendar-identity-"));
+        let db = createDb(t, directory);
+        t.after(() => { db?.db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+        if (!db) return;
+        const email = "account@example.com";
+        const save = (access: string) => {
+          const values = { access_token: access, refresh_token: `${access}-refresh`, expires_at: 0, scope: "calendar" };
+          if (provider === "google") db!.saveGoogleTokens({ ...values, google_email: email });
+          else db!.saveMicrosoftTokens({ ...values, microsoft_email: email });
+        };
+        const read = () => provider === "google" ? db!.getGoogleTokensByEmail(email) : db!.getMicrosoftTokensByEmail(email);
+        save("old");
+        const oldId = read()!.id;
+        const CalendarManager = require(`../../src/helpers/${provider}CalendarManager.ts`);
+        const scheduler = { scheduleNextMeeting() {}, reset() {} };
+        const manager = provider === "google" ? new CalendarManager(db, null, scheduler) : new CalendarManager(db, scheduler);
+        t.after(() => manager.stop());
+        manager.addAccount(email);
+        let resolve!: (result: unknown) => void;
+        const response = new Promise((done) => { resolve = done; });
+        let request: Promise<unknown>;
+        if (operation === "refresh") {
+          manager.oauth.refreshAccessToken = () => response;
+          request = manager.oauth.getValidAccessToken(email);
+        } else {
+          manager._apiGet = () => response;
+          if (operation === "list") request = manager.fetchCalendars(email);
+          else {
+            const calendar = { id: "shared-calendar", summary: "Old calendar", account_email: email };
+            if (provider === "google") db.saveGoogleCalendars([calendar], email);
+            else db.saveMicrosoftCalendars([calendar], email);
+            request = manager.syncEvents();
+          }
+        }
+        // Observe rejection immediately so the controlled response never
+        // causes an unhandled rejection before the test awaits it.
+        const settled = request.then((value) => ({ value }), (error: Error) => ({ error }));
+        manager.disconnect(email);
+        if (reconnect) {
+          save("new");
+          assert.notEqual(read()!.id, oldId);
+          manager.addAccount(email);
+          const calendar = { id: "shared-calendar", summary: "New calendar", is_primary: true };
+          if (provider === "google") db.saveGoogleCalendars([calendar], email);
+          else db.saveMicrosoftCalendars([calendar], email);
+        }
+        const event = { id: "late-event", summary: "Old", subject: "Old", start: { dateTime: "2026-10-05T10:00:00Z" }, end: { dateTime: "2026-10-05T11:00:00Z" } };
+        resolve(operation === "refresh" ? { access_token: "late", refresh_token: "late-refresh", expires_in: 3600 } : provider === "google" ? { items: operation === "list" ? [{ id: "shared-calendar", summary: "Old calendar", primary: true }] : [event] } : { value: operation === "list" ? [{ id: "shared-calendar", name: "Old calendar", isDefaultCalendar: true }] : [event] });
+        const result = await settled;
+        if (operation === "refresh") assert.ok("error" in result);
+        assert.equal(read()?.access_token ?? null, reconnect ? "new" : null);
+        const calendars = db.db.prepare(`SELECT * FROM ${provider}_calendars`).all() as Array<{ summary: string }>;
+        assert.deepEqual(calendars.map(row => row.summary), reconnect ? ["New calendar"] : []);
+        assert.equal(db.getCalendarEventById("late-event"), null);
+        db.db.close(); db = null;
+        db = createDb(t, directory);
+        assert.ok(db);
+        assert.equal(read()?.access_token ?? null, reconnect ? "new" : null);
+        assert.equal(provider === "google" ? db.getGoogleAccounts().length > 0 : db.getMicrosoftAccounts().length > 0, reconnect);
+      });
+    }
+  }
+  test(`${provider} refresh deduplicates per connection and preserves token rotation`, async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gm-calendar-rotation-"));
+    const db = createDb(t, directory);
+    t.after(() => { db?.db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+    if (!db) return;
+    const email = "account@example.com";
+    const values = { access_token: "old", refresh_token: "old-refresh", expires_at: 0, scope: "calendar" };
+    const save = () => provider === "google" ? db.saveGoogleTokens({ ...values, google_email: email }) : db.saveMicrosoftTokens({ ...values, microsoft_email: email });
+    const read = () => provider === "google" ? db.getGoogleTokensByEmail(email) : db.getMicrosoftTokensByEmail(email);
+    save();
+    const OAuth = require(`../../src/helpers/${provider}CalendarOAuth.ts`);
+    const oauth = new OAuth(db);
+    const resolvers: Array<(value: unknown) => void> = [];
+    oauth.refreshAccessToken = () => new Promise(resolve => resolvers.push(resolve));
+    const stale = oauth.getValidAccessToken(email).catch((error: Error) => error);
+    const oldId = read()!.id;
+    save(); // Intentional reauthorization without an intervening disconnect.
+    assert.notEqual(read()!.id, oldId);
+    const first = oauth.getValidAccessToken(email);
+    const second = oauth.getValidAccessToken(email);
+    assert.equal(resolvers.length, 2, "new connection does not join old refresh; its own requests share one");
+    resolvers[0]({ access_token: "stale", expires_in: 3600 });
+    assert.ok(await stale instanceof Error);
+    // Old settlement must not evict the newer connection's pending refresh.
+    const third = oauth.getValidAccessToken(email);
+    assert.equal(resolvers.length, 2);
+    resolvers[1]({ access_token: "current", refresh_token: "rotated", expires_in: 3600, scope: "calendar-new" });
+    assert.deepEqual(await Promise.all([first, second, third]), ["current", "current", "current"]);
+    assert.equal(read()!.refresh_token, "rotated");
+    assert.equal(read()!.scope, "calendar-new");
+    assert.equal(await oauth.getValidAccessToken(email), "current");
+    assert.equal(resolvers.length, 2);
+  });
+}

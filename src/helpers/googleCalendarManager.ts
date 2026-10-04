@@ -89,7 +89,7 @@ export interface GoogleManagerDb {
   updateCalendarSyncToken(id: string, token: string, expiresAt: number): unknown;
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
   upsertGooglePeople(profiles: GooglePersonProfile[]): unknown;
-  getGoogleTokensByEmail(email: string): { scope: string } | null;
+  getGoogleTokensByEmail(email: string): { id: number; scope: string } | null;
   getUpcomingEvents(windowMinutes?: number): unknown[];
 }
 
@@ -235,6 +235,8 @@ export class GoogleCalendarManager {
 
     for (const email of emails) {
       try {
+        const accountId = this.databaseManager.getGoogleTokensByEmail(email)?.id;
+        this._assertAccountCurrent(email, accountId);
         const data = (await this._apiGet("/users/me/calendarList", email)) as {
           items?: GoogleCalendarListItem[];
         };
@@ -245,6 +247,7 @@ export class GoogleCalendarManager {
           background_color: item.backgroundColor || null,
           is_primary: item.primary === true,
         }));
+        this._assertAccountCurrent(email, accountId);
         this.databaseManager.saveGoogleCalendars(calendars, email);
         allCalendars.push(...calendars);
       } catch (err) {
@@ -294,7 +297,9 @@ export class GoogleCalendarManager {
   async syncPeople({ force = false }: { force?: boolean } = {}): Promise<void> {
     let updated = false;
     for (const email of this._getAccountEmails()) {
-      const scope = this.databaseManager.getGoogleTokensByEmail(email)?.scope ?? "";
+      const tokens = this.databaseManager.getGoogleTokensByEmail(email);
+      const accountId = tokens?.id;
+      const scope = tokens?.scope ?? "";
       if (lacksPeopleAccess(scope)) continue;
       const last = this.peopleSyncedAt.get(email) ?? 0;
       if (!force && Date.now() - last < PEOPLE_SYNC_INTERVAL_MS) continue;
@@ -306,6 +311,7 @@ export class GoogleCalendarManager {
           (source, error) =>
             debugLogger.warn("Google People source failed", { source, error: error.message }, "gcal")
         );
+        this._assertAccountCurrent(email, accountId);
         if (profiles.length > 0) {
           this.databaseManager.upsertGooglePeople(profiles);
           updated = true;
@@ -320,6 +326,8 @@ export class GoogleCalendarManager {
 
   private async _syncCalendar(calendar: GoogleCalendarRow): Promise<void> {
     const accountEmail = calendar.account_email;
+    const accountId = this.databaseManager.getGoogleTokensByEmail(accountEmail as string)?.id;
+    this._assertAccountCurrent(accountEmail, accountId);
 
     const buildFullParams = () =>
       new URLSearchParams({
@@ -381,6 +389,8 @@ export class GoogleCalendarManager {
 
       if (!pageToken) break;
     }
+
+    this._assertAccountCurrent(accountEmail, accountId);
 
     const toUpsert: CalendarEventInput[] = [];
     const toRemove: string[] = [];
@@ -510,8 +520,17 @@ export class GoogleCalendarManager {
     sendGcalConnectionChanged({ accounts });
   }
 
+  private _assertAccountCurrent(email: string | null, accountId: number | undefined): void {
+    if (accountId === undefined || !email || this.databaseManager.getGoogleTokensByEmail(email)?.id !== accountId) {
+      throw new Error("Google account changed during calendar request");
+    }
+  }
+
   private async _apiGet(path: string, accountEmail: string | null = null): Promise<unknown> {
+    const accountId = this.databaseManager.getGoogleTokensByEmail(accountEmail as string)?.id;
+    this._assertAccountCurrent(accountEmail, accountId);
     const accessToken = await this.oauth.getValidAccessToken(accountEmail);
+    this._assertAccountCurrent(accountEmail, accountId);
     const urlString = path.startsWith("http") ? path : `${CALENDAR_API_BASE}${path}`;
 
     const response = await net.fetch(urlString, {

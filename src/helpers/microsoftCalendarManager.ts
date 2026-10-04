@@ -233,6 +233,8 @@ export class MicrosoftCalendarManager {
 
     for (const email of emails) {
       try {
+        const accountId = this.databaseManager.getMicrosoftTokensByEmail(email)?.id;
+        this._assertAccountCurrent(email, accountId);
         const calendars: MicrosoftCalendarInput[] = [];
         let url: string | null = "/me/calendars?$select=id,name,hexColor,isDefaultCalendar";
         while (url) {
@@ -249,6 +251,7 @@ export class MicrosoftCalendarManager {
           }
           url = data["@odata.nextLink"] || null;
         }
+        this._assertAccountCurrent(email, accountId);
         this.databaseManager.saveMicrosoftCalendars(calendars, email);
         allCalendars.push(...calendars);
       } catch (err) {
@@ -291,6 +294,8 @@ export class MicrosoftCalendarManager {
 
   private async _syncCalendar(calendar: MicrosoftCalendarRow): Promise<void> {
     const accountEmail = calendar.account_email;
+    const accountId = this.databaseManager.getMicrosoftTokensByEmail(accountEmail as string)?.id;
+    this._assertAccountCurrent(accountEmail, accountId);
 
     const items: GraphEventItem[] = [];
     const toRemove: string[] = [];
@@ -331,6 +336,8 @@ export class MicrosoftCalendarManager {
     if (events.some(isStrippedOccurrence)) {
       tokenExpiresAt = Math.min(tokenExpiresAt, Date.now() + BACKFILL_RETRY_TTL_MS);
     }
+
+    this._assertAccountCurrent(accountEmail, accountId);
 
     const toUpsert: CalendarEventInput[] = [];
     const contactsToUpsert: Array<{ email: string; displayName: string | null }> = [];
@@ -499,8 +506,17 @@ export class MicrosoftCalendarManager {
     sendMcalConnectionChanged({ accounts });
   }
 
+  private _assertAccountCurrent(email: string | null, accountId: number | undefined): void {
+    if (accountId === undefined || !email || this.databaseManager.getMicrosoftTokensByEmail(email)?.id !== accountId) {
+      throw new Error("Microsoft account changed during calendar request");
+    }
+  }
+
   private async _apiGet(path: string, accountEmail: string | null): Promise<unknown> {
+    const accountId = this.databaseManager.getMicrosoftTokensByEmail(accountEmail as string)?.id;
+    this._assertAccountCurrent(accountEmail, accountId);
     const accessToken = await this.oauth.getValidAccessToken(accountEmail as string);
+    this._assertAccountCurrent(accountEmail, accountId);
     const urlString = path.startsWith("http") ? path : `${GRAPH_API_BASE}${path}`;
 
     const response = await net.fetch(urlString, {

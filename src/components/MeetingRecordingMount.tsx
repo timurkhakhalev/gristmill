@@ -89,7 +89,7 @@ export default function MeetingRecordingMount(): null {
     const handleAutoEnd = async (request: { sessionId: string }, platformLeave = false) => {
       if (!platformLeave) {
         try {
-          if (!(await window.electronAPI?.claimMeetingAutoEnd?.(request.sessionId))?.success) return;
+          if (!(await window.electronAPI?.claimMeetingAutoEnd(request.sessionId))?.success) return;
         } catch (error) {
           logger.error("Meeting auto-end claim failed; recording is still running", {
             error: error instanceof Error ? error.message : String(error),

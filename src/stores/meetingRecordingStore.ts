@@ -780,11 +780,11 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         if (request.reason === "platform-leave" || request.sessionId !== sessionId || activeRecordingSessionId !== sessionId) return;
         void stopRecording(sessionId, { suppressProcessing: request.suppressProcessing === true });
       });
-      const manualMuteCleanup = window.electronAPI?.onMeetManualMute?.((request) => {
+      const manualMuteCleanup = window.electronAPI?.onMeetManualMute((request) => {
         if (request.sessionId !== activeRecordingSessionId || request.recordingId !== useMeetingRecordingStore.getState().recordingId) return;
         void setManualMicMuted(request.muted);
       });
-      const platformMuteCleanup = window.electronAPI?.onMeetPlatformMute?.((request) => {
+      const platformMuteCleanup = window.electronAPI?.onMeetPlatformMute((request) => {
         if (request.sessionId !== activeRecordingSessionId || request.recordingId !== useMeetingRecordingStore.getState().recordingId) return;
         meetMicMuted = request.muted;
         requestedPlatformMicMuted = meetMicMuted || deviceMicMuted;
@@ -1574,7 +1574,7 @@ export async function finishMeeting(): Promise<boolean> {
     reportMeetingError(error instanceof Error ? error.message : String(error));
     return false;
   }
-  if (state.capturePhase === "paused" && state.recordingId) await window.electronAPI?.finishPausedMeetRecording?.(state.recordingId);
+  if (state.capturePhase === "paused" && state.recordingId) await window.electronAPI?.finishPausedMeetRecording(state.recordingId);
   localStorage.removeItem(PAUSED_MEETING_KEY);
   useMeetingRecordingStore.setState({ capturePhase: "saved", meetingGroupId: null });
   return true;

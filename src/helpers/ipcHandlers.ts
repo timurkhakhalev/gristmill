@@ -1,3 +1,5 @@
+import { meetingCoordinatorChannels } from "../contracts/meetingCoordinator.js";
+import { companionConfigureActionSchema } from "../contracts/companion.js";
 import os from "node:os";
 import { isDevelopmentChannel } from "./appChannel.js";
 import { installCompanionHost, uninstallCompanionHost, companionHostInstalled, refreshCompanionHost } from "./installCompanionHost.js";
@@ -1553,15 +1555,17 @@ export class IPCHandlers {
     }
     const companionFolder = companionInstallation.channel === "development" ? "companion-dev" : "companion";
     const companionExtensionPath = app.isPackaged ? path.join(process.resourcesPath, companionFolder) : path.join(app.getAppPath(), "build", companionFolder);
-    ipcMain.handle("meet-integration-setup", () => ({ enabled: companionEnabled, installed: companionHostInstalled(companionInstallation), extensionPath: companionExtensionPath, channel: companionInstallation.channel }));
-    ipcMain.handle("meet-integration-configure", async (event, action: unknown) => {
+    ipcMain.handle(meetingCoordinatorChannels.getMeetIntegrationSetup, () => ({ enabled: companionEnabled, installed: companionHostInstalled(companionInstallation), extensionPath: companionExtensionPath, channel: companionInstallation.channel }));
+    ipcMain.handle(meetingCoordinatorChannels.configureMeetIntegration, async (event, action: unknown) => {
       if (event.sender !== this.windowManager.controlPanelWindow?.webContents) return { success: false, error: "Unauthorized window" };
+      const parsed = companionConfigureActionSchema.safeParse(action);
+      if (!parsed.success) return { success: false, error: "Invalid action" };
       try {
-        if (action === "reveal") { const error = await shell.openPath(companionExtensionPath); return error ? { success: false, error } : { success: true }; }
-        if (action !== "enable" && action !== "disable") return { success: false, error: "Invalid action" };
-        if (action === "enable") { installCompanionHost(companionInstallation); fs.writeFileSync(companionPreference, "enabled\n", { mode: 0o600 }); }
+        if (parsed.data === "reveal") { const error = await shell.openPath(companionExtensionPath); return error ? { success: false, error } : { success: true }; }
+
+        if (parsed.data === "enable") { installCompanionHost(companionInstallation); fs.writeFileSync(companionPreference, "enabled\n", { mode: 0o600 }); }
         else { if (companionHostInstalled(companionInstallation)) uninstallCompanionHost(companionInstallation); fs.rmSync(companionPreference, { force: true }); }
-        companionEnabled = action === "enable";
+        companionEnabled = parsed.data === "enable";
         this._meetingCoordinator?.setCompanionEnabled(companionEnabled);
         return { success: true };
       } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }

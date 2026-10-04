@@ -4,7 +4,7 @@ import { MeetSpeakerEvidence } from "./meetSpeakerEvidence.js";
 import { CompanionCoordinator } from "./companionCoordinator.js";
 import { CompanionServer } from "./companionServer.js";
 import { isDevelopmentChannel } from "./appChannel.js";
-import { companionSelectionSchema, companionRecordingScopeSchema } from "../contracts/companion.js";
+import { companionSelectionSchema, companionReminderResponseSchema } from "../contracts/companion.js";
 // The main-process meeting coordinator owns capture preparation, recording
 // start/stop, durable raw audio writes, source availability, detection and
 // auto-end IPC, recording locks, mic warm hold, notifications, and speaker
@@ -29,6 +29,8 @@ import { createMeetingAudioTimeline } from "./meetingAudioTimeline.js";
 import { MeetingCaptureSession, type MeetingCaptureEpochStorage } from "./meetingCaptureSession.js";
 import { meetingRecordingConfigInputSchema } from "../contracts/meetingRecording.js";
 import {
+  meetingCoordinatorChannels,
+  meetingCoordinatorEventChannels,
   meetingCapturePacketSchema,
   meetingCaptureStopRequestSchema,
   meetingMicIntentRequestSchema,
@@ -185,7 +187,7 @@ export function registerMeetingCoordinatorHandlers(
     },
     setPlatformMuted: (scope, muted) => {
       platformMuted = muted;
-      if (activeCaptureOwner && !activeCaptureOwner.isDestroyed()) activeCaptureOwner.send("meet-platform-mute", { ...scope, muted });
+      if (activeCaptureOwner && !activeCaptureOwner.isDestroyed()) activeCaptureOwner.send(meetingCoordinatorEventChannels.meetPlatformMute, { ...scope, muted });
     },
     leave: (binding) => {
       deps.preparePlatformLeave?.(binding.sessionId);
@@ -201,7 +203,7 @@ export function registerMeetingCoordinatorHandlers(
     changed: (status) => {
       if (meetCoverage && status.binding && status.contextUnavailableSince !== null) meetCoverage.reason ??= "meet-context-unavailable";
       if (status.binding && status.contextUnavailableSince === null) deps.dismissCompanionReminder?.(status.binding);
-      broadcastToWindows("meet-companion-status", status);
+      broadcastToWindows(meetingCoordinatorEventChannels.meetCompanionStatus, status);
       companionServer?.broadcastSnapshot();
     },
   });
@@ -219,7 +221,7 @@ export function registerMeetingCoordinatorHandlers(
       if (message.type === "manual-mute") {
         const scope = currentRecordingScope();
         if (!scope || scope.recordingId !== message.recordingId || captureDraining || safeStopPromise) return;
-        if (activeCaptureOwner && !activeCaptureOwner.isDestroyed()) activeCaptureOwner.send("meet-manual-mute", { ...scope, muted: message.muted });
+        if (activeCaptureOwner && !activeCaptureOwner.isDestroyed()) activeCaptureOwner.send(meetingCoordinatorEventChannels.meetManualMute, { ...scope, muted: message.muted });
         return;
       }
       const key = browserClockKey(connection.id, message.ref);
@@ -258,25 +260,25 @@ export function registerMeetingCoordinatorHandlers(
   if (deps.companionEnabled === false) companion.setEnabled(false);
   let companionStarted: Promise<void> | null = null;
   let companionTicker: NodeJS.Timeout | null = null;
-  ipcMain.handle("meet-recording-finish-paused", (event, recordingId: unknown) => {
+  ipcMain.handle(meetingCoordinatorChannels.finishPausedMeetRecording, (event, recordingId: unknown) => {
     if (event.sender !== deps.getControlPanelWindow?.()?.webContents || recordingId !== pausedRecording?.recordingId) return { success: false };
     pausedRecording = null; companionServer?.broadcastSnapshot(); return { success: true };
   });
-  ipcMain.handle("meet-context-reminder-respond", async (event, request: unknown) => {
-    if (!request || typeof request !== "object" || !("action" in request) || (request.action !== "stop" && request.action !== "dismiss")) return { success: false };
-    const { action, ...scope } = request;
-    const parsed = companionRecordingScopeSchema.safeParse(scope);
-    if (!parsed.success || !deps.dismissCompanionReminder?.(parsed.data, event.sender)) return { success: false };
+  ipcMain.handle(meetingCoordinatorChannels.respondMeetContextReminder, async (event, request: unknown) => {
+    const parsed = companionReminderResponseSchema.safeParse(request);
+    if (!parsed.success) return { success: false };
+    const { action, ...scope } = parsed.data;
+    if (!deps.dismissCompanionReminder?.(scope, event.sender)) return { success: false };
     if (action === "dismiss") return { success: true };
-    return requestSafeStop({ expected: parsed.data, reason: "context-reminder" });
+    return requestSafeStop({ expected: scope, reason: "context-reminder" });
   });
-  ipcMain.handle("meeting-auto-end-claim", (event, sessionId: unknown) => {
+  ipcMain.handle(meetingCoordinatorChannels.claimMeetingAutoEnd, (event, sessionId: unknown) => {
     if (event.sender !== activeCaptureOwner || sessionId !== activeCaptureSessionId || !activeCaptureSession || companion.status().binding || captureDraining || safeStopPromise) return { success: false };
     captureDraining = true;
     return { success: true };
   });
-  ipcMain.handle("meet-companion-status", () => companion.status());
-  ipcMain.handle("meet-companion-select", (event, request: unknown) => {
+  ipcMain.handle(meetingCoordinatorChannels.getMeetCompanionStatus, () => companion.status());
+  ipcMain.handle(meetingCoordinatorChannels.confirmMeetCompanionBinding, (event, request: unknown) => {
     const parsed = companionSelectionSchema.safeParse(request);
     return { success: parsed.success && event.sender === activeCaptureOwner && companion.confirm(parsed.data.expected, parsed.data.candidate) };
   });

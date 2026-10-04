@@ -15,6 +15,9 @@ import type { MeetingAutoEndRequest, MeetingCoordinatorApi, MeetingSegmentEvent 
 const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 const requiredMethods = [
+  "finishPausedMeetRecording", "getMeetIntegrationSetup", "configureMeetIntegration",
+  "respondMeetContextReminder", "claimMeetingAutoEnd", "getMeetCompanionStatus",
+  "confirmMeetCompanionBinding", "onMeetCompanionStatus", "onMeetManualMute", "onMeetPlatformMute",
   "acquireRecordingLock", "releaseRecordingLock", "meetingDetectionGetPreferences",
   "setMeetingSessionSpeakerConfig", "joinCalendarMeeting", "findCalendarEventNote", "createCalendarEventNote",
   "meetingAutoEndCompleted", "meetingAutoEndRespond", "getMeetingNotificationData",
@@ -171,9 +174,9 @@ async function createFixture({ responses = {}, engine }: {
   const listeners = new Map<string, Set<(event: unknown, payload: unknown) => void>>();
   const invokeHandler = async (channel: string, ...args: unknown[]) => {
     invoked.push({ channel, args });
+    if (channel in responses) return responses[channel](...args);
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`No handler for ${channel}`);
-    if (channel in responses) return responses[channel](...args);
     // Sender-scoped channels (auto-end ack/respond) read event.sender; the
     // fixture's engine fakes ignore it.
     return handler({ sender: null }, ...args);
@@ -317,4 +320,63 @@ test("auto-end lifecycle failures keep their reason across the bridge", async ()
     success: false,
     reason: "stale-session",
   });
+});
+
+
+test("Companion commands use the desktop contract and report unavailable/stale state", async () => {
+  const setup = { enabled: false, installed: false, extensionPath: "/isolated/companion", channel: "development" };
+  const { api, invoked } = await createFixture({ responses: {
+    "meet-integration-setup": () => setup,
+    "meet-integration-configure": () => ({ success: false, error: "Owned profile mismatch" }),
+  } });
+  assert.deepEqual(plain(await api.getMeetIntegrationSetup()), setup);
+  assert.deepEqual(plain(await api.configureMeetIntegration("enable")), { success: false, error: "Owned profile mismatch" });
+  const status = await api.getMeetCompanionStatus();
+  assert.equal(status.binding, null);
+  const scope = { recordingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", sessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" };
+  assert.deepEqual(plain(await api.respondMeetContextReminder({ ...scope, action: "stop" })), { success: false });
+  assert.deepEqual(plain(await api.finishPausedMeetRecording(scope.recordingId)), { success: false });
+  assert.deepEqual(plain(await api.claimMeetingAutoEnd(scope.sessionId)), { success: false });
+  assert.deepEqual(plain(await api.confirmMeetCompanionBinding({ expected: scope, candidate: {
+    connectionId: scope.recordingId, ref: { platform: "google-meet", installationId: scope.recordingId,
+      sessionId: scope.sessionId, tabId: 1, documentId: "aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa", callId: "abc-defg-hij" },
+  } })), { success: false });
+  assert.deepEqual(plain(invoked[1]), { channel: "meet-integration-configure", args: ["enable"] });
+});
+
+test("Companion events validate scope and unsubscribe only their own listeners", async () => {
+  const { api, pushEvent } = await createFixture();
+  const events: unknown[] = [];
+  const retained: unknown[] = [];
+  const cleanups = [api.onMeetCompanionStatus(value => events.push(value)),
+    api.onMeetManualMute(value => events.push(value)), api.onMeetPlatformMute(value => events.push(value))];
+  const retain = api.onMeetManualMute(value => retained.push(value));
+  const status = await api.getMeetCompanionStatus();
+  const mute = { recordingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", sessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", muted: true };
+  pushEvent("meet-companion-status", {});
+  pushEvent("meet-manual-mute", { ...mute, recordingId: "invalid" });
+  pushEvent("meet-platform-mute", { ...mute, sessionId: "invalid" });
+  assert.equal(events.length, 0);
+  pushEvent("meet-companion-status", status);
+  pushEvent("meet-manual-mute", mute);
+  pushEvent("meet-platform-mute", mute);
+  assert.deepEqual(plain(events), [plain(status), mute, mute]);
+  cleanups.forEach(cleanup => cleanup());
+  pushEvent("meet-companion-status", status);
+  pushEvent("meet-manual-mute", mute);
+  pushEvent("meet-platform-mute", mute);
+  assert.equal(events.length, 3);
+  assert.equal(retained.length, 2);
+  retain();
+});
+
+test("Companion malformed invoke results reject at the bundled preload", async () => {
+  const { api } = await createFixture({ responses: {
+    "meet-integration-setup": () => ({ enabled: false }),
+    "meet-companion-status": () => ({ enabled: false }),
+    "meet-integration-configure": () => ({ error: "missing success" }),
+  } });
+  await assert.rejects(() => api.getMeetIntegrationSetup());
+  await assert.rejects(() => api.getMeetCompanionStatus());
+  await assert.rejects(() => api.configureMeetIntegration("enable"));
 });

@@ -12,7 +12,7 @@ export function MeetIntegrationSettings() {
   useEffect(() => {
     let active = true;
     void window.electronAPI
-      ?.getMeetIntegrationSetup?.()
+      ?.getMeetIntegrationSetup()
       .then((value) => {
         if (active) setSetup(value);
       })
@@ -27,9 +27,9 @@ export function MeetIntegrationSettings() {
     setBusy(true);
     setError(null);
     try {
-      const result = await window.electronAPI?.configureMeetIntegration?.(action);
+      const result = await window.electronAPI?.configureMeetIntegration(action);
       if (!result?.success) throw new Error(result?.error ?? t("meetIntegration.setupFailed"));
-      setSetup(await window.electronAPI!.getMeetIntegrationSetup!());
+      setSetup(await window.electronAPI!.getMeetIntegrationSetup());
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     } finally {

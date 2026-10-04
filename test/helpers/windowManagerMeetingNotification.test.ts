@@ -922,3 +922,31 @@ test("hidden load rejection settles bootstrap gated and actual tray open retries
   assert.equal(manager.isMeetingInputAllowed(), true);
   assert.equal(manager.controlPanelWindow.isVisible(), true);
 });
+
+test("hide during deferred retry remains authoritative when load completes", async (t) => {
+  const timers = installFakeTimers();
+  t.after(() => timers.restore());
+  const manager = new WindowManager();
+  t.after(() => manager._clearControlPanelVisibilityTimer());
+  manager.loadControlPanel = async () => {};
+  await manager.createControlPanelWindow();
+  manager.setOnboardingWindowMode("restore");
+  const panel = manager.controlPanelWindow;
+  const shownBefore = panel.showCount;
+  const load = createDeferred();
+  manager._controlPanelLoadFailed = true;
+  manager.loadControlPanel = async () => {
+    await load.promise;
+    manager.setOnboardingActive(false);
+    manager.setOnboardingWindowMode("restore");
+  };
+  const tray = new TrayManager();
+  tray.setWindowManager(manager);
+  const opening = tray.showControlPanelFromTray();
+  manager.hideControlPanelToTray();
+  load.resolve();
+  await opening;
+  timers.runAll();
+  assert.equal(panel.isVisible(), false);
+  assert.equal(panel.showCount, shownBefore);
+});

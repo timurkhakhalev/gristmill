@@ -225,6 +225,8 @@ function NotesSettings() {
   const { t } = useTranslation();
   const noteFilesEnabled = useSettingsStore((s) => s.noteFilesEnabled);
   const setNoteFilesEnabled = useSettingsStore((s) => s.setNoteFilesEnabled);
+  const noteFilesUpdating = useSettingsStore((s) => s.noteFilesUpdating);
+  const noteFilesError = useSettingsStore((s) => s.noteFilesError);
   const autoTitle = useSettingsStore((s) => s.autoGenerateNoteTitle);
   const setAutoTitle = useSettingsStore((s) => s.setAutoGenerateNoteTitle);
   return (
@@ -245,8 +247,9 @@ function NotesSettings() {
             defaultValue: "Keep local note files available in the file manager.",
           })}
         >
-          <Toggle checked={noteFilesEnabled} onChange={setNoteFilesEnabled} />
+          <Toggle checked={noteFilesEnabled} disabled={noteFilesUpdating} onChange={(enabled) => { void setNoteFilesEnabled(enabled); }} />
         </Row>
+        {noteFilesError && <p role="alert" className="text-sm text-red-600">{noteFilesError}</p>}
       </Group>
     </Section>
   );

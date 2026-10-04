@@ -107,7 +107,7 @@ test("writes reject a symlinked folder that resolves outside the mirror", (t: im
   fs.symlinkSync(outsidePath, path.join(basePath, "linked"), "dir");
 
   markdownMirror.init(basePath);
-  markdownMirror.writeNote({ id: 16, title: "Escaped", content: "Body" }, "linked");
+  assert.throws(() => markdownMirror.writeNote({ id: 16, title: "Escaped", content: "Body" }, "linked"), /regular directory/);
 
   assert.equal(fs.existsSync(path.join(outsidePath, "16-escaped.md")), false);
   assert.equal(markdownMirror.getFolderPath("linked"), null);
@@ -124,7 +124,7 @@ test("writes reject a symlinked note file without changing its target", (t: impo
   markdownMirror.init(basePath);
   markdownMirror.ensureFolder("Personal");
   fs.symlinkSync(outsideFile, path.join(basePath, "Personal", "17-linked.md"), "file");
-  markdownMirror.writeNote({ id: 17, title: "Linked", content: "Replacement" }, "Personal");
+  assert.throws(() => markdownMirror.writeNote({ id: 17, title: "Linked", content: "Replacement" }, "Personal"), /regular file/);
 
   assert.equal(fs.readFileSync(outsideFile, "utf8"), "unchanged");
   assert.equal(markdownMirror.getNotePath(17), null);
@@ -156,14 +156,15 @@ test("Windows-reserved and trailing-character folder names use distinct portable
   }
 });
 
-test("portable folders still support the normal ensure, rename, and delete journey", (t: import("node:test").TestContext) => {
+test("portable folders support ensure, note reprojection, and delete", (t: import("node:test").TestContext) => {
   const basePath = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-markdown-mirror-"));
   t.after(() => fs.rmSync(basePath, { recursive: true, force: true }));
 
   markdownMirror.init(basePath);
   markdownMirror.ensureFolder("Research");
   markdownMirror.writeNote({ id: 30, title: "Sources", content: "Body" }, "Research");
-  markdownMirror.renameFolder("Research", "Archive");
+  markdownMirror.writeNote({ id: 30, title: "Sources", content: "Body" }, "Archive");
+  markdownMirror.deleteFolder("Research");
 
   assert.equal(markdownMirror.getFolderPath("Research"), null);
   assert.equal(markdownMirror.getFolderPath("Archive"), path.join(basePath, "Archive"));

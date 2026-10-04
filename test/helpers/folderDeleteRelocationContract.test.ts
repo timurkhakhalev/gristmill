@@ -142,3 +142,144 @@ test("deleting a folder keeps its notes and rewrites the released mirrors", asyn
     folder_ids: [],
   });
 });
+
+// Issue #174: with the note-files mirror enabled, deleting a folder used to
+// throw inside the deferred mirror callback — the schema has no folders.
+// deleted_at column — leaving the mirror directory on disk. The real adapter
+// path must complete without an exception, rewrite the surviving notes'
+// mirror files at their new location, and only then remove the directory
+// (filesystem results, not fake-adapter calls).
+test("mirror-enabled folder delete cleans up the directory and preserves surviving notes' mirrors", async (t: import("node:test").TestContext) => {
+  const DatabaseManager = require("../../src/helpers/database.ts");
+  const { IPCHandlers } = await import("../../src/helpers/ipcHandlers.ts");
+  const markdownMirror = require("../../src/helpers/markdownMirror") as import("../../src/helpers/markdownMirror.ts").MarkdownMirror;
+  let db;
+  try {
+    db = new DatabaseManager();
+  } catch (error) {
+    if (isNativeBindingUnavailable(error)) {
+      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+      return;
+    }
+    throw error;
+  }
+  t.after(() => db.close());
+
+  const mirrorBase = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-fix-"));
+  markdownMirror.init(mirrorBase);
+  t.after(() => {
+    markdownMirror.init(path.join(os.tmpdir(), "mirror-reset-disabled"));
+    fs.rmSync(mirrorBase, { recursive: true, force: true });
+  });
+
+  const space = db.getSpaces()[0];
+  const personal = db.getFolders().find((f: { is_default: boolean }) => f.is_default) ??
+    db.createFolder("Personal", space.id).folder;
+  const doomed = db.createFolder("MirrorDoomed", space.id).folder;
+  const relocatedTo = db.createFolder("MirrorNext", space.id).folder;
+
+  // One note relocates to the extra folder "MirrorNext"; one falls back to
+  // the Personal directory (folder_id NULL).
+  const relocated = db.saveNote("Relocated note", "body A", "personal", null, null, doomed.id, space.id);
+  db.sql
+    .prepare("INSERT OR IGNORE INTO note_folders (note_id, folder_id) VALUES (?, ?)")
+    .run(relocated.note.id, relocatedTo.id);
+  const released = db.saveNote("Released note", "body B", "personal", null, null, doomed.id, space.id);
+
+  // Mirror both notes into the doomed directory, like a live mirror would be.
+  const mirrorAdapter = Object.create(IPCHandlers.prototype) as {
+    _noteFilesEnabled: boolean;
+    databaseManager: typeof db;
+    _mirrorDeleteFolderIfUnshared(folderName: string): void;
+  };
+  mirrorAdapter._noteFilesEnabled = true;
+  mirrorAdapter.databaseManager = db;
+  markdownMirror.writeNote(relocated.note as never, "MirrorDoomed");
+  markdownMirror.writeNote(released.note as never, "MirrorDoomed");
+  const doomedDir = path.join(mirrorBase, "MirrorDoomed");
+  const mirrorFile = (base: string, title: string, id: number) =>
+    path.join(base, `${id}-${String(title).toLowerCase().replace(/\s+/g, "-")}.md`);
+  assert.ok(fs.existsSync(mirrorFile(doomedDir, "Relocated-note", relocated.note.id)), "fixture: relocated note mirrored in doomed dir");
+  assert.ok(fs.existsSync(mirrorFile(doomedDir, "Released-note", released.note.id)), "fixture: released note mirrored in doomed dir");
+
+  // The DB delete succeeds; the deferred mirror callback runs the real
+  // adapter path (schema-correct query + per-note rewrite + directory rm).
+  assert.deepEqual(db.deleteFolder(doomed.id), { success: true });
+  assert.doesNotThrow(() => mirrorAdapter._mirrorDeleteFolderIfUnshared("MirrorDoomed"));
+  // The rewrites are setImmediate-deferred (same as production mirror writes).
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  // Surviving notes' mirrors exist at their new locations.
+  const relocatedRow = db.getNote(relocated.note.id);
+  assert.equal(relocatedRow.folder_id, relocatedTo.id, "the note relocated to its extra folder");
+  assert.ok(
+    fs.existsSync(mirrorFile(path.join(mirrorBase, "MirrorNext"), "Relocated-note", relocated.note.id)),
+    "the relocated note's mirror file exists in the new folder"
+  );
+  const releasedRow = db.getNote(released.note.id);
+  assert.equal(releasedRow.folder_id, null, "the released note fell back to no folder");
+  assert.ok(
+    fs.existsSync(mirrorFile(path.join(mirrorBase, personal.name), "Released-note", released.note.id)),
+    "the released note's mirror file exists in the fallback directory"
+  );
+
+  // The doomed directory is gone; unrelated directories stay.
+  assert.equal(fs.existsSync(doomedDir), false, "the stale mirror directory is removed");
+  assert.ok(fs.existsSync(path.join(mirrorBase, "MirrorNext")), "unrelated mirror directories survive");
+});
+
+test("a live same-named folder in another space keeps the shared mirror directory", async (t: import("node:test").TestContext) => {
+  const DatabaseManager = require("../../src/helpers/database.ts");
+  const { IPCHandlers } = await import("../../src/helpers/ipcHandlers.ts");
+  const markdownMirror = require("../../src/helpers/markdownMirror") as import("../../src/helpers/markdownMirror.ts").MarkdownMirror;
+  let db;
+  try {
+    db = new DatabaseManager();
+  } catch (error) {
+    if (isNativeBindingUnavailable(error)) {
+      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+      return;
+    }
+    throw error;
+  }
+  t.after(() => db.close());
+
+  const mirrorBase = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-shared-"));
+  markdownMirror.init(mirrorBase);
+  t.after(() => {
+    markdownMirror.init(path.join(os.tmpdir(), "mirror-reset-disabled"));
+    fs.rmSync(mirrorBase, { recursive: true, force: true });
+  });
+
+  const spaceA = db.getSpaces()[0];
+  const spaceBRow = db.sql
+    .prepare("INSERT INTO spaces (name, kind) VALUES (?, 'private')")
+    .run("Second space");
+  const spaceB = { id: Number(spaceBRow.lastInsertRowid) };
+  const sharedName = "SharedName";
+  const folderA = db.createFolder(sharedName, spaceA.id).folder;
+  const folderB = spaceB ? db.createFolder(sharedName, spaceB.id).folder : db.createFolder(sharedName, spaceA.id).folder;
+  assert.ok(folderA && folderB, "fixture folders created");
+
+  const adapter = Object.create(IPCHandlers.prototype) as {
+    _noteFilesEnabled: boolean;
+    databaseManager: typeof db;
+    _mirrorDeleteFolderIfUnshared(folderName: string): void;
+  };
+  adapter._noteFilesEnabled = true;
+  adapter.databaseManager = db;
+  fs.mkdirSync(path.join(mirrorBase, sharedName), { recursive: true });
+
+  db.deleteFolder(folderA.id);
+  assert.doesNotThrow(() => adapter._mirrorDeleteFolderIfUnshared(sharedName));
+  assert.ok(
+    fs.existsSync(path.join(mirrorBase, sharedName)),
+    "the live same-named folder's mirror directory is untouched"
+  );
+
+  // Once no live same-named folder remains, the directory goes.
+  db.deleteFolder(folderB.id);
+  adapter._mirrorDeleteFolderIfUnshared(sharedName);
+  assert.equal(fs.existsSync(path.join(mirrorBase, sharedName)), false);
+});

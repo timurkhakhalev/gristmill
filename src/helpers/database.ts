@@ -2573,6 +2573,10 @@ export class DatabaseManager {
 
   deleteFolder(id: number): { success: boolean } {
     const result = this.sql.transaction(() => {
+      // The mirror needs the affected notes before their folder_id moves.
+      this._lastDeletedFolderNoteIds = (this.sql
+        .prepare("SELECT id FROM notes WHERE folder_id = ?")
+        .all(id) as Array<{ id: number }>).map((row) => row.id);
       // A note whose primary folder goes away keeps living in its next folder.
       this.sql.prepare(`
         UPDATE notes SET folder_id = (
@@ -2587,6 +2591,15 @@ export class DatabaseManager {
     })();
     return { success: result.changes > 0 };
   }
+
+  // Notes whose primary folder was the last deleted folder, captured before
+  // the relocation ran — the note-files mirror re-writes them at their new
+  // location. Only valid immediately after deleteFolder().
+  get lastDeletedFolderNoteIds(): number[] {
+    return this._lastDeletedFolderNoteIds;
+  }
+
+  private _lastDeletedFolderNoteIds: number[] = [];
 
   /** Extra folders must share the note's space and never repeat its primary folder. */
   private pruneNoteFolderLinks(): void {

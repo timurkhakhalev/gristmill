@@ -405,12 +405,21 @@ export class IPCHandlers {
 
   _mirrorDeleteFolderIfUnshared(folderName: string): void {
     if (!this._noteFilesEnabled) return;
-    // Folder names are only unique per space — a live same-named folder in
-    // another space shares the mirror directory, so leave it on disk.
+    // Folder rows are hard-deleted (no deleted_at column): a live same-named
+    // folder in another space shares the mirror directory, so leave it on disk.
     const stillLive = this.databaseManager.db
-      .prepare("SELECT 1 FROM folders WHERE name = ? AND deleted_at IS NULL")
+      .prepare("SELECT 1 FROM folders WHERE name = ?")
       .get(folderName);
     if (stillLive) return;
+    // Notes whose primary folder was the deleted one survive with a moved
+    // folder_id (next extra folder) or NULL (falls back to the Personal
+    // directory). Their mirror copies live in the directory about to be
+    // removed — rewrite them at their new location first; those writes land
+    // in different directories, so the removal below cannot take them.
+    for (const noteId of this.databaseManager.lastDeletedFolderNoteIds) {
+      const note = this.databaseManager.getNote(noteId);
+      if (note) this._asyncMirrorWrite(note as unknown as NoteItem);
+    }
     markdownMirror.deleteFolder(folderName);
   }
 

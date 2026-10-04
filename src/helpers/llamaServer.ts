@@ -139,7 +139,15 @@ export class LlamaServerManager {
     if (this.cachedServerBinaryPaths) return this.cachedServerBinaryPaths;
 
     const defaultBin = resolveBinaryPath("llama-server-darwin-arm64");
-    const paths: ServerBinaryPaths = defaultBin ? { default: defaultBin } : { default: "" };
+    // Completeness: the executable alone is not enough — the binary needs its
+    // shared libraries next to it. A partial install (issue #160) must not
+    // count as available, or the loader error repeats on every start.
+    const hasLibraries = defaultBin
+      ? fs.readdirSync(path.dirname(defaultBin)).some((file: string) => file.endsWith(".dylib"))
+      : false;
+    const paths: ServerBinaryPaths = defaultBin && hasLibraries
+      ? { default: defaultBin }
+      : { default: "" };
 
     // Only cache hits: a miss may be transient (binary downloaded after
     // startup), and caching it would require an app restart to recover.

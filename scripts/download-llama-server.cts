@@ -7,6 +7,7 @@ const {
   extractArchive,
   fetchLatestRelease,
   findBinaryInDir,
+  findLibrariesInDir,
   parseArgs,
   setExecutable,
   cleanupFiles,
@@ -63,9 +64,19 @@ async function downloadBinary(
 
   const outputPath = path.join(BIN_DIR, config.outputName);
 
-  if (fs.existsSync(outputPath) && !isForce) {
+  // A partial install (binary without its libraries) must not count as
+  // installed: the runtime would treat the executable as sufficient and the
+  // loader error would repeat on every retry. Completeness = binary + libs.
+  const requiredLibs = config.libPattern
+    ? findLibrariesInDir(BIN_DIR, config.libPattern)
+    : [];
+  const complete = fs.existsSync(outputPath) && requiredLibs.length > 0;
+  if (complete && !isForce) {
     console.log(`  ${key}: Already exists (use --force to re-download)`);
     return true;
+  }
+  if (fs.existsSync(outputPath) && !complete) {
+    console.log(`  ${key}: Partial install found — reinstalling`);
   }
 
   const asset = findAsset(release, config.assetPattern);
@@ -93,15 +104,27 @@ async function downloadBinary(
     }
 
     if (binaryPath && fs.existsSync(binaryPath)) {
-      fs.copyFileSync(binaryPath, outputPath);
-      setExecutable(outputPath);
-      console.log(`  ${key}: Extracted to ${config.outputName}`);
+      // Stage the full kit first, then publish: a mid-copy failure (disk full,
+      // interrupted run) must not leave an executable that the next run and
+      // the runtime both mistake for a complete install.
+      const stagedBinary = path.join(extractDir, config.outputName);
+      fs.copyFileSync(binaryPath, stagedBinary);
+      setExecutable(stagedBinary);
 
       if (config.libPattern) {
-        for (const libName of copyLibraries(extractDir, BIN_DIR, config.libPattern)) {
-          console.log(`  ${key}: Copied library ${libName}`);
+        for (const libName of copyLibraries(extractDir, extractDir, config.libPattern)) {
+          console.log(`  ${key}: Staged library ${libName}`);
         }
       }
+
+      // Publish: the kit is complete in the staging directory.
+      fs.renameSync(stagedBinary, outputPath);
+      if (config.libPattern) {
+        for (const staged of findLibrariesInDir(extractDir, config.libPattern)) {
+          fs.renameSync(staged, path.join(BIN_DIR, path.basename(staged)));
+        }
+      }
+      console.log(`  ${key}: Installed to ${config.outputName}`);
     } else {
       console.error(`  ${key}: Binary '${binaryName}' not found in archive`);
       return false;
@@ -112,6 +135,9 @@ async function downloadBinary(
     return true;
   } catch (error) {
     console.error(`  ${key}: Failed - ${error instanceof Error ? error.message : String(error)}`);
+    // Clean up any published output of this failed attempt: a partial install
+    // (executable without libraries) blocks normal recovery otherwise.
+    if (fs.existsSync(outputPath)) fs.rmSync(outputPath, { force: true });
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
     return false;
   }
@@ -135,10 +161,15 @@ async function main() {
       return;
     }
 
-    // Skip before fetching release info so an installed asset costs no network.
-    const allInstalled = entries.every(([, config]) =>
-      fs.existsSync(path.join(BIN_DIR, config.outputName))
-    );
+    // Skip before fetching release info so an installed asset costs no
+    // network. Completeness: the executable alone is not an install — its
+    // libraries must be present too (issue #160).
+    const allInstalled = entries.every(([, config]) => {
+      const outputPath = path.join(BIN_DIR, config.outputName);
+      if (!fs.existsSync(outputPath)) return false;
+      const libs = config.libPattern ? findLibrariesInDir(BIN_DIR, config.libPattern) : [outputPath];
+      return libs.length > 0;
+    });
     if (allInstalled && !args.isForce) {
       for (const [key] of entries) {
         console.log(`  ${key}: Already exists (use --force to re-download)`);

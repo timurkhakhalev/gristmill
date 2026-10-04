@@ -1,15 +1,15 @@
+import { readMeetingRunOutput } from "./meetingRunReader.js";
 import { isRegenerableNoteTitle } from "./regenerableNoteTitle.js";
 import { TRANSLATIONS_BY_LOCALE } from "../locales/translations.js";
-import { formatMeetingMaterial } from "./meetingPromptMaterial.js";
+import { formatMeetingMaterial, parseMeetingParticipants } from "./meetingPromptMaterial.js";
 import fs from "fs";
 import debugLogger from "./debugLogger.js";
 import { createHash } from "crypto";
 import { z } from "zod";
 import {
-  meetingPlatformSchema,
+  meetingLlmSourceSnapshotSchema,
   type MeetingPlatform,
   meetingProcessingConfigSchema,
-  meetingProcessingResultDtoSchema,
   type MeetingProcessingConfig,
   type MeetingProcessingResultDto,
   type MeetingProcessingRunDto,
@@ -213,26 +213,6 @@ interface MeetingLlmSourceSnapshot {
   transcriptSegments: Array<{ id: string; speakerId: string | null; speakerName: string | null; speakerNameSource?: "user" | "model" | "voice" | "platform" | null; speakerNamePlatform?: MeetingPlatform; text: string }>;
   promptModel: NonNullable<MeetingProcessingConfig["summary"]>;
 }
-
-const meetingLlmSourceSnapshotSchema = z.object({
-  version: z.literal(1),
-  sourceRunId: z.string().uuid(),
-  sourceRecordingIds: z.array(z.string().uuid()).min(1),
-  meetingTitle: z.string().nullable(),
-  participants: z.array(z.object({ name: z.string().nullable(), email: z.string().nullable() }).strict()).nullable(),
-  manualNotes: z.string(),
-  manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/),
-  speakerCorrectionRevision: z.number().int().nonnegative(),
-  transcriptSegments: z.array(z.object({
-    id: z.string().min(1),
-    speakerId: z.string().nullable(),
-    speakerName: z.string().nullable(),
-    speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
-    speakerNamePlatform: meetingPlatformSchema.optional(),
-    text: z.string(),
-  }).strict()).min(1),
-  promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
-}).strict();
 
 interface ActiveRun {
   runId: string;
@@ -1480,28 +1460,13 @@ export class MeetingProcessingWorker {
   }
 
   private getResult(run: MeetingProcessingRunDto): MeetingProcessingResultDto {
-    const transcriptRunId = run.kind === "summary" ? run.sourceRunId : run.id;
-    const rawTranscript = transcriptRunId ? this.readTranscript(transcriptRunId) : null;
-    const speakerCorrections = transcriptRunId
-      ? this.deps.database.getMeetingRunSpeakerCorrections(transcriptRunId)
-      : [];
-    // Authoritative revision from the same transcript source as the visible
-    // corrections: includes cleared tombstones, so it never regresses to a
-    // value a revoked proposal already passed.
-    const speakerCorrectionRevision = transcriptRunId
-      ? this.deps.database.getMeetingRunSpeakerCorrectionRevision(transcriptRunId)
-      : 0;
-    const transcript = rawTranscript;
-    const summaryRun = run.hasSummary
-      ? run
-      : run.kind === "summary" && run.sourceRunId
-        ? this.deps.database.getMeetingProcessingRun(run.sourceRunId)
-        : null;
-    const summaryValue = summaryRun?.hasSummary
-      ? this.deps.storage.readRunArtifact(summaryRun.id, "summary")
-      : null;
-    const summary = summaryValue === null ? null : meetingSummaryArtifactSchema.parse(summaryValue);
-    return meetingProcessingResultDtoSchema.parse({ run, transcript, summary, speakerCorrections, speakerCorrectionRevision });
+    try { return readMeetingRunOutput(this.deps.database, this.deps.storage, run).result; }
+    catch (error) {
+      if ((error as { code?: string }).code === "transcript-artifact-invalid") {
+        throw new MeetingProcessingFailure("transcript-artifact-invalid", "failed");
+      }
+      throw error;
+    }
   }
 
   private publishCurrentSelection(runId: string): void {
@@ -2055,31 +2020,9 @@ function failureFromUnknown(value: unknown): MeetingProcessingFailure {
   return new MeetingProcessingFailure(code, "failed", error.message);
 }
 
-function participantCandidates(value: string | null): Array<{ name: string | null; email: string | null }> {
-  if (!value) return [];
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(value);
-  } catch {
-    throw new MeetingProcessingFailure("calendar-participants-invalid", "failed");
-  }
-  if (!Array.isArray(decoded)) throw new MeetingProcessingFailure("calendar-participants-invalid", "failed");
-  return decoded.map((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new MeetingProcessingFailure("calendar-participants-invalid", "failed");
-    }
-    const attendee = item as Record<string, unknown>;
-    const email = typeof attendee.email === "string" && attendee.email.trim() ? attendee.email.trim() : null;
-    const displayName = typeof attendee.displayName === "string" && attendee.displayName.trim()
-      ? attendee.displayName.trim()
-      : null;
-    return {
-      name: displayName && !/^[^\s@]+@[^\s@]+$/.test(displayName) && displayName.toLowerCase() !== email?.toLowerCase()
-        ? displayName
-        : null,
-      email,
-    };
-  });
+function participantCandidates(value: string | null): ReturnType<typeof parseMeetingParticipants> {
+  try { return parseMeetingParticipants(value); }
+  catch { throw new MeetingProcessingFailure("calendar-participants-invalid", "failed"); }
 }
 
 function buildLlmTranscriptSegments(

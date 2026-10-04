@@ -1,5 +1,6 @@
-// Renderer-facing Notes bridge. Moved out of preload.js so the seven
-// operations and three subscriptions have one typed implementation backed by
+import { noteOutputSchema } from "../contracts/noteOutput.js";
+// Renderer-facing Notes bridge. Operations and subscriptions have one typed
+// implementation backed by
 // the shared contract. The sandboxed preload can't require local modules, so
 // build-main.js bundles the final preload with esbuild before packaging.
 import {
@@ -109,6 +110,7 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
       invokeParseArray(noteSearchHitSchema, ipcRenderer, noteChannels.searchNoteContent, query, spaceId),
     searchNoteTranscripts: (query, spaceId) =>
       invokeParseArray(transcriptSearchHitSchema, ipcRenderer, noteChannels.searchNoteTranscripts, query, spaceId),
+    getNoteOutput: (request) => ipcRenderer.invoke(noteChannels.getNoteOutput, request).then(raw => parseResult(noteOutputSchema, raw, noteChannels.getNoteOutput)),
     getNoteTranscript: (noteId) =>
       ipcRenderer.invoke(noteChannels.getNoteTranscript, noteId).then((raw) => parseResult(noteTranscriptSchema, raw, noteChannels.getNoteTranscript)),
 

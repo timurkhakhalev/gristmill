@@ -92,7 +92,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
     if (data?.kind !== "meet-context-lost") return;
     setIsVisible(false);
     try {
-      const result = await window.electronAPI?.respondMeetContextReminder?.({ recordingId: data.recordingId, sessionId: data.sessionId, action });
+      const result = await window.electronAPI?.respondMeetContextReminder({ recordingId: data.recordingId, sessionId: data.sessionId, action });
       if (!result?.success) setIsVisible(true);
     } catch { setIsVisible(true); }
   }, [data]);

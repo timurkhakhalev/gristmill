@@ -71,3 +71,13 @@ export const companionPlatformMuteSchema = companionRecordingScopeSchema.extend(
 
 export const companionSetupSchema = z.object({ enabled: z.boolean(), installed: z.boolean(), extensionPath: z.string(), channel: z.enum(["development", "production"]) }).strict();
 export type CompanionSetup = z.infer<typeof companionSetupSchema>;
+
+// Desktop IPC payloads are separate from the versioned browser/native protocol.
+export const companionConfigureActionSchema = z.enum(["enable", "disable", "reveal"]);
+export type CompanionConfigureAction = z.infer<typeof companionConfigureActionSchema>;
+export const companionReminderResponseSchema = companionRecordingScopeSchema.extend({
+  action: z.enum(["stop", "dismiss"]),
+}).strict();
+export type CompanionReminderResponse = z.infer<typeof companionReminderResponseSchema>;
+export type CompanionSelection = z.infer<typeof companionSelectionSchema>;
+export type CompanionPlatformMute = z.infer<typeof companionPlatformMuteSchema>;

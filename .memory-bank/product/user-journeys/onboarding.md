@@ -20,6 +20,10 @@ As a Gristmill user, I want to set up recording and optional integrations.
 - Normal Finish opens the main view. The flow does not request automatic Settings opening.
 - Calendar setup in onboarding continues after system audio permission is refused; Settings has a different permission gate.
 
+## Tray startup
+
+Start minimized and launch-at-login load the control panel renderer in a hidden window. The renderer hydrates settings and resolves persisted onboarding before meeting input is allowed. A fresh profile remains gated. Window restore and the load backstop do not show a tray-started panel; an explicit tray or navigation action shows it.
+
 ## What to check
 
 - The main view appears after Finish.

@@ -2571,12 +2571,17 @@ export class DatabaseManager {
     return { success: true };
   }
 
-  deleteFolder(id: number): { success: boolean } {
+  deleteFolder(id: number): { success: boolean; relocatedNoteIds: number[] } {
+    // Captured per call and returned to the caller: the mirror rewrite needs
+    // the affected notes, and instance state would be overwritten by a second
+    // delete before the deferred callback reads it.
+    const relocatedNoteIds: number[] = [];
     const result = this.sql.transaction(() => {
-      // The mirror needs the affected notes before their folder_id moves.
-      this._lastDeletedFolderNoteIds = (this.sql
-        .prepare("SELECT id FROM notes WHERE folder_id = ?")
-        .all(id) as Array<{ id: number }>).map((row) => row.id);
+      relocatedNoteIds.push(
+        ...(this.sql
+          .prepare("SELECT id FROM notes WHERE folder_id = ?")
+          .all(id) as Array<{ id: number }>).map((row) => row.id)
+      );
       // A note whose primary folder goes away keeps living in its next folder.
       this.sql.prepare(`
         UPDATE notes SET folder_id = (
@@ -2589,7 +2594,7 @@ export class DatabaseManager {
       this.pruneNoteFolderLinks();
       return this.sql.prepare("DELETE FROM folders WHERE id = ?").run(id);
     })();
-    return { success: result.changes > 0 };
+    return { success: result.changes > 0, relocatedNoteIds };
   }
 
   // Notes whose primary folder was the last deleted folder, captured before

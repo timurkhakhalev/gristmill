@@ -403,7 +403,7 @@ export class IPCHandlers {
     );
   }
 
-  _mirrorDeleteFolderIfUnshared(folderName: string): void {
+  _mirrorDeleteFolderIfUnshared(folderName: string, relocatedNoteIds: number[]): void {
     if (!this._noteFilesEnabled) return;
     // Folder rows are hard-deleted (no deleted_at column): a live same-named
     // folder in another space shares the mirror directory, so leave it on disk.
@@ -416,7 +416,8 @@ export class IPCHandlers {
     // directory). Their mirror copies live in the directory about to be
     // removed — rewrite them at their new location first; those writes land
     // in different directories, so the removal below cannot take them.
-    for (const noteId of this.databaseManager.lastDeletedFolderNoteIds) {
+    // The ids are per-call (closed over in the handler), not instance state.
+    for (const noteId of relocatedNoteIds) {
       const note = this.databaseManager.getNote(noteId);
       if (note) this._asyncMirrorWrite(note as unknown as NoteItem);
     }
@@ -1073,7 +1074,8 @@ export class IPCHandlers {
       mirrorWriteNote: (note) => this._asyncMirrorWrite(note),
       mirrorEnsureFolder: (name) => markdownMirror.ensureFolder(name),
       mirrorRenameFolder: (oldName, newName) => markdownMirror.renameFolder(oldName, newName),
-      mirrorDeleteFolderIfUnshared: (name) => this._mirrorDeleteFolderIfUnshared(name),
+      mirrorDeleteFolderIfUnshared: (name, relocatedNoteIds) =>
+        this._mirrorDeleteFolderIfUnshared(name, relocatedNoteIds),
     });
 
     // AI Actions catalog channels live in the typed module.

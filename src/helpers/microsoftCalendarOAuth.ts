@@ -23,6 +23,7 @@ interface MicrosoftTokenResponse {
 
 export interface MicrosoftOAuthDb {
   getMicrosoftTokensByEmail(email: string): MicrosoftTokenRow | null;
+  refreshMicrosoftTokens(accountId: number, tokens: Pick<MicrosoftTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">): { success: boolean };
   saveMicrosoftTokens(tokens: {
     microsoft_email: string;
     access_token: string;
@@ -34,7 +35,7 @@ export interface MicrosoftOAuthDb {
 
 export class MicrosoftCalendarOAuth {
   private readonly databaseManager: MicrosoftOAuthDb;
-  private readonly _refreshInFlight = new Map<string, Promise<string>>();
+  private readonly _refreshInFlight = new Map<number, Promise<string>>();
 
   constructor(databaseManager: MicrosoftOAuthDb) {
     this.databaseManager = databaseManager;
@@ -135,12 +136,12 @@ export class MicrosoftCalendarOAuth {
     // Microsoft rotates refresh tokens on every refresh, so concurrent
     // refreshes (focus sync racing the interval sync) would persist competing
     // rotations; share one in-flight refresh per account instead.
-    let refreshPromise = this._refreshInFlight.get(accountEmail);
+    let refreshPromise = this._refreshInFlight.get(tokens.id);
     if (!refreshPromise) {
       refreshPromise = this._refreshAndSaveTokens(tokens).finally(() => {
-        this._refreshInFlight.delete(accountEmail);
+        this._refreshInFlight.delete(tokens.id);
       });
-      this._refreshInFlight.set(accountEmail, refreshPromise);
+      this._refreshInFlight.set(tokens.id, refreshPromise);
     }
     return refreshPromise;
   }
@@ -154,11 +155,13 @@ export class MicrosoftCalendarOAuth {
     }
 
     // Persist the rotated refresh token or the old one stops working within 24h.
-    this._saveTokens(tokens.microsoft_email, {
-      ...refreshed,
+    const result = this.databaseManager.refreshMicrosoftTokens(tokens.id, {
+      access_token: refreshed.access_token as string,
+      expires_at: Date.now() + (refreshed.expires_in ?? 0) * 1000,
       refresh_token: refreshed.refresh_token || tokens.refresh_token,
       scope: refreshed.scope || tokens.scope,
     });
+    if (!result.success) throw new Error("Microsoft account changed during token refresh");
 
     return refreshed.access_token as string;
   }

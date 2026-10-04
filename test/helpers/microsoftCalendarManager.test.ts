@@ -159,6 +159,7 @@ test("_mapEvent falls back to a meeting link found in location or body text", ()
 function createManager(MicrosoftCalendarManager: any, upserted: CalendarEventInput[], contacts: { email?: string; displayName?: string | null }[] = [], overrides = {}) {
   return new MicrosoftCalendarManager(
     {
+      getMicrosoftTokensByEmail: () => ({ id: 1 }),
       removeStaleCalendarEvents: () => {},
       upsertCalendarEvents: (events: CalendarEventInput[]) => upserted.push(...events),
       removeCalendarEvents: () => {},

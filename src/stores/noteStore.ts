@@ -25,6 +25,10 @@ interface NoteState {
   expandedContainers: Set<string>;
   activeContext: ActiveContext | null;
   activeNoteId: number | null;
+  // The opened Note's full row, held independently of the container caches
+  // (which only carry the newest 50 per container): search and chat can open
+  // older rows, and the editor needs the row, not just the id (#185).
+  selectedNote: NoteItem | null;
   isTreeLoading: boolean;
   // Bumped on every confirmed Note event (added/updated/deleted), whether or
   // not the row was cached. Consumers that read the authoritative list from
@@ -63,6 +67,7 @@ const useNoteStore = create<NoteState>()(() => ({
   expandedContainers: readExpandedContainers(),
   activeContext: null,
   activeNoteId: null,
+  selectedNote: null,
   isTreeLoading: true,
   noteEventsRevision: 0,
 }));
@@ -107,6 +112,7 @@ const sameContainers = (a: NoteItem, b: NoteItem) =>
   noteContainerKeys(a).sort().join() === noteContainerKeys(b).sort().join();
 
 function findNoteInState(state: NoteState, id: number): NoteItem | null {
+  if (state.selectedNote?.id === id) return state.selectedNote;
   for (const items of Object.values(state.notesByContainer)) {
     const note = items.find((n) => n.id === id);
     if (note) return note;
@@ -275,6 +281,7 @@ export function resetForAccountChange(): void {
     expandedContainers: new Set(),
     activeContext: null,
     activeNoteId: null,
+    selectedNote: null,
     isTreeLoading: true,
   });
 }
@@ -470,18 +477,27 @@ export function updateNoteInStore(note: NoteItem): void {
     }
   }
   if (changed) applyContainers(notesByContainer);
+  // The selected row is held independently of the container caches (#185).
+  if (state.selectedNote?.id === note.id) {
+    useNoteStore.setState({ selectedNote: note });
+  }
 }
 
 export function removeNote(id: number): void {
   if (id == null) return;
   const state = useNoteStore.getState();
   const result = removeNoteFromLists(state, id);
-  if (!result.changed) return;
+  if (!result.changed && state.selectedNote?.id !== id) return;
   // applyContainers only mirrors the active container into `notes`; pass the
   // filtered flat list explicitly so flat-only notes disappear too.
   const extra: Partial<NoteState> = { notes: result.notes };
   if (result.activeNoteId !== state.activeNoteId) {
     extra.activeNoteId = result.activeNoteId;
+  }
+  // The selected row is held independently of the container caches (#185):
+  // deleting it clears it (the relocation picks a neighbor's id).
+  if (state.selectedNote?.id === id) {
+    extra.selectedNote = null;
   }
   applyContainers(result.notesByContainer, extra);
 }
@@ -586,8 +602,34 @@ export async function updateSpaceMeta(
 
 export function setActiveNoteId(id: number | null): void {
   if (useNoteStore.getState().activeNoteId === id) return;
-  useNoteStore.setState({ activeNoteId: id });
+  useNoteStore.setState({ activeNoteId: id, selectedNote: null });
 }
+
+/**
+ * Opens a Note from a full row (search, chat, Home) and holds it independently
+ * of the container caches, which only carry the newest 50 per container (#185).
+ * A row known only by id is fetched once, guarded against a stale answer after
+ * a quick switch to another Note.
+ */
+export async function openNoteRow(note: NoteItem): Promise<void> {
+  // Any newer open invalidates a still-in-flight fetch of an older one (#185).
+  const generation = ++selectedNoteFetchGeneration;
+  // A cached row needs no fetch; hold it directly (no extra load).
+  const cached = findNoteInState(useNoteStore.getState(), note.id);
+  if (cached) {
+    useNoteStore.setState({ selectedNote: cached, activeNoteId: cached.id });
+    return;
+  }
+  const fetched = await window.electronAPI.getNote(note.id);
+  if (generation !== selectedNoteFetchGeneration) return;
+  if (fetched) {
+    useNoteStore.setState({ selectedNote: fetched, activeNoteId: fetched.id });
+  } else {
+    setActiveNoteId(note.id);
+  }
+}
+
+let selectedNoteFetchGeneration = 0;
 
 /**
  * Jump navigation (CommandSearch/ControlPanel): activate and reveal a

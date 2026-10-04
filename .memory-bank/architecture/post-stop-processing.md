@@ -196,3 +196,14 @@ This is a documentation check. It is not a test of quality, speed or result comp
 ## Platform speaker evidence
 
 Zoom, Google Meet and Telemost evidence and the matcher: [speaker evidence](speaker-evidence.md).
+
+## Quit and deletion ownership
+
+- Confirmed Quit closes admission for capture, processing and audio operations. Cancel Quit does not stop any owner.
+- The capture coordinator waits for an in-flight start, then requests the renderer drain and finalizes the capture. The worker aborts its active stage and all Summary actions. The audio registry aborts exports and playback preparation.
+- Main waits for these owners before it stops Local engines. One eight-second deadline covers the work barrier and engine teardown. Failure or timeout is logged and exits with code 1. A timed-out work barrier cannot start engine teardown later.
+- Shutdown does not cancel all saved pending runs. The interrupted stage stays retryable under the existing recovery rules. Interrupted Tasks need an explicit Retry; tasks that have not started stay pending.
+- Full Note deletion first persists its intent. This intent blocks new processing claims and Summary actions. The worker aborts and waits for that Note's active stage, automatic Tasks, manual Recap and queued BB actions. Files and database rows are removed only after these operations settle. A provider that ignores abort keeps deletion waiting; it cannot publish a late result.
+- Audio-only deletion waits for operations that need those source tracks. It preserves text artifacts and does not abort or wait for text-only Tasks and Recap. It does not wait for an unrelated Note's processing stage.
+- Actions register ownership before they wait for a BB turn or a Summary mutation. Abort is checked after conversation creation, after each response and before a section edit. The existing revision checks and one-thread BB serialization still apply.
+- Abort stops local publication and requests provider cancellation. It does not prove that a remote provider stopped computation or billing. After a forced Quit, saved state and startup recovery remain the source of truth.

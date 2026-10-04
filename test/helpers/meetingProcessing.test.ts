@@ -2944,3 +2944,217 @@ for (const scenario of [
     assert.equal(reopened.getNote(recording.noteId)?.content, "Manual notes");
   });
 }
+
+
+for (const barrier of ["note", "shutdown"] as const) {
+  for (const agent of [false, true]) {
+    test(`${barrier} waits for owned Tasks and ${agent ? "queued BB" : "active"} Recap without late publication`, async (t) => {
+      const db = createDb(t);
+      if (!db) return;
+      const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+      const config: MeetingProcessingConfig = agent ? {
+        ...validConfig,
+        summary: { ...validConfig.summary, reasoningMode: "agent", agentProvider: "codex", model: "gpt-6-luna", agentReasoningLevel: "low" },
+      } : validConfig;
+      const { note, run } = createFinishedRecording(db, storage, config, "Manual notes", false, 180);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      let tasksStarted!: () => void;
+      const started = new Promise<void>((resolve) => { tasksStarted = resolve; });
+      let recapStarted!: () => void;
+      const recapReady = new Promise<void>((resolve) => { recapStarted = resolve; });
+      const signals: AbortSignal[] = [];
+      const calls: string[] = [];
+      const worker = workerFor(db, storage, {
+        transcribeRemote: async (_request, saveRaw) => { await saveRaw(longTranscriptResponse()); return { success: true }; },
+        summarize: async () => "## TLDR\nRelease discussion.\n\n## Action Items\n- Initial action item.",
+        summarizeAgent: async () => "## TLDR\nRelease discussion.\n\n## Action Items\n- Initial action item.",
+        createActionConversation: async (_config, instruction, _run, signal) => {
+          signals.push(signal);
+          return { send: async () => {
+            const tasks = instruction === MEETING_TASKS_INSTRUCTION;
+            calls.push(tasks ? "tasks" : "recap");
+            if (tasks) tasksStarted(); else recapStarted();
+            await gate; // Deliberately ignore abort: the barrier must await settlement.
+            return { text: tasks ? "### HIGH\n- Late task" : JSON.stringify({ title: "Late recap", bullets: ["Late result"] }), refusal: false };
+          } };
+        },
+        getActionPrompt: () => "Recap prompt",
+      });
+      t.after(async () => { release(); await worker.stop(); });
+      worker.onRetentionReady();
+      await started;
+      const recap = worker.runSummaryAction({ runId: run.id, action: "recap" });
+      if (!agent) await recapReady;
+      const before = storage.readRunArtifact(run.id, "summary");
+      const pending = createFinishedRecording(db, storage).run;
+      if (barrier === "note") assert.ok(db.beginMeetingNoteDeletion(note.id));
+      let settled = false;
+      const completion = (barrier === "note" ? worker.cancelNoteForDeletion(note.id) : worker.stop()).then(() => { settled = true; });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(settled, false, "provider work still owns the Note until its promise settles");
+      assert.ok(signals.every((signal) => signal.aborted));
+      assert.ok(db.getNote(note.id));
+      assert.equal((await worker.runSummaryAction({ runId: run.id, action: "recap" })).success, false);
+      release();
+      await completion;
+      assert.equal((await recap).success, false);
+      assert.equal(db.getNote(note.id).enhanced_content, before.text);
+      assert.equal(storage.readRunArtifact(run.id, "summary").text, before.text);
+      assert.deepEqual(calls, agent ? ["tasks"] : ["tasks", "recap"]);
+      assert.equal(db.getMeetingProcessingRun(pending.id).status, "pending", "shutdown/deletion does not cancel unrelated pending work");
+    });
+  }
+}
+
+test("audio-only deletion leaves text actions running and does not wait for them", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, recording, run } = createFinishedRecording(db, storage, validConfig, "Manual notes", false, 180);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let start!: () => void;
+  const started = new Promise<void>((resolve) => { start = resolve; });
+  let actionSignal: AbortSignal | undefined;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => { await saveRaw(longTranscriptResponse()); return { success: true }; },
+    summarize: async () => "## TLDR\nRelease discussion.\n\n## Action Items\n- Initial action item.",
+    createActionConversation: async (_config, _instruction, _run, signal) => ({ send: async () => {
+      actionSignal = signal;
+      start();
+      await gate;
+      return { text: "### HIGH\n- Ship the release", refusal: false };
+    } }),
+  });
+  t.after(async () => { release(); await worker.stop(); });
+  worker.onRetentionReady();
+  await started;
+  assert.ok(db.beginMeetingAudioDeletion(recording.id));
+  await worker.cancelRecordingForDeletion(recording.id);
+  assert.equal(actionSignal?.aborted, false);
+  release();
+  await worker.waitForIdle();
+  assert.match(db.getNote(note.id).enhanced_content, /Ship the release/);
+  assert.equal(storage.readRunArtifact(run.id, "summary").taskStatus, "complete");
+});
+
+test("shutdown waits for ASR settlement, preserves retry state and stops new claims", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let start!: () => void;
+  const started = new Promise<void>((resolve) => { start = resolve; });
+  let asrSignal: AbortSignal | undefined;
+  let calls = 0;
+  const worker = workerFor(db, storage, { transcribeRemote: async (_request, saveRaw, signal) => {
+    calls++;
+    asrSignal = signal;
+    start();
+    await gate;
+    await saveRaw(elevenResponse);
+    return { success: true };
+  } });
+  t.after(async () => { release(); await worker.stop(); });
+  worker.onRetentionReady();
+  await started;
+  const pending = createFinishedRecording(db, storage).run;
+  let settled = false;
+  const completion = worker.stop().then(() => { settled = true; });
+  assert.equal(asrSignal?.aborted, true);
+  worker.processPending();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  release();
+  await completion;
+  assert.equal(calls, 1);
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "pending");
+  assert.equal(db.getMeetingProcessingRun(pending.id).status, "pending");
+  assert.equal(storage.readRunArtifact(run.id, "provider-response"), null);
+});
+
+for (const barrier of ["note", "shutdown"] as const) {
+  test(`${barrier} waits for conversation creation and never sends a queued request afterward`, async (t) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const { note, run } = createFinishedRecording(db, storage, validConfig, "Manual notes", false, 180);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let start!: () => void;
+    const started = new Promise<void>((resolve) => { start = resolve; });
+    let sent = 0;
+    const worker = workerFor(db, storage, {
+      transcribeRemote: async (_request, saveRaw) => { await saveRaw(longTranscriptResponse()); return { success: true }; },
+      summarize: async () => "## TLDR\nRelease discussion.\n\n## Action Items\n- Initial action item.",
+      createActionConversation: async () => {
+        start();
+        await gate;
+        return { send: async () => { sent++; return { text: "### HIGH\n- Late task", refusal: false }; } };
+      },
+    });
+    t.after(async () => { release(); await worker.stop(); });
+    worker.onRetentionReady();
+    await started;
+    const IPCHandlers = require("../../src/helpers/ipcHandlers.ts");
+    const { createMeetingAudioOperationRegistry } = require("../../src/helpers/meetingAudioExport.ts");
+    const intent = barrier === "note" ? db.beginMeetingNoteDeletion(note.id) : null;
+    let settled = false;
+    const completion = (intent ? IPCHandlers.prototype._finishMeetingDeletion.call({
+      databaseManager: db,
+      audioStorageManager: { meetingRecordings: storage },
+      _meetingAudioOperations: createMeetingAudioOperationRegistry(),
+      _meetingProcessing: worker,
+      _asyncMirrorDelete: () => {},
+    }, intent) : worker.stop()).then((result: unknown) => { settled = true; return result; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(settled, false);
+    assert.ok(db.getNote(note.id));
+    assert.ok(storage.readRunArtifact(run.id, "summary"));
+    release();
+    const result = await completion;
+    assert.equal(sent, 0);
+    if (intent) {
+      assert.equal(result, true);
+      assert.equal(db.getNote(note.id), null);
+      assert.equal(db.getMeetingProcessingRun(run.id), null);
+      assert.equal(storage.readRunArtifact(run.id, "summary"), null);
+    } else {
+      assert.ok(db.getNote(note.id));
+      assert.equal(storage.readRunArtifact(run.id, "summary").taskErrorCode, "meeting-summary-task-interrupted");
+    }
+  });
+}
+
+test("audio deletion does not wait for another Note's active ASR", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage);
+  const other = createFinishedRecording(db, storage);
+  assert.equal(db.beginMeetingAudioDeletion(other.recording.id)?.kind, "audio");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let start!: () => void;
+  const started = new Promise<void>((resolve) => { start = resolve; });
+  let signal: AbortSignal | undefined;
+  const worker = workerFor(db, storage, { transcribeRemote: async (_request, saveRaw, value) => {
+    signal = value;
+    start();
+    await gate;
+    await saveRaw(elevenResponse);
+    return { success: true };
+  } });
+  t.after(async () => { release(); await worker.stop(); });
+  worker.onRetentionReady();
+  await started;
+  await worker.cancelRecordingForDeletion(other.recording.id);
+  assert.equal(signal?.aborted, false);
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "running");
+  release();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
+});

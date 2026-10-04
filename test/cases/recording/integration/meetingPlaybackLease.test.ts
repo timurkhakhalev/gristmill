@@ -54,3 +54,34 @@ test("playback leases isolate processing files and release only their owner's te
   assert.equal(fs.existsSync(next.path), false);
   assert.equal(fs.existsSync(processingFile), true);
 });
+
+test("audio shutdown aborts queued and active operations and waits for their cleanup", async () => {
+  const registry = createMeetingAudioOperationRegistry();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let start!: () => void;
+  const started = new Promise<void>((resolve) => { start = resolve; });
+  let signal: AbortSignal | undefined;
+  let closed = false;
+  const active = registry.run("active", async (value) => {
+    signal = value;
+    start();
+    await gate;
+    closed = true;
+  });
+  await started;
+  let queuedCalls = 0;
+  const queued = registry.run("queued", async () => { queuedCalls++; });
+  const queuedRejected = assert.rejects(queued, { name: "AbortError" });
+  let settled = false;
+  const shutdown = registry.stop().then(() => { settled = true; });
+  assert.equal(signal?.aborted, true);
+  await assert.rejects(registry.run("new", async () => {}), /stopped/);
+  await queuedRejected;
+  assert.equal(queuedCalls, 0);
+  assert.equal(settled, false);
+  release();
+  await shutdown;
+  await active;
+  assert.equal(closed, true);
+});

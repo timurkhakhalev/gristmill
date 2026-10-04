@@ -66,7 +66,7 @@ async function useAll(): Promise<string> {
   clearPid("whisper");
   for (const entry of readPids()) void entry.pid;
   registerSidecar("whisper", async () => undefined);
-  await shutdownAll();
+  await shutdownAll(async () => {});
   await reapStaleSidecars({ sigtermGraceMs: 1, sigkillGraceMs: 1 });
   await waitForExit(4242, 10);
   void getSafeTempDir();

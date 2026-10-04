@@ -22,6 +22,9 @@ interface RecordingEntry {
 }
 
 interface MeetingElectronAPI {
+  onMeetManualMute(): () => void;
+  onMeetPlatformMute(): () => void;
+  finishPausedMeetRecording(recordingId: string): Promise<{ success: boolean }>;
   checkSystemAudioAccess(): Promise<{ granted: boolean; status: string; mode: string; strategy: string }>;
   meetingTranscriptionStart(options: { groupId: string }): Promise<{
     success: boolean;
@@ -99,6 +102,8 @@ function createElectronAPI({ stopResult }: { stopResult: () => unknown }) {
         mode: "native",
         strategy: "native",
       }),
+      onMeetManualMute: () => () => {},
+      onMeetPlatformMute: () => () => {},
       meetingTranscriptionStart: async (options) => {
         api.startRequests.push(options);
         return {
@@ -124,6 +129,7 @@ function createElectronAPI({ stopResult }: { stopResult: () => unknown }) {
         return { success: true };
       },
       meetingProcessingListForNote: async () => ({ success: true, recordings: api.recordings }),
+      finishPausedMeetRecording: async () => ({ success: true }),
       meetingProcessingFinishForNote: async (noteId) => {
         api.processingRequests.push(noteId);
         return { success: true };

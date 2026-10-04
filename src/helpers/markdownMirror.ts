@@ -42,6 +42,7 @@ export class MarkdownMirror {
         { error: (err as Error).message },
         "note-files"
       );
+      throw err;
     }
   }
 
@@ -163,7 +164,7 @@ export class MarkdownMirror {
   }
 
   writeNote(note: MirroredNote, folderName: string | null | undefined): void {
-    if (!this._baseRealPath) return;
+    if (!this._baseRealPath) throw new Error("Markdown mirror is not initialized");
     try {
       const dirPath = this._resolveFolderPath(folderName, { create: true });
       if (!dirPath) return;
@@ -174,6 +175,10 @@ export class MarkdownMirror {
       const newFileName = `${note.id}-${slug}.md`;
       const newFilePath = path.join(dirPath, newFileName);
       this._assertWritableFilePath(newFilePath);
+
+      const frontmatter = this._buildFrontmatter(note, folderName || "Personal");
+      const body = note.enhanced_content || note.content || "";
+      fs.writeFileSync(newFilePath, `${frontmatter}\n\n${body}`, "utf-8");
       for (const existing of glob) {
         if (existing !== newFilePath) {
           try {
@@ -181,16 +186,13 @@ export class MarkdownMirror {
           } catch {}
         }
       }
-
-      const frontmatter = this._buildFrontmatter(note, folderName || "Personal");
-      const body = note.enhanced_content || note.content || "";
-      fs.writeFileSync(newFilePath, `${frontmatter}\n\n${body}`, "utf-8");
     } catch (err) {
       debugLogger.error(
         "Failed to write note file",
         { noteId: note.id, error: (err as Error).message },
         "note-files"
       );
+      throw err;
     }
   }
 
@@ -199,7 +201,7 @@ export class MarkdownMirror {
     folderName: string | null | undefined,
     speakerMappings: MirrorSpeakerMapping | null | undefined
   ): void {
-    if (!this._baseRealPath) return;
+    if (!this._baseRealPath) throw new Error("Markdown mirror is not initialized");
     try {
       const segments = JSON.parse(note.transcript || "[]");
       if (!segments.length) return;
@@ -213,6 +215,9 @@ export class MarkdownMirror {
       this._assertWritableFilePath(newFilePath);
 
       const stale = this._globTranscriptFiles(note.id);
+
+      const { formatMd } = require("./transcriptFormatter");
+      fs.writeFileSync(newFilePath, formatMd(note, segments, speakerMappings || {}), "utf-8");
       for (const existing of stale) {
         if (existing !== newFilePath) {
           try {
@@ -220,15 +225,13 @@ export class MarkdownMirror {
           } catch {}
         }
       }
-
-      const { formatMd } = require("./transcriptFormatter");
-      fs.writeFileSync(newFilePath, formatMd(note, segments, speakerMappings || {}), "utf-8");
     } catch (err) {
       debugLogger.error(
         "Failed to write transcript file",
         { noteId: note.id, error: (err as Error).message },
         "note-files"
       );
+      throw err;
     }
   }
 
@@ -272,24 +275,6 @@ export class MarkdownMirror {
     }
   }
 
-  renameFolder(oldName: string, newName: string): void {
-    if (!this._baseRealPath) return;
-    try {
-      const oldPath = this._resolveFolderPath(oldName);
-      if (!oldPath) return;
-      const newPath = this._folderCandidatePath(newName);
-      if (!newPath || oldPath === newPath) return;
-      if (fs.existsSync(newPath)) this._resolveExistingFolderPath(newPath);
-      fs.renameSync(oldPath, newPath);
-    } catch (err) {
-      debugLogger.error(
-        "Failed to rename folder",
-        { oldName, newName, error: (err as Error).message },
-        "note-files"
-      );
-    }
-  }
-
   deleteFolder(folderName: string): void {
     if (!this._baseRealPath) return;
     try {
@@ -309,7 +294,7 @@ export class MarkdownMirror {
     folderMap: Record<number, string>,
     speakerMappingsMap: Record<number, MirrorSpeakerMapping> | null | undefined
   ): void {
-    if (!this._baseRealPath) return;
+    if (!this._baseRealPath) throw new Error("Markdown mirror is not initialized");
     try {
       for (const note of notes) {
         const folderName = (note.folder_id != null ? folderMap[note.folder_id] : undefined) || "Personal";
@@ -325,6 +310,7 @@ export class MarkdownMirror {
         { error: (err as Error).message },
         "note-files"
       );
+      throw err;
     }
   }
 

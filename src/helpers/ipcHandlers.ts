@@ -418,18 +418,37 @@ export class IPCHandlers {
     const stillLive = this.databaseManager.db
       .prepare("SELECT 1 FROM folders WHERE name = ?")
       .get(folderName);
-    if (stillLive) return;
     // Notes whose primary folder was the deleted one survive with a moved
     // folder_id (next extra folder) or NULL (falls back to the Personal
-    // directory). Their mirror copies live in the directory about to be
-    // removed — rewrite them at their new location first; those writes land
-    // in different directories, so the removal below cannot take them.
+    // directory). Queue reprojection at the surviving location. Personal is
+    // always shared with root notes and must never be removed as a directory.
     // The ids are per-call (closed over in the handler), not instance state.
     for (const noteId of relocatedNoteIds) {
       const note = this.databaseManager.getNote(noteId);
       if (note) this._asyncMirrorWrite(note as unknown as NoteItem);
     }
-    markdownMirror.deleteFolder(folderName);
+    if (!stillLive && folderName !== "Personal") markdownMirror.deleteFolder(folderName);
+  }
+
+  _mirrorRenameFolder(oldName: string, newName: string): void {
+    if (!this._noteFilesEnabled) return;
+    try {
+      // A directory can contain root notes or notes from same-named folders.
+      // Reproject only notes assigned to the new name; never move it wholesale.
+      const ids = this.databaseManager.db.prepare(
+        "SELECT notes.id FROM notes JOIN folders ON folders.id = notes.folder_id WHERE folders.name = ?"
+      ).all(newName) as Array<{ id: number }>;
+      for (const { id } of ids) {
+        const note = this.databaseManager.getNote(id);
+        if (!note) continue;
+        markdownMirror.writeNote(note, newName);
+        if (note.transcript) markdownMirror.writeTranscript(note, newName, this._buildSpeakerMappings(id));
+      }
+      const shared = this.databaseManager.db.prepare("SELECT 1 FROM folders WHERE name = ?").get(oldName);
+      if (!shared && oldName !== "Personal") markdownMirror.deleteFolder(oldName);
+    } catch (error) {
+      debugLogger.error("Note mirror rename failed after commit", { error: String(error) }, "note-files");
+    }
   }
 
   _asyncMirrorWrite(note: NoteItem): void {
@@ -442,7 +461,11 @@ export class IPCHandlers {
       return;
     }
     setImmediate(() => {
+      if (!this._noteFilesEnabled) return;
       try {
+        const current = this.databaseManager.getNote(note.id);
+        if (!current) return;
+        note = current as unknown as NoteItem;
         const folderName = this._getFolderName(note.folder_id);
         markdownMirror.writeNote(note, folderName);
         if (note.transcript) {
@@ -462,6 +485,7 @@ export class IPCHandlers {
       return;
     }
     setImmediate(() => {
+      if (!this._noteFilesEnabled) return;
       markdownMirror.deleteNote(noteId);
     });
   }
@@ -1082,7 +1106,7 @@ export class IPCHandlers {
       getFolderName: (folderId) => this._getFolderName(folderId),
       mirrorWriteNote: (note) => this._asyncMirrorWrite(note),
       mirrorEnsureFolder: (name) => markdownMirror.ensureFolder(name),
-      mirrorRenameFolder: (oldName, newName) => markdownMirror.renameFolder(oldName, newName),
+      mirrorRenameFolder: (oldName, newName) => this._mirrorRenameFolder(oldName, newName),
       mirrorDeleteFolderIfUnshared: (name, relocatedNoteIds) =>
         this._mirrorDeleteFolderIfUnshared(name, relocatedNoteIds),
     });

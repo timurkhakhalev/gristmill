@@ -3158,3 +3158,35 @@ test("audio deletion does not wait for another Note's active ASR", async (t) => 
   await worker.waitForIdle();
   assert.equal(db.getMeetingProcessingRun(run.id).status, "complete");
 });
+
+test("audio deletion waits for local speaker recognition after cloud ASR", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let start!: () => void;
+  const started = new Promise<void>((resolve) => { start = resolve; });
+  let signal: AbortSignal | undefined;
+  const worker = workerFor(db, storage, { recognizeSpeakers: async (_recording, _run, _transcript, _path, value) => {
+    signal = value;
+    start();
+    await gate;
+    return [{ speakerId: "system:speaker_0", profileId: null, displayName: "Late name" }];
+  } });
+  t.after(async () => { release(); await worker.stop(); });
+  worker.onRetentionReady();
+  await started;
+  assert.ok(db.beginMeetingAudioDeletion(recording.id));
+  let settled = false;
+  const deletion = worker.cancelRecordingForDeletion(recording.id).then(() => { settled = true; });
+  assert.equal(signal?.aborted, true);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  release();
+  await deletion;
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "cancelled");
+  assert.equal(db.getMeetingRunSpeakerCorrections(run.id).some((item: { displayName: string }) => item.displayName === "Late name"), false);
+});

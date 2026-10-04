@@ -339,7 +339,10 @@ async function seedAndRepair(t: import("node:test").TestContext, seedBinary: (ou
   });
   await new Promise((resolve) => setTimeout(resolve, 100));
   return {
-    repaired: () => lines.some((line) => line.includes("Installed to")),
+    repaired: () =>
+      fs.existsSync(path.join(binDir, OUTPUT_NAME)) &&
+      fs.existsSync(path.join(binDir, `${OUTPUT_NAME}.complete`)) &&
+      fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8") === "fresh-binary",
     skipped: () => lines.some((line) => line.includes("Already exists")),
     content: () => fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8"),
   };
@@ -347,7 +350,11 @@ async function seedAndRepair(t: import("node:test").TestContext, seedBinary: (ou
 
 test("a truncated binary with full libraries is incomplete; the retry repairs it", async (t) => {
   const run = await seedAndRepair(t, (outputPath) => {
-    fs.writeFileSync(outputPath, "trunc"); // killed mid-copy
+    // A 0755 partial: copyFileSync keeps the source's mode, so a SIGKILL mid
+    // non-atomic copy leaves an executable-bit truncated file that X_OK alone
+    // cannot detect (issue #160, review round 3).
+    fs.writeFileSync(outputPath, "trunc");
+    fs.chmodSync(outputPath, 0o755);
   });
 
   assert.equal(run.skipped(), false, "the truncated kit did not satisfy the skip check");

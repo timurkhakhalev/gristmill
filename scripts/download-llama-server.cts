@@ -70,8 +70,12 @@ async function downloadBinary(
   const requiredLibs = config.libPattern
     ? findLibrariesInDir(BIN_DIR, config.libPattern, { maxDepth: 1 })
     : [];
-  // Executability is part of completeness: a truncated copy or a missed
-  // chmod from older revisions self-heals through a normal retry.
+  // Completeness stamp: written after the atomic rename by a successful
+  // install. Kits without it (or without an executable binary + libraries)
+  // re-download once and self-heal — this covers every partial-content hole,
+  // including 0755 truncation that the X_OK check cannot see (#160).
+  // Executability is still checked so older-revision kits with a missed
+  // chmod are also repaired.
   let executable = false;
   try {
     fs.accessSync(outputPath, fs.constants.X_OK);
@@ -79,7 +83,12 @@ async function downloadBinary(
   } catch {
     executable = false;
   }
-  const complete = fs.existsSync(outputPath) && executable && requiredLibs.length > 0;
+  // Completeness stamp: written after the atomic rename by a successful
+  // install. Kits without it (or without an executable binary + libraries)
+  // re-download once and self-heal — this covers every partial-content hole,
+  // including 0755 truncation that the X_OK check cannot see (#160).
+  const stamped = fs.existsSync(path.join(BIN_DIR, `${config.outputName}.complete`));
+  const complete = stamped && fs.existsSync(outputPath) && executable && requiredLibs.length > 0;
   if (complete && !isForce) {
     console.log(`  ${key}: Already exists (use --force to re-download)`);
     return true;
@@ -126,13 +135,15 @@ async function downloadBinary(
       // Copy + chmod in the staging directory, then a single rename: the
       // commit is atomic, so a kill can never leave a truncated or
       // non-executable binary at the published path (#160).
-      // Copy + chmod in the staging directory, then a single rename: the
-      // commit is atomic, so a kill can never leave a truncated or
-      // non-executable binary at the published path (#160).
       const stagedBinary = path.join(extractDir, config.outputName);
       fs.copyFileSync(binaryPath, stagedBinary);
       setExecutable(stagedBinary);
       fs.renameSync(stagedBinary, outputPath);
+      // The completeness stamp goes LAST, after the atomic rename: its
+      // presence certifies the whole kit. copyFileSync keeps the source's
+      // mode, so a SIGKILL mid non-atomic copy leaves an executable-bit
+      // partial that X_OK alone cannot detect — the stamp closes that hole.
+      fs.writeFileSync(path.join(BIN_DIR, `${config.outputName}.complete`), LLAMA_CPP_TAG);
       console.log(`  ${key}: Installed to ${config.outputName}`);
     } else {
       console.error(`  ${key}: Binary '${binaryName}' not found in archive`);
@@ -148,6 +159,8 @@ async function downloadBinary(
     // (executable without libraries) blocks normal recovery otherwise.
     // Orphaned libraries are left — the next successful run overwrites them.
     if (fs.existsSync(outputPath)) fs.rmSync(outputPath, { force: true });
+    // A failed attempt leaves no stamp: the next run re-downloads.
+    fs.rmSync(path.join(BIN_DIR, `${config.outputName}.complete`), { force: true });
     fs.rmSync(extractDir, { recursive: true, force: true });
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
     return false;
@@ -176,6 +189,8 @@ async function main() {
     // network. Completeness: the executable alone is not an install — its
     // libraries must be present too (issue #160).
     const allInstalled = entries.every(([, config]) => {
+      // The completeness stamp certifies the whole kit (issue #160).
+      if (!fs.existsSync(path.join(BIN_DIR, `${config.outputName}.complete`))) return false;
       const outputPath = path.join(BIN_DIR, config.outputName);
       if (!fs.existsSync(outputPath)) return false;
       // Executability self-heals kits left by older revisions (#160).

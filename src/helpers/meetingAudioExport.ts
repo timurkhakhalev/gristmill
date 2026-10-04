@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type { MeetingRecordingEpochDto, MeetingSource } from "../contracts/meetingRecording.js";
-import { prepareMeetingAudio } from "./meetingAudioMixer.js";
+import { prepareMeetingSourceExportAudio } from "./meetingAudioMixer.js";
 import type { MeetingRecordingDto, MeetingProcessingRunDto } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { createAbortError } from "./abortError.js";
@@ -91,7 +91,7 @@ export async function exportMeetingSourceTrack(
 ): Promise<void> {
   const id = randomUUID();
   try {
-    const audio = await prepareMeetingAudio(storage, recording, id, epochs, { signal, layout: source });
+    const audio = await prepareMeetingSourceExportAudio(storage, recording, id, source, epochs, { signal });
     await copyMeetingAudioExport(audio.path, destination, signal);
   } finally {
     storage.removeDerivedAudio(recording.id, id);

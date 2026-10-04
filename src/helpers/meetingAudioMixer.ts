@@ -136,12 +136,41 @@ export async function prepareMeetingAudio(
   epochs: MeetingRecordingEpochDto[],
   options: { signal?: AbortSignal; deps?: MeetingAudioMixerDeps; layout?: MeetingAudioLayout; intentionalEmptySources?: MeetingSource[] } = {}
 ): Promise<PreparedMeetingAudio> {
+  return prepareMeetingAudioWithTimeline(storage, recording, runId, epochs,
+    meetingTimelineFrameCount(recording, epochs), options);
+}
+
+/** Source export requires full alignment of the selected track, not its peer. */
+export async function prepareMeetingSourceExportAudio(
+  storage: MeetingRecordingStorage,
+  recording: MeetingRecordingDto,
+  runId: string,
+  source: MeetingSource,
+  epochs: MeetingRecordingEpochDto[],
+  options: { signal?: AbortSignal; deps?: MeetingAudioMixerDeps } = {}
+): Promise<PreparedMeetingAudio> {
+  // Validate chosen coverage before the duration reader skips unknown peers.
+  for (const epoch of epochs.filter((item) => item.source === source)) alignedAudioRanges(epoch);
+  // Keep common saved extent and fully proven peer ends, including trailing
+  // silence. An unresolved peer supplies neither an offset nor an endpoint.
+  const frameCount = meetingTimelineFrameCount(recording, epochs, true);
+  return prepareMeetingAudioWithTimeline(storage, recording, runId, epochs,
+    frameCount, { ...options, layout: source });
+}
+
+async function prepareMeetingAudioWithTimeline(
+  storage: MeetingRecordingStorage,
+  recording: MeetingRecordingDto,
+  runId: string,
+  epochs: MeetingRecordingEpochDto[],
+  frameCount: number,
+  options: { signal?: AbortSignal; deps?: MeetingAudioMixerDeps; layout?: MeetingAudioLayout; intentionalEmptySources?: MeetingSource[] }
+): Promise<PreparedMeetingAudio> {
   const deps = options.deps ?? {};
   const layout = options.layout ?? "mono";
   const channels = layout === "stereo" ? 2 : 1;
   const ffmpegPath = (deps.ffmpegPath ?? getFFmpegPath)();
   if (!ffmpegPath) throw new Error("FFmpeg is unavailable");
-  const frameCount = meetingTimelineFrameCount(recording, epochs);
   if (frameCount <= 0) throw new Error("Meeting recording has no audio frames");
 
   const inputs: EpochInput[] = epochs

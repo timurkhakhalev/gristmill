@@ -7,6 +7,7 @@ function captureHarness(delayMicClose = false) {
   const intervals: Array<{ recordingId: string; source: string; startFrame: number; endFrame: number | null; reason: string }> = [];
   const writes: Array<{ source: string; epoch: number; bytes: number }> = [];
   const database = {
+    setMeetingRecordingMicIntentionallyEmpty() {},
     createMeetingRecording: () => ({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }),
     createMeetingRecordingEpoch() {},
     addMeetingRecordingEpochAlignment() {},

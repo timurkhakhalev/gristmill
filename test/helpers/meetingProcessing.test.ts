@@ -199,6 +199,41 @@ function workerFor(db: DatabaseManager, storage: RecordingStorage, overrides: Pa
   return new MeetingProcessingWorker(deps);
 }
 
+test("crash-recovered full-mute capture processes system audio without a mic request", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const { MeetingCaptureSession } = require("../../src/helpers/meetingCaptureSession.ts") as typeof import("../../src/helpers/meetingCaptureSession.js");
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const note = db.saveNote("Interrupted meeting", "", "meeting").note!;
+  const capture = MeetingCaptureSession.create(db, storage, note.id, { config: validConfig }, undefined, undefined, undefined, true);
+  capture.appendNativeSamples("system", 1, Buffer.alloc(48_000, 7), 0, 0);
+  await storage.closeEpochWriter(capture.recordingId, "system", 0);
+  db.close();
+  const reopened = new DatabaseManagerClass();
+  t.after(() => reopened.close());
+  storage.recover(reopened);
+  const recording = reopened.getMeetingRecording(capture.recordingId)!;
+  const run = reopened.listMeetingProcessingRuns(capture.recordingId)[0];
+  reopened.setMeetingProcessingRunState(run.id, { stage: "prepare", status: "pending", retryAt: null });
+  assert.equal(recording.captureState, "incomplete");
+  const sources: string[] = [];
+  const worker = workerFor(reopened, storage, {
+    mixAudio: undefined,
+    mixerDeps: { ffmpegPath: () => getFFmpegPath() },
+    transcribeRemote: async (request, saveRaw) => {
+      sources.push(request.filePath.endsWith("-system.wav") ? "system" : "mic");
+      await saveRaw(elevenResponse);
+      return { success: true, text: "parsed by adapter" };
+    },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.deepEqual(sources, ["system"]);
+  assert.equal(reopened.getMeetingProcessingRun(run.id)!.status, "complete");
+  assert.equal(reopened.getMeetingRecording(capture.recordingId)!.captureState, "incomplete");
+});
+
 for (const provider of ["elevenlabs", "openai", "gemini"] as const) {
   test(`${provider} records an intentional-empty mic stage without sending an empty-mic request`, async (t: import("node:test").TestContext) => {
     const db = createDb(t);

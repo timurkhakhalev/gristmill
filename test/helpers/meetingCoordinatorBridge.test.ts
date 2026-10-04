@@ -139,6 +139,7 @@ async function createFixture({ responses = {}, engine }: {
       setMeetingPlatformCoverage() {},
       getGoogleAccounts: () => [],
       getNote: () => null,
+      setMeetingRecordingMicIntentionallyEmpty: unused,
       createMeetingRecording: unused,
       createMeetingRecordingEpoch: unused,
       updateMeetingRecordingEpochRecovery: unused,

@@ -72,6 +72,7 @@ function createDatabaseFake(events: string[]) {
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
     intentionalIntervals: [] as Array<{ id: string; recordingId: string; source: string; startFrame: number; endFrame: number | null; reason: string }>,
     finalized: [] as { recordingId: string; input: { captureState: string; errorCode?: string } }[],
+    setMeetingRecordingMicIntentionallyEmpty() {},
     createMeetingRecording(noteId: number, input: { config: unknown }, startedAt: string, id: string, groupId = id) {
       events.push("recording-created");
       const recording = {

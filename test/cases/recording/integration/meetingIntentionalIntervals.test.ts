@@ -97,3 +97,46 @@ test("historical recordings continue to derive duration from their stored UTC bo
   } as any;
   assert.equal(meetingTimelineFrameCount(oldRecording, [oldEpoch]), 48_000);
 });
+
+for (const mode of ["manual", "platform", "unmute-remute", "source-error"] as const) {
+  test(`crash before Stop retains only valid full-mute proof: ${mode}`, async (t) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const note = db.saveNote("Interrupted mute", "", "meeting").note!;
+    const capture = MeetingCaptureSession.create(db, storage, note.id, null, new Date("2026-10-01T10:00:00Z"), undefined, undefined, mode !== "platform");
+    if (mode === "platform") capture.initializePlatformMute(true);
+    if (mode === "unmute-remute") {
+      await capture.setMicIntent({ sequence: 1, sourceGeneration: 1, manualMuted: false, platformMuted: false, boundaryFrame: 0, boundaryAlignment: null });
+      await capture.setMicIntent({ sequence: 2, sourceGeneration: 1, manualMuted: true, platformMuted: false, boundaryFrame: 0, boundaryAlignment: null });
+    }
+    if (mode === "source-error") capture.markSourceUnavailable("mic", "mic-source-unavailable");
+    capture.appendNativeSamples("system", 1, Buffer.alloc(48_000, 7), 0, 0);
+    // Close the encoder only: there is no capture Stop or recording finalization.
+    // Startup must recover the still-open database state, even with a valid EOS.
+    await storage.closeEpochWriter(capture.recordingId, "system", 0);
+    const rawPath = storage.getEpochFilePath(capture.recordingId, "system", 0);
+    const rawBefore = fs.readFileSync(rawPath);
+    assert.equal(db.getMeetingRecording(capture.recordingId)!.captureState, "recording");
+    db.close();
+    const reopened = new DatabaseManager();
+    try {
+      storage.recover(reopened);
+      const recording = reopened.getMeetingRecording(capture.recordingId)!;
+      const epochs = reopened.listMeetingRecordingEpochs(capture.recordingId);
+      const intervals = reopened.listMeetingIntentionalIntervals(capture.recordingId);
+      assert.equal(recording.captureState, "incomplete");
+      assert.equal(epochs.some((epoch) => epoch.source === "mic"), false);
+      assert.ok(intervals.every((interval) => interval.startAlignment === null && interval.endAlignment === null));
+      assert.equal(meetingSourceIntentionallyEmpty(recording, epochs, intervals, "mic"), mode === "manual" || mode === "platform");
+      assert.deepEqual(fs.readFileSync(rawPath), rawBefore);
+    } finally { reopened.close(); }
+  });
+}
+
+test("invalidated whole-capture proof cannot be restored by interval coverage", () => {
+  const recording = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", sourceMetadata: { captureEndFrame: 24_000, mic: { intentionallyEmpty: false } } } as any;
+  const intervals = [{ source: "mic", timelineStartFrame: 0, timelineEndFrame: 24_000 }] as any;
+  assert.equal(meetingSourceIntentionallyEmpty(recording, [], intervals, "mic"), false);
+  assert.equal(meetingSourceIntentionallyEmpty(recording, [{ source: "mic", frameCount: 1 }] as any, intervals, "mic"), false);
+});

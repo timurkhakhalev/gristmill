@@ -21,6 +21,7 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
       saveMeetingPlatformObservation() {},
       saveMeetingAudioClockAnchor() {},
       setMeetingPlatformCoverage() {},
+    setMeetingRecordingMicIntentionallyEmpty() {},
     createMeetingRecording: () => ({} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto),
     createMeetingRecordingEpoch: () => undefined,
     updateMeetingRecordingEpochRecovery: () => undefined,

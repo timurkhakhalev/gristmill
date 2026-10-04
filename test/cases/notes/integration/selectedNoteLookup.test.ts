@@ -28,6 +28,7 @@ function note(id: number, folderId: number | null, title: string): NoteItem {
 
 interface Harness {
   openById(id: number): Promise<void>;
+  selectById(id: number): void;
   activeNote(): NoteItem | null;
   getNoteCalls(): number;
   fireExternalUpdate(note: NoteItem): Promise<void>;
@@ -80,6 +81,10 @@ async function mountStore(
   return {
     openById: async (id: number) => {
       await React.act(async () => { await store.openNoteRow({ id } as NoteItem); });
+    },
+    // The sidebar/list path: a plain selection write, not openNoteRow.
+    selectById: (id: number) => {
+      store.setActiveNoteId(id);
     },
     activeNote: () => store.getNoteFromStore(store.getActiveNoteIdValue() ?? -1),
     getNoteCalls: () => getNoteCalls,
@@ -168,4 +173,36 @@ test("a quick switch to another note drops the stale fetch result", async (t) =>
 
   assert.equal(harness.activeNote()!.id, 5, "the late fetch result is dropped");
   assert.equal(harness.getNoteCalls(), 1);
+});
+
+// The majority navigation path is setActiveNoteId (sidebar/list clicks,
+// pills, drains): it must invalidate the in-flight fetch just like an
+// openNoteRow switch does (#185, review round 1).
+test("a quick setActiveNoteId selection drops the stale openNoteRow fetch", async (t) => {
+  const rows = Array.from({ length: 51 }, (_, index) => note(index + 1, null, `Note ${index + 1}`));
+  const slow = note(777, null, "Slow note");
+  let releaseSlow: ((value: NoteItem | null) => void) | undefined;
+  const slowPromise = new Promise<NoteItem | null>((resolve) => { releaseSlow = resolve; });
+  let released = false;
+  const harness = await mountStore(t, rows, async (id) => {
+    if (id === 777 && !released) return slowPromise;
+    if (id === 777) return slow;
+    return null;
+  });
+
+  await React.act(async () => {
+    void harness.openById(777);
+    await tick();
+  });
+
+  // Switch away through the plain selection write (sidebar/list click).
+  await React.act(async () => { harness.selectById(9); });
+  assert.equal(harness.activeNote()!.id, 9, "the sidebar selection is active");
+
+  released = true;
+  releaseSlow?.(slow);
+  await tick();
+  await tick();
+
+  assert.equal(harness.activeNote()!.id, 9, "the stale fetch never hijacks the selection");
 });

@@ -493,6 +493,8 @@ export function removeNote(id: number): void {
   const extra: Partial<NoteState> = { notes: result.notes };
   if (result.activeNoteId !== state.activeNoteId) {
     extra.activeNoteId = result.activeNoteId;
+    // The relocation is a selection write: drop any in-flight open fetch (#185).
+    ++selectedNoteFetchGeneration;
   }
   // The selected row is held independently of the container caches (#185):
   // deleting it clears it (the relocation picks a neighbor's id).
@@ -602,6 +604,10 @@ export async function updateSpaceMeta(
 
 export function setActiveNoteId(id: number | null): void {
   if (useNoteStore.getState().activeNoteId === id) return;
+  // Every selection write invalidates a still-in-flight openNoteRow fetch of
+  // an older selection — sidebar/list clicks, pills and pending drains must
+  // not be hijacked by a late fetch result (#185).
+  ++selectedNoteFetchGeneration;
   useNoteStore.setState({ activeNoteId: id, selectedNote: null });
 }
 

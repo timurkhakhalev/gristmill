@@ -156,7 +156,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
       const data = await window.electronAPI?.getPendingMeetingNoteNavigation?.();
       if (!data) return;
       setActiveFolderId(data.folderId);
-      setActiveNoteId(data.noteId);
+      // The pending note may sit outside the container caches (#185).
+      void openNoteRow({ id: data.noteId } as NoteItem);
       setActiveView("personal-notes");
       setMeetingRecordingRequest({ noteId: data.noteId, folderId: data.folderId, event: data.event });
       initializeNotes(null, 50, data.folderId);
@@ -181,7 +182,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
         setActiveFolderId(data.folderId);
         initializeNotes(null, 50, data.folderId);
       }
-      setActiveNoteId(data.noteId);
+      // The pending note may sit outside the container caches (#185).
+      void openNoteRow({ id: data.noteId } as NoteItem);
       setActiveView("personal-notes");
     };
     void drainNote();
@@ -431,7 +433,8 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   onReturnToNote={() => {
                     setActiveView("personal-notes");
                     setActiveFolderId(recordingFolderId);
-                    setActiveNoteId(recordingNoteId);
+                    // The recording note may sit outside the caches (#185).
+                    void openNoteRow({ id: recordingNoteId } as NoteItem);
                   }}
                 />
               }

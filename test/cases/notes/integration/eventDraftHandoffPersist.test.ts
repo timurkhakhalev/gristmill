@@ -28,6 +28,9 @@ function noteFixture(id: number, title: string, content: string): NoteItem {
 
 interface Harness {
   openNote(id: number): Promise<void>;
+  typeContent(value: string): Promise<void>;
+  fireExternalUpdate(note: NoteItem): Promise<void>;
+  editorState(): { id: number; title: string; content: string } | null;
   updateNoteCalls(): Array<{ id: number; updates: Record<string, unknown> }>;
 }
 
@@ -55,12 +58,16 @@ async function mountNotesView(
       },
       gcalGetEvent: async () => null,
       onNoteAdded: () => () => {},
-      onNoteUpdated: () => () => {},
+      onNoteUpdated: (listener: (note: NoteItem) => void) => {
+        noteUpdatedListener = listener;
+        return () => { noteUpdatedListener = undefined; };
+      },
       onNoteDeleted: () => () => {},
       onFolderDeleted: () => () => {},
     },
   } });
   const container = installHookDom(t);
+  let noteUpdatedListener: ((note: NoteItem) => void) | undefined;
   const updateCalls: Array<{ id: number; updates: Record<string, unknown> }> = [];
   const mockModules: Record<string, string> = {
     "react-i18next": `
@@ -99,6 +106,13 @@ async function mountNotesView(
     resolveAlias: { "@": path.resolve(__dirname, "../../../src") },
   });
   const { default: PersonalNotesView } = await vite.ssrLoadModule("/components/notes/PersonalNotesView.tsx");
+  const noteEditorModule = await vite.ssrLoadModule("./NoteEditor") as {
+    props: {
+      note: { id: number; title: string; content: string };
+      onContentChange: (id: number, value: string) => void;
+      onTitleChange: (id: number, value: string) => void;
+    } | undefined;
+  };
   const store = await vite.ssrLoadModule("/stores/noteStore.ts") as typeof import("../../../../src/stores/noteStore");
   await React.act(async () => { await store.initializeNotesTree(); });
 
@@ -113,9 +127,24 @@ async function mountNotesView(
     }));
   });
 
+  let openedNoteId: number | null = null;
   return {
     openNote: async (id: number) => {
+      openedNoteId = id;
       await React.act(async () => { store.setActiveNoteId(id); });
+    },
+    /** Drives the mounted editor's real onContentChange for the open note. */
+    typeContent: async (value: string) => {
+      const id = openedNoteId;
+      assert.ok(id, "typeContent requires an open note");
+      await React.act(async () => { noteEditorModule.props?.onContentChange(id, value); });
+    },
+    fireExternalUpdate: async (note: NoteItem) => {
+      await React.act(async () => { noteUpdatedListener?.(note); });
+    },
+    editorState: () => {
+      const props = noteEditorModule.props;
+      return props ? { id: props.note.id, title: props.note.title, content: props.note.content } : null;
     },
     updateNoteCalls: () => updateCalls,
   };
@@ -137,7 +166,11 @@ test("a handoff for a not-yet-cached note keeps the stored title and appends wit
   const calls = harness.updateNoteCalls();
   assert.equal(calls.length, 1, "the handoff is persisted through the debounced save");
   assert.equal(calls[0].id, 7);
-  assert.equal(calls[0].updates.title, "Processing title", "the stored title is not wiped to an empty string");
+  assert.equal(
+    calls[0].updates.title,
+    undefined,
+    "the title was never dirty: the write must not touch it at all"
+  );
   assert.equal(calls[0].updates.content, "Manual content\n\ntyped during materialization", "manual text survives the append");
 });
 
@@ -157,4 +190,52 @@ test("a handoff for a fresh note replaces the snapshot fields", async (t) => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].updates.title, "Typed title");
   assert.equal(calls[0].updates.content, "early snapshot plus ABC");
+});
+
+test("a content-only edit's debounced write does not republish the title over an external update", async (t) => {
+  const stored = noteFixture(9, "Original title", "Original body");
+  const harness = await mountNotesView(t, [stored], async (id) => (id === 9 ? stored : null), null);
+
+  await harness.openNote(9);
+  // The user edits content only.
+  await harness.typeContent("Typed body");
+  // While the debounce runs, processing publishes a new title.
+  stored.title = "Generated title";
+  await harness.fireExternalUpdate(stored);
+  await wait(1100);
+
+  const calls = harness.updateNoteCalls();
+  assert.equal(calls.length, 1, "the debounce fires once");
+  assert.equal(calls[0].updates.title, undefined, "the externally-generated title is not overwritten");
+  assert.equal(calls[0].updates.content, "Typed body");
+});
+
+test("an external update lands even while a save is queued", async (t) => {
+  const stored = noteFixture(10, "Original title", "Original body");
+  const harness = await mountNotesView(t, [stored], async (id) => (id === 10 ? stored : null), null);
+
+  await harness.openNote(10);
+  await harness.typeContent("Typed body");
+
+  // Processing publishes a new title while the debounce is still queued.
+  // A fresh object, as the real IPC payload would be (the store row must get
+  // a new identity for the update effect to run).
+  await harness.fireExternalUpdate(noteFixture(10, "Generated title", "Original body"));
+  // Let React flush passive effects (the merge).
+  await wait(0);
+  await wait(0);
+
+  // Editor state right after the external update: the untouched title shows
+  // the external value, the typed content keeps the local value.
+  assert.deepEqual(harness.editorState(), {
+    id: 10,
+    title: "Generated title",
+    content: "Typed body",
+  });
+
+  const calls = harness.updateNoteCalls();
+  await wait(1100);
+  assert.equal(calls.length, 1, "only the dirty field is written");
+  assert.equal(calls[0].updates.title, undefined, "the externally-generated title is not overwritten");
+  assert.equal(calls[0].updates.content, "Typed body");
 });

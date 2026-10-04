@@ -1304,6 +1304,15 @@ export class DatabaseManager {
     return this.getMeetingRecording(id) as MeetingRecordingDto;
   }
 
+  setMeetingRecordingMicIntentionallyEmpty(id: string, intentionallyEmpty: boolean): void {
+    meetingRecordingIdSchema.parse(id);
+    const result = this.sql.prepare(`UPDATE meeting_recordings
+      SET source_metadata_json = json_set(source_metadata_json, '$.mic.intentionallyEmpty', json(?))
+      WHERE id = ? AND capture_state IN ('recording', 'finalizing')`)
+      .run(JSON.stringify(intentionallyEmpty), id);
+    if (result.changes !== 1) throw new Error("Meeting recording is not accepting microphone intent");
+  }
+
   getMeetingRecording(id: string): MeetingRecordingDto | null {
     meetingRecordingIdSchema.parse(id);
     const row = this.sql.prepare("SELECT * FROM meeting_recordings WHERE id = ?").get(id) as

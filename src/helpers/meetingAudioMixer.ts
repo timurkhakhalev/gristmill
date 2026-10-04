@@ -80,7 +80,7 @@ export function meetingSourceIntentionallyEmpty(
   // An intent held for the entire capture proves silence without a clock mapping.
   // Partial mute intervals still require aligned coverage below.
   const metadata = recording.sourceMetadata[source];
-  if (metadata && typeof metadata === "object" && "intentionallyEmpty" in metadata && metadata.intentionallyEmpty === true) return true;
+  if (metadata && typeof metadata === "object" && "intentionallyEmpty" in metadata && typeof metadata.intentionallyEmpty === "boolean") return metadata.intentionallyEmpty;
   const frameCount = meetingTimelineFrameCount(recording, epochs);
   if (frameCount <= 0) return false;
   let coveredThrough = 0;

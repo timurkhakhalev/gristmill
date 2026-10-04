@@ -35,6 +35,7 @@ export interface MeetingSystemAudioCapture {
 interface MeetingSystemAudioWatchdogSession {
   systemAudioStrategy: string | null;
   watchesDelivery: boolean;
+  deliveryStartedAt: number | null;
   lastChunkAt: number | null;
   lastAudibleAt: number | null;
   restarts: number;
@@ -58,6 +59,7 @@ export interface MeetingSystemAudioWatchdog {
   stop(): void;
   attachCapture(capture: Pick<MeetingSystemAudioCapture, "stop" | "start">): void;
   detachCapture(): void;
+  recordStarted(): void;
   recordChunk(audible?: boolean): void;
   reportDeviceInvalidated(): void;
   reportCaptureFailed(): void;
@@ -186,7 +188,8 @@ export const createMeetingSystemAudioWatchdog = ({
         // Give the fresh capture a clean window even if the restart threw; the
         // next tick judges it on its own evidence either way.
         const at = now();
-        active.lastChunkAt = at;
+        active.deliveryStartedAt = at;
+        active.lastChunkAt = null;
         if (active.lastAudibleAt !== null) {
           active.lastAudibleAt = at;
         }
@@ -205,10 +208,9 @@ export const createMeetingSystemAudioWatchdog = ({
     session = {
       systemAudioStrategy: systemAudioStrategy ?? null,
       watchesDelivery: watchesDelivery === true,
-      // Null until the first chunk: a stream that never delivered at all is the
-      // one-shot silence warning's case, not this one. Seeding it with now()
-      // would assert a delivery that has not happened and let the watchdog
-      // restart during startup, before the renderer is even listening.
+      // A start ACK arms the first-delivery deadline. Before that ACK,
+      // slow startup has no delivery obligation.
+      deliveryStartedAt: null,
       lastChunkAt: null,
       lastAudibleAt: null,
       restarts: 0,
@@ -226,6 +228,12 @@ export const createMeetingSystemAudioWatchdog = ({
     session = null;
     lastTickAt = null;
     detachCapture();
+  };
+
+  const recordStarted = () => {
+    if (!session) return;
+    session.deliveryStartedAt = now();
+    session.lastChunkAt = null;
   };
 
   const recordChunk = (audible = false) => {
@@ -269,6 +277,7 @@ export const createMeetingSystemAudioWatchdog = ({
     const gap = lastTickAt === null ? 0 : at - lastTickAt;
     lastTickAt = at;
     if (gap > TICK_GAP_MS && session) {
+      if (session.deliveryStartedAt !== null) session.deliveryStartedAt = at;
       if (session.lastChunkAt !== null) {
         session.lastChunkAt = at;
       }
@@ -285,10 +294,11 @@ export const createMeetingSystemAudioWatchdog = ({
       return;
     }
 
+    const deliveryAt = session.lastChunkAt ?? session.deliveryStartedAt;
     if (
       session.watchesDelivery &&
-      session.lastChunkAt !== null &&
-      at - session.lastChunkAt > STALL_MS
+      deliveryAt !== null &&
+      at - deliveryAt > STALL_MS
     ) {
       requestRestart("no_audio_delivered");
       return;
@@ -309,6 +319,7 @@ export const createMeetingSystemAudioWatchdog = ({
     stop,
     attachCapture,
     detachCapture,
+    recordStarted,
     recordChunk,
     reportDeviceInvalidated,
     reportCaptureFailed: () => requestRestart("no_audio_delivered"),

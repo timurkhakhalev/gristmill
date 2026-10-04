@@ -118,6 +118,10 @@ export class LlamaServerManager {
   activeBackend: string | null;
   idleTimer: NodeJS.Timeout | null;
 
+  private startupIdentity: string | null = null;
+  private activeSettingsIdentity: string | null = null;
+  private stopGeneration = 0;
+
   constructor() {
     this.process = null;
     this.port = null;
@@ -170,31 +174,34 @@ export class LlamaServerManager {
   }
 
   async start(modelPath: string, options: LlamaServerOptions = {}): Promise<void> {
-    if (this.startupPromise) return this.startupPromise;
-
-    // A change in drafter presence for the same model must still restart the
-    // server so the new speculative-decoding flags take effect.
-    const requestedDraftPath = options.draftModelPath || null;
-    const requestedContextSize = options.contextSize || DEFAULT_CONTEXT_SIZE;
-    if (
-      this.ready &&
-      this.modelPath === modelPath &&
-      this.draftModelPath === requestedDraftPath &&
-      requestedContextSize <= (this.contextSize || 0)
-    )
-      return;
-
-    if (this.process) {
-      await this.stop();
-    }
-
-    this.startupPromise = this._doStart(modelPath, options);
-    try {
-      await this.startupPromise;
-      // Record the context that loaded, not only what was requested.
+    const requestedOptions = { ...options };
+    const requestedContextSize = requestedOptions.contextSize || DEFAULT_CONTEXT_SIZE;
+    const settingsIdentity = JSON.stringify([modelPath, requestedOptions.draftModelPath || null,
+      requestedOptions.threads || 4, requestedOptions.gpuLayers ?? 99, requestedOptions.cacheRamMiB || 0]);
+    const identity = JSON.stringify([settingsIdentity, requestedContextSize]);
+    if (this.startupPromise && this.startupIdentity === identity) return this.startupPromise;
+    const generation = this.stopGeneration;
+    const previous = this.startupPromise;
+    // Publish ownership before stop, port selection or spawn can yield.
+    const operation = (previous ?? Promise.resolve()).catch(() => {}).then(async () => {
+      if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
+      if (this.ready && this.activeSettingsIdentity === settingsIdentity && requestedContextSize <= (this.contextSize || 0)) return;
+      if (this.process) await this.stopProcess();
+      if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
+      await this._doStart(modelPath, requestedOptions, generation);
+      if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
       this.contextSize = this.activeContextSize ?? requestedContextSize;
+      this.activeSettingsIdentity = settingsIdentity;
+    });
+    this.startupPromise = operation;
+    this.startupIdentity = identity;
+    try {
+      await operation;
     } finally {
-      this.startupPromise = null;
+      if (this.startupPromise === operation) {
+        this.startupPromise = null;
+        this.startupIdentity = null;
+      }
     }
   }
 
@@ -224,7 +231,7 @@ export class LlamaServerManager {
     return args;
   }
 
-  async _doStart(modelPath: string, options: LlamaServerOptions = {}): Promise<void> {
+  async _doStart(modelPath: string, options: LlamaServerOptions = {}, generation = this.stopGeneration): Promise<void> {
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
     let binaryPaths = this.getServerBinaryPaths();
     if (!binaryPaths.default) {
@@ -233,7 +240,9 @@ export class LlamaServerManager {
     }
     if (!binaryPaths.default) throw new Error("llama-server binary not found");
 
-    this.port = await this.findAvailablePort();
+    const port = await this.findAvailablePort();
+    if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
+    this.port = port;
     this.modelPath = modelPath;
     // Store the REQUESTED drafter so start() compares against a stable value across
     // identical requests; activeDraftModelPath tracks what actually loaded (see ctor).
@@ -263,6 +272,7 @@ export class LlamaServerManager {
       this._buildEnv(binaryPaths.default),
       STARTUP_TIMEOUT_MS
     );
+    if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
     this.activeBackend = "metal";
     this.activeDraftModelPath = this.draftModelPath;
 
@@ -697,6 +707,24 @@ export class LlamaServerManager {
   }
 
   async stop(): Promise<void> {
+    this.stopGeneration += 1;
+    const pending = this.startupPromise;
+    const operation = Promise.all([this.stopProcess(), pending?.catch(() => {})]).then(() => {
+      this.clearIdleTimer();
+      this.stopHealthCheck();
+      this.ready = false;
+      this.activeSettingsIdentity = null;
+    });
+    this.startupPromise = operation;
+    this.startupIdentity = null;
+    try {
+      await operation;
+    } finally {
+      if (this.startupPromise === operation) this.startupPromise = null;
+    }
+  }
+
+  private async stopProcess(): Promise<void> {
     this.clearIdleTimer();
     this.stopHealthCheck();
 

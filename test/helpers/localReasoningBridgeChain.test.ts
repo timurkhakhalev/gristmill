@@ -140,11 +140,11 @@ test("a caller's contextSize reaches the server start (regression: it was droppe
     serverManager.ready = true;
     serverManager.process = {};
   };
-  serverManager.stop = async () => {
+  Object.defineProperty(serverManager, "stopProcess", { value: async () => {
     serverManager.ready = false;
     serverManager.process = null;
     serverManager.contextSize = null;
-  };
+  } });
   serverManager.contextSize = 16384;
 
   await bridge.processText("short text", modelId, { contextSize: 32768 });

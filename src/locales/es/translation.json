@@ -49,12 +49,6 @@
         "FILE_TOO_LARGE": "Este archivo es demasiado grande para importarlo.",
         "generic": "Algo salió mal al leer el archivo."
       }
-    },
-    "meeting": {
-      "speakerDetection": {
-        "title": "Identificar y etiquetar participantes",
-        "description": "Cuando está desactivado, las transcripciones muestran \"Tú\" y \"Otros\""
-      }
     }
   },
   "tray": {

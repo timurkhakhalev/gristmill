@@ -47,7 +47,6 @@ const electronStub = {
 function loadCoordinator() {
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") return electronStub;
-    if (request === "./meetingStreamingProviders.js") throw new Error("Capture must not load realtime ASR providers");
     if (request === "./zoomSpeakerCollector.js") return { ZoomSpeakerCollector: class {
       start() {} stop() { return Promise.resolve(); } invalidate() {}
       bindClock() {} recordClock() {} recordDeliveredFrames() {}
@@ -187,7 +186,6 @@ function buildHarness({ failWrite = false, audioTapManager = null }: {
   const meetingRecordingStorage = createStorageFake(events, { failWrite });
   const engine = createEngineFake();
   const ownershipEvents: unknown[] = [];
-  const speakerLimits: number[] = [];
   const coordinator = loadCoordinator();
   const runtime = coordinator.registerMeetingCoordinatorHandlers(
     {
@@ -199,10 +197,6 @@ function buildHarness({ failWrite = false, audioTapManager = null }: {
       meetingRecordingStorage,
       meetingDetectionEngine: engine,
       audioTapManager,
-      liveSpeakerIdentifier: {
-        setEnabled: () => {},
-        setMaxSpeakers(count: number) { speakerLimits.push(count); },
-      },
       onCaptureStopped: () => ownershipEvents.push({ scope: runtime.currentRecordingScope(), recording: runtime.isRecording() }),
       setMeetingCaptureState: (active: boolean) => ownershipEvents.push(active),
       getControlPanelWindow: () => currentWindow,
@@ -211,7 +205,7 @@ function buildHarness({ failWrite = false, audioTapManager = null }: {
       showNotificationWindow: () => {},
     }
   );
-  return { runtime, handlers, listeners, events, ownershipEvents, speakerLimits, databaseManager, meetingRecordingStorage, engine };
+  return { runtime, handlers, listeners, events, ownershipEvents, databaseManager, meetingRecordingStorage, engine };
 }
 
 const invoke = (harness: ReturnType<typeof buildHarness>, channel: string, ...args: unknown[]) => harness.handlers.get(channel)(...args);
@@ -440,9 +434,9 @@ for (const failure of ["start", "finalization"] as const) {
     assert.equal(harness.engine.activeSessionId, null);
     assert.deepEqual(harness.ownershipEvents.at(-2), { scope: null, recording: false });
     assert.equal(harness.ownershipEvents.at(-1), false);
-    const limitsBefore = harness.speakerLimits.length;
+    const eventsBefore = currentWindow.webContents.messages.length;
     harness.runtime.refreshMeetingSpeakerConfigFromNote(START.noteId, { expected_speaker_count: 5 });
-    assert.equal(harness.speakerLimits.length, limitsBefore, "released Note must no longer update capture speaker limits");
+    assert.equal(currentWindow.webContents.messages.length, eventsBefore, "released Note must no longer broadcast speaker config updates");
 
     harness.engine.beginRecordingSession = begin;
     harness.databaseManager.finalizeMeetingRecording = finalize;

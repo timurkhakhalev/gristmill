@@ -16,7 +16,7 @@ const root = path.resolve(__dirname, "../..");
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 const requiredMethods = [
   "acquireRecordingLock", "releaseRecordingLock", "meetingDetectionGetPreferences",
-  "setSpeakerDiarizationEnabled", "setMeetingSessionSpeakerConfig", "joinCalendarMeeting", "findCalendarEventNote", "createCalendarEventNote",
+  "setMeetingSessionSpeakerConfig", "joinCalendarMeeting", "findCalendarEventNote", "createCalendarEventNote",
   "meetingAutoEndCompleted", "meetingAutoEndRespond", "getMeetingNotificationData",
   "getPendingMeetingNoteNavigation", "meetingTranscriptionSend", "onMeetingTranscriptionSegment",
   "onMeetingAutoEndRequested", "onMeetingTranscriptionError",
@@ -155,10 +155,6 @@ async function createFixture({ responses = {}, engine }: {
     },
     meetingDetectionEngine: engineFake,
     audioTapManager: null,
-    liveSpeakerIdentifier: {
-      setEnabled() {},
-      setMaxSpeakers() {},
-    },
     getControlPanelWindow: () => null,
     getMeetingNotificationData: () => ({ kind: "auto-end", sessionId: "meeting-1", expiresAt: 1 }),
     consumePendingMeetingNoteNavigation: () => ({
@@ -210,7 +206,6 @@ test("command shapes cross the bundled preload and results are passed through", 
   const prefs = await api.meetingDetectionGetPreferences();
   assert.deepEqual(plain(prefs), { success: true, preferences: { processDetection: true, audioDetection: false } });
 
-  assert.deepEqual(plain(await api.setSpeakerDiarizationEnabled(false)), { success: true });
   assert.deepEqual(
     plain(await api.setMeetingSessionSpeakerConfig({ enabled: true, expectedCount: 3 })),
     { success: true }

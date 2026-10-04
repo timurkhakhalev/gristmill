@@ -1,7 +1,37 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 const test: typeof import("node:test") = require("node:test");
-const { createRendererServer }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 const routeGlobals = globalThis as typeof globalThis & { __meetingSnapshotRouteReads?: number };
+
+test("new Local snapshots enable diarization despite a removed preference; saved options stay explicit", async (t: import("node:test").TestContext) => {
+  installBrowserGlobals(t, {
+    initialStorage: {
+      speakerDiarizationEnabled: "false",
+      transcriptionMode: "local",
+      localTranscriptionProvider: "whisper",
+      whisperModel: "base",
+      preferredLanguage: "en",
+    },
+  });
+  const vite = await createRendererServer(t, {
+    cachePrefix: "meeting-local-diarization-snapshot-",
+    mockModules: {
+      "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Summary instruction" }]; }`,
+    },
+  });
+  const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+  useSettingsStore.setState({ meetingTranscriptionMode: "local", meetingLocalTranscriptionProvider: "whisper", meetingWhisperModel: "base" });
+  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule("/helpers/meetingRecordingConfigSnapshot.ts");
+  const fresh = snapshotMeetingRecordingConfig();
+  assert.equal(fresh.configError, null);
+  assert.equal(fresh.config.transcription.mode, "local");
+  assert.equal(fresh.config.transcription.local.options.diarize, true);
+
+  const saved = { ...fresh.config.transcription, local: { ...fresh.config.transcription.local, options: { diarize: false } } };
+  const reprocessed = snapshotMeetingRecordingConfig(saved);
+  assert.equal(reprocessed.configError, null);
+  assert.deepEqual(reprocessed.config.transcription, saved);
+});
 
 test("saved transcription bypasses an unsupported current meeting route while snapshotting current summary settings", async (t: import("node:test").TestContext) => {
   const previousRouteReads = routeGlobals.__meetingSnapshotRouteReads;

@@ -5,9 +5,6 @@ const {
   installBrowserGlobals,
   reloadSettingsStore,
 } = require("../lib/rendererTestHarness.ts");
-const {
-  resolveMeetingTranscriptionOptions,
-} = require("../../src/helpers/meetingTranscriptionRouting.ts");
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
 
 // migrateMeetingFollowFlags() copies the legacy transcription and reasoning
@@ -46,22 +43,7 @@ const LATCHED_LOCAL = {
   noteFormattingProvider: "llama",
 };
 
-const meetingRoute = (mod: any, state: unknown) => {
-  const resolved = mod.selectResolvedMeetingTranscription(state);
-  return resolveMeetingTranscriptionOptions({
-    transcriptionMode: resolved.transcriptionMode,
-    language: "en",
-    localProvider: resolved.localTranscriptionProvider,
-    whisperModel: resolved.whisperModel,
-    parakeetModel: resolved.parakeetModel,
-    cohereModel: resolved.cohereModel,
-    selectedProvider: resolved.cloudTranscriptionProvider,
-    selectedModel: resolved.cloudTranscriptionModel,
-    byokProviders: [],
-    managedProviders: [],
-    keyterms: [],
-  });
-};
+const meetingRoute = (mod: any, state: unknown) => mod.selectResolvedMeetingTranscription(state);
 
 // The migration cases share a Vite server. Allow extra time for a cold import
 // so the parent test does not close it mid-run.
@@ -129,7 +111,7 @@ test("Note Recording modes survive the follow-flag migration", { timeout: 300_00
     assert.equal(storage.getItem("noteFormattingMode"), "local", "copied, then moved");
     assert.equal(state.meetingTranscriptionMode, "local");
     assert.equal(mod.selectResolvedNoteFormatting(state).mode, "local");
-    assert.equal(meetingRoute(mod, state).provider, "local", "note recording stays local");
+    assert.equal(meetingRoute(mod, state).transcriptionMode, "local", "note recording stays local");
     assert.equal(countWrites("meetingTranscriptionMode"), 1, "written by the copy only");
   });
 
@@ -211,7 +193,7 @@ test("Note Recording modes survive the follow-flag migration", { timeout: 300_00
     assert.equal(storage.getItem("noteFormattingMode"), "local");
     assert.equal(state.meetingTranscriptionMode, "local");
     assert.equal(mod.selectResolvedNoteFormatting(state).mode, "local");
-    assert.equal(meetingRoute(mod, state).provider, "local");
+    assert.equal(meetingRoute(mod, state).transcriptionMode, "local");
     assert.equal(
       writes.includes("meetingUseLocalWhisper"),
       false,
@@ -382,7 +364,7 @@ test("Note Recording modes survive the follow-flag migration", { timeout: 300_00
         meetingCloudTranscriptionMode: "byok",
       });
       assert.equal(state.meetingTranscriptionMode, "local", `${mode} → local`);
-      assert.equal(meetingRoute(mod, state).provider, "local");
+      assert.equal(meetingRoute(mod, state).transcriptionMode, "local");
       assert.equal(writes.includes("meetingUseLocalWhisper"), false);
     }
   });

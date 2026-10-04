@@ -7,6 +7,7 @@ import {
   useSettingsStore,
 } from "../../stores/settingsStore";
 import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
+import { resolveChatRoute } from "../../helpers/chatRouting";
 import { getAgentSystemPrompt } from "../../config/prompts";
 import { createToolRegistry } from "../../services/tools";
 import type { ToolRegistry } from "../../services/tools/ToolRegistry";
@@ -169,23 +170,18 @@ export function useChatStreaming({
       };
       const settings = getSettings();
       const llmConfig = selectResolvedLLMConfig(settings, "chatIntelligence");
-      const isBbAgent = llmConfig.mode === "agent";
-      setAgentState("thinking");
       const isLanAgent = llmConfig.mode === "self-hosted" && !!llmConfig.remoteUrl;
       const isCustomAgent = llmConfig.mode === "providers" && llmConfig.provider === "custom";
-      const isLocalProvider =
-        !isBbAgent &&
-        !isEnterpriseProvider(llmConfig.provider) &&
-        ![
-          "openai",
-          "groq",
-          "custom",
-          "anthropic",
-          "gemini",
-          "tinfoil",
-          "openrouter",
-          "corti",
-        ].includes(llmConfig.provider);
+      const route = resolveChatRoute({
+        mode: llmConfig.mode,
+        provider: llmConfig.provider,
+        lanUrl: isLanAgent ? llmConfig.remoteUrl : undefined,
+        customApiKey: llmConfig.customApiKey,
+        isEnterpriseProvider: isEnterpriseProvider(llmConfig.provider),
+      });
+      const isBbAgent = route.kind === "agent";
+      const isLocalProvider = route.kind === "local";
+      setAgentState("thinking");
       const localModelCanUseTool =
         isLocalProvider && estimateModelSizeB(llmConfig.model) >= LOCAL_TOOL_MIN_PARAMS_B;
       const supportsTools = !sendOptions?.disableTools && !isBbAgent && (!isLocalProvider || localModelCanUseTool);

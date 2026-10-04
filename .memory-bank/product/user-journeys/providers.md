@@ -18,7 +18,7 @@ As a Gristmill user, I want to select models supported by the task I want to run
 - Local file dispatch supports Whisper, Parakeet and Cohere. Cohere requires the selected language rather than auto-detection.
 - Self-Hosted uses its dedicated OpenAI-compatible endpoint configuration. Custom is a separate keyed route. They are not interchangeable meeting routes.
 - Upload size checks allow 2 GiB for Deepgram/Gemini, 3 GiB for ElevenLabs and 25 MiB for other BYOK routes. URL download has the separate 500 MiB cap. Local and Self-Hosted have no app-level size cap in this path.
-- Custom UI bypasses its initial size check, but the route enforces 25 MiB. Do not describe Custom as unlimited.
+- Single and batch Upload use the same route size cap as main. Custom has a 25 MiB cap.
 - Chat/Summary model choices are a separate catalog. Anthropic, Bedrock, Azure or Vertex support elsewhere does not imply meeting ASR support.
 - Recording is local. These transcription routes process saved audio after Stop; they do not enable live transcription.
 

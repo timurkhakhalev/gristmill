@@ -22,7 +22,6 @@ function registerWithRealDb(db: any): Harness {
     { handle: (channel, fn) => handlers.set(channel as string, fn as (...args: unknown[]) => unknown) },
     {
       databaseManager: db,
-      liveSpeakerIdentifier: { getSpeakerEmbedding: () => null, mapSpeaker: () => true },
       diarizationManager: {
         downloadModels: async () => ({ success: true, path: "" }),
         isAvailable: () => false,

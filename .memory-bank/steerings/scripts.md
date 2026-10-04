@@ -90,5 +90,5 @@ pnpm run update:local --target /tmp/gristmill-update/Gristmill.app --user-data-d
 | `download-diarization-models.cts`, `download-whisper-vad-model.cts` | Explicit `download:*` commands. Developer asset preparation and offline-cache tests. |
 | `check-i18n.cts` | `i18n:check`, PR CI. Locale keys, placeholders and plural forms. |
 | `sync-nucleo-icons.cts` | Manual regeneration from the local licensed Nucleo catalog. The generated icon barrel names it as the source. It does not run during install or build. |
-| `llm-canary.mts`, `stt-canary.mts` | Their `workflow_dispatch` CI workflows and credential-free regression tests. Live APIs need separately supplied credentials. |
+| `llm-canary.mts` | Its `workflow_dispatch` CI workflow and credential-free regression tests. Live APIs need separately supplied credentials. |
 | `complete-uninstall.sh` | Interactive manual macOS removal script, with a source scope check. It stays in Bash for its shell prompts and its sudo, process and removal commands. Never use it in an update or in automated verification. |

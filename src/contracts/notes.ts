@@ -1,5 +1,6 @@
+import type { NoteOutputRequest, NoteOutput } from "./noteOutput.js";
 // Single source of truth for the Notes vertical: row shape, update whitelist,
-// the seven DB IPC channels and the three note events. Everything is derived
+// DB and output IPC channels and note events. Everything is derived
 // from Zod schemas so main, preload and renderer share one description.
 //
 // The schemas mirror the local SQLite `notes` table and the DatabaseManager
@@ -168,6 +169,7 @@ export interface NotesApi {
   ): Promise<NoteItem[]>;
   searchNoteContent(query: string, spaceId?: number | null): Promise<Array<z.infer<typeof noteSearchHitSchema>>>;
   searchNoteTranscripts(query: string, spaceId?: number | null): Promise<TranscriptSearchHit[]>;
+  getNoteOutput(request: NoteOutputRequest): Promise<NoteOutput>;
   getNoteTranscript(noteId: number): Promise<NoteTranscript>;
   onNoteAdded(callback: (note: NoteItem) => void): () => void;
   onNoteUpdated(callback: (note: NoteItem) => void): () => void;
@@ -185,6 +187,7 @@ export const noteChannels = {
   searchNoteContent: "notes-search-content",
   searchNoteTranscripts: "notes-search-transcripts",
   getNoteTranscript: "notes-get-transcript",
+  getNoteOutput: "notes-get-output",
 } as const;
 
 export const noteEventChannels = {

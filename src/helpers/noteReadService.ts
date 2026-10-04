@@ -1,7 +1,22 @@
+import { createHash } from "node:crypto";
+import {
+  noteOutputRequestSchema,
+  noteOutputSchema,
+  type NoteOutputRequest,
+  type NoteOutput,
+  type OutputFreshness,
+} from "../contracts/noteOutput.js";
+import {
+  meetingLlmSourceSnapshotSchema,
+  type MeetingProcessingRunDto,
+  type MeetingSummaryArtifact,
+} from "../contracts/meetingRecording.js";
+import { readMeetingRunOutput } from "./meetingRunReader.js";
+import { parseMeetingParticipants } from "./meetingPromptMaterial.js";
 import type { DatabaseManager, NoteRow } from "./database.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { meetingTranscriptArtifactSchema } from "../contracts/meetingRecording.js";
-import { filterNoteTranscript, readNoteTranscript } from "./noteTranscriptReader.js";
+import { filterNoteTranscript, readNoteTranscriptOutput } from "./noteTranscriptReader.js";
 import { noteSearchTokens } from "./noteSearch.js";
 import type { NoteTranscript, TranscriptFilter } from "../contracts/noteRead.js";
 
@@ -44,23 +59,245 @@ function snippet(text: string, tokens: string[]): string {
 }
 
 export class NoteReadService {
-  constructor(private readonly db: DatabaseManager, private readonly storage: MeetingRecordingStorage) {}
+  constructor(
+    private readonly db: DatabaseManager,
+    private readonly storage: MeetingRecordingStorage
+  ) {}
 
   transcript(noteId: number, filter: TranscriptFilter = {}): NoteTranscript {
-    const transcript = readNoteTranscript({
-      listRecordings: (id) => this.db.listMeetingRecordingsForNote(id),
-      listEpochs: (id) => this.db.listMeetingRecordingEpochs(id),
-      getRun: (id) => this.db.getMeetingProcessingRun(id),
-      readTranscript: (id) => {
-        const artifact = this.storage.readRunArtifact(id, "transcript");
-        if (artifact === null) return null;
-        return meetingTranscriptArtifactSchema.parse(artifact);
+    return filterNoteTranscript(this.transcriptOutput(noteId).transcript, filter);
+  }
+
+  private transcriptOutput(noteId: number) {
+    return readNoteTranscriptOutput(
+      {
+        listRecordings: (id) => this.db.listMeetingRecordingsForNote(id),
+        listEpochs: (id) => this.db.listMeetingRecordingEpochs(id),
+        getRun: (id) => this.db.getMeetingProcessingRun(id),
+        readTranscript: (id) => {
+          const artifact = this.storage.readRunArtifact(id, "transcript");
+          if (artifact === null) return null;
+          return meetingTranscriptArtifactSchema.parse(artifact);
+        },
+        getCorrections: (id) => this.db.getMeetingRunSpeakerCorrections(id),
+        profileEmail: (id) =>
+          this.db.getSpeakerProfiles().find((profile) => profile.id === id)?.email ?? null,
+        getProjection: (id) => this.db.getNote(id)?.transcript ?? null,
       },
-      getCorrections: (id) => this.db.getMeetingRunSpeakerCorrections(id),
-      profileEmail: (id) => this.db.getSpeakerProfiles().find((profile) => profile.id === id)?.email ?? null,
-      getProjection: (id) => this.db.getNote(id)?.transcript ?? null,
-    }, noteId);
-    return filterNoteTranscript(transcript, filter);
+      noteId
+    );
+  }
+
+  readOutput(input: NoteOutputRequest): NoteOutput {
+    const request = noteOutputRequestSchema.parse(input);
+    const note = this.db.getNote(request.noteId);
+    if (!note) throw new Error("note-output-not-found");
+    const recordings = this.db.listMeetingRecordingsForNote(note.id);
+    const common = {
+      noteId: note.id,
+      currentRuns: recordings.map((recording) => ({
+        recordingId: recording.id,
+        runId: recording.currentRunId,
+        status: recording.currentRunId
+          ? (this.db.getMeetingProcessingRun(recording.currentRunId)?.status ?? null)
+          : null,
+      })),
+      manual: {
+        text: note.content,
+        provenance: { source: "note-manual", runIds: [] },
+        freshness: { status: "current", reasons: [] },
+      },
+    };
+    if (request.scope === "note") {
+      let output: ReturnType<NoteReadService["transcriptOutput"]>;
+      try {
+        output = this.transcriptOutput(note.id);
+      } catch {
+        output = {
+          sources: [],
+          transcript: {
+            note_id: note.id,
+            status: "error",
+            text: null,
+            segments: null,
+            speakers: [],
+            timeline: {
+              unit: "ms",
+              duration_ms: null,
+              basis: "concatenated_recording_time",
+              intentional_pauses: "excluded",
+            },
+            diagnostics: ["transcript-artifact-invalid"],
+          },
+        };
+      }
+      return noteOutputSchema.parse({
+        ...common,
+        scope: "note",
+        summary: note.enhanced_content || null,
+        transcript: output.transcript,
+        transcriptSources: output.sources,
+        summaryProvenance: { source: "note-projection", runIds: [] },
+        transcriptProvenance: {
+          source: recordings.length ? "note-aggregate" : "note-projection",
+          runIds: output.sources.map((source) => source.runId),
+        },
+        summaryFreshness: { status: "unknown", reasons: ["projection-origin-unrecorded"] },
+        transcriptFreshness: {
+          status: recordings.length && output.transcript.status === "ready" ? "current" : "unknown",
+          reasons: recordings.length
+            ? output.transcript.diagnostics
+            : ["projection-origin-unrecorded"],
+        },
+        diagnostics: output.transcript.diagnostics,
+      });
+    }
+    const run = this.db.getMeetingProcessingRun(request.runId);
+    const ownsRun = (candidate: MeetingProcessingRunDto | null) =>
+      Boolean(
+        candidate &&
+        this.db.getMeetingRecording(candidate.recordingId)?.noteId === note.id &&
+        candidate.sourceRecordingIds.every(
+          (id) => this.db.getMeetingRecording(id)?.noteId === note.id
+        )
+      );
+    if (!ownsRun(run) || !run) throw new Error("note-output-run-not-owned");
+    const sourceRun =
+      run.kind === "summary" && run.sourceRunId
+        ? this.db.getMeetingProcessingRun(run.sourceRunId)
+        : run;
+    if (!ownsRun(sourceRun)) throw new Error("note-output-source-not-owned");
+    let result: ReturnType<typeof readMeetingRunOutput> | null = null;
+    const diagnostics: string[] = [];
+    try {
+      result = readMeetingRunOutput(this.db, this.storage, run);
+    } catch (error) {
+      diagnostics.push((error as { code?: string }).code ?? "run-artifact-invalid");
+    }
+    if (result && !result.result.transcript) diagnostics.push("transcript-artifact-missing");
+    if (result && !result.result.summary) diagnostics.push("summary-artifact-missing");
+    const transcriptRunId =
+      result?.transcriptRunId ?? (run.kind === "summary" ? run.sourceRunId : run.id);
+    const summaryRunId = result?.summaryRunId ?? null;
+    const summaryRun = summaryRunId ? this.db.getMeetingProcessingRun(summaryRunId) : null;
+    return noteOutputSchema.parse({
+      ...common,
+      scope: "run",
+      runId: run.id,
+      run,
+      result: result?.result ?? null,
+      summaryProvenance: { source: "run-artifact", runIds: summaryRunId ? [summaryRunId] : [] },
+      transcriptProvenance: {
+        source: "run-artifact",
+        runIds: transcriptRunId ? [transcriptRunId] : [],
+      },
+      summaryFreshness:
+        result?.result.summary && summaryRun && transcriptRunId
+          ? this.summaryFreshness(
+              note,
+              summaryRun,
+              transcriptRunId,
+              result.result.summary,
+              result.result.speakerCorrectionRevision
+            )
+          : { status: "unknown", reasons: diagnostics },
+      transcriptFreshness: {
+        status: result?.result.transcript ? "current" : "unknown",
+        reasons: result?.result.transcript ? [] : diagnostics,
+      },
+      diagnostics,
+    });
+  }
+
+  private summaryFreshness(
+    note: NoteRow,
+    run: MeetingProcessingRunDto,
+    sourceRunId: string,
+    summary: MeetingSummaryArtifact,
+    correctionRevision: number
+  ): OutputFreshness {
+    const revision = createHash("sha256")
+      .update(
+        JSON.stringify([
+          note.content,
+          note.title,
+          note.participants,
+          correctionRevision,
+          run.config?.summary,
+        ])
+      )
+      .digest("hex");
+    return {
+      ...this.compareSummarySource(note, run, sourceRunId, summary, correctionRevision),
+      revision,
+    };
+  }
+
+  private compareSummarySource(
+    note: NoteRow,
+    run: MeetingProcessingRunDto,
+    sourceRunId: string,
+    summary: MeetingSummaryArtifact,
+    correctionRevision: number
+  ): OutputFreshness {
+    const reasons: string[] = [];
+    if (
+      summary.speakerCorrectionRevision !== undefined &&
+      summary.speakerCorrectionRevision !== correctionRevision
+    )
+      reasons.push("speaker-corrections-changed");
+    const raw = this.db.getMeetingRunLlmSourceSnapshot(run.id);
+    let snapshot: ReturnType<typeof meetingLlmSourceSnapshotSchema.safeParse>;
+    try {
+      snapshot = meetingLlmSourceSnapshotSchema.safeParse(raw ? JSON.parse(raw) : null);
+    } catch {
+      return {
+        status: reasons.length ? "stale" : "unknown",
+        reasons: [...reasons, "generation-metadata-invalid"],
+      };
+    }
+    if (!snapshot.success || snapshot.data.sourceRunId !== sourceRunId) {
+      return {
+        status: reasons.length ? "stale" : "unknown",
+        reasons: [...reasons, "generation-metadata-unavailable"],
+      };
+    }
+    const saved = snapshot.data;
+    if (
+      JSON.stringify(saved.sourceRecordingIds) !== JSON.stringify(run.sourceRecordingIds) ||
+      (summary.manualNoteRevision !== undefined && summary.manualNoteRevision !== saved.manualNoteRevision) ||
+      saved.manualNoteRevision !==
+        createHash("sha256").update(saved.manualNotes, "utf8").digest("hex")
+    ) {
+      return {
+        status: reasons.length ? "stale" : "unknown",
+        reasons: [...reasons, "generation-metadata-invalid"],
+      };
+    }
+    if (
+      saved.manualNoteRevision !== createHash("sha256").update(note.content, "utf8").digest("hex")
+    )
+      reasons.push("manual-notes-changed");
+    if (saved.meetingTitle !== note.title) reasons.push("title-changed");
+    let participantsKnown = saved.participants !== null;
+    try {
+      if (
+        participantsKnown &&
+        JSON.stringify(parseMeetingParticipants(note.participants)) !==
+          JSON.stringify(saved.participants)
+      )
+        reasons.push("participants-changed");
+    } catch {
+      participantsKnown = false;
+    }
+    if (saved.speakerCorrectionRevision !== correctionRevision)
+      reasons.push("speaker-corrections-changed");
+    if (JSON.stringify(saved.promptModel) !== JSON.stringify(run.config?.summary))
+      reasons.push("summary-config-changed");
+    if (reasons.length) return { status: "stale", reasons: [...new Set(reasons)] };
+    if (!participantsKnown || summary.speakerCorrectionRevision === undefined)
+      return { status: "unknown", reasons: ["generation-metadata-incomplete"] };
+    return { status: "current", reasons: [] };
   }
 
   list(scope: Scope & { withTranscript?: boolean } = {}) {

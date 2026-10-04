@@ -152,7 +152,15 @@ async function mountPanel(t: TestContext, items: unknown[], { viewMode = "raw", 
     onMeetingProcessingUpdated: () => () => {},
     getSpeakerProfiles: async () => [],
     getNote: async () => ({ participants: JSON.stringify([{ email: "person@example.com" }]) }),
-    getNoteTranscript: async () => noteTranscript ?? null,
+    onNoteUpdated: () => () => {},
+    getNoteOutput: async (request: {noteId:number;scope:"note"|"run";runId?:string}) => {
+      if (request.scope === "note") return { noteId: request.noteId, scope: "note", summary: null,
+        transcript: noteTranscript ?? null, summaryFreshness:{status:"unknown",reasons:[]}, diagnostics:[] };
+      const result = listedItems.flatMap(item => (item as {runs:RunBundle[]}).runs).find(bundle => bundle.run.id === request.runId);
+      const summaryRevision = (result?.summary as {speakerCorrectionRevision?:number} | undefined)?.speakerCorrectionRevision;
+      return {noteId:request.noteId,scope:"run",runId:request.runId,result:result??null,
+        summaryFreshness:{status:summaryRevision !== undefined && summaryRevision !== result?.speakerCorrectionRevision ? "stale":"unknown",reasons:[]},diagnostics:[]};
+    },
     getContactProfiles: async () => [],
     getActions: async () => [{
       id: 1,

@@ -17,6 +17,10 @@ export { bad };
 const bad: NoteItem = { id: 1, title: "T" };
 export { bad };
 `,
+  wrongOutputScope: `import type { NotesApi } from "./contracts/notes";
+declare const api: NotesApi;
+api.getNoteOutput({noteId:1,scope:"run"});
+`,
   wrongSaveArg: `import type { NotesApi } from "./contracts/notes";
 const api: NotesApi = {} as NotesApi;
 const bad = api.saveNote(123, "content");
@@ -160,6 +164,7 @@ const deps: NotesHandlerDeps = {
   searchNoteContent: () => null,
   searchNoteTranscripts: () => null,
   getNoteTranscript: () => null,
+  getNoteOutput: () => null,
 };
 registerNotesHandlers({ handle() {} }, deps);
 `,
@@ -204,3 +209,5 @@ test("main boundary probe: correctly typed deps compile cleanly", () => {
 test("renderer probe: NotesApi exposes the error discriminant on update results", () => {
   assert.deepEqual(compileRendererProbes().updateResult, []);
 });
+
+test("type probe: run output requires its explicit run ID", () => { assert.deepEqual(compileRendererProbes().wrongOutputScope, [2345]); });

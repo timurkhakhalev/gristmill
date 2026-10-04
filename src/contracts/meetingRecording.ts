@@ -419,3 +419,23 @@ export type MeetingPlatformCoverage = z.infer<typeof meetingPlatformCoverageSche
 export function meetingPlatformLabel(platform: MeetingPlatform | undefined): string {
   return platform === "telemost" ? "Yandex Telemost" : platform === "google-meet" ? "Google Meet" : platform === "zoom" ? "Zoom" : "";
 }
+
+export const meetingLlmSourceSnapshotSchema = z.object({
+  version: z.literal(1),
+  sourceRunId: z.string().uuid(),
+  sourceRecordingIds: z.array(z.string().uuid()).min(1),
+  meetingTitle: z.string().nullable(),
+  participants: z.array(z.object({ name: z.string().nullable(), email: z.string().nullable() }).strict()).nullable(),
+  manualNotes: z.string(),
+  manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  speakerCorrectionRevision: z.number().int().nonnegative(),
+  transcriptSegments: z.array(z.object({
+    id: z.string().min(1),
+    speakerId: z.string().nullable(),
+    speakerName: z.string().nullable(),
+    speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
+    speakerNamePlatform: meetingPlatformSchema.optional(),
+    text: z.string(),
+  }).strict()).min(1),
+  promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
+}).strict();

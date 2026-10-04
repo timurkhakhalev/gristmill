@@ -1,6 +1,6 @@
 const test: typeof import("node:test") = require("node:test");
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { readNoteTranscript, filterNoteTranscript } = require("../../src/helpers/noteTranscriptReader.ts");
+const { readNoteTranscript, readNoteTranscriptOutput, filterNoteTranscript } = require("../../src/helpers/noteTranscriptReader.ts");
 
 const MIN = 60_000;
 const base = Date.parse("2026-09-25T10:00:00.000Z");
@@ -234,4 +234,25 @@ test("shared Note transcript preserves platform provenance without creating prof
   assert.equal(result.speakers[0].name_platform, "google-meet");
   assert.equal(result.speakers[0].email, null);
   assert.equal(result.speakers[0].source, "system");
+});
+
+// Provenance reports only the pieces that supplied the aggregate text.
+test("output provenance includes independent groups and deduplicates combined coverage", () => {
+  const parts = [
+    part({ id: A, group: G1, startMin: 0, minutes: 10, run: "ra" }),
+    part({ id: B, group: G2, startMin: 60, minutes: 5, run: "rb" }),
+  ];
+  const independent = readNoteTranscriptOutput(deps(parts, [run("ra", [A]), run("rb", [B])], {
+    ra: { text: "a", segments: [{ text: "a", start: 0, end: 1 }] },
+    rb: { text: "b", segments: [{ text: "b", start: 0, end: 1 }] },
+  }), 42);
+  assert.deepEqual(independent.sources, [{ runId: "ra", recordingIds: [A] }, { runId: "rb", recordingIds: [B] }]);
+  assert.equal(independent.transcript.timeline.duration_ms, 15 * MIN);
+  parts[1].currentRunId = "combined";
+  const combined = readNoteTranscriptOutput(deps(parts, [run("ra", [A]), run("combined", [A, B])], {
+    ra: { text: "a", segments: [{ text: "a", start: 0, end: 1 }] },
+    combined: { text: "a b", segments: [{ text: "a b", start: 0, end: 901 }] },
+  }), 42);
+  assert.deepEqual(combined.sources, [{ runId: "combined", recordingIds: [A, B] }]);
+  assert.equal(combined.transcript.text, "a b");
 });

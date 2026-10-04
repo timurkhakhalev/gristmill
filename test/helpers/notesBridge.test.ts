@@ -48,6 +48,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
   return originalLoad.call(this, request, parent, isMain);
 };
 process.env.NODE_ENV = "test";
+const { NoteReadService }: typeof import("../../src/helpers/noteReadService.ts") = require("../../src/helpers/noteReadService.ts");
 
 const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
 
@@ -147,6 +148,7 @@ async function createFixture(t: import("node:test").TestContext) {
       searchNotes: (...args) => db.searchNotes(...args),
       searchNoteContent: () => [],
       searchNoteTranscripts: () => [],
+      getNoteOutput: request => new NoteReadService(db, { readRunArtifact: () => null } as never).readOutput(request),
       getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
 
     }
@@ -281,4 +283,19 @@ test("deleted notes are not resurrectable and emit note-deleted once", async (t:
   await flush();
   assert.equal(deletions.length, 1);
   unsub();
+});
+
+
+test("internal output request crosses the real preload and read owner with validated provenance", async t => {
+  const ctx = await createFixture(t); if (!ctx) return;
+  const saved = await ctx.api.saveNote("Output", "Manual"); assert.ok(saved.success);
+  await ctx.api.updateNote(saved.note.id, { enhanced_content: "Edited summary", transcript: "Uploaded text" });
+  const output = await ctx.api.getNoteOutput({noteId:saved.note.id,scope:"note"});
+  assert.equal(output.scope,"note"); if(output.scope!=="note") return;
+  assert.equal(output.summary,"Edited summary");
+  assert.equal(output.transcript.text,"Uploaded text");
+  assert.deepEqual(JSON.parse(JSON.stringify(output.summaryProvenance)),{source:"note-projection",runIds:[]});
+  await assert.rejects(() => ctx.api.getNoteOutput({noteId:saved.note.id,scope:"run"} as never), /Invalid arguments/);
+  const { api } = loadBundledPreload(async () => ({scope:"note",noteId:saved.note.id}));
+  await assert.rejects(() => api.getNoteOutput({noteId:saved.note.id,scope:"note"}), /Unexpected response/);
 });

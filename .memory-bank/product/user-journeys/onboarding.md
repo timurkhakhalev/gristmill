@@ -22,7 +22,7 @@ As a Gristmill user, I want to set up recording and optional integrations.
 
 ## Tray startup
 
-Start minimized and launch-at-login load the control panel renderer in a hidden window. The renderer hydrates settings and resolves persisted onboarding before meeting input is allowed. A fresh profile remains gated. Window restore and the load backstop do not show a tray-started panel; an explicit tray or navigation action shows it.
+Start minimized and launch-at-login load the control panel renderer in a hidden window. The renderer hydrates settings and resolves persisted onboarding before meeting input is allowed. A fresh profile remains gated. Window restore and the load backstop do not show a tray-started panel; an explicit tray or navigation action shows it. A failed hidden load leaves the gate closed and permits tray startup to finish. An explicit open retries that load.
 
 ## What to check
 

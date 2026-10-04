@@ -30,6 +30,7 @@ interface Harness {
   openNote(id: number): Promise<void>;
   typeContent(value: string): Promise<void>;
   fireExternalUpdate(note: NoteItem): Promise<void>;
+  editorState(): { id: number; title: string; content: string } | null;
   updateNoteCalls(): Array<{ id: number; updates: Record<string, unknown> }>;
 }
 
@@ -105,7 +106,13 @@ async function mountNotesView(
     resolveAlias: { "@": path.resolve(__dirname, "../../../src") },
   });
   const { default: PersonalNotesView } = await vite.ssrLoadModule("/components/notes/PersonalNotesView.tsx");
-  const noteEditorModule = await vite.ssrLoadModule("./NoteEditor") as { props: { onContentChange: (id: number, value: string) => void; onTitleChange: (id: number, value: string) => void } | undefined };
+  const noteEditorModule = await vite.ssrLoadModule("./NoteEditor") as {
+    props: {
+      note: { id: number; title: string; content: string };
+      onContentChange: (id: number, value: string) => void;
+      onTitleChange: (id: number, value: string) => void;
+    } | undefined;
+  };
   const store = await vite.ssrLoadModule("/stores/noteStore.ts") as typeof import("../../../../src/stores/noteStore");
   await React.act(async () => { await store.initializeNotesTree(); });
 
@@ -134,6 +141,10 @@ async function mountNotesView(
     },
     fireExternalUpdate: async (note: NoteItem) => {
       await React.act(async () => { noteUpdatedListener?.(note); });
+    },
+    editorState: () => {
+      const props = noteEditorModule.props;
+      return props ? { id: props.note.id, title: props.note.title, content: props.note.content } : null;
     },
     updateNoteCalls: () => updateCalls,
   };
@@ -207,10 +218,21 @@ test("an external update lands even while a save is queued", async (t) => {
   await harness.typeContent("Typed body");
 
   // Processing publishes a new title while the debounce is still queued.
-  stored.title = "Generated title";
-  await harness.fireExternalUpdate(stored);
+  // A fresh object, as the real IPC payload would be (the store row must get
+  // a new identity for the update effect to run).
+  await harness.fireExternalUpdate(noteFixture(10, "Generated title", "Original body"));
+  // Let React flush passive effects (the merge).
+  await wait(0);
+  await wait(0);
 
-  // The editor draft shows the external title (untouched field accepts it).
+  // Editor state right after the external update: the untouched title shows
+  // the external value, the typed content keeps the local value.
+  assert.deepEqual(harness.editorState(), {
+    id: 10,
+    title: "Generated title",
+    content: "Typed body",
+  });
+
   const calls = harness.updateNoteCalls();
   await wait(1100);
   assert.equal(calls.length, 1, "only the dirty field is written");

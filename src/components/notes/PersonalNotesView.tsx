@@ -254,17 +254,14 @@ export default function PersonalNotesView({
   }, [activeNote, commitDraft, transitionToNote]);
 
   const scheduleDocumentSave = useCallback((snapshot: NoteEditorDraft) => {
+    // Only the fields the user edited are captured: a debounced write must
+    // not republish fields an external update (chat tool, processing) just
+    // changed under us (#157). Nothing dirty means nothing to write — leave
+    // any queued write intact instead of cancelling it.
+    if (!snapshot.dirtyTitle && !snapshot.dirtyContent) return;
     const current = pendingDocumentRef.current;
     if (current) clearTimeout(current.timer);
 
-    // Only the fields the user edited are captured: a debounced write must
-    // not republish fields an external update (chat tool, processing) just
-    // changed under us (#157). Nothing dirty means nothing to write — an
-    // empty updateNote({}) would fail server-side and heal nothing.
-    if (!snapshot.dirtyTitle && !snapshot.dirtyContent) {
-      pendingDocumentRef.current = null;
-      return;
-    }
     const pending: PendingDocumentSave = {
       noteId: snapshot.noteId,
       title: snapshot.dirtyTitle ? snapshot.title : undefined,

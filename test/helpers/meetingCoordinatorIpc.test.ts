@@ -489,3 +489,36 @@ test("Pause drains both tracks before releasing ownership and Resume rejects the
     await invoke(harness, "meeting-transcription-stop", START_EVENT(), { sessionId: harness.runtime.currentRecordingScope()?.sessionId ?? START.sessionId, lastSequence: {} });
   }
 });
+
+test("shutdown blocks new capture and waits for an in-flight start before safe finalization", async () => {
+  const harness = buildHarness();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let begin!: () => void;
+  const starting = new Promise<void>((resolve) => { begin = resolve; });
+  const originalBegin = harness.engine.beginRecordingSession;
+  harness.engine.beginRecordingSession = async (options) => {
+    begin();
+    await gate;
+    return originalBegin.call(harness.engine, options);
+  };
+  const started = invoke(harness, "meeting-transcription-start", START_EVENT(), START);
+  await starting;
+  let complete = false;
+  const shutdown = harness.runtime.shutdown().then(() => { complete = true; });
+  assert.equal((await invoke(harness, "meeting-transcription-start", START_EVENT(), { ...START, sessionId: "new" })).success, false);
+  assert.equal(complete, false);
+  release();
+  assert.equal((await started).success, true);
+  await new Promise(setImmediate);
+  const request = currentWindow.messages.find((item: { channel: string }) => item.channel === "meeting-transcription-stop-requested");
+  assert.ok(request, "startup must bind its owner before shutdown requests its drain");
+  assert.equal(request.payload.suppressProcessing, true);
+  await invoke(harness, "meeting-transcription-stop", START_EVENT(), {
+    sessionId: START.sessionId, lastSequence: {}, suppressProcessing: true,
+  });
+  await shutdown;
+  assert.equal(harness.runtime.isRecording(), false);
+  assert.equal(harness.databaseManager.finalized.length, 1);
+  assert.equal((await invoke(harness, "meeting-transcription-start", START_EVENT(), START)).success, false);
+});

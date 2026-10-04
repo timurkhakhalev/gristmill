@@ -113,6 +113,7 @@ export interface MeetingSafeStopOptions {
 
 export interface MeetingCoordinatorRuntime {
   isRecording(): boolean;
+  shutdown(): Promise<void>;
   startCompanion(): Promise<void>;
   disposeCompanion(): Promise<void>;
   setCompanionEnabled(enabled: boolean): void;
@@ -409,10 +410,14 @@ export function registerMeetingCoordinatorHandlers(
     };
   };
 
+  let shuttingDown = false;
+  const captureStarts = new Set<Promise<unknown>>();
+
   const startMeetingTranscription = async (
     event: { sender: WebContents },
     options: Record<string, unknown> = {}
   ) => {
+    if (shuttingDown) return { success: false, error: "Meeting capture is shutting down" };
     if (activeCaptureSession || meetingTranscriptionStartInProgress) {
       return { success: false, error: "Meeting capture is already active" };
     }
@@ -834,17 +839,20 @@ export function registerMeetingCoordinatorHandlers(
   };
 
   ipcMain.handle("meeting-transcription-start", (event, options: Record<string, unknown> = {}) => {
+    if (shuttingDown) return { success: false, error: "Meeting capture is shutting down" };
     const parsed = meetingOptionsSchema.safeParse(options);
     if (!parsed.success) return meetingFailure(new Error("Meeting capture start request is invalid"));
     const sessionId =
       typeof parsed.data.sessionId === "string" && parsed.data.sessionId.length > 0
         ? parsed.data.sessionId
         : crypto.randomUUID();
-    return meetingTranscriptionLifecycle.startSession({
+    const start = meetingTranscriptionLifecycle.startSession({
       sessionId,
       ownerWebContents: event.sender,
       options: parsed.data,
     });
+    captureStarts.add(start);
+    return start.finally(() => { captureStarts.delete(start); });
   });
 
   ipcMain.handle(
@@ -999,9 +1007,28 @@ export function registerMeetingCoordinatorHandlers(
     deps.showNotificationWindow?.(event.sender);
   });
 
+  const disposeCompanion = async () => {
+    if (companionTicker) clearInterval(companionTicker);
+    await companionStarted?.catch(() => {});
+    if (companionTicker) clearInterval(companionTicker);
+    await companionServer?.stop();
+  };
+
   return {
     isRecording: () => activeCaptureSession !== null,
+    shutdown: async () => {
+      shuttingDown = true;
+      await Promise.allSettled([...captureStarts]);
+      const expected = currentRecordingScope();
+      if (expected) {
+        const result = await requestSafeStop({ expected, reason: "quit", suppressProcessing: true });
+        if (!result.success) throw new Error("Meeting capture could not be stopped safely");
+      }
+      await audioTapManager?.stop();
+      await disposeCompanion();
+    },
     startCompanion: () => {
+      if (shuttingDown) return Promise.reject(new Error("Meeting capture is shutting down"));
       companionStarted ??= (async () => {
         await companionServer?.start();
         if (companionServer) { companionTicker = setInterval(() => companion.tick(), 1000); companionTicker.unref(); }
@@ -1009,7 +1036,7 @@ export function registerMeetingCoordinatorHandlers(
       return companionStarted;
     },
     setCompanionEnabled: (enabled) => companion.setEnabled(enabled),
-    disposeCompanion: async () => { if (companionTicker) clearInterval(companionTicker); await companionStarted?.catch(() => {}); if (companionTicker) clearInterval(companionTicker); await companionServer?.stop(); },
+    disposeCompanion,
     requestSafeStop,
     currentRecordingScope,
     linkRecordingSessionToNote,

@@ -408,16 +408,6 @@ function initializeCoreManagers(): void {
 }
 
 function registerSidecars(): void {
-  registerSidecar("meeting-capture", async () => {
-    try {
-      const coordinator = ipcHandlers?._meetingCoordinator;
-      const expected = coordinator?.currentRecordingScope();
-      if (coordinator && expected) await coordinator.requestSafeStop({ expected, reason: "quit", suppressProcessing: true });
-    } finally {
-      await audioTapManager?.stop();
-      await ipcHandlers?._meetingCoordinator?.disposeCompanion();
-    }
-  });
   if (whisperManager) {
     const manager = whisperManager;
     registerSidecar("whisper", () => manager.stopServer());
@@ -743,7 +733,8 @@ if (gotSingleInstanceLock) {
     isShuttingDown = true;
     event.preventDefault();
     performSyncTeardown();
-    shutdownAll().finally(() => app.exit(0));
+    void shutdownAll(async () => { await ipcHandlers?.shutdownMeetingWork(); })
+      .then((complete) => app.exit(complete ? 0 : 1));
   });
 }
 

@@ -50,7 +50,7 @@ function runCleanup(db: Database, storage: RecordingStorage, settings: Partial<R
       deleteAudio: () => ({ success: true }),
     },
     _retentionSettings: { ...DEFAULT_RETENTION_SETTINGS, ...settings },
-    _meetingProcessing: { cancelRecordingForDeletion: async () => {} },
+    _meetingProcessing: { cancelRecordingForDeletion: async () => {}, cancelNoteForDeletion: async () => {} },
     _meetingAudioOperations: createMeetingAudioOperationRegistry(),
     _processMeetingDeletionIntents: IPCHandlers.prototype._processMeetingDeletionIntents,
     _finishMeetingDeletion: IPCHandlers.prototype._finishMeetingDeletion,
@@ -176,9 +176,8 @@ test("note deletion waits for the active reader before removing its Note and run
     audioStorageManager: { meetingRecordings: storage },
     _meetingAudioOperations: audioOperations,
     _meetingProcessing: {
-      cancelRecordingForDeletion: async (id: unknown, includeNonAudio: unknown) => {
-        assert.equal(id, recording.id);
-        assert.equal(includeNonAudio, true);
+      cancelNoteForDeletion: async (id: unknown) => {
+        assert.equal(id, note.id);
         assert.equal(audioRead.isClosed(), true, "audio operations must settle before Note cleanup proceeds");
         readerStarted();
         await release;

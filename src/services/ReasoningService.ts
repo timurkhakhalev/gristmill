@@ -1,3 +1,4 @@
+import { refreshTinfoilCatalogAndReconcileSelections } from "../models/tinfoilModels";
 import {
   resolveInferenceProvider,
   getCloudModel,
@@ -747,18 +748,12 @@ class ReasoningService extends BaseReasoningService {
     // OpenRouter ids are never in the local registry, so the supportsThinking
     // exemption below can't apply — honor the toggle directly.
     const openrouterDisableThinking = provider === "openrouter" && config.disableThinking === true;
-    // Resolving a Tinfoil model refreshes the registry, so read model config after it.
-    const aiModel = isEnterprise
-      ? createEnterpriseChatModel(provider as EnterpriseProvider, model)
-      : await getAIModel(aiProvider, model, apiKey, baseURL, {
-          disableThinking: openrouterDisableThinking,
-        });
-
-    if (abortController.signal.aborted) {
-      yield { type: "done", finishReason: "stop" };
-      return;
+    if (provider === "tinfoil") {
+      if (!apiKey?.trim()) throw new Error("Tinfoil API key not configured");
+      // Cache-hit application is synchronous. Network repair affects later
+      // settings resolution, not this operation's model or request parameters.
+      void refreshTinfoilCatalogAndReconcileSelections().catch(() => {});
     }
-
     const apiConfig = detectEndpointDialect(baseURL) ?? getOpenAiApiConfig(model, provider);
     const modelDef = getCloudModel(model);
     const userSuppressesThinking = config.disableThinking === true && !!modelDef?.supportsThinking;
@@ -780,6 +775,17 @@ class ReasoningService extends BaseReasoningService {
         : {}),
     };
     const hasProviderOptions = Object.keys(providerOptions).length > 0;
+
+    const aiModel = isEnterprise
+      ? createEnterpriseChatModel(provider as EnterpriseProvider, model)
+      : await getAIModel(aiProvider, model, apiKey, baseURL, {
+          disableThinking: openrouterDisableThinking,
+        });
+
+    if (abortController.signal.aborted) {
+      yield { type: "done", finishReason: "stop" };
+      return;
+    }
 
     logger.logReasoning("AGENT_AI_SDK_STREAM_REQUEST", {
       model,

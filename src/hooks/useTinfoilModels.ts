@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getTinfoilModels, type CloudModelDefinition } from "../models/ModelRegistry";
-import { isTinfoilListFresh, refreshTinfoilModels } from "../models/tinfoilModels";
+import { isTinfoilListFresh, refreshTinfoilCatalogAndReconcileSelections } from "../models/tinfoilModels";
 import logger from "../utils/logger";
 
 interface UseTinfoilModelsResult {
@@ -12,8 +12,8 @@ interface UseTinfoilModelsResult {
 
 /**
  * Refreshes Tinfoil's model list into the registry and re-renders with it. Pass
- * `enabled` only while the user is looking at Tinfoil, so nobody else's settings
- * visit reaches out to it. The registry keeps its last known list when the fetch
+ * `enabled` while the shared language CloudTab is visible: its list includes
+ * Tinfoil even when another provider is selected. The registry keeps its last known list when the fetch
  * fails, so the picker stays usable offline.
  */
 export function useTinfoilModels(enabled: boolean): UseTinfoilModelsResult {
@@ -40,7 +40,7 @@ export function useTinfoilModels(enabled: boolean): UseTinfoilModelsResult {
     }
 
     try {
-      const fresh = await refreshTinfoilModels();
+      const fresh = await refreshTinfoilCatalogAndReconcileSelections();
       if (isMountedRef.current) {
         setModels(fresh);
       }

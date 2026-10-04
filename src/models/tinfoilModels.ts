@@ -105,7 +105,7 @@ async function fetchAndApply(): Promise<CloudModelDefinition[]> {
   return models;
 }
 
-/** Whether refreshTinfoilModels would hit the network rather than short-circuit. */
+/** Whether refreshTinfoilCatalogAndReconcileSelections would hit the network rather than short-circuit. */
 export function isTinfoilListFresh(): boolean {
   return isCachedListFresh(readCachedTinfoilModels());
 }
@@ -115,9 +115,12 @@ export function isTinfoilListFresh(): boolean {
  * call before every request: a list we fetched recently short-circuits without
  * touching the network, and the timestamp is persisted so a restart doesn't
  * refetch a list we pulled a minute ago. Rejects when Tinfoil can't be reached,
- * leaving the registry as it was.
+ * leaving the registry as it was. A successful nonempty network fetch also
+ * repairs saved Tinfoil selections and records notices for retired models.
+ * Repairs apply to later settings resolution, never an in-flight request.
+ * Fresh persisted cache is applied synchronously before this function returns.
  */
-export function refreshTinfoilModels(): Promise<CloudModelDefinition[]> {
+export function refreshTinfoilCatalogAndReconcileSelections(): Promise<CloudModelDefinition[]> {
   const cached = readCachedTinfoilModels();
   if (isCachedListFresh(cached)) {
     // Another window may have fetched this; make sure our registry has it too.

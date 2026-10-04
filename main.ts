@@ -1,4 +1,4 @@
-import { app, globalShortcut, BrowserWindow, dialog, ipcMain, powerMonitor } from "electron";
+import { app, globalShortcut, dialog, ipcMain, powerMonitor } from "electron";
 import fs from "fs";
 import path from "path";
 import tls from "tls";
@@ -224,9 +224,7 @@ require("dotenv").config({
   override: false,
 });
 
-function isLiveWindow(window: BrowserWindow | null): window is BrowserWindow {
-  return Boolean(window && !window.isDestroyed());
-}
+
 
 // Keep the packaged development app visibly distinct in macOS menus.
 const displayName = app.isPackaged && APP_CHANNEL === "development" ? "Gristmill Dev" : APP_NAME;
@@ -473,11 +471,9 @@ app.on("open-url", (event, url) => {
   event.preventDefault();
   if (!url.startsWith(`${OAUTH_PROTOCOL}://`)) return;
 
-  if (windowManager && isLiveWindow(windowManager.controlPanelWindow)) {
-    windowManager.controlPanelWindow.show();
-    windowManager.controlPanelWindow.focus();
-    dockManager.setControlPanelVisible(true);
-  }
+  void windowManager?.createControlPanelWindow().catch((error: Error) => {
+    debugLogger.error("Failed to open control panel", { error: error.message }, "window");
+  });
 });
 
 // Main application startup
@@ -545,9 +541,8 @@ async function startApp(): Promise<void> {
   const launchedHidden = wasLaunchedAtLoginHiddenSafe();
   const startMinimized = initializedEnvironmentManager.getStartMinimized() || launchedHidden;
   debugLogger.info("Start minimized", { enabled: startMinimized, launchedHidden });
-  if (!startMinimized) {
-    await initializedWindowManager.createControlPanelWindow();
-  }
+  // Hydrate onboarding and settings even when the app starts in the tray.
+  await initializedWindowManager.createControlPanelWindow({ show: !startMinimized });
 
   // Set up meeting mode hotkey
   const isMeetingPress = createHotkeyRepeatGate();
@@ -650,9 +645,6 @@ async function startApp(): Promise<void> {
   initializedTrayManager.setWindows(initializedWindowManager.controlPanelWindow);
   initializedTrayManager.setWindowManager(initializedWindowManager);
   if (databaseManager) initializedTrayManager.setCalendarSource(databaseManager);
-  initializedTrayManager.setCreateControlPanelCallback(() =>
-    initializedWindowManager.createControlPanelWindow()
-  );
   await initializedTrayManager.createTray();
 
 
@@ -666,20 +658,9 @@ if (gotSingleInstanceLock) {
       return;
     }
 
-    if (isLiveWindow(windowManager.controlPanelWindow)) {
-      if (windowManager.controlPanelWindow.isMinimized()) {
-        windowManager.controlPanelWindow.restore();
-      }
-      windowManager.controlPanelWindow.show();
-      windowManager.controlPanelWindow.focus();
-      dockManager.setControlPanelVisible(true);
-      if (windowManager.controlPanelWindow.webContents.isCrashed()) {
-        windowManager.loadControlPanel();
-      }
-    } else {
-      windowManager.createControlPanelWindow();
-    }
-
+    await windowManager.createControlPanelWindow().catch((error: Error) => {
+      debugLogger.error("Failed to open control panel", { error: error.message }, "window");
+    });
 
   });
 
@@ -705,26 +686,9 @@ if (gotSingleInstanceLock) {
 
 
   app.on("activate", () => {
-    // On macOS, re-create windows when dock icon is clicked
-    if (BrowserWindow.getAllWindows().length === 0) {
-      if (windowManager) {
-        windowManager.createControlPanelWindow();
-      }
-    } else {
-      // Show control panel when dock icon is clicked (most common user action)
-      if (windowManager && isLiveWindow(windowManager.controlPanelWindow)) {
-        if (windowManager.controlPanelWindow.isMinimized()) {
-          windowManager.controlPanelWindow.restore();
-        }
-        windowManager.controlPanelWindow.show();
-        windowManager.controlPanelWindow.focus();
-        dockManager.setControlPanelVisible(true);
-      } else if (windowManager) {
-        // If control panel doesn't exist, create it
-        windowManager.createControlPanelWindow();
-      }
-
-    }
+    void windowManager?.createControlPanelWindow().catch((error: Error) => {
+      debugLogger.error("Failed to open control panel", { error: error.message }, "window");
+    });
   });
 
   let isShuttingDown = false;

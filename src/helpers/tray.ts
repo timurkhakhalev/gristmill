@@ -2,7 +2,6 @@ import { Tray, Menu, nativeImage, app, BrowserWindow, type MenuItemConstructorOp
 import path from "path";
 import fs from "fs";
 import debugLogger from "./debugLogger.js";
-import dockManager from "./dockManager.js";
 import { i18nMain } from "./i18nMain.js";
 import { MenuManager } from "./menuManager.js";
 import type { WindowManager } from "./windowManager.js";
@@ -40,7 +39,6 @@ export class TrayManager {
   controlPanelWindow: BrowserWindow | null = null;
   windowManager: WindowManager | null = null;
   attachedControlPanels = new WeakSet<BrowserWindow>();
-  createControlPanelCallback: (() => Promise<void> | void) | undefined;
   meetingCaptureActive = false;
   stopMeetingCapture: (() => void) | null = null;
   calendarSource: TrayCalendarSource | null = null;
@@ -217,10 +215,6 @@ export class TrayManager {
     this.windowManager = windowManager;
   }
 
-  setCreateControlPanelCallback(callback: () => Promise<void> | void): void {
-    this.createControlPanelCallback = callback;
-  }
-
   attachControlPanelListeners(window: BrowserWindow | null): void {
     if (!window || this.attachedControlPanels.has(window)) {
       return;
@@ -276,36 +270,12 @@ export class TrayManager {
 
   async showControlPanelFromTray(): Promise<void> {
     try {
+      if (!this.windowManager) {
+        debugLogger.error("No window manager available", undefined, "tray");
+        return;
+      }
+      await this.windowManager.createControlPanelWindow();
       this.syncControlPanelWindow();
-
-      if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
-        if (this.controlPanelWindow.isMinimized()) {
-          this.controlPanelWindow.restore();
-        }
-        if (!this.controlPanelWindow.isVisible()) {
-          this.controlPanelWindow.show();
-        }
-        this.controlPanelWindow.focus();
-        dockManager.setControlPanelVisible(true);
-        if (this.controlPanelWindow.webContents.isCrashed()) {
-          this.controlPanelWindow.webContents.reload();
-        }
-        return;
-      }
-
-      if (this.createControlPanelCallback) {
-        await this.createControlPanelCallback();
-        this.syncControlPanelWindow();
-
-        if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
-          this.controlPanelWindow.show();
-          this.controlPanelWindow.focus();
-          dockManager.setControlPanelVisible(true);
-        }
-        return;
-      }
-
-      debugLogger.error("No control panel callback available", undefined, "tray");
     } catch (error) {
       debugLogger.error("Failed to open control panel", { error: (error as Error)?.message }, "tray");
     }

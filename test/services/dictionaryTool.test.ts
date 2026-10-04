@@ -67,3 +67,49 @@ test("the tool is a write tool", async () => {
   assert.equal(tool.name, "update_dictionary");
   assert.equal(tool.readOnly, false);
 });
+
+// Issue #175: a correction {add:["OpenAI"], remove:["openai"]} names the same
+// word twice; the add must be judged against the state after the removals so
+// the corrected spelling survives instead of the word disappearing.
+test("a same-word correction keeps the corrected spelling", async () => {
+  const { createUpdateDictionaryTool } = await load();
+  const { actions, calls } = harness(["openai", "Parakeat"]);
+  const tool = createUpdateDictionaryTool(actions);
+
+  const result = await tool.execute({ add: ["OpenAI"], remove: ["openai"] });
+
+  assert.deepEqual(calls, [{ add: ["OpenAI"], remove: ["openai"] }]);
+  assert.deepEqual(result, {
+    success: true,
+    data: { added: ["OpenAI"], removed: ["openai"], alreadyPresent: [], notFound: [] },
+    displayText: 'Added "OpenAI"; Removed "openai"',
+  });
+});
+
+test("true duplicates are still reported as already present", async () => {
+  const { createUpdateDictionaryTool } = await load();
+  const { actions, calls } = harness(["OpenAI"]);
+  const tool = createUpdateDictionaryTool(actions);
+
+  const result = await tool.execute({ add: ["OpenAI"] });
+
+  assert.equal(calls.length, 0);
+  assert.equal(result.success, false);
+  assert.equal(result.displayText, 'Already in the dictionary: "OpenAI"');
+});
+
+test("a mixed call applies the valid part and reports the missing removal", async () => {
+  const { createUpdateDictionaryTool } = await load();
+  const { actions, calls } = harness(["OpenWhispr"]);
+  const tool = createUpdateDictionaryTool(actions);
+
+  const result = await tool.execute({ add: ["Orukeet"], remove: ["Parakeat"] });
+
+  assert.deepEqual(calls, [{ add: ["Orukeet"], remove: [] }]);
+  assert.deepEqual(result.data, {
+    added: ["Orukeet"],
+    removed: [],
+    alreadyPresent: [],
+    notFound: ["Parakeat"],
+  });
+});

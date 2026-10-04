@@ -65,6 +65,7 @@ const RETRY_MAX_SECONDS = 300;
 const GEMINI_MAX_SECONDS = 30 * 60;
 
 export interface MeetingProcessingDatabase {
+  isMeetingNoteDeletionPending(noteId: number): boolean;
   listAllMeetingRecordings(): MeetingRecordingDto[];
   listMeetingRecordingsForNote(noteId: number): MeetingRecordingDto[];
   listMeetingProcessingRuns(recordingId: string): MeetingProcessingRunDto[];
@@ -238,6 +239,7 @@ interface ActiveRun {
   stage: MeetingProcessingRunDto["stage"];
   mode: MeetingProcessingConfig["transcription"]["mode"] | "summary-local" | "summary-remote";
   controller: AbortController;
+  settled: Promise<void>;
 }
 
 interface MeetingSummaryActionContext {
@@ -262,7 +264,7 @@ export class MeetingProcessingWorker {
   private workRequested = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
-  private readonly activeSummaryActions = new Map<string, Set<AbortController>>();
+  private readonly activeSummaryActions = new Set<{ noteId: number; controller: AbortController; settled: Promise<void> }>();
   private readonly activeTaskRuns = new Set<string>();
   private readonly backgroundSummaryActions = new Map<string, Promise<unknown>>();
   private readonly agentThreadActionTails = new Map<string, Promise<void>>();
@@ -316,13 +318,12 @@ export class MeetingProcessingWorker {
     this.processPending();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
     this.clearRetryTimer();
     this.active?.controller.abort();
-    for (const controllers of this.activeSummaryActions.values()) {
-      for (const controller of controllers) controller.abort();
-    }
+    for (const action of this.activeSummaryActions) action.controller.abort();
+    await this.waitForIdle();
   }
 
   cancelRun(runId: string, errorCode = "processing-cancelled"): boolean {
@@ -337,22 +338,35 @@ export class MeetingProcessingWorker {
     }).success;
   }
 
-  async cancelRecordingForDeletion(recordingId: string, includeNonAudio = false): Promise<void> {
-    for (const run of this.deps.database.listAllMeetingProcessingRuns().filter((item) => item.sourceRecordingIds.includes(recordingId))) {
-      const needsAudio = run.stage === "prepare" || run.stage === "asr" ||
-        (run.stage === "normalize" && run.config?.transcription.mode === "local");
-      const mustCancel = includeNonAudio || needsAudio;
-      if (this.active?.runId === run.id && mustCancel) this.active.controller.abort();
-      if ((run.status === "pending" || run.status === "running") && mustCancel) {
+  async cancelRecordingForDeletion(recordingId: string): Promise<void> {
+    const runs = this.deps.database.listAllMeetingProcessingRuns().filter((run) =>
+      run.sourceRecordingIds.includes(recordingId) && (run.stage === "prepare" || run.stage === "asr" ||
+        (run.stage === "normalize" && run.config?.transcription.mode === "local")));
+    await this.cancelRunsForDeletion(runs, "audio-deletion-requested");
+  }
+
+  async cancelNoteForDeletion(noteId: number): Promise<void> {
+    const runs = this.deps.database.listAllMeetingProcessingRuns().filter((run) =>
+      this.deps.database.getMeetingRecording(run.recordingId)?.noteId === noteId);
+    const actions = [...this.activeSummaryActions].filter((action) => action.noteId === noteId);
+    for (const action of actions) action.controller.abort();
+    await Promise.all([
+      this.cancelRunsForDeletion(runs, "note-deletion-requested"),
+      ...actions.map((action) => action.settled),
+    ]);
+  }
+
+  private async cancelRunsForDeletion(runs: MeetingProcessingRunDto[], errorCode: string): Promise<void> {
+    const active = this.active && runs.some((run) => run.id === this.active?.runId) ? this.active : null;
+    active?.controller.abort();
+    for (const run of runs) {
+      if (run.status === "pending" || run.status === "running") {
         this.deps.database.setMeetingProcessingRunState(run.id, {
-          stage: run.stage,
-          status: "cancelled",
-          errorCode: includeNonAudio ? "note-deletion-requested" : "audio-deletion-requested",
-          retryAt: null,
+          stage: run.stage, status: "cancelled", errorCode, retryAt: null,
         });
       }
     }
-    await this.work;
+    await active?.settled;
   }
 
   setSpeakerCorrection(input: z.infer<typeof meetingProcessingSpeakerCorrectionRequestSchema>): boolean {
@@ -387,12 +401,28 @@ export class MeetingProcessingWorker {
   }
 
   async runSummaryAction(input: { runId: string; action: "tasks" | "recap" }): Promise<{ success: boolean; error?: string }> {
-    const operation = () => input.action === "tasks"
-      ? this.runPrioritizedTasks(input.runId)
-      : this.runRecap(input.runId);
     const run = this.deps.database.getMeetingProcessingRun(input.runId);
+    const recording = run && this.deps.database.getMeetingRecording(run.recordingId);
+    if (this.stopped) return { success: false, error: "meeting-processing-stopped" };
+    if (!recording || this.deps.database.isMeetingNoteDeletionPending(recording.noteId)) {
+      return { success: false, error: "meeting-summary-not-selected" };
+    }
+    const controller = new AbortController();
+    const operation = () => {
+      controller.signal.throwIfAborted();
+      return input.action === "tasks"
+        ? this.runPrioritizedTasks(input.runId, controller.signal)
+        : this.runRecap(input.runId, controller.signal);
+    };
     const threadKey = run?.config?.summary?.reasoningMode === "agent" ? run.id : null;
-    return threadKey ? this.withAgentThreadAction(threadKey, operation) : operation();
+    const work = (threadKey ? this.withAgentThreadAction(threadKey, operation) : Promise.resolve().then(operation))
+      .catch((error: unknown) => ({ success: false, error: actionErrorCode(error) }));
+    const action = {
+      noteId: recording.noteId, controller,
+      settled: work.then(() => {}).finally(() => { this.activeSummaryActions.delete(action); }),
+    };
+    this.activeSummaryActions.add(action);
+    return work;
   }
 
   retry(runId: string): MeetingProcessingResultDto | null {
@@ -591,8 +621,8 @@ export class MeetingProcessingWorker {
   }
 
   async waitForIdle(): Promise<void> {
-    while (this.work || this.backgroundSummaryActions.size > 0) {
-      const pending = [this.work, ...this.backgroundSummaryActions.values()].filter(
+    while (this.work || this.activeSummaryActions.size > 0 || this.backgroundSummaryActions.size > 0) {
+      const pending = [this.work, ...[...this.activeSummaryActions].map((action) => action.settled), ...this.backgroundSummaryActions.values()].filter(
         (work): work is Promise<unknown> => work !== null
       );
       await Promise.all(pending);
@@ -636,7 +666,9 @@ export class MeetingProcessingWorker {
     const mode = run.stage === "summary"
       ? config?.summary?.reasoningMode === "local" ? "summary-local" : "summary-remote"
       : config?.transcription.mode ?? "providers";
-    const active: ActiveRun = { runId, stage: run.stage, mode, controller: new AbortController() };
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => { settle = resolve; });
+    const active: ActiveRun = { runId, stage: run.stage, mode, controller: new AbortController(), settled };
     this.active = active;
     try {
       if (run.stage === "prepare") {
@@ -651,13 +683,17 @@ export class MeetingProcessingWorker {
     } catch (error) {
       this.handleFailure(runId, run.stage, error);
     } finally {
-      if (this.active === active) this.active = null;
-      const current = this.deps.database.getMeetingProcessingRun(runId);
-      if (current && (run.stage === "normalize" || run.stage === "summary" || current.status !== "pending" || this.isCapturing())) {
-        try { this.deps.storage.removeDerivedAudio(recording.id, run.id); }
-        catch (error) { this.handleFailure(runId, run.stage, error); }
+      try {
+        const current = this.deps.database.getMeetingProcessingRun(runId);
+        if (current && (run.stage === "normalize" || run.stage === "summary" || current.status !== "pending" || this.isCapturing())) {
+          try { this.deps.storage.removeDerivedAudio(recording.id, run.id); }
+          catch (error) { this.handleFailure(runId, run.stage, error); }
+        }
+        if (current) this.notify(current);
+      } finally {
+        if (this.active === active) this.active = null;
+        settle();
       }
-      if (current) this.notify(current);
     }
   }
 
@@ -677,6 +713,7 @@ export class MeetingProcessingWorker {
     const layouts: MeetingAudioLayout[] = provider === "deepgram" ? ["stereo"] : provider ? ["mic", "system"] : ["mono"];
     const audios: PreparedMeetingAudio[] = [];
     for (const layout of layouts) {
+      signal.throwIfAborted();
       audios.push(await (this.deps.mixAudio
         ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout, intentionalEmptySources)
         : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout, intentionalEmptySources })));
@@ -698,6 +735,7 @@ export class MeetingProcessingWorker {
   }
 
   private async ensureAudio(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, layout: MeetingAudioLayout, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
     const filePath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layout);
     try {
       if ((this.deps.fileSize ?? ((p) => fs.statSync(p).size))(filePath) > 0) return;
@@ -709,6 +747,7 @@ export class MeetingProcessingWorker {
     await (this.deps.mixAudio
       ? this.deps.mixAudio(timeline, run.id, epochs, signal, layout, intentionalEmptySources)
       : prepareMeetingAudio(this.deps.storage, timeline, run.id, epochs, { signal, deps: this.deps.mixerDeps, layout, intentionalEmptySources }));
+    signal.throwIfAborted();
   }
 
   private async transcribe(run: MeetingProcessingRunDto, recording: MeetingRecordingDto, signal: AbortSignal, endOfMeetingGate: boolean): Promise<void> {
@@ -729,6 +768,7 @@ export class MeetingProcessingWorker {
     const intentionalEmptySources = this.intentionalEmptySources(timeline, epochs, intentionalIntervals);
     const layouts: MeetingAudioLayout[] = config.mode === "local" ? ["mono"] : config.provider === "deepgram" ? ["stereo"] : ["mic", "system"];
     for (const layout of layouts) await this.ensureAudio(run, recording, layout, signal);
+    signal.throwIfAborted();
     const audioPath = this.deps.storage.getDerivedAudioPath(recording.id, run.id, layouts[layouts.length - 1]);
     const fileSize = (this.deps.fileSize ?? ((filePath) => fs.statSync(filePath).size))(audioPath);
     const requestId = `meeting-${run.id}`;
@@ -750,6 +790,7 @@ export class MeetingProcessingWorker {
           result.error || result.message
         );
       }
+      signal.throwIfAborted();
       this.saveRawResponse(run.id, result);
       this.setState(run.id, "normalize", "pending", null, null);
       return;
@@ -780,7 +821,7 @@ export class MeetingProcessingWorker {
     }
     let result: RemoteTranscriptionResult;
     if (provider === "deepgram") {
-      result = await this.deps.transcribeRemote(request, async (response) => this.saveRawResponse(run.id, response), signal);
+      result = await this.deps.transcribeRemote(request, async (response) => { signal.throwIfAborted(); this.saveRawResponse(run.id, response); }, signal);
     } else {
       // Each completed source is durable before normalization; retries only pay for the missing source.
       const outcomes = await Promise.allSettled((["mic", "system"] as const).map(async (source) => {
@@ -818,6 +859,7 @@ export class MeetingProcessingWorker {
       });
       result = { success: true };
     }
+    signal.throwIfAborted();
     const after = this.deps.database.getMeetingProcessingRun(run.id);
     if (!after || after.status !== "running") return;
     if (after.hasRawProviderResponse) {
@@ -962,6 +1004,9 @@ export class MeetingProcessingWorker {
     }
     if (this.isCapturing()) return this.pause(run, "normalize");
     const config = this.requireConfig(run);
+    if (this.deps.database.isMeetingNoteDeletionPending(recording.noteId)) {
+      throw new MeetingProcessingFailure("note-deletion-requested", "cancelled");
+    }
     const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
     if (!sourceRunId) throw new MeetingProcessingFailure("summary-transcript-missing", "blocked");
     if (!this.isSelectedRun(run)) {
@@ -1472,42 +1517,39 @@ export class MeetingProcessingWorker {
     return this.deps.database.getMeetingProcessingRun(run.sourceRunId)?.config?.summary?.instruction ?? null;
   }
 
-  private async runPrioritizedTasks(runId: string): Promise<{ success: boolean; error?: string }> {
+  private async runPrioritizedTasks(runId: string, signal: AbortSignal): Promise<{ success: boolean; error?: string }> {
     if (this.activeTaskRuns.has(runId)) return { success: true };
     this.activeTaskRuns.add(runId);
     let context: MeetingSummaryActionContext | null = null;
     try {
       context = this.getSummaryActionContext(runId);
       if (["complete", "zero"].includes(context.artifact.taskStatus ?? "")) return { success: true };
-      await this.writeTaskStatus(context, "running", undefined);
+      await this.writeTaskStatus(context, "running", undefined, signal);
+      signal.throwIfAborted();
       context = this.getSummaryActionContext(runId);
 
-      const controller = this.beginSummaryAction(runId);
-      try {
-        const input = formatMeetingMaterial({
-          meetingTitle: context.snapshot.meetingTitle,
-          manualNotes: context.snapshot.manualNotes,
-          summary: context.markdown,
-          transcriptSegments: this.promptSegments(context.snapshot, context.transcript),
-          transcriptSourceId: context.snapshot.sourceRunId,
-        });
-        const conversation = await this.createActionConversation(context, MEETING_TASKS_INSTRUCTION, controller.signal);
-        const response = await conversation.send(input);
-        if (response.refusal || looksLikeRefusal(response.text)) throw new MeetingProcessingFailure("meeting-task-refused", "failed");
-        const validated = validateMeetingTasks(response.text);
-        if (!validated.success) throw new MeetingProcessingFailure("meeting-task-markdown-invalid", "failed");
-        const tasks = validated.value;
-        const isEmpty = tasks.length === 0;
-        await this.applySummarySection(
-          context,
-          "Action Items",
-          (markdown) => replaceMeetingTasks(markdown, tasks),
-          isEmpty ? "zero" : "complete"
-        );
-        return { success: true };
-      } finally {
-        this.endSummaryAction(runId, controller);
-      }
+      const input = formatMeetingMaterial({
+        meetingTitle: context.snapshot.meetingTitle,
+        manualNotes: context.snapshot.manualNotes,
+        summary: context.markdown,
+        transcriptSegments: this.promptSegments(context.snapshot, context.transcript),
+        transcriptSourceId: context.snapshot.sourceRunId,
+      });
+      const conversation = await this.createActionConversation(context, MEETING_TASKS_INSTRUCTION, signal);
+      const response = await conversation.send(input);
+      if (response.refusal || looksLikeRefusal(response.text)) throw new MeetingProcessingFailure("meeting-task-refused", "failed");
+      const validated = validateMeetingTasks(response.text);
+      if (!validated.success) throw new MeetingProcessingFailure("meeting-task-markdown-invalid", "failed");
+      const tasks = validated.value;
+      const isEmpty = tasks.length === 0;
+      await this.applySummarySection(
+        context,
+        "Action Items",
+        (markdown) => replaceMeetingTasks(markdown, tasks),
+        signal,
+        isEmpty ? "zero" : "complete"
+      );
+      return { success: true };
     } catch (error) {
       const code = actionErrorCode(error);
       if (context) {
@@ -1526,33 +1568,28 @@ export class MeetingProcessingWorker {
     }
   }
 
-  private async runRecap(runId: string): Promise<{ success: boolean; error?: string }> {
+  private async runRecap(runId: string, signal: AbortSignal): Promise<{ success: boolean; error?: string }> {
     try {
       const context = this.getSummaryActionContext(runId);
       const prompt = this.deps.getActionPrompt?.(RECAP_KEY);
       if (!prompt) throw new MeetingProcessingFailure("meeting-recap-action-missing", "blocked");
-      const controller = this.beginSummaryAction(runId);
-      try {
-        const input = formatMeetingMaterial({
-          meetingTitle: context.snapshot.meetingTitle,
-          manualNotes: context.snapshot.manualNotes,
-          summary: context.markdown,
-          transcriptSegments: this.promptSegments(context.snapshot, context.transcript),
-          transcriptSourceId: context.snapshot.sourceRunId,
-        });
-        const conversation = await this.createActionConversation(context, prompt, controller.signal);
-        const recap = await requestMeetingJson<MeetingRecap>({
-          conversation,
-          prompt: input,
-          refusalCode: "meeting-recap-refused",
-          invalidCode: "meeting-recap-json-invalid",
-          validate: validateMeetingRecap,
-        });
-        await this.applySummarySection(context, "Recap", (markdown) => replaceMeetingRecap(markdown, recap));
-        return { success: true };
-      } finally {
-        this.endSummaryAction(runId, controller);
-      }
+      const input = formatMeetingMaterial({
+        meetingTitle: context.snapshot.meetingTitle,
+        manualNotes: context.snapshot.manualNotes,
+        summary: context.markdown,
+        transcriptSegments: this.promptSegments(context.snapshot, context.transcript),
+        transcriptSourceId: context.snapshot.sourceRunId,
+      });
+      const conversation = await this.createActionConversation(context, prompt, signal);
+      const recap = await requestMeetingJson<MeetingRecap>({
+        conversation,
+        prompt: input,
+        refusalCode: "meeting-recap-refused",
+        invalidCode: "meeting-recap-json-invalid",
+        validate: validateMeetingRecap,
+      });
+      await this.applySummarySection(context, "Recap", (markdown) => replaceMeetingRecap(markdown, recap), signal);
+      return { success: true };
     } catch (error) {
       return { success: false, error: actionErrorCode(error) };
     }
@@ -1563,6 +1600,9 @@ export class MeetingProcessingWorker {
     const recording = run ? this.deps.database.getMeetingRecording(run.recordingId) : null;
     if (!run || !recording || recording.currentRunId !== run.id || run.status !== "complete" || !run.hasSummary) {
       throw new MeetingProcessingFailure("meeting-summary-not-selected", "blocked");
+    }
+    if (this.deps.database.isMeetingNoteDeletionPending(recording.noteId)) {
+      throw new MeetingProcessingFailure("note-deletion-requested", "cancelled");
     }
     const sourceRunId = run.kind === "summary" ? run.sourceRunId : run.id;
     if (!sourceRunId) throw new MeetingProcessingFailure("meeting-summary-source-missing", "blocked");
@@ -1626,21 +1666,33 @@ export class MeetingProcessingWorker {
     if (!this.deps.createActionConversation) {
       throw new MeetingProcessingFailure("meeting-summary-action-unavailable", "blocked");
     }
-    return this.deps.createActionConversation(
+    signal.throwIfAborted();
+    const conversation = await this.deps.createActionConversation(
       { ...context.snapshot.promptModel, instruction },
       instruction,
       context.run,
       signal
     );
+    signal.throwIfAborted();
+    return {
+      send: async (prompt) => {
+        signal.throwIfAborted();
+        const response = await conversation.send(prompt);
+        signal.throwIfAborted();
+        return response;
+      },
+    };
   }
 
   private async applySummarySection(
     context: MeetingSummaryActionContext,
     heading: "Action Items" | "Recap",
     mutate: (markdown: string) => { success: true; markdown: string } | { success: false; error: string },
+    signal: AbortSignal,
     taskStatus?: "complete" | "zero"
   ): Promise<void> {
     await this.withSummaryMutation(context.recording.noteId, () => {
+      signal.throwIfAborted();
       const latest = this.getSummaryActionContext(context.run.id);
       const expectedSection = heading === "Action Items" ? context.actionItemsSection : context.recapSection;
       const latestSection = heading === "Action Items" ? latest.actionItemsSection : latest.recapSection;
@@ -1681,9 +1733,12 @@ export class MeetingProcessingWorker {
   private async writeTaskStatus(
     context: MeetingSummaryActionContext,
     status: NonNullable<MeetingSummaryArtifact["taskStatus"]>,
-    errorCode: string | undefined
+    errorCode: string | undefined,
+    signal?: AbortSignal
   ): Promise<void> {
     await this.withSummaryMutation(context.recording.noteId, () => {
+      signal?.throwIfAborted();
+      if (this.deps.database.isMeetingNoteDeletionPending(context.recording.noteId)) return;
       const latestRun = this.deps.database.getMeetingProcessingRun(context.run.id);
       const recording = latestRun
         ? this.deps.database.getMeetingRecording(latestRun.recordingId)
@@ -1722,20 +1777,6 @@ export class MeetingProcessingWorker {
       release();
       if (this.agentThreadActionTails.get(threadKey) === current) this.agentThreadActionTails.delete(threadKey);
     });
-  }
-
-  private beginSummaryAction(runId: string): AbortController {
-    const controller = new AbortController();
-    const controllers = this.activeSummaryActions.get(runId) ?? new Set<AbortController>();
-    controllers.add(controller);
-    this.activeSummaryActions.set(runId, controllers);
-    return controller;
-  }
-
-  private endSummaryAction(runId: string, controller: AbortController): void {
-    const controllers = this.activeSummaryActions.get(runId);
-    controllers?.delete(controller);
-    if (controllers?.size === 0) this.activeSummaryActions.delete(runId);
   }
 
   private recoverInterruptedSummaryTasks(): void {
@@ -2083,6 +2124,7 @@ function errorCodeOf(value: unknown): string {
 }
 
 function actionErrorCode(value: unknown): string {
+  if (value instanceof Error && value.name === "AbortError") return "meeting-summary-task-interrupted";
   const code = value && typeof value === "object" && "code" in value && typeof value.code === "string"
     ? value.code
     : "meeting-summary-action-failed";

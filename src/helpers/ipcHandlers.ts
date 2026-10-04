@@ -551,6 +551,16 @@ export class IPCHandlers {
     }
   }
 
+  async shutdownMeetingWork(): Promise<void> {
+    // Each owner closes admission synchronously before its first await.
+    const results = await Promise.allSettled([
+      this._meetingProcessing?.stop(),
+      this._meetingAudioOperations.stop(),
+      this._meetingCoordinator?.shutdown(),
+    ]);
+    for (const result of results) if (result.status === "rejected") throw result.reason;
+  }
+
   async _finishMeetingDeletion(intent: import("../contracts/meetingRecording.js").MeetingDeletionIntentDto): Promise<boolean> {
     try {
       if (intent.kind === "audio") {
@@ -573,9 +583,7 @@ export class IPCHandlers {
 
       const { recordingIds, runIds } = this.databaseManager.getMeetingNoteStorageIds(intent.noteId);
       await Promise.all(recordingIds.map((recordingId) => this._meetingAudioOperations.cancelAndWait(recordingId)));
-      for (const recordingId of recordingIds) {
-        await this._meetingProcessing?.cancelRecordingForDeletion(recordingId, true);
-      }
+      await this._meetingProcessing?.cancelNoteForDeletion(intent.noteId);
       this.audioStorageManager.meetingRecordings.removeNoteFiles(recordingIds, runIds);
       if (!this.databaseManager.completeMeetingNoteDeletion(intent.id).success) {
         throw new Error("Meeting note deletion state was not completed");

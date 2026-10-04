@@ -45,6 +45,8 @@ process.env.NODE_ENV = "test";
 
 const { NoteWriteService } = require("../../src/helpers/noteWriteService.ts");
 const DatabaseManager = require("../../src/helpers/database.ts");
+const CliBridge = require("../../src/helpers/cliBridge.ts");
+const { EventEmitter } = require("node:events");
 
 test.after(() => {
   Module._load = originalLoad;
@@ -86,12 +88,11 @@ async function createFixture(t: import("node:test").TestContext, mirrorError?: E
   activeSent = sent;
   handlers.clear();
 
-  const effects: { mirrorWrites: number[]; mirrorDeletes: number[]; autoLabels: number[]; speakerRefreshes: [number, number][] } = { mirrorWrites: [], mirrorDeletes: [], autoLabels: [], speakerRefreshes: [] };
+  const effects: { mirrorWrites: number[]; mirrorDeletes: number[]; speakerRefreshes: [number, number][] } = { mirrorWrites: [], mirrorDeletes: [], speakerRefreshes: [] };
   const deps: NotesHandlerDeps = {
     noteWrites: new NoteWriteService({
       database: db,
       mirrorWrite: (note: import("../../src/contracts/notes.ts").NoteItem) => { effects.mirrorWrites.push(note.id); if (mirrorError) throw mirrorError; },
-      tryAutoLabelOneOnOne: (id: number) => { effects.autoLabels.push(id); },
       refreshMeetingSpeakerConfigFromNote: (id: number, note: import("../../src/contracts/notes.ts").NoteItem) => { effects.speakerRefreshes.push([id, note.id]); },
     }),
     getNote: (id) => db.getNote(id),
@@ -125,7 +126,22 @@ async function createFixture(t: import("node:test").TestContext, mirrorError?: E
 
   const call = async (channel: string, ...args: unknown[]) => handlers.get(channel)(null, ...args);
   const flush = () => new Promise((resolve) => setImmediate(resolve));
-  return { db, call, sent, effects, deleteCalls, flush, noteWrites: deps.noteWrites };
+  const bridge = new CliBridge({ databaseManager: db, noteWrites: deps.noteWrites }, userDataDir);
+  bridge.token = "test-token";
+  bridge.port = 8200;
+  const callBb = async (method: string, url: string, body: unknown) => {
+    const request = new EventEmitter();
+    Object.assign(request, { method, url, headers: { authorization: "Bearer test-token" }, socket: { remoteAddress: "127.0.0.1" } });
+    const response = {
+      statusCode: 0, payload: "",
+      writeHead(status: number) { this.statusCode = status; },
+      end(payload: string) { this.payload = payload; },
+    };
+    setImmediate(() => { request.emit("data", Buffer.from(JSON.stringify(body))); request.emit("end"); });
+    await bridge._handleRequest(request, response);
+    return { status: response.statusCode, body: JSON.parse(response.payload) };
+  };
+  return { db, call, callBb, sent, effects, deleteCalls, flush, noteWrites: deps.noteWrites };
 }
 
 test("save → get → update → search/list → delete round-trips through real handlers", async (t: import("node:test").TestContext) => {
@@ -207,7 +223,7 @@ test("missing note and failed deletes resolve without events or mirror calls", a
   assert.equal((effects.mirrorDeletes || []).length, 0);
 });
 
-test("participants update triggers auto-label then speaker refresh, after mirror", async (t: import("node:test").TestContext) => {
+test("participants update refreshes speaker configuration after mirror without naming voices", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
   if (!ctx) return;
   const { db, flush: flushCtx } = ctx;
@@ -225,7 +241,6 @@ test("participants update triggers auto-label then speaker refresh, after mirror
       noteWrites: new NoteWriteService({
         database: db1,
         mirrorWrite: (n: import("../../src/contracts/notes.ts").NoteItem) => order.push(["mirror", n.id]),
-        tryAutoLabelOneOnOne: (id: number) => order.push(["label", id]),
         refreshMeetingSpeakerConfigFromNote: (id: number, n: import("../../src/contracts/notes.ts").NoteItem) => order.push(["refresh", id, n.id]),
       }),
       getNote: (id) => db1.getNote(id),
@@ -249,14 +264,13 @@ test("participants update triggers auto-label then speaker refresh, after mirror
   const emptyArray = await traceCall("db-update-note", note.id, { participants: "[]" });
   assert.equal(emptyArray.success, true);
   const kinds = order.slice(1).map(([kind]) => kind);
-  assert.deepEqual(kinds, ["mirror", "label", "refresh"]);
-  assert.equal(order[order.length - 2][0], "label");
+  assert.deepEqual(kinds, ["mirror", "refresh"]);
   assert.equal(order[order.length - 1][0], "refresh");
 
   const nullParticipants = await traceCall("db-update-note", note.id, { participants: null });
   assert.equal(nullParticipants.success, true);
-  assert.equal(order.length, 5, "null only adds the mirror write");
-  assert.equal(order[4][0], "mirror");
+  assert.equal(order.length, 4, "null only adds the mirror write");
+  assert.equal(order[3][0], "mirror");
   await flushCtx();
 });
 
@@ -334,7 +348,6 @@ test("mirror failure preserves durable edits, events and participant callbacks",
   const updated = await ctx.call("db-update-note", saved.note.id, { title: "Saved", participants: "[]" });
   assert.equal(updated.success, true);
   assert.equal(ctx.db.getNote(saved.note.id).title, "Saved");
-  assert.deepEqual(ctx.effects.autoLabels, [saved.note.id]);
   assert.deepEqual(ctx.effects.speakerRefreshes, [[saved.note.id, saved.note.id]]);
   await ctx.flush();
   assert.deepEqual(ctx.sent.map((event) => event.channel), ["note-added", "note-updated"]);
@@ -347,4 +360,58 @@ test("a thrown database write publishes no event or mirror", async (t: import("n
   await ctx.flush();
   assert.deepEqual(ctx.sent, []);
   assert.deepEqual(ctx.effects.mirrorWrites, []);
+});
+
+// Both adapters must use the real owner. Participant edits must not name
+// voices by changing Note.transcript outside processing-run corrections.
+test("IPC and BB share durable blank Note, membership, event and participant-edit effects", async (t: import("node:test").TestContext) => {
+  const ctx = await createFixture(t);
+  if (!ctx) return;
+  const spaceId = ctx.db.getPrivateSpaceId();
+  const folder = ctx.db.createFolder("Meetings", spaceId).folder;
+  const transcript = JSON.stringify([{ speaker: "system:0", text: "hello", speakerName: "Manual" }]);
+  const ui = await ctx.call("db-save-note", "", "", "meeting", null, null, folder.id, spaceId);
+  const bb = await ctx.callBb("POST", "/v1/notes/create", { title: "", content: "", note_type: "meeting", folder_id: folder.id });
+  assert.equal(bb.status, 201);
+  const ids = [ui.note.id, bb.body.data.id];
+  for (const id of ids) ctx.db.saveNoteSpeakerEmbeddings(id, [{ speakerId: "system:0", embedding: Buffer.from(new Float32Array([1, 0, 0]).buffer) }]);
+  const edits = { participants: JSON.stringify([{ displayName: "Anna" }]), transcript, folder_ids: [], icon: "star" };
+  assert.equal((await ctx.call("db-update-note", ids[0], edits)).success, true);
+  assert.equal((await ctx.callBb("PATCH", `/v1/notes/${ids[1]}`, edits)).status, 200);
+  await ctx.flush();
+  for (const id of ids) {
+    const stored: import("../../src/contracts/notes.ts").NoteItem = ctx.db.getNote(id);
+    assert.equal(stored.title, "");
+    assert.equal(stored.content, "");
+    assert.deepEqual(stored.folder_ids, []);
+    assert.equal(stored.space_id, spaceId);
+    assert.equal(stored.transcript, transcript);
+    assert.equal(stored.icon, "star");
+    assert.deepEqual(ctx.db.getSpeakerMappings(id), []);
+    assert.deepEqual(ctx.sent.filter((event) => event.data.id === id).map((event) => event.channel), ["note-added", "note-updated"]);
+  }
+  assert.deepEqual(ctx.effects.mirrorWrites, [ids[0], ids[1], ids[0], ids[1]]);
+  assert.deepEqual(ctx.effects.speakerRefreshes, ids.map((id) => [id, id]));
+  assert.deepEqual(ctx.db.getSpeakerProfiles(), []);
+});
+
+test("BB mirror failure keeps durable save; invalid and failed writes publish nothing", async (t: import("node:test").TestContext) => {
+  const ctx = await createFixture(t, new Error("Mirror folder unavailable"));
+  if (!ctx) return;
+  const saved = await ctx.callBb("POST", "/v1/notes/create", { title: "Saved", content: "Body" });
+  assert.equal(saved.status, 201);
+  assert.equal(ctx.db.getNote(saved.body.data.id).content, "Body");
+  await ctx.flush();
+  const invalidCreate = await ctx.callBb("POST", "/v1/notes/create", { content: 42 });
+  assert.equal(invalidCreate.status, 400);
+  const invalidUpdate = await ctx.callBb("PATCH", `/v1/notes/${saved.body.data.id}`, { title: 42 });
+  assert.equal(invalidUpdate.status, 400);
+  const missing = await ctx.callBb("PATCH", "/v1/notes/987654", { title: "Missing", participants: "[]" });
+  assert.equal(missing.status, 500);
+  const noOp = await ctx.callBb("PATCH", `/v1/notes/${saved.body.data.id}`, { unknown: true });
+  assert.equal(noOp.status, 500);
+  await ctx.flush();
+  assert.deepEqual(ctx.sent.map((event) => event.channel), ["note-added"]);
+  assert.deepEqual(ctx.effects.mirrorWrites, [saved.body.data.id]);
+  assert.deepEqual(ctx.effects.speakerRefreshes, []);
 });

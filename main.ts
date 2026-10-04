@@ -545,9 +545,8 @@ async function startApp(): Promise<void> {
   const launchedHidden = wasLaunchedAtLoginHiddenSafe();
   const startMinimized = initializedEnvironmentManager.getStartMinimized() || launchedHidden;
   debugLogger.info("Start minimized", { enabled: startMinimized, launchedHidden });
-  if (!startMinimized) {
-    await initializedWindowManager.createControlPanelWindow();
-  }
+  // Hydrate onboarding and settings even when the app starts in the tray.
+  await initializedWindowManager.createControlPanelWindow({ show: !startMinimized });
 
   // Set up meeting mode hotkey
   const isMeetingPress = createHotkeyRepeatGate();

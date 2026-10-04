@@ -31,10 +31,15 @@ class FakeBrowserWindow extends EventEmitter {
     this.messages = [];
     this.loadUrlCount = 0;
     this.showCount = 0;
+    this.visible = false;
+    this.bounds = { x: 20, y: 20, width: 1200, height: 800 };
+    this.minimumSize = [0, 0];
     this.ignoreMouseEvents = [];
-    this.webContents = {
+    this.webContents = Object.assign(new EventEmitter(), {
       send: (channel: string, payload: unknown) => this.messages.push({ channel, payload }),
-    };
+      setWindowOpenHandler() {},
+      isCrashed: () => false,
+    });
     createdWindows.push(this);
   }
 
@@ -63,16 +68,38 @@ class FakeBrowserWindow extends EventEmitter {
     return this.destroyed;
   }
 
-  showInactive() {
-    this.showCount += 1;
-  }
+  showInactive() { this.show(); }
 
   show() {
     this.showCount += 1;
+    this.visible = true;
   }
+  hide() { this.visible = false; }
+  focus() {}
+  isMinimized() { return false; }
+  restore() { this.visible = true; }
+  setTitle() {}
+  setMinimumSize(width: number, height: number) { this.minimumSize = [width, height]; }
+  getMinimumSize() { return this.minimumSize; }
+  getBounds() { return this.bounds; }
+  getContentBounds() { return this.bounds; }
+  setContentBounds(bounds: unknown) { this.bounds = bounds; }
+  isFullScreen() { return false; }
+  isMaximized() { return false; }
+  setResizable() {}
+  setMinimizable() {}
+  setMaximizable() {}
+  setClosable() {}
+  setFullScreenable() {}
+  setWindowButtonVisibility() {}
+  isResizable() { return true; }
+  isMinimizable() { return true; }
+  isMaximizable() { return true; }
+  isClosable() { return true; }
+  isFullScreenable() { return true; }
 
   isVisible() {
-    return this.showCount > 0 && !this.destroyed;
+    return this.visible && !this.destroyed;
   }
 }
 
@@ -113,7 +140,7 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
   if (request === "electron") {
     return {
       app: appStub,
-      screen: { getPrimaryDisplay: () => ({}), on: () => undefined },
+      screen: { getPrimaryDisplay: () => ({}), getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }), on: () => undefined },
       BrowserWindow: FakeBrowserWindow,
       shell: {},
       dialog: dialogStub,
@@ -141,7 +168,7 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
       },
     };
   }
-  if (request === "./dockManager" || request === "./dockManager.js") return {};
+  if (request === "./dockManager" || request === "./dockManager.js") return { setControlPanelVisible() {} };
   if (request === "./i18nMain" || request === "./i18nMain.js") {
     return { i18nMain: { t: (key: string) => key } };
   }
@@ -151,6 +178,7 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
     return {
       MAIN_WINDOW_CONFIG: {},
       CONTROL_PANEL_CONFIG: { width: 1200, height: 800 },
+      CONTROL_PANEL_MIN_SIZE: { width: 1000, height: 700 },
       ONBOARDING_WINDOW_SIZES: {
         COMPACT: { width: 480, height: 624 },
         EXPANDED: { width: 1000, height: 740 },
@@ -807,4 +835,63 @@ test("notification preferences update individually and derive the detection gate
   const before = { ...manager.notificationPrefs };
   manager.setNotificationPreferences({});
   assert.deepEqual(manager.notificationPrefs, before);
+});
+
+for (const completed of [false, true]) {
+  test(`tray startup loads a hidden renderer and ${completed ? "releases" : "retains"} the onboarding gate`, async (t) => {
+    const timers = installFakeTimers();
+    t.after(() => timers.restore());
+    const manager = new WindowManager();
+    t.after(() => manager._clearControlPanelVisibilityTimer());
+    let loads = 0;
+    manager.loadControlPanel = async () => {
+      loads++;
+      manager.controlPanelWindow.webContents.emit("did-finish-load");
+    };
+    assert.equal(manager.isMeetingInputAllowed(), false);
+    await manager.createControlPanelWindow({ show: false });
+    const panel = manager.controlPanelWindow;
+    assert.equal(loads, 1, "tray launch still loads the renderer");
+    assert.equal(panel.options.show, false);
+    manager.setOnboardingActive(!completed);
+    manager.setOnboardingWindowMode(completed ? "restore" : "compact");
+    assert.equal(manager.isMeetingInputAllowed(), completed);
+    timers.runAll();
+    assert.equal(panel.showCount, 0, "mode and backstop do not show the tray-started window");
+    assert.equal(panel.isVisible(), false);
+    manager.setNotificationPreferences({ notificationsEnabled: false });
+    assert.equal(manager.notificationsGateDetection(), false);
+    if (!completed) {
+      assert.equal(await manager.showMeetingNotification({ kind: "detection", id: "tray-gated" }), false);
+    }
+    await manager.createControlPanelWindow(); // Explicit tray/open action.
+    assert.equal(manager.controlPanelWindow, panel);
+    assert.equal(loads, 1);
+    assert.equal(panel.isVisible(), true);
+    manager.hideControlPanelToTray();
+    manager.setOnboardingWindowMode("restore");
+    assert.equal(panel.isVisible(), false, "a later restore honors the user's explicit hide");
+    panel.webContents.emit("did-finish-load");
+    assert.equal(manager.isMeetingInputAllowed(), false, "reload waits for a new handshake");
+    manager.setOnboardingActive(!completed);
+    manager.setOnboardingWindowMode(completed ? "restore" : "compact");
+    assert.equal(panel.isVisible(), false);
+    assert.equal(manager.isMeetingInputAllowed(), completed);
+  });
+}
+
+test("visible startup keeps the load backstop and explicit hide cancels it", async (t) => {
+  const timers = installFakeTimers();
+  t.after(() => timers.restore());
+  const manager = new WindowManager();
+  t.after(() => manager._clearControlPanelVisibilityTimer());
+  manager.loadControlPanel = async () => {};
+  await manager.createControlPanelWindow();
+  assert.equal(manager.controlPanelWindow.showCount, 0);
+  timers.runDelay(10000);
+  assert.equal(manager.controlPanelWindow.isVisible(), true);
+  manager.hideControlPanelToTray();
+  manager.setOnboardingWindowMode("restore");
+  timers.runAll();
+  assert.equal(manager.controlPanelWindow.isVisible(), false);
 });

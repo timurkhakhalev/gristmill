@@ -337,7 +337,7 @@ export class WindowManager {
       if (!show) return;
       this._controlPanelShowRequested = true;
       this._clearControlPanelVisibilityTimer();
-      if (this._controlPanelLoadFailed) await this.loadControlPanel();
+      if (this._controlPanelLoadFailed || this.controlPanelWindow.webContents.isCrashed()) await this.loadControlPanel();
       if (this.controlPanelWindow.isMinimized()) {
         this.controlPanelWindow.restore();
       }

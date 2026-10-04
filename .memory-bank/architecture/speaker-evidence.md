@@ -14,6 +14,8 @@ Platform evidence is a hint. It is never proof of identity.
 - If the evidence is missing or contradictory, the transcript alias does not change.
 - Names include the specific platform in Results, the Note transcript, the CLI and the LLM context.
 - A manual rename removes the platform badge.
+- A user correction updates only the Note transcript when the selected result uses that transcript source. This also applies to Summary-only results. It preserves manual Summary text, its prompt and generation metadata. A correction of an unselected source does not change the Note.
+- Correction revisions can make a saved Summary stale. Selecting a result can replace the full Note projection; renaming a speaker cannot.
 
 ### Retention and priority
 

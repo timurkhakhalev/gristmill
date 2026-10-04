@@ -45,7 +45,6 @@ import { AudioStorageManager } from "./audioStorage.js";
 import { AgentStreamRequestRegistry } from "./agentStreamRequestRegistry.js";
 import { createUploadCancelRegistry } from "./uploadCancelRegistry.js";
 import { LocalModelDownloadStatus } from "./localModelDownloadStatus.js";
-import liveSpeakerIdentifier from "./liveSpeakerIdentifier.js";
 import {
   DEFAULT_WHISPER_VAD_CONFIG,
   resolveContextSileroEnabled,
@@ -267,7 +266,6 @@ export class IPCHandlers {
       meetingSileroEnabled: true,
       ...DEFAULT_WHISPER_VAD_CONFIG,
     };
-    liveSpeakerIdentifier.setDiarizationManager(this.diarizationManager);
     try {
       this.audioStorageManager.meetingRecordings.recover(this.databaseManager);
       this._meetingRecoveryReady = true;
@@ -1577,7 +1575,6 @@ export class IPCHandlers {
       cancelInitialProcessingRun: (runId) => this._meetingProcessing?.cancelRun(runId) ?? false,
       meetingDetectionEngine: this.meetingDetectionEngine,
       audioTapManager: this.audioTapManager,
-      liveSpeakerIdentifier,
       getControlPanelWindow: () => this.windowManager.controlPanelWindow,
       getMeetingNotificationData: () => this.windowManager._pendingNotificationData ?? null,
       consumePendingMeetingNoteNavigation: () =>
@@ -1603,7 +1600,6 @@ export class IPCHandlers {
 
     registerSpeakerHandlers(ipcMain, {
       databaseManager: this.databaseManager,
-      liveSpeakerIdentifier,
       diarizationManager: this.diarizationManager,
       retroactiveMapping: (profile) => this._retroactiveMapping(profile),
       tryAutoLabelOneOnOne: (noteId) => this._tryAutoLabelOneOnOne(noteId),
@@ -1723,7 +1719,6 @@ export class IPCHandlers {
           );
           if (!profile) continue;
           this.databaseManager.setSpeakerMapping(noteId, emb.speaker_id, profile.id, displayName);
-          liveSpeakerIdentifier.mapSpeaker(emb.speaker_id, profile.id, displayName, noteId);
         }
 
         const unmappedSystemSpeakers = new Set<string | null | undefined>(

@@ -47,10 +47,6 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
   },
   meetingDetectionEngine: null,
   audioTapManager: null,
-  liveSpeakerIdentifier: {
-    setEnabled: () => undefined,
-    setMaxSpeakers: () => undefined,
-  },
 };
 
 const runtime = registerMeetingCoordinatorHandlers(ipcMain, deps);

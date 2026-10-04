@@ -353,8 +353,7 @@ export const useMeetingRecordingStore = create<MeetingRecordingState>()(() => ({
   systemPartialSpeakerName: null,
   diarizationSessionId: null,
   completedDiarization: null,
-  sessionDiarizationEnabled:
-    (getSettings() as { speakerDiarizationEnabled?: boolean }).speakerDiarizationEnabled ?? true,
+  sessionDiarizationEnabled: true,
   sessionExpectedCount: DEFAULT_EXPECTED_SPEAKER_COUNT,
   userTouchedStepper: false,
   error: null,
@@ -651,10 +650,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
     const isCurrentStart = () =>
       startOperation.isCurrent() && activeRecordingSessionId === sessionId;
 
-    const initialEnabled =
-      args.diarizationEnabled ??
-      (getSettings() as { speakerDiarizationEnabled?: boolean }).speakerDiarizationEnabled ??
-      true;
+    const initialEnabled = args.diarizationEnabled ?? true;
     const initialCount = Math.max(
       1,
       Math.min(MAX_SPEAKER_COUNT, args.expectedCount ?? DEFAULT_EXPECTED_SPEAKER_COUNT)
@@ -1559,31 +1555,8 @@ export async function resumeMeeting(args: StartRecordingArgs): Promise<boolean> 
 }
 
 export async function queueMeetingNoteProcessing(noteId: number): Promise<void> {
-  const listed = await window.electronAPI.meetingProcessingListForNote(noteId);
-  if (!listed.success) throw new Error(listed.error || "Meeting parts could not be loaded");
-  const parts = (listed.recordings ?? [])
-    .filter((item) => item.recording.audioState === "available" && ["ready", "incomplete"].includes(item.recording.captureState))
-    .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt));
-  const usable = parts.filter((part) => part.runs.some((result) => result.run.errorCode !== "recording-audio-unavailable"));
-  if (!usable.length) return;
-  const sourceIds = usable.map((part) => part.recording.id);
-  const existing = usable.flatMap((part) => part.runs).find((result) =>
-    result.run.kind === "reprocess" && result.run.sourceRecordingIds.length === sourceIds.length &&
-    result.run.status !== "cancelled" &&
-    result.run.sourceRecordingIds.every((id, index) => id === sourceIds[index])
-  );
-  if (existing) return;
-  const first = usable[0];
-  const initial = usable.at(-1)?.runs.find((result) => result.run.kind === "initial");
-  const created = await window.electronAPI.meetingProcessingCreateRun({
-    recordingId: first.recording.id,
-    sourceRecordingIds: sourceIds,
-    kind: "reprocess",
-    gateAfterStop: true,
-    config: initial?.run.config ?? null,
-    configError: initial?.run.configError ?? null,
-  });
-  if (!created.success) throw new Error(created.error || "Meeting processing could not start");
+  const result = await window.electronAPI.meetingProcessingFinishForNote(noteId);
+  if (!result.success) throw new Error(result.error || "Meeting processing could not start");
 }
 
 export async function finishMeeting(): Promise<boolean> {

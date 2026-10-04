@@ -1,3 +1,4 @@
+import { computeChunkStats } from "../utils/audioUtils.js";
 import { MeetingClockSync, type MeetingClockProbeReply } from "./meetingClockSync.js";
 import { MeetSpeakerEvidence } from "./meetSpeakerEvidence.js";
 import { CompanionCoordinator } from "./companionCoordinator.js";
@@ -20,7 +21,6 @@ import {
   type MeetingSystemAudioWatchdog,
 } from "./meetingSystemAudioWatchdog.js";
 import {
-  computeChunkStats,
   MEETING_MIC_SILENCE_RMS,
   MEETING_MIC_SILENCE_PEAK,
 } from "./meetingMicGate.js";
@@ -45,10 +45,10 @@ import {
   MAX_SPEAKER_COUNT,
   noteExpectedSpeakerCountOrNull,
   resolveOneOnOneOtherParticipant,
-  type DiarizationPublicationDatabase,
+  type MeetingSpeakerRosterDatabase,
   type MeetingSessionSpeakerConfig,
   type MeetingSpeakerRosterNote,
-} from "./meetingDiarizationPublication.js";
+} from "./meetingSpeakerRoster.js";
 
 const MEETING_SYSTEM_AUDIO_TICK_MS = 2000;
 // Level meters (in-app pill, companion) only need ~20 updates a second.
@@ -61,17 +61,12 @@ export interface CoordinatorWindowLike {
   webContents: { send(channel: string, payload?: unknown): void };
 }
 
-export interface CoordinatorLiveSpeakerIdentifier {
-  setEnabled(enabled: boolean): void;
-  setMaxSpeakers(n: number): void;
-}
-
 export interface MeetingCoordinatorDeps {
   companionProfilePath?: string;
   companionEnabled?: boolean;
   showCompanionReminder?(scope: MeetingRecordingScope): void;
   dismissCompanionReminder?(scope: MeetingRecordingScope, sender?: WebContents): boolean;
-  databaseManager: Pick<DiarizationPublicationDatabase, "getNote" | "getGoogleAccounts"> & import("./meetingCaptureSession.js").MeetingCaptureDatabase & MeetingPlatformEvidenceDatabase;
+  databaseManager: MeetingSpeakerRosterDatabase & import("./meetingCaptureSession.js").MeetingCaptureDatabase & MeetingPlatformEvidenceDatabase;
   meetingRecordingStorage: MeetingCaptureEpochStorage;
   cancelInitialProcessingRun?: (runId: string) => boolean;
   meetingDetectionEngine: (Pick<MeetingDetectionEngine,
@@ -82,7 +77,6 @@ export interface MeetingCoordinatorDeps {
   suppressPlatformAutoEnd?(sessionId: string): void;
   preparePlatformLeave?(sessionId: string): boolean;
   audioTapManager: Pick<AudioTapManager, "isSupported" | "start" | "stop" | "probeClock" | "getClockOrigin"> | null;
-  liveSpeakerIdentifier: CoordinatorLiveSpeakerIdentifier;
   // Narrow window-manager surface (notification window + note navigation +
   // owning window), owned by the composition root.
   getControlPanelWindow?(): CoordinatorWindowLike | null;
@@ -154,7 +148,6 @@ export function registerMeetingCoordinatorHandlers(
     databaseManager,
     meetingDetectionEngine,
     audioTapManager,
-    liveSpeakerIdentifier,
   } = deps;
 
   let meetingTranscriptionStartInProgress = false;
@@ -287,7 +280,7 @@ export function registerMeetingCoordinatorHandlers(
     return { success: parsed.success && event.sender === activeCaptureOwner && companion.confirm(parsed.data.expected, parsed.data.candidate) };
   });
 
-  const publicationDeps = {
+  const rosterDeps = {
     databaseManager,
   };
 
@@ -935,15 +928,6 @@ export function registerMeetingCoordinatorHandlers(
     }
   });
 
-  ipcMain.handle("meeting-set-speaker-diarization-enabled", async (_event, payload?: { enabled?: boolean }) => {
-    try {
-      liveSpeakerIdentifier.setEnabled(payload?.enabled !== false);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
   ipcMain.handle(
     "meeting-set-session-speaker-config",
     async (_event, payload?: { enabled?: boolean; expectedCount?: number; countIsExplicit?: boolean }) => {
@@ -960,10 +944,6 @@ export function registerMeetingCoordinatorHandlers(
           expectedCount,
           explicit: payload?.countIsExplicit === true,
         };
-        liveSpeakerIdentifier.setEnabled(enabled);
-        // Live identification only labels other speakers (the mic track is "you"),
-        // so cap at expectedCount - 1 to match resolveSessionMaxSpeakers().
-        liveSpeakerIdentifier.setMaxSpeakers(Math.max(1, expectedCount - 1));
         return { success: true };
       } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -1038,11 +1018,10 @@ export function registerMeetingCoordinatorHandlers(
       if (!config || config.explicit) return;
       if (noteId == null || activeMeetingNoteId !== noteId) return;
 
-      const expectedCount = noteExpectedSpeakerCountOrNull(publicationDeps, note);
+      const expectedCount = noteExpectedSpeakerCountOrNull(rosterDeps, note);
       if (expectedCount == null || expectedCount <= config.expectedCount) return;
 
       activeMeetingSpeakerConfig = { ...config, expectedCount };
-      liveSpeakerIdentifier.setMaxSpeakers(Math.max(1, expectedCount - 1));
       broadcastToWindows("meeting-session-speaker-config-updated", {
         enabled: config.enabled,
         expectedCount,
@@ -1054,7 +1033,7 @@ export function registerMeetingCoordinatorHandlers(
       );
     },
     resolveOneOnOneOtherParticipant: (participantsJson) =>
-      resolveOneOnOneOtherParticipant(publicationDeps, participantsJson),
+      resolveOneOnOneOtherParticipant(rosterDeps, participantsJson),
   };
 
   function releaseMicHold(sender: { id: number; off(event: string, listener: () => void): unknown }): void {

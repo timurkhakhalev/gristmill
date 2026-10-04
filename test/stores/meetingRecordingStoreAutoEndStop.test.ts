@@ -16,12 +16,6 @@ interface StopRequest {
   errorCode?: string | null;
 }
 
-interface ProcessingRequest {
-  sourceRecordingIds: string[];
-  gateAfterStop?: boolean;
-  config?: { transcription: { provider: string } } | null;
-}
-
 interface RecordingEntry {
   recording: { id: string; groupId: string | null; audioState: string; captureState: string; startedAt: string };
   runs: Array<{ run: Record<string, unknown>; transcript?: { text: string } }>;
@@ -47,7 +41,7 @@ interface MeetingElectronAPI {
   getNote(id: number): Promise<{ id: number; transcript: string } | null>;
   updateNote(id: number, value: Record<string, unknown>): Promise<{ success: boolean }>;
   meetingProcessingListForNote(): Promise<{ success: boolean; recordings: RecordingEntry[] }>;
-  meetingProcessingCreateRun(request: ProcessingRequest): Promise<{ success: boolean; result: { run: unknown } }>;
+  meetingProcessingFinishForNote(noteId: number): Promise<{ success: boolean; error?: string }>;
   onMeetingTranscriptionError(listener: (error: string) => void): () => void;
   onMeetingTranscriptionFatalError(listener: (error: string) => void): () => void;
   onMeetingSystemAudioSilent(listener: (data: { systemAudioStrategy: string }) => void): () => void;
@@ -62,7 +56,7 @@ interface ElectronAPIHarness {
   stopRequests: StopRequest[];
   noteUpdates: Array<{ id: number; value: Record<string, unknown> }>;
   recordings: RecordingEntry[];
-  processingRequests: ProcessingRequest[];
+  processingRequests: number[];
   api: MeetingElectronAPI;
 }
 
@@ -130,10 +124,9 @@ function createElectronAPI({ stopResult }: { stopResult: () => unknown }) {
         return { success: true };
       },
       meetingProcessingListForNote: async () => ({ success: true, recordings: api.recordings }),
-      meetingProcessingCreateRun: async (request) => {
-        api.processingRequests.push(request);
-        api.recordings[0].runs.push({ run: { id: "c3c3c3c3-3333-4333-8333-c3c3c3c3c3c3", kind: "reprocess", sourceRecordingIds: request.sourceRecordingIds, hasTranscript: true, status: "complete" }, transcript: { text: "Saved transcript" } });
-        return { success: true, result: { run: api.recordings[0].runs.at(-1)!.run } };
+      meetingProcessingFinishForNote: async (noteId) => {
+        api.processingRequests.push(noteId);
+        return { success: true };
       },
       onMeetingTranscriptionError: noopListener,
       onMeetingTranscriptionFatalError: noopListener,
@@ -166,7 +159,7 @@ const finalized = (captureState = "ready") => ({
   errorCode: captureState === "ready" ? null : "system-source-unavailable",
 });
 
-test("ending a paused call queues its saved parts once without another ASR request", async (t: TestContext) => {
+test("ending a paused call sends its Note identity without stopping capture again", async (t: TestContext) => {
   const api = createElectronAPI({ stopResult: () => finalized() });
   const store = await loadStore(t, api);
   const initial = store.useMeetingRecordingStore.getState();
@@ -184,24 +177,23 @@ test("ending a paused call queues its saved parts once without another ASR reque
   assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "paused");
   assert.equal(await store.finishMeeting(), true);
   assert.equal(api.stopRequests.length, 1, "paused call has no active capture to stop again");
-  assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID]);
-  assert.equal(api.processingRequests[0].gateAfterStop, true);
+  assert.deepEqual(api.processingRequests, [START_ARGS.noteId]);
   await store.queueMeetingNoteProcessing(START_ARGS.noteId);
-  assert.equal(api.processingRequests.length, 1, "a saved transcript does not trigger ASR again");
+  assert.deepEqual(api.processingRequests, [START_ARGS.noteId, START_ARGS.noteId], "main owns repeated-Finish deduplication");
   assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
 });
 
-test("ending a paused call with no saved audio skips processing", async (t: TestContext) => {
+test("ending a paused call leaves empty-source decisions to main", async (t: TestContext) => {
   const api = createElectronAPI({ stopResult: () => finalized() });
   const store = await loadStore(t, api);
   assert.equal(await store.startRecording(START_ARGS), true);
   assert.equal(await store.pauseMeeting(), true);
   assert.equal(await store.finishMeeting(), true);
-  assert.equal(api.processingRequests.length, 0);
+  assert.deepEqual(api.processingRequests, [START_ARGS.noteId]);
   assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "saved");
 });
 
-test("processing a Note includes older groups in chronological order", async (t: TestContext) => {
+test("processing a Note delegates source chronology and config selection to main", async (t: TestContext) => {
   const api = createElectronAPI({ stopResult: () => finalized() });
   const store = await loadStore(t, api);
   const runs = [{ run: { kind: "initial", errorCode: null, config: { transcription: { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" } } } }];
@@ -210,9 +202,7 @@ test("processing a Note includes older groups in chronological order", async (t:
     { recording: { id: RECORDING_ID, groupId: "old-group", audioState: "available", captureState: "incomplete", startedAt: "2026-09-30T10:07:00.000Z" }, runs: [{ run: { kind: "initial", config: null, errorCode: "detailed-notes-action-missing" } }] },
   ];
   await store.queueMeetingNoteProcessing(START_ARGS.noteId);
-  assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID, SECOND_RECORDING_ID]);
-  assert.equal(api.processingRequests[0].gateAfterStop, true);
-  assert.equal(api.processingRequests[0].config?.transcription.provider, "elevenlabs");
+  assert.deepEqual(api.processingRequests, [START_ARGS.noteId]);
 });
 
 test("resume adds a second saved part to one whole-meeting processing run", async (t: TestContext) => {
@@ -228,8 +218,7 @@ test("resume adds a second saved part to one whole-meeting processing run", asyn
   assert.equal(store.useMeetingRecordingStore.getState().meetingGroupId, groupId);
   api.recordings.push({ recording: { id: SECOND_RECORDING_ID, groupId, audioState: "available", captureState: "ready", startedAt: "2026-09-25T10:01:00.000Z" }, runs: [{ run: { kind: "initial", errorCode: null, config: null } }] });
   assert.equal(await store.finishMeeting(), true);
-  assert.deepEqual(api.processingRequests[0].sourceRecordingIds, [RECORDING_ID, SECOND_RECORDING_ID]);
-  assert.equal(api.processingRequests[0].gateAfterStop, true);
+  assert.deepEqual(api.processingRequests, [START_ARGS.noteId]);
   assert.deepEqual(api.stopRequests.map((request) => request.suppressProcessing), [true, true]);
   assert.equal(api.processingRequests.length, 1);
 });
@@ -249,6 +238,20 @@ test("normal stop drains and finalizes one raw recording without writing the not
   assert.deepEqual(api.stopRequests[0].lastSequence, { mic: -1, system: -1 });
   assert.equal(api.stopRequests[0].incomplete, false);
   assert.deepEqual(api.noteUpdates, []);
+});
+
+test("a failed Finish queue keeps the paused Note available for Retry", async (t: TestContext) => {
+  const api = createElectronAPI({ stopResult: () => finalized() });
+  const store = await loadStore(t, api);
+  assert.equal(await store.startRecording(START_ARGS), true);
+  assert.equal(await store.pauseMeeting(), true);
+  const groupId = store.useMeetingRecordingStore.getState().meetingGroupId;
+  api.api.meetingProcessingFinishForNote = async () => ({ success: false, error: "queue unavailable" });
+  assert.equal(await store.finishMeeting(), false);
+  assert.equal(store.useMeetingRecordingStore.getState().capturePhase, "paused");
+  assert.equal(store.useMeetingRecordingStore.getState().meetingGroupId, groupId);
+  api.api.meetingProcessingFinishForNote = async () => ({ success: true });
+  assert.equal(await store.finishMeeting(), true);
 });
 
 test("a failed main finalization is surfaced as incomplete", async (t: TestContext) => {

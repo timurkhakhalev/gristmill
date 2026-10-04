@@ -62,8 +62,8 @@ test("Note processing includes earlier groups after restart and orders audio bef
     summarize: async (input) => { material = input; return "## Summary\nComplete meeting"; },
   });
   t.after(() => worker.stop());
-  // The renderer may know only the latest group; main owns the complete source set.
-  const result = worker.createRun({ recordingId: second.recording.id, sourceRecordingIds: [second.recording.id], kind: "reprocess", gateAfterStop: true, config });
+  // Finish carries only the Note identity; main owns the complete source set.
+  const result = worker.finishForNote(note.id)!;
   assert.deepEqual(result.run.sourceRecordingIds, [first.recording.id, second.recording.id]);
   db.setMeetingProcessingRunState(first.initialRun.id, { stage: "prepare", status: "cancelled" });
   db.setMeetingProcessingRunState(second.initialRun.id, { stage: "prepare", status: "cancelled" });

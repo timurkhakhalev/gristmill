@@ -38,7 +38,7 @@ Capture does not use the network.
 | Renderer | `src/` (React 19, Vite, HeroUI, Tailwind, zustand) | Notes, chat, settings, recording UI. The AudioWorklet code is in `meetingAudioPipeline.ts`. The capture session is in `meetingRecordingStore.ts` |
 | IPC contracts | `src/contracts/` | Typed contracts between main, renderer and worker |
 | ONNX worker | `src/workers/onnxWorker.ts` | Local diarization and speaker embeddings |
-| Native helpers | `resources/*.swift`, `native/meeting-aec-helper/` | System audio tap and clock probes, microphone and call detection, Zoom Accessibility, EventKit calendar, globe key, echo cancellation |
+| Native helpers | `resources/*.swift` | System audio tap and clock probes, microphone and call detection, Zoom Accessibility, EventKit calendar, globe key |
 | Local engines | Installed in `userData` at first use | whisper.cpp, llama.cpp, sherpa-onnx. They are not in the app bundle |
 | Companion extension | `extension/` | MV3 extension: Google Meet and Telemost adapters, mute, Leave, participants, clock probes |
 | Companion native host | An entry in `build:main` | Connects Chrome native messaging to the Unix socket of the profile |

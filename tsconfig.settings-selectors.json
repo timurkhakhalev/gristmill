@@ -19,7 +19,6 @@
     "src/config/bbAgentPreferences.ts",
     "src/config/inferenceScopes.ts",
     "src/config/transcriptionCapabilities.ts",
-    "src/helpers/reasoningRouting.ts",
-    "src/helpers/meetingTranscriptionRouting.ts"
+    "src/helpers/reasoningRouting.ts"
   ]
 }

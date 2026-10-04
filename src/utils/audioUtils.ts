@@ -46,9 +46,7 @@ export function pcm16ToFloat32(pcmBuffer: Buffer): Float32Array {
   return output;
 }
 
-// Energy floors below which a meeting channel is treated as silent. Shared by
-// the echo-leak detector and the auto-end activity monitor so both agree on
-// what "audible" means.
+// Energy floors used by the meeting auto-end activity monitor.
 export const MEETING_MIC_ACTIVITY_RMS = 0.006;
 export const MEETING_SYSTEM_ACTIVITY_RMS = 0.004;
 
@@ -75,6 +73,23 @@ export function computePcm16Rms(pcmBuffer: Buffer | null | undefined): number {
   }
 
   return Math.sqrt(sumSquares / sampleCount);
+}
+
+// RMS and peak for the system capture level and interruption watchdog.
+export function computeChunkStats(buffer: Buffer | null | undefined): { rms: number; peak: number; sampleCount: number } {
+  if (!buffer || buffer.length < 2) {
+    return { rms: 0, peak: 0, sampleCount: 0 };
+  }
+  const samples = new Int16Array(buffer.buffer, buffer.byteOffset, buffer.length >> 1);
+  let sumSq = 0;
+  let peak = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const n = samples[i] / 0x7fff;
+    sumSq += n * n;
+    const abs = n < 0 ? -n : n;
+    if (abs > peak) peak = abs;
+  }
+  return { rms: Math.sqrt(sumSq / samples.length), peak, sampleCount: samples.length };
 }
 
 const audioUtils = {

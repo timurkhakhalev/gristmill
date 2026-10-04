@@ -50,6 +50,12 @@ export function createMeetingProcessingBridge(ipcRenderer: IpcRendererLike): Mee
         parse(meetingProcessingRunResponseSchema, raw, meetingProcessingChannels.createRun)
       );
     },
+    meetingProcessingFinishForNote(noteId) {
+      const input = meetingProcessingListRequestSchema.parse({ noteId });
+      return ipcRenderer.invoke(meetingProcessingChannels.finishForNote, input).then((raw) =>
+        parse(meetingProcessingRunResponseSchema, raw, meetingProcessingChannels.finishForNote)
+      );
+    },
     meetingProcessingRetryRun(runId) {
       const input = meetingProcessingRetryRequestSchema.parse({ runId });
       return ipcRenderer.invoke(meetingProcessingChannels.retryRun, input).then((raw) =>

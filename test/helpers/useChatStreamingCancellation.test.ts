@@ -223,6 +223,48 @@ test("one-off action turns use only the current message and cannot invoke tools"
   assert.equal("tools" in request!, false);
 });
 
+for (const provider of ["lan", "bedrock", "ollama"]) {
+  test(`Self-Hosted Chat with ${provider} selection exposes tools without the Local size threshold`, async (t) => {
+    const originalFetch = globalThis.fetch;
+    t.after(() => { globalThis.fetch = originalFetch; });
+    let request: Record<string, unknown> | undefined;
+    globalThis.fetch = async (_input, init) => {
+      request = JSON.parse(String(init?.body));
+      const stop = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+      return new Response(`${stop}data: [DONE]\n\n`, {
+        status: 200, headers: { "content-type": "text/event-stream" },
+      });
+    };
+    const { captured } = await renderChatStreaming(t, {
+      settings: { chatAgentProvider: provider, chatAgentModel: "qwen3-0.6b" },
+      electronAPI: { llamaServerStart: async () => { throw new Error("Self-Hosted must not start Local"); } },
+    });
+    await captured.sendToAI("hello", []);
+    assert.ok(request);
+    assert.ok(Array.isArray(request.tools) && request.tools.length > 0);
+  });
+}
+
+test("Local Chat below 4B still omits application tools", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let request: Record<string, unknown> | undefined;
+  globalThis.fetch = async (_input, init) => {
+    request = JSON.parse(String(init?.body));
+    const stop = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+    return new Response(`${stop}data: [DONE]\n\n`, {
+      status: 200, headers: { "content-type": "text/event-stream" },
+    });
+  };
+  const { captured } = await renderChatStreaming(t, {
+    settings: { chatAgentMode: "local", chatAgentProvider: "ollama", chatAgentModel: "qwen3-0.6b", chatAgentRemoteUrl: "" },
+    electronAPI: { llamaServerStart: async () => ({ success: true, port: 11434 }) },
+  });
+  await captured.sendToAI("hello", []);
+  assert.ok(request);
+  assert.equal("tools" in request, false);
+});
+
 test("bb Chat seeds instructions once and sends the next user message verbatim", async (t: import("node:test").TestContext) => {
   let listener: ((part: import("../../src/contracts/bb.ts").BbStreamEnvelope) => void) | undefined;
   let prompt = "";

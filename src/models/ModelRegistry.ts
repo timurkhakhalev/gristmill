@@ -1,10 +1,6 @@
 import modelDataRaw from "./modelRegistryData.json";
 import { getSettings } from "../stores/settingsStore";
 import { readCachedTinfoilModels } from "./tinfoilModelCache";
-import {
-  filterMeetingStreamingProviders,
-  type MeetingTranscriptionProvider,
-} from "../helpers/meetingTranscriptionRouting";
 import type { InferenceMode } from "../contracts/inferenceSettings";
 import { isMeetingFilePickerModel } from "../helpers/meetingFileTranscription";
 
@@ -430,21 +426,6 @@ export function resolveInferenceProvider(
 
 export function getTranscriptionProviders(): TranscriptionProviderData[] {
   return modelRegistry.getTranscriptionProviders();
-}
-
-export function getStreamingTranscriptionProviders(): TranscriptionProviderData[] {
-  return modelRegistry
-    .getTranscriptionProviders()
-    .map((p) => ({ ...p, models: p.models.filter((m) => m.streaming) }))
-    .filter((p) => p.models.length > 0);
-}
-
-// Streaming providers note recording can actually run (see
-// meetingTranscriptionRouting.MEETING_STREAMING_PROVIDER_IDS).
-export function getMeetingStreamingTranscriptionProviders(): Array<
-  TranscriptionProviderData & MeetingTranscriptionProvider
-> {
-  return filterMeetingStreamingProviders(getStreamingTranscriptionProviders());
 }
 
 export function getMeetingFileTranscriptionProviders(): TranscriptionProviderData[] {

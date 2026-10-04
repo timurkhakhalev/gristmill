@@ -49,12 +49,6 @@
         "FILE_TOO_LARGE": "Ce fichier est trop volumineux pour être importé.",
         "generic": "Une erreur s'est produite lors de la lecture du fichier."
       }
-    },
-    "meeting": {
-      "speakerDetection": {
-        "title": "Identifier et étiqueter les intervenants",
-        "description": "Lorsque désactivé, les transcriptions affichent « Vous » et « Autres »"
-      }
     }
   },
   "tray": {

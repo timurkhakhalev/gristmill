@@ -52,7 +52,7 @@ import { MAX_SPEAKER_COUNT } from "../../constants/speakerDetection.json";
 import BatchQueueView from "./BatchQueueView";
 import { generateNoteTitle } from "../../utils/generateTitle";
 import { getBaseLanguageCode } from "../../utils/languageSupport";
-import { byokFileSizeLimit, resolveTranscriptionRoute } from "../../helpers/transcriptionRoute";
+import { resolveTranscriptionRoute } from "../../helpers/transcriptionRoute";
 import { saveUploadNote, uploadTitleFallback } from "../../services/uploadNotes";
 import { UploadCompleteWarnings, UploadModelSettingsButton } from "./UploadAudioFeedback";
 
@@ -280,25 +280,24 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   // Mode detection
   const isSelfHosted = transcriptionMode === "self-hosted" && !useLocalWhisper;
-  const isByok = !useLocalWhisper;
-
-  // Mode-aware file size validation
-  // Local: no limits at all
-  // Direct providers have different file limits; some accept larger streamed uploads.
-  const byokMaxFileSize = byokFileSizeLimit(cloudTranscriptionProvider);
-  const byokMaxFileSizeMb = Math.floor(byokMaxFileSize / (1024 * 1024));
-  let byokTooLarge = false;
-
-  if (file) {
-    if (useLocalWhisper) {
-      // Local transcription: no file size restrictions
-    } else if (isSelfHosted || cloudTranscriptionProvider === "custom") {
-      // Self-hosted / custom endpoints (e.g. local whisper.cpp): no file size restrictions
-    } else if (isByok) {
-      byokTooLarge = file.sizeBytes > byokMaxFileSize;
-      // Direct providers keep their documented request-size limits.
-    }
-  }
+  const uploadRoute = resolveTranscriptionRoute({
+    settings: {
+      useLocalWhisper,
+      transcriptionMode,
+      remoteTranscriptionUrl,
+      remoteTranscriptionModel,
+      cloudTranscriptionProvider,
+      cloudTranscriptionModel,
+      cloudTranscriptionBaseUrl,
+      cortiEnvironment,
+      cortiTenant,
+      preferredLanguage,
+    },
+    providers: getTranscriptionProviders(),
+  });
+  const sizeCapBytes = "sizeCapBytes" in uploadRoute ? uploadRoute.sizeCapBytes : null;
+  const byokMaxFileSizeMb = sizeCapBytes === null ? 0 : Math.floor(sizeCapBytes / (1024 * 1024));
+  const byokTooLarge = !!file && sizeCapBytes !== null && file.sizeBytes > sizeCapBytes;
 
   useEffect(() => {
     return () => {
@@ -456,8 +455,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   // Batch counterpart of the single-file size gating above; returns keys under notes.upload.*.
   const getBatchSizeErrorKey = (sizeBytes: number): string | null => {
-    if (useLocalWhisper || isSelfHosted || cloudTranscriptionProvider === "custom") return null;
-    return isByok && sizeBytes > byokMaxFileSize ? "byokTooLarge" : null;
+    return sizeCapBytes !== null && sizeBytes > sizeCapBytes ? "byokTooLarge" : null;
   };
 
   const generateTitle = async (text: string): Promise<string> => {

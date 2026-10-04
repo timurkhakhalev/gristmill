@@ -196,7 +196,6 @@ const BOOLEAN_SETTINGS = new Set([
   "floatingIconAutoHide",
   "startMinimized",
   "meetingProcessDetection",
-  "speakerDiarizationEnabled",
   "noteRecordingSileroEnabled",
   "meetingSileroEnabled",
   "isSignedIn",
@@ -772,7 +771,6 @@ export interface SettingsState
   mcalPrimaryOnly: boolean;
   appleCalendarConnected: boolean;
   meetingProcessDetection: boolean;
-  speakerDiarizationEnabled: boolean;
   noteRecordingSileroEnabled: boolean;
   meetingSileroEnabled: boolean;
   whisperVadThreshold: number;
@@ -1012,7 +1010,6 @@ export interface SettingsState
   setMcalPrimaryOnly: (value: boolean) => void;
   setAppleCalendarConnected: (value: boolean) => void;
   setMeetingProcessDetection: (value: boolean) => void;
-  setSpeakerDiarizationEnabled: (value: boolean) => void;
   setNoteRecordingSileroEnabled: (value: boolean) => void;
   setMeetingSileroEnabled: (value: boolean) => void;
   setWhisperVadThreshold: (value: number) => void;
@@ -1413,7 +1410,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   mcalPrimaryOnly: readBoolean("mcalPrimaryOnly", true),
   appleCalendarConnected: readBoolean("appleCalendarConnected", false),
   meetingProcessDetection: readBoolean("meetingProcessDetection", true),
-  speakerDiarizationEnabled: readBoolean("speakerDiarizationEnabled", true),
   // Off by default: VAD on pause-heavy recordings can strip the speech and make
   // Whisper hallucinate the dictionary prompt as the transcript (#1454).
   noteRecordingSileroEnabled: readBoolean("noteRecordingSileroEnabled", true),
@@ -1999,13 +1995,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   },
   setAppleCalendarConnected: createBooleanSetter("appleCalendarConnected"),
   setMeetingProcessDetection: createBooleanSetter("meetingProcessDetection"),
-  setSpeakerDiarizationEnabled: (value: boolean) => {
-    if (isBrowser) localStorage.setItem("speakerDiarizationEnabled", String(value));
-    useSettingsStore.setState({ speakerDiarizationEnabled: value });
-    if (isBrowser) {
-      window.electronAPI?.setSpeakerDiarizationEnabled?.(value);
-    }
-  },
   setNoteRecordingSileroEnabled: (value: boolean) => {
     if (isBrowser) localStorage.setItem("noteRecordingSileroEnabled", String(value));
     useSettingsStore.setState({ noteRecordingSileroEnabled: value });
@@ -2638,19 +2627,6 @@ export async function initializeSettings(): Promise<void> {
     } catch (err) {
       logger.warn(
         "Failed to sync mcal primary-only on startup",
-        { error: (err as Error).message },
-        "settings"
-      );
-    }
-
-    try {
-      const currentState = useSettingsStore.getState();
-      await window.electronAPI.setSpeakerDiarizationEnabled?.(
-        currentState.speakerDiarizationEnabled
-      );
-    } catch (err) {
-      logger.warn(
-        "Failed to sync speaker diarization preference on startup",
         { error: (err as Error).message },
         "settings"
       );

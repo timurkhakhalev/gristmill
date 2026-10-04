@@ -12,6 +12,7 @@ import {
 export const meetingProcessingChannels = {
   listForNote: "meeting-processing-list-for-note",
   createRun: "meeting-processing-create-run",
+  finishForNote: "meeting-processing-finish-for-note",
   retryRun: "meeting-processing-retry-run",
   cancelRun: "meeting-processing-cancel-run",
   updateBlockedRunConfig: "meeting-processing-update-blocked-run-config",
@@ -35,7 +36,6 @@ export const meetingProcessingCreateRunRequestSchema = z.object({
   recordingId: meetingRecordingIdSchema,
   sourceRecordingIds: z.array(meetingRecordingIdSchema).min(1).max(100).optional(),
   kind: z.enum(["reprocess", "summary"]),
-  gateAfterStop: z.boolean().optional(),
   config: meetingProcessingConfigSchema.nullable(),
   configError: meetingProcessingConfigErrorSchema.nullable().optional(),
   sourceRunId: meetingRecordingIdSchema.nullable().optional(),
@@ -122,6 +122,7 @@ export type MeetingProcessingRunResponse = z.infer<typeof meetingProcessingRunRe
 
 export interface MeetingProcessingApi {
   meetingProcessingListForNote(noteId: number): Promise<MeetingProcessingListResponse>;
+  meetingProcessingFinishForNote(noteId: number): Promise<MeetingProcessingRunResponse>;
   meetingProcessingCreateRun(input: z.infer<typeof meetingProcessingCreateRunRequestSchema>): Promise<MeetingProcessingRunResponse>;
   meetingProcessingRetryRun(runId: string): Promise<MeetingProcessingRunResponse>;
   meetingProcessingCancelRun(runId: string): Promise<MeetingProcessingRunResponse>;

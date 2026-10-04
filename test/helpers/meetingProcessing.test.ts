@@ -726,25 +726,68 @@ test("resume cancels the pending group version and the next end starts a fresh g
 
   worker.captureStopped();
   now.setTime(Date.parse(run.retryAt) + 5000);
-  const nextEnd = worker.createRun({
-    recordingId: recording.id,
-    sourceRecordingIds: [recording.id],
-    kind: "reprocess",
-    gateAfterStop: true,
-    config: validConfig,
-  });
+  const nextEnd = worker.finishForNote(recording.noteId)!;
   assert.ok(nextEnd.run.retryAt);
   const freshDeadline = Date.parse(nextEnd.run.retryAt);
   assert.equal(freshDeadline, now.getTime() + 15_000);
   assert.notEqual(nextEnd.run.id, run.id);
-  const duplicate = worker.createRun({
-    recordingId: recording.id,
-    sourceRecordingIds: [recording.id],
-    kind: "reprocess",
-    gateAfterStop: true,
-    config: validConfig,
-  });
+  const duplicate = worker.finishForNote(recording.noteId)!;
   assert.equal(duplicate.run.id, nextEnd.run.id);
+});
+
+test("Finish IPC owns chronology, saved config, empty sources and repeated-Finish deduplication", async (t) => {
+  const db: DatabaseManager | null = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const note = db.saveNote("Meeting", "Manual text", "meeting").note!;
+  const now = new Date("2026-10-04T12:00:00.000Z");
+  const worker = workerFor(db, storage, { now: () => new Date(now) });
+  t.after(() => worker.stop());
+  const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+  registerMeetingProcessingHandlers({ handle: (channel, handler) => handlers.set(channel, handler) }, worker);
+  const bridge = createMeetingProcessingBridge({
+    invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args),
+    on() {}, removeListener() {},
+  });
+  assert.deepEqual(await bridge.meetingProcessingFinishForNote(note.id), { success: true });
+  assert.throws(() => bridge.meetingProcessingFinishForNote(0));
+  const part = (startedAt: string, config: MeetingProcessingConfig | null, audio = true) => {
+    const recording = db.createMeetingRecording(note.id, { config }, startedAt);
+    if (audio) {
+      db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
+      db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, { frameCount: 2, ignoredTrailingBytes: 0 });
+    }
+    db.markMeetingRecordingFinalizing(recording.id);
+    return db.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: startedAt }).recording;
+  };
+  // Create out of order; the newest saved initial config wins, even if an
+  // older part's initial run is blocked by its missing config.
+  const latest = part("2026-10-04T11:20:00.000Z", validConfig);
+  const earlier = part("2026-10-04T11:10:00.000Z", null);
+  part("2026-10-04T11:30:00.000Z", null, false);
+  const result = await bridge.meetingProcessingFinishForNote(note.id);
+  assert.equal(result.success, true);
+  assert.ok(result.result);
+  const run = result.result.run;
+  assert.deepEqual(run.sourceRecordingIds, [earlier.id, latest.id]);
+  assert.deepEqual(run.config, db.listMeetingProcessingRuns(latest.id).find((item) => item.kind === "initial")!.config);
+  assert.equal(run.retryAt, "2026-10-04T12:00:15.000Z");
+  const duplicate = await bridge.meetingProcessingFinishForNote(note.id);
+  assert.equal(duplicate.result?.run.id, run.id);
+  now.setTime(now.getTime() + 60_000);
+  db.setMeetingProcessingRunState(run.id, { stage: "summary", status: "complete", retryAt: null });
+  assert.equal((await bridge.meetingProcessingFinishForNote(note.id)).result?.run.id, run.id);
+  assert.equal(db.getNote(note.id)!.content, "Manual text");
+});
+
+test("Finish refuses active capture rather than queueing partial sources", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording } = createFinishedRecording(db, storage);
+  const worker = workerFor(db, storage, { isCaptureActive: () => true });
+  t.after(() => worker.stop());
+  assert.throws(() => worker.finishForNote(recording.noteId), /after capture stops/);
 });
 
 test("OpenAI meeting route persists diarized raw response and finishes transcription", async (t: import("node:test").TestContext) => {

@@ -106,11 +106,11 @@ async function downloadBinary(
   console.log(`  ${key}: Downloading from ${asset.url}`);
 
   const zipPath = path.join(BIN_DIR, asset.name);
+  const extractDir = path.join(BIN_DIR, `temp-llama-${key}`);
 
   try {
     await downloadFile(asset.url, zipPath);
 
-    const extractDir = path.join(BIN_DIR, `temp-llama-${key}`);
     fs.mkdirSync(extractDir, { recursive: true });
     await extractArchive(zipPath, extractDir);
 

@@ -310,6 +310,7 @@
       "test/m8PlatformSourceContract.test.ts",
       "test/scripts/beforeBuild.test.ts",
       "test/scripts/downloadLifecycle.test.ts",
+      "test/scripts/llamaPartialInstall.test.ts",
       "test/scripts/macosIdentitySourceContract.test.ts",
       "test/scripts/sqliteRuntime.test.ts",
       "test/scripts/testSelection.test.ts",

@@ -249,7 +249,7 @@ function NotesSettings() {
         >
           <Toggle checked={noteFilesEnabled} disabled={noteFilesUpdating} onChange={(enabled) => { void setNoteFilesEnabled(enabled); }} />
         </Row>
-        {noteFilesError && <p role="alert" className="text-sm text-red-600">{noteFilesError}</p>}
+        {noteFilesError && <p role="alert" className="text-sm text-danger">{noteFilesError}</p>}
       </Group>
     </Section>
   );

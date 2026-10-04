@@ -437,3 +437,23 @@ test("switch while the user save is pending never starts the old provider reques
   assert.equal(h.requests.length,0);assert.equal(h.chat.activeConversationId,h.B.id);
   assert.deepEqual(h.chat.messages.map(m=>m.content),["history B"]);
 });
+
+for (const bb of [false, true])
+  test(`${bb ? "BB" : "Local"} never starts after a pending user write settles on an unmounted chat`, async (t) => {
+    const h = await mount(t, { bb });
+    await h.render();
+    const gate = deferred<MessageRow | null>();
+    h.setWrite(() => gate.promise);
+    let send!: Promise<void>;
+    await act(async () => {
+      send = h.chat.sendMessage("pending before unmount");
+      await flush();
+    });
+    assert.equal(h.requests.length, 0);
+    await h.unmount();
+    gate.resolve(h.db.addAgentMessage(h.C.id, "user", "pending before unmount", undefined));
+    await send;
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.db.getAgentConversation(h.C.id)?.messages.at(-1)?.content, "pending before unmount");
+    assert.equal(h.writes.filter((w) => w.role === "assistant").length, 0);
+  });

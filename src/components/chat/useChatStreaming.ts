@@ -158,7 +158,7 @@ export function useChatStreaming({
 
   const sendToAI = useCallback(
     async (userText: string, allMessages: Message[], sendOptions?: ChatSendOptions) => {
-      if (disabled) return;
+      if (disabled || !mountedRef.current) return;
       const sendGeneration = ++sendGenerationRef.current;
       const cancelled = () => sendGeneration !== sendGenerationRef.current;
       clearToolActivity();

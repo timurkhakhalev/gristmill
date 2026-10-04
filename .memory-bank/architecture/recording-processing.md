@@ -69,6 +69,9 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - The manual mute intent stays through Pause, Resume, reopen and Restart. A separate Start begins without a mute intent.
 - `meetingAudioPipeline.ts` owns the Worklet code, the write queue of each processor, gate acknowledgements, epochs and the flush and drain barrier for renderer audio.
 - `meetingRecordingStore.ts` owns the session, streams, contexts, the analyser, device recovery and clock mapping. Thus capture continues when a view remounts.
+- A replacement microphone starts with its gate closed. Its actual track mute state replaces the old device mute; manual and Meet mute keep their own intent. Recovery reports active only after the live track and its current persisted intent are accepted.
+- The intent queue owns the whole microphone handoff, including drain and replacement setup. Controls received during handoff apply to the replacement; old track listeners detach before setup.
+- Initial and replacement microphone analysers read the Worklet output. A closed gate gives zero microphone level; system audio can still move the Companion bars. Each output path keeps a zero-gain sink.
 - The pipeline reports the microphone flush boundary through a typed callback. The session stop barrier waits for the drain. Then it sends the last sequences and that boundary to main.
 
 ## Run creation

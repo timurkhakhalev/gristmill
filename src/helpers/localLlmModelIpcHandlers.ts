@@ -81,6 +81,7 @@ export interface LocalLlmModelDeps {
 
 function failure(error: unknown): LlmActionResult {
   const err = error as { message?: string; code?: string; details?: unknown };
+
   return {
     success: false,
     error: err?.message,
@@ -98,6 +99,7 @@ export function registerLocalLlmModelHandlers(
   ipcMain.handle(c.modelGetAll, async (): Promise<unknown> => {
     try {
       const models = await deps.modelManager.getModelsWithStatus();
+
       return models;
     } catch (error) {
       deps.logError("Error in model-get-all:", error);
@@ -105,9 +107,7 @@ export function registerLocalLlmModelHandlers(
     }
   });
 
-  ipcMain.handle(c.modelGetActiveDownloads, async () =>
-    deps.downloadStatus.getActiveDownloads()
-  );
+  ipcMain.handle(c.modelGetActiveDownloads, async () => deps.downloadStatus.getActiveDownloads());
 
   // Pre-cutover contract kept 1:1: raw model ids pass straight through to the
   // manager, whose typed errors (MODEL_NOT_FOUND & co) drive the renderer.
@@ -117,6 +117,7 @@ export function registerLocalLlmModelHandlers(
 
   ipcMain.handle(c.modelDownload, async (_event, ...args: unknown[]) => {
     const modelId = args[0] as string;
+
     if (deps.downloadStatus.has("llm", modelId)) {
       return {
         success: false,
@@ -125,8 +126,10 @@ export function registerLocalLlmModelHandlers(
         details: { modelId },
       };
     }
+
     // Claim ownership before the manager's asynchronous filesystem preflight.
     deps.downloadStatus.start("llm", modelId);
+
     try {
       const result = await deps.modelManager.downloadModel(
         modelId,
@@ -137,6 +140,7 @@ export function registerLocalLlmModelHandlers(
             downloadedBytes: downloadedSize,
             totalBytes: totalSize,
           });
+
           deps.progressSender.sendToControlPanel(c.modelDownloadProgress, {
             modelId,
             type: "progress",
@@ -147,6 +151,7 @@ export function registerLocalLlmModelHandlers(
           });
         }
       );
+
       const status = deps.downloadStatus.finish("llm", modelId);
       deps.progressSender.sendToControlPanel(c.modelDownloadProgress, {
         modelId,
@@ -156,10 +161,12 @@ export function registerLocalLlmModelHandlers(
         totalSize: status?.totalBytes,
         sequence: status?.sequence,
       });
+
       return { success: true, path: result };
     } catch (error) {
       const status = deps.downloadStatus.finish("llm", modelId);
       const err = error as { message?: string; code?: string; details?: unknown };
+
       if (err.code !== "DOWNLOAD_IN_PROGRESS") {
         deps.progressSender.sendToControlPanel(c.modelDownloadProgress, {
           modelId,
@@ -170,6 +177,7 @@ export function registerLocalLlmModelHandlers(
           sequence: status?.sequence,
         });
       }
+
       return {
         success: false,
         error: err.message,
@@ -182,6 +190,7 @@ export function registerLocalLlmModelHandlers(
   ipcMain.handle(c.modelDelete, async (_event, ...args: unknown[]): Promise<LlmActionResult> => {
     try {
       await deps.modelManager.deleteModel(args[0] as string);
+
       return { success: true };
     } catch (error) {
       return failure(error);
@@ -191,6 +200,7 @@ export function registerLocalLlmModelHandlers(
   ipcMain.handle(c.modelDeleteAll, async (): Promise<LlmActionResult> => {
     try {
       await deps.modelManager.deleteAllModels();
+
       return { success: true };
     } catch (error) {
       return failure(error);
@@ -202,6 +212,7 @@ export function registerLocalLlmModelHandlers(
     async (_event, ...args: unknown[]): Promise<{ success: boolean; error?: string }> => {
       try {
         const cancelled = deps.modelManager.cancelDownload(args[0] as string);
+
         return { success: cancelled };
       } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -212,9 +223,11 @@ export function registerLocalLlmModelHandlers(
   ipcMain.handle(c.modelCheckRuntime, async (): Promise<LlmRuntimeCheckResult> => {
     try {
       await deps.modelManager.ensureLlamaCpp();
+
       return { available: true };
     } catch (error) {
       const err = error as { message?: string; code?: string; details?: unknown };
+
       return {
         available: false,
         error: err?.message,
@@ -227,6 +240,7 @@ export function registerLocalLlmModelHandlers(
   ipcMain.handle(c.llamaCppCheck, async (): Promise<LlamaCppCheckResult> => {
     try {
       const isInstalled = await deps.llamaCppInstaller.isInstalled();
+
       return { isInstalled, version: null };
     } catch (error) {
       return { isInstalled: false, error: (error as Error).message };
@@ -253,10 +267,12 @@ export function registerLocalLlmModelHandlers(
     c.llamaServerStart,
     async (_event, ...args: unknown[]): Promise<LlamaServerStartResult> => {
       const modelId = args[0] as string;
+
       try {
         const modelManager = deps.modelManager;
         modelManager.ensureInitialized();
         const modelInfo = modelManager.findModelById(modelId);
+
         if (!modelInfo) {
           return { success: false, error: `Model "${modelId}" not found` };
         }
@@ -270,6 +286,7 @@ export function registerLocalLlmModelHandlers(
         modelManager.currentServerModelId = modelId;
 
         deps.persistEnvAfterServerStart();
+
         return { success: true, port: modelManager.serverManager.port ?? undefined };
       } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -280,6 +297,7 @@ export function registerLocalLlmModelHandlers(
   ipcMain.handle(c.llamaServerStop, async (): Promise<{ success: boolean; error?: string }> => {
     try {
       await deps.modelManager.stopServer();
+
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };

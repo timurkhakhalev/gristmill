@@ -23,9 +23,11 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -42,7 +44,9 @@ export function createNoteFilesBridge(ipcRenderer: IpcRendererLike): NoteFilesAp
     ): Promise<NoteFilesCommandResult> =>
       ipcRenderer
         .invoke(noteFilesChannels.noteFilesSetEnabled, enabled, customPath, options)
-        .then((raw) => parseResult(commandResultSchema, raw, noteFilesChannels.noteFilesSetEnabled)),
+        .then((raw) =>
+          parseResult(commandResultSchema, raw, noteFilesChannels.noteFilesSetEnabled)
+        ),
 
     noteFilesSetPath: (path: string): Promise<NoteFilesCommandResult> =>
       ipcRenderer
@@ -61,13 +65,16 @@ export function createNoteFilesBridge(ipcRenderer: IpcRendererLike): NoteFilesAp
             `Unexpected response shape from ${noteFilesChannels.noteFilesGetDefaultPath}`
           );
         }
+
         return raw;
       }),
 
     noteFilesPickFolder: (): Promise<PickFolderResult> =>
       ipcRenderer
         .invoke(noteFilesChannels.noteFilesPickFolder)
-        .then((raw) => parseResult(pickFolderResultSchema, raw, noteFilesChannels.noteFilesPickFolder)),
+        .then((raw) =>
+          parseResult(pickFolderResultSchema, raw, noteFilesChannels.noteFilesPickFolder)
+        ),
 
     showNoteFile: (noteId: number): Promise<{ success: boolean }> =>
       ipcRenderer
@@ -77,23 +84,24 @@ export function createNoteFilesBridge(ipcRenderer: IpcRendererLike): NoteFilesAp
     showFolderInExplorer: (folderName: string): Promise<{ success: boolean }> =>
       ipcRenderer
         .invoke(noteFilesChannels.showFolderInExplorer, folderName)
-        .then((raw) =>
-          parseResult(showResultSchema, raw, noteFilesChannels.showFolderInExplorer)
-        ),
+        .then((raw) => parseResult(showResultSchema, raw, noteFilesChannels.showFolderInExplorer)),
 
     granolaImportPickAndPreview: (): Promise<GranolaPreviewResult> =>
-      ipcRenderer.invoke(noteFilesChannels.granolaImportPickAndPreview).then((raw) =>
-        parseResult(
-          granolaPreviewResultSchema,
-          raw,
-          noteFilesChannels.granolaImportPickAndPreview
-        )
-      ),
+      ipcRenderer
+        .invoke(noteFilesChannels.granolaImportPickAndPreview)
+        .then((raw) =>
+          parseResult(
+            granolaPreviewResultSchema,
+            raw,
+            noteFilesChannels.granolaImportPickAndPreview
+          )
+        ),
 
     granolaImportRun: (): Promise<GranolaRunResult> =>
       ipcRenderer
         .invoke(noteFilesChannels.granolaImportRun)
-        .then((raw) => parseResult(granolaRunResultSchema, raw, noteFilesChannels.granolaImportRun)),
+        .then((raw) =>
+          parseResult(granolaRunResultSchema, raw, noteFilesChannels.granolaImportRun)
+        ),
   };
 }
-

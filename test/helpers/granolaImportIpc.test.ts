@@ -1,22 +1,33 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+
 const originalLoad = Module._load;
+
 const handlers = new Map();
+
 const importDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-granola-ipc-"));
+
 const csvPaths = ["granola-000.csv", "granola-001.csv", "granola-002.csv"].map((name, index) => {
   const filePath = path.join(importDir, name);
   fs.writeFileSync(
     filePath,
     `title,summary,created_at\nSync,"Summary ${index + 1}",2026-07-15T14:30:00Z`
   );
+
   return filePath;
 });
+
 let selectedCsvPaths = csvPaths;
 
 const electronStub = {
@@ -58,11 +69,17 @@ const electronStub = {
   MessageChannelMain: class {},
 };
 
-Module._load = function loadWithElectronStub(request: string, parent: { filename?: string } | undefined, isMain: boolean) {
+Module._load = function loadWithElectronStub(
+  request: string,
+  parent: { filename?: string } | undefined,
+  isMain: boolean
+) {
   if (request === "electron") return electronStub;
+
   if (parent?.filename === handlersModulePath && request === "./debugLogger") {
     return new Proxy({}, { get: () => () => {} });
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -70,7 +87,9 @@ function anything(): (...args: unknown[]) => unknown {
   return new Proxy(function () {}, {
     get: (_target, property) => {
       if (property === Symbol.toPrimitive || property === "toString") return () => "";
+
       if (property === "then") return undefined;
+
       return anything();
     },
     apply: () => anything(),
@@ -78,9 +97,14 @@ function anything(): (...args: unknown[]) => unknown {
 }
 
 let target: any;
+
 test.before(() => {
   delete require.cache[handlersModulePath];
-  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
+
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(
+    handlersModulePath
+  );
+
   target = {};
   Ctor.prototype.setupHandlers.call(
     new Proxy(target, {
@@ -114,18 +138,24 @@ test("multi-file Granola preview keeps distinct local source keys across files",
 test("multi-file Granola preview is stable when file picker order changes", async () => {
   selectedCsvPaths = csvPaths;
   await handlers.get("granola-import-pick-and-preview")({ sender: {} });
+
   const firstIdsByContent = Object.fromEntries(
     target._granolaImportPending.notes
       .map((note: any) => [note.content, note.sourceFile])
-      .sort(([leftContent]: [string, string], [rightContent]: [string, string]) => leftContent.localeCompare(rightContent))
+      .sort(([leftContent]: [string, string], [rightContent]: [string, string]) =>
+        leftContent.localeCompare(rightContent)
+      )
   );
 
   selectedCsvPaths = [...csvPaths].reverse();
   await handlers.get("granola-import-pick-and-preview")({ sender: {} });
+
   const reversedIdsByContent = Object.fromEntries(
     target._granolaImportPending.notes
       .map((note: any) => [note.content, note.sourceFile])
-      .sort(([leftContent]: [string, string], [rightContent]: [string, string]) => leftContent.localeCompare(rightContent))
+      .sort(([leftContent]: [string, string], [rightContent]: [string, string]) =>
+        leftContent.localeCompare(rightContent)
+      )
   );
 
   assert.deepEqual(reversedIdsByContent, firstIdsByContent);

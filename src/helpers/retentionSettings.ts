@@ -24,6 +24,7 @@ export const DEFAULT_RETENTION_SETTINGS: RetentionSettings = {
 
 function toDays(value: unknown, fallback: number): number {
   const days = Math.trunc(Number(value));
+
   return Number.isFinite(days) && days >= 0 ? days : fallback;
 }
 
@@ -31,9 +32,11 @@ export function applyRetentionSettings(
   current: RetentionSettings,
   incoming: unknown
 ): { changed: boolean; settings: RetentionSettings } {
-  const record = (typeof incoming === "object" && incoming !== null
-    ? incoming
-    : {}) as Record<string, unknown>;
+  const record = (typeof incoming === "object" && incoming !== null ? incoming : {}) as Record<
+    string,
+    unknown
+  >;
+
   const settings: RetentionSettings = {
     audioRetentionDays: toDays(record.audioRetentionDays, current.audioRetentionDays),
     transcriptRetentionDays: toDays(
@@ -49,6 +52,7 @@ export function applyRetentionSettings(
         ? record.localHistoryPolicyResolved
         : current.localHistoryPolicyResolved,
   };
+
   const changed =
     settings.audioRetentionDays !== current.audioRetentionDays ||
     settings.transcriptRetentionDays !== current.transcriptRetentionDays ||
@@ -56,6 +60,7 @@ export function applyRetentionSettings(
     // The policy settling is what unblocks reconstruction, so it has to count
     // as a change even when every other value stayed put.
     settings.localHistoryPolicyResolved !== current.localHistoryPolicyResolved;
+
   return { changed, settings };
 }
 
@@ -76,9 +81,11 @@ export function createRetentionSettingsHandler({
 }: RetentionSettingsHandlerDeps) {
   return (event: { sender?: unknown }, incoming: unknown): void => {
     const owner = getOwner();
+
     if (!owner || event.sender !== owner) return;
 
     const { changed, settings } = applyRetentionSettings(getCurrentSettings(), incoming);
+
     // Before the first sync the current values are defaults, not the user's, so
     // "unchanged" only means they happen to match the default — the consumer
     // still needs that first sync to know the settings are real (#1370).

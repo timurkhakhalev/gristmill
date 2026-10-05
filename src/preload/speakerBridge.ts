@@ -31,6 +31,7 @@ function passthroughResult<T extends object>(raw: unknown, channel: string): T {
   if (typeof raw === "object" && raw !== null) {
     return raw as T;
   }
+
   throw new Error(`Unexpected response shape from ${channel}`);
 }
 
@@ -49,10 +50,13 @@ function subscribeProgress(
 ): () => void {
   const listener = (_event: unknown, ...args: unknown[]) => {
     const parsed = diarizationDownloadProgressEventSchema.safeParse(args[0]);
+
     if (!parsed.success) return;
     callback(parsed.data);
   };
+
   ipcRenderer.on(channel, listener);
+
   return () => {
     ipcRenderer.removeListener(channel, listener);
   };
@@ -94,7 +98,12 @@ export function createSpeakerBridge(ipcRenderer: IpcRendererLike): SpeakerApi {
     getSpeakerProfiles: () =>
       passthroughInvoke<PublicSpeakerProfile[]>(ipcRenderer, c.getSpeakerProfiles),
     attachSpeakerEmail: (profileId: number, email: string | null) =>
-      passthroughInvoke<AttachSpeakerEmailResult>(ipcRenderer, c.attachSpeakerEmail, profileId, email),
+      passthroughInvoke<AttachSpeakerEmailResult>(
+        ipcRenderer,
+        c.attachSpeakerEmail,
+        profileId,
+        email
+      ),
     saveNoteSpeakerEmbeddings: (noteId: number, embeddings: Record<string, number[]>) =>
       passthroughInvoke<{ success: boolean }>(
         ipcRenderer,

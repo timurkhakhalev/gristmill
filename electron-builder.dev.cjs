@@ -9,9 +9,13 @@ module.exports = {
   extraMetadata: { gristmillChannel: "development" },
   extraResources: [
     { ...base.extraResources[0], filter: ["**/*"] },
-    ...base.extraResources.slice(1).map(resource => resource.to === "companion"
-      ? { ...resource, from: "build/companion-dev", to: "companion-dev" }
-      : resource),
+    ...base.extraResources
+      .slice(1)
+      .map((resource) =>
+        resource.to === "companion"
+          ? { ...resource, from: "build/companion-dev", to: "companion-dev" }
+          : resource
+      ),
   ],
   mac: {
     ...base.mac,

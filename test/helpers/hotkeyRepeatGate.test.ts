@@ -1,5 +1,7 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const {
   createHotkeyRepeatGate,
   HOTKEY_REPEAT_WINDOW_MS,
@@ -7,6 +9,7 @@ const {
 
 function gateAt(times: number[]) {
   let index = 0;
+
   return createHotkeyRepeatGate(HOTKEY_REPEAT_WINDOW_MS, () => times[index++]);
 }
 

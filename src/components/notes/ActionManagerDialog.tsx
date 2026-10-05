@@ -74,6 +74,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
 
   const handleDelete = async (id: number) => {
     await window.electronAPI.deleteAction(id);
+
     if (selectedId === id) {
       setSelectedId(null);
       setIsCreating(false);
@@ -84,6 +85,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
   const handleSave = async () => {
     if (!name.trim() || !prompt.trim()) return;
     setIsSaving(true);
+
     try {
       if (editingId !== null) {
         await window.electronAPI.updateAction(editingId, {
@@ -102,6 +104,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
 
   const showEditor = isCreating || selectedId !== null;
   const selectedAction = actions.find((a) => a.id === selectedId);
+
   const hasUnsavedChanges = isCreating
     ? name.trim() !== "" || prompt.trim() !== ""
     : selectedAction
@@ -173,9 +176,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                         size={12}
                         className={cn(
                           "shrink-0 transition-colors duration-150",
-                          selectedId === action.id && !isCreating
-                            ? "text-accent/60"
-                            : "text-muted"
+                          selectedId === action.id && !isCreating ? "text-accent/60" : "text-muted"
                         )}
                       />
                       <div className="flex-1 min-w-0">
@@ -239,6 +240,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                         onClick={() => {
                           setIsCreating(false);
                           resetForm();
+
                           // Re-select first action if available
                           if (actions.length > 0) handleSelectAction(actions[0]);
                         }}

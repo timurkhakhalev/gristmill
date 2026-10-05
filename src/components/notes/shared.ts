@@ -2,7 +2,9 @@ import { cn } from "../lib/utils";
 import type { FolderItem } from "../../contracts/containers";
 
 export const DEFAULT_FOLDER_NAME = "Personal";
+
 export const MEETINGS_FOLDER_NAME = "Meetings";
+
 export const VIDEOS_FOLDER_NAME = "Videos";
 
 const DEFAULT_FOLDER_LABEL_KEYS: Record<string, string> = {
@@ -17,6 +19,7 @@ export function defaultFolderDisplayName(
 ): string {
   if (!folder.is_default) return folder.name;
   const key = DEFAULT_FOLDER_LABEL_KEYS[folder.name];
+
   return key ? t(key) : folder.name;
 }
 
@@ -28,6 +31,7 @@ export function folderMatchesQuery(
   query: string
 ): boolean {
   const q = query.toLowerCase();
+
   return (
     folder.name.toLowerCase().includes(q) ||
     defaultFolderDisplayName(folder, t).toLowerCase().includes(q)
@@ -64,6 +68,7 @@ const TRANSCRIPTION_ERROR_KEYS: Record<string, string> = {
 // is holding.
 export function transcriptionErrorKey(failure: unknown): string | undefined {
   const code = (failure as { code?: string } | null | undefined)?.code;
+
   return code ? TRANSCRIPTION_ERROR_KEYS[code] : undefined;
 }
 

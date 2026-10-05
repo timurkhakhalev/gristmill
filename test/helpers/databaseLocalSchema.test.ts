@@ -1,9 +1,13 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const test: typeof import("node:test") = require("node:test");
 
 const root = path.join(__dirname, "../..");
+
 const source = fs.readFileSync(path.join(root, "src/helpers/database.ts"), "utf8");
 
 test("database source defines only the clean local schema", () => {
@@ -44,6 +48,7 @@ test("database source keeps local notes, chat, capture and calendar tables", () 
   ]) {
     assert.match(source, new RegExp(`CREATE (?:VIRTUAL )?TABLE IF NOT EXISTS ${table}`));
   }
+
   assert.match(source, /sync_token TEXT/);
   assert.match(source, /sync_token_expires_at INTEGER/);
 });

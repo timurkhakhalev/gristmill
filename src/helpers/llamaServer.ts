@@ -1,10 +1,16 @@
 import { spawn, type ChildProcessByStdio } from "child_process";
 import type { Readable } from "stream";
+
 const fs = require("fs");
+
 const path = require("path");
+
 const http = require("http");
+
 const debugLogger = require("./debugLogger.js");
+
 const { ensureLocalEngine } = require("./localEngineInstaller.js");
+
 import { killProcess } from "../utils/process.js";
 import { isPortAvailable, resolveBinaryPath } from "../utils/serverUtils.js";
 import { getSafeTempDir } from "./safeTempDir.js";
@@ -12,14 +18,23 @@ import * as sidecarPidFile from "./sidecarPidFile.js";
 
 // Range kept clear of cliBridge (8200-8219) to avoid port-bind collisions.
 const PORT_RANGE_START = 8221;
+
 const PORT_RANGE_END = 8240;
+
 const STARTUP_TIMEOUT_MS = 120000;
+
 const HEALTH_CHECK_INTERVAL_MS = 5000;
+
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
+
 const STARTUP_POLL_INTERVAL_MS = 500;
+
 const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
+
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
 const DEFAULT_CONTEXT_SIZE = 4096;
+
 const PREFLIGHT_TIMEOUT_MS = 10000;
 
 export interface LlamaServerOptions {
@@ -71,6 +86,7 @@ function buildResponseError(statusCode: number, body: string): LlamaResponseErro
       const parsed = JSON.parse(body)?.error as
         | { type?: string; message?: string; n_prompt_tokens?: number; n_ctx?: number }
         | undefined;
+
       const isOverflow =
         parsed?.type === "exceed_context_size_error" ||
         /exceeds the available context size/i.test(parsed?.message || "");
@@ -78,14 +94,17 @@ function buildResponseError(statusCode: number, body: string): LlamaResponseErro
       if (isOverflow) {
         const neededTokens = Number(parsed?.n_prompt_tokens) || null;
         const maxContextTokens = Number(parsed?.n_ctx) || null;
+
         const error = new Error(
           neededTokens && maxContextTokens
             ? `The request needs ${neededTokens} tokens of context but the model is running with ${maxContextTokens}.`
             : "The request is longer than the context this model is running with."
         ) as LlamaResponseError;
+
         error.code = "CONTEXT_TOO_LARGE";
         error.neededTokens = neededTokens;
         error.maxContextTokens = maxContextTokens;
+
         return error;
       }
     } catch {
@@ -139,21 +158,24 @@ export class LlamaServerManager {
 
   getServerBinaryPaths(): ServerBinaryPaths {
     const defaultBin = resolveBinaryPath("llama-server-darwin-arm64");
+
     // Match the installer: executable, top-level libraries and its final stamp.
     // Recheck each discovery so a removed stamp cannot leave a cached hit.
     const hasLibraries = defaultBin
       ? fs.readdirSync(path.dirname(defaultBin)).some((file: string) => file.endsWith(".dylib"))
       : false;
+
     const stamped = defaultBin && fs.existsSync(`${defaultBin}.complete`);
-    const paths: ServerBinaryPaths = defaultBin && stamped && hasLibraries
-      ? { default: defaultBin }
-      : { default: "" };
+
+    const paths: ServerBinaryPaths =
+      defaultBin && stamped && hasLibraries ? { default: defaultBin } : { default: "" };
 
     return paths;
   }
 
   isAvailable(): boolean {
     const paths = this.getServerBinaryPaths();
+
     return Boolean(paths.default);
   }
 
@@ -161,31 +183,57 @@ export class LlamaServerManager {
     for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
       if (await isPortAvailable(port)) return port;
     }
+
     throw new Error(`No available ports in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
   }
 
   async start(modelPath: string, options: LlamaServerOptions = {}): Promise<void> {
     const requestedOptions = { ...options };
     const requestedContextSize = requestedOptions.contextSize || DEFAULT_CONTEXT_SIZE;
-    const settingsIdentity = JSON.stringify([modelPath, requestedOptions.draftModelPath || null,
-      requestedOptions.threads || 4, requestedOptions.gpuLayers ?? 99, requestedOptions.cacheRamMiB || 0]);
+
+    const settingsIdentity = JSON.stringify([
+      modelPath,
+      requestedOptions.draftModelPath || null,
+      requestedOptions.threads || 4,
+      requestedOptions.gpuLayers ?? 99,
+      requestedOptions.cacheRamMiB || 0,
+    ]);
+
     const identity = JSON.stringify([settingsIdentity, requestedContextSize]);
+
     if (this.startupPromise && this.startupIdentity === identity) return this.startupPromise;
     const generation = this.stopGeneration;
     const previous = this.startupPromise;
+
     // Publish ownership before stop, port selection or spawn can yield.
-    const operation = (previous ?? Promise.resolve()).catch(() => {}).then(async () => {
-      if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
-      if (this.ready && this.activeSettingsIdentity === settingsIdentity && requestedContextSize <= (this.contextSize || 0)) return;
-      if (this.process) await this.stopProcess();
-      if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
-      await this._doStart(modelPath, requestedOptions, generation);
-      if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
-      this.contextSize = this.activeContextSize ?? requestedContextSize;
-      this.activeSettingsIdentity = settingsIdentity;
-    });
+    const operation = (previous ?? Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        if (generation !== this.stopGeneration)
+          throw new Error("llama-server startup interrupted by stop");
+
+        if (
+          this.ready &&
+          this.activeSettingsIdentity === settingsIdentity &&
+          requestedContextSize <= (this.contextSize || 0)
+        )
+          return;
+
+        if (this.process) await this.stopProcess();
+
+        if (generation !== this.stopGeneration)
+          throw new Error("llama-server startup interrupted by stop");
+        await this._doStart(modelPath, requestedOptions, generation);
+
+        if (generation !== this.stopGeneration)
+          throw new Error("llama-server startup interrupted by stop");
+        this.contextSize = this.activeContextSize ?? requestedContextSize;
+        this.activeSettingsIdentity = settingsIdentity;
+      });
+
     this.startupPromise = operation;
     this.startupIdentity = identity;
+
     try {
       await operation;
     } finally {
@@ -222,17 +270,25 @@ export class LlamaServerManager {
     return args;
   }
 
-  async _doStart(modelPath: string, options: LlamaServerOptions = {}, generation = this.stopGeneration): Promise<void> {
+  async _doStart(
+    modelPath: string,
+    options: LlamaServerOptions = {},
+    generation = this.stopGeneration
+  ): Promise<void> {
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
     let binaryPaths = this.getServerBinaryPaths();
+
     if (!binaryPaths.default) {
       await ensureLocalEngine("llama-server");
       binaryPaths = this.getServerBinaryPaths();
     }
+
     if (!binaryPaths.default) throw new Error("llama-server binary not found");
 
     const port = await this.findAvailablePort();
-    if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
+
+    if (generation !== this.stopGeneration)
+      throw new Error("llama-server startup interrupted by stop");
     this.port = port;
     this.modelPath = modelPath;
     // Store the REQUESTED drafter so start() compares against a stable value across
@@ -263,7 +319,9 @@ export class LlamaServerManager {
       this._buildEnv(binaryPaths.default),
       STARTUP_TIMEOUT_MS
     );
-    if (generation !== this.stopGeneration) throw new Error("llama-server startup interrupted by stop");
+
+    if (generation !== this.stopGeneration)
+      throw new Error("llama-server startup interrupted by stop");
     this.activeBackend = "metal";
     this.activeDraftModelPath = this.draftModelPath;
 
@@ -290,7 +348,12 @@ export class LlamaServerManager {
     return env;
   }
 
-  _startWithBinary(binaryPath: string, args: string[], env: NodeJS.ProcessEnv, timeoutMs: number): Promise<void> {
+  _startWithBinary(
+    binaryPath: string,
+    args: string[],
+    env: NodeJS.ProcessEnv,
+    timeoutMs: number
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       debugLogger.debug("Spawning llama-server", { binary: binaryPath, port: this.port, args });
 
@@ -300,6 +363,7 @@ export class LlamaServerManager {
         env,
         detached: true,
       });
+
       if (this.process.pid !== undefined) sidecarPidFile.write("llama", this.process.pid);
 
       let stderrBuffer = "";
@@ -350,13 +414,16 @@ export class LlamaServerManager {
           const info = getProcessInfo();
           const signal = info.exitSignal;
           const diagParts: string[] = [];
+
           if (signal) diagParts.push(`signal: ${signal}`);
           else if (info.exitCode !== null && info.exitCode !== undefined)
             diagParts.push(`exit code: ${info.exitCode}`);
+
           const oomHint =
             signal === "SIGKILL"
               ? " — the process was killed by the OS, likely due to insufficient memory. Try a smaller/more quantized model, or reduce the context size."
               : "";
+
           const stderr = info.stderr ? info.stderr.trim().slice(-800) : "";
           const diagStr = diagParts.length ? ` (${diagParts.join(", ")})` : "";
           settle(() =>
@@ -366,10 +433,12 @@ export class LlamaServerManager {
               )
             )
           );
+
           return;
         }
 
         pollCount++;
+
         if (await this.checkHealth()) {
           this.ready = true;
           debugLogger.debug("llama-server ready", {
@@ -377,11 +446,13 @@ export class LlamaServerManager {
             pollCount,
           });
           settle(() => resolve());
+
           return;
         }
 
         if (Date.now() - startTime >= timeoutMs) {
           settle(() => reject(new Error(`llama-server failed to start within ${timeoutMs}ms`)));
+
           return;
         }
 
@@ -455,12 +526,15 @@ export class LlamaServerManager {
       try {
         if (!this.process) {
           this.stopHealthCheck();
+
           return;
         }
+
         if (await this.checkHealth()) {
           this.healthCheckFailures = 0;
         } else {
           this.healthCheckFailures++;
+
           if (this.healthCheckFailures >= HEALTH_CHECK_FAILURE_THRESHOLD) {
             debugLogger.warn("llama-server health check failed", {
               consecutiveFailures: this.healthCheckFailures,
@@ -506,9 +580,14 @@ export class LlamaServerManager {
    * make a decision more precise, so a broken one must degrade to the estimate
    * and never fail the user's request.
    */
-  _requestJson<T>(path: string, body: unknown = null, timeoutMs = PREFLIGHT_TIMEOUT_MS): Promise<T | null> {
+  _requestJson<T>(
+    path: string,
+    body: unknown = null,
+    timeoutMs = PREFLIGHT_TIMEOUT_MS
+  ): Promise<T | null> {
     return new Promise((resolve) => {
       const payload = body === null ? null : JSON.stringify(body);
+
       const req = http.request(
         {
           hostname: "127.0.0.1",
@@ -530,6 +609,7 @@ export class LlamaServerManager {
           });
           res.on("end", () => {
             if (res.statusCode !== 200) return resolve(null);
+
             try {
               resolve(JSON.parse(data) as T);
             } catch {
@@ -544,6 +624,7 @@ export class LlamaServerManager {
         req.destroy();
         resolve(null);
       });
+
       if (payload) req.write(payload);
       req.end();
     });
@@ -556,10 +637,13 @@ export class LlamaServerManager {
    */
   async usableContextSize(): Promise<number | null> {
     if (!this.ready || !this.process) return null;
+
     const props = await this._requestJson<{
       default_generation_settings?: { n_ctx?: number };
     }>("/props");
+
     const contextSize = props?.default_generation_settings?.n_ctx;
+
     return typeof contextSize === "number" && Number.isFinite(contextSize) && contextSize > 0
       ? contextSize
       : null;
@@ -570,13 +654,17 @@ export class LlamaServerManager {
    * template included. Roughly 15 ms for an 85 KB prompt, which is cheap
    * enough to make the difference between a right-sized window and a 400.
    */
-  async countPromptTokens(messages: ChatMessage[], options: CountPromptTokensOptions = {}): Promise<number | null> {
+  async countPromptTokens(
+    messages: ChatMessage[],
+    options: CountPromptTokensOptions = {}
+  ): Promise<number | null> {
     if (!this.ready || !this.process) return null;
 
     const payload: {
       messages: ChatMessage[];
       chat_template_kwargs?: { enable_thinking: boolean };
     } = { messages };
+
     // Must mirror inference() exactly, or we would price a different prompt
     // than the one we go on to send.
     if (options.disableThinking !== false) {
@@ -584,11 +672,13 @@ export class LlamaServerManager {
     }
 
     const templated = await this._requestJson<{ prompt?: string }>("/apply-template", payload);
+
     if (typeof templated?.prompt !== "string") return null;
 
     const tokenized = await this._requestJson<{ tokens?: unknown[] }>("/tokenize", {
       content: templated.prompt,
     });
+
     return Array.isArray(tokenized?.tokens) ? tokenized.tokens.length : null;
   }
 
@@ -596,6 +686,7 @@ export class LlamaServerManager {
     if (!this.ready || !this.process) {
       throw new Error("llama-server is not running");
     }
+
     if (options.signal?.aborted) {
       throw Object.assign(new Error("Inference cancelled"), { name: "AbortError" });
     }
@@ -624,6 +715,7 @@ export class LlamaServerManager {
     const body = JSON.stringify(requestBody);
 
     let abortRequest: (() => void) | null = null;
+
     return new Promise<string>((resolve, reject) => {
       const startTime = Date.now();
 
@@ -652,20 +744,27 @@ export class LlamaServerManager {
 
             if (res.statusCode !== 200) {
               reject(buildResponseError(res.statusCode ?? 0, data));
+
               return;
             }
 
             try {
               const response = JSON.parse(data) as {
-                choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
+                choices?: Array<{
+                  finish_reason?: string;
+                  message?: { content?: string; reasoning_content?: string };
+                }>;
               };
+
               if (
                 options.requireCompleteOutput &&
                 ["length", "max_tokens"].includes(response.choices?.[0]?.finish_reason ?? "")
               ) {
                 reject(new Error("Model output was truncated before the selection edit completed"));
+
                 return;
               }
+
               const message = response.choices?.[0]?.message;
               const text = message?.content || message?.reasoning_content || "";
               resolve(text.trim());
@@ -677,17 +776,21 @@ export class LlamaServerManager {
       );
 
       req.on("error", (error: Error) => {
-        reject(options.signal?.aborted
-          ? Object.assign(new Error("Inference cancelled"), { name: "AbortError" })
-          : new Error(`llama-server request failed: ${error.message}`));
+        reject(
+          options.signal?.aborted
+            ? Object.assign(new Error("Inference cancelled"), { name: "AbortError" })
+            : new Error(`llama-server request failed: ${error.message}`)
+        );
       });
       req.on("timeout", () => {
         req.destroy();
         reject(new Error("llama-server request timed out"));
       });
 
-      abortRequest = () => req.destroy(Object.assign(new Error("Inference cancelled"), { name: "AbortError" }));
+      abortRequest = () =>
+        req.destroy(Object.assign(new Error("Inference cancelled"), { name: "AbortError" }));
       options.signal?.addEventListener("abort", abortRequest, { once: true });
+
       if (options.signal?.aborted) abortRequest();
       req.write(body);
       req.end();
@@ -700,14 +803,17 @@ export class LlamaServerManager {
   async stop(): Promise<void> {
     this.stopGeneration += 1;
     const pending = this.startupPromise;
+
     const operation = Promise.all([this.stopProcess(), pending?.catch(() => {})]).then(() => {
       this.clearIdleTimer();
       this.stopHealthCheck();
       this.ready = false;
       this.activeSettingsIdentity = null;
     });
+
     this.startupPromise = operation;
     this.startupIdentity = null;
+
     try {
       await operation;
     } finally {
@@ -722,6 +828,7 @@ export class LlamaServerManager {
     if (!this.process) {
       this.ready = false;
       this.contextSize = null;
+
       return;
     }
 
@@ -735,6 +842,7 @@ export class LlamaServerManager {
           if (this.process) {
             killProcess(this.process, "SIGKILL");
           }
+
           resolve();
         }, 5000);
 
@@ -785,4 +893,5 @@ export class LlamaServerManager {
 // Dual export: modelManagerBridge and legacy tests require this module as the
 // class itself, while the TS graph imports the named export.
 module.exports = LlamaServerManager;
+
 module.exports.LlamaServerManager = LlamaServerManager;

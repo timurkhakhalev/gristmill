@@ -316,18 +316,48 @@
 }
 
 /* HeroUI adjustments shared by every screen. */
-.select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.select__value .label { font-weight: 400; }
+.select__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select__value .label {
+  font-weight: 400;
+}
 
 /* Markdown typography for generated meeting summaries. */
-.note-prose { font-size: 15px; line-height: 1.8; }
-.note-prose > :first-child { margin-top: 24px; }
-.note-prose h1, .note-prose h2, .note-prose h3 { font-size: 16px; font-weight: 600; margin: 28px 0 8px; }
-.note-prose p { margin: 12px 0; }
-.note-prose ul { list-style: disc; padding-inline-start: 20px; }
-.note-prose ol { list-style: decimal; padding-inline-start: 20px; }
-.note-prose li { margin: 6px 0; }
-.note-prose li::marker { color: var(--muted); }
+.note-prose {
+  font-size: 15px;
+  line-height: 1.8;
+}
+.note-prose > :first-child {
+  margin-top: 24px;
+}
+.note-prose h1,
+.note-prose h2,
+.note-prose h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 28px 0 8px;
+}
+.note-prose p {
+  margin: 12px 0;
+}
+.note-prose ul {
+  list-style: disc;
+  padding-inline-start: 20px;
+}
+.note-prose ol {
+  list-style: decimal;
+  padding-inline-start: 20px;
+}
+.note-prose li {
+  margin: 6px 0;
+}
+.note-prose li::marker {
+  color: var(--muted);
+}
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -394,7 +424,8 @@
      when the licensed files are in the build); Noto Sans carries CJK and
      everything else, and is the fallback when Yowza is absent. */
   --font-family-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
   --font-family-display: var(--font-family-sans);
 
   /* Opacities */
@@ -441,7 +472,8 @@
     var(--accent) 100%
   );
   /* The brand tile floats over the onboarding hero, so it adds a soft coloured lift. */
-  --shadow-brand-tile: var(--shadow-brand-glass), 0 10px 24px -8px color-mix(in oklch, var(--accent) 45%, transparent);
+  --shadow-brand-tile:
+    var(--shadow-brand-glass), 0 10px 24px -8px color-mix(in oklch, var(--accent) 45%, transparent);
 }
 
 .dark {
@@ -454,7 +486,8 @@
   /* Premium effects */
   --shadow-metallic-dark: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-selected-glow:
-    inset 0 0 0 1px color-mix(in oklch, var(--brand) 20%, transparent), 0 0 16px -4px color-mix(in oklch, var(--brand) 20%, transparent);
+    inset 0 0 0 1px color-mix(in oklch, var(--brand) 20%, transparent),
+    0 0 16px -4px color-mix(in oklch, var(--brand) 20%, transparent);
   --shadow-card-hover-subtle: 0 2px 8px -2px rgba(0, 0, 0, 0.12);
 
   /* Liquid-glass edge — faint rim on charcoal, deeper lift */
@@ -1025,8 +1058,8 @@ body.dark:has(.onboarding-canvas) {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 2px 2px, var(--color-primary) 1.3px, transparent 1.5px) 0
-    0 / 4px 4px;
+  background: radial-gradient(circle at 2px 2px, var(--color-primary) 1.3px, transparent 1.5px) 0 0
+    / 4px 4px;
   mask-image: linear-gradient(transparent 55%, #000 72%, #000 84%, transparent);
 }
 
@@ -1080,8 +1113,8 @@ body:has(.onboarding-canvas) kbd {
     /* top bevel */
     inset 0 1px 0 var(--onboarding-keycap-bevel),
     /* the cap's side wall */ 1px 3px 0 var(--onboarding-control-border),
-    /* contact shadow, then a wider ambient one */ 0 5px 5px
-      color-mix(in oklch, var(--onboarding-keycap-shadow) 9%, transparent),
+    /* contact shadow, then a wider ambient one */
+    0 5px 5px color-mix(in oklch, var(--onboarding-keycap-shadow) 9%, transparent),
     0 12px 20px color-mix(in oklch, var(--onboarding-keycap-shadow) 8%, transparent);
 }
 
@@ -1234,7 +1267,16 @@ a svg:hover,
 /* Default text-field look for bare inputs. Kept in the base layer so component
    classes (and HeroUI's component layer) always win over it. */
 @layer base {
-  input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], .input-inline)),
+  input:where(
+    :not(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="file"],
+      [type="color"],
+      .input-inline
+    )
+  ),
   textarea:where(:not(.input-inline)) {
     border: 1px solid var(--field-border);
     border-radius: var(--radius);
@@ -1247,7 +1289,16 @@ a svg:hover,
       box-shadow 0.15s ease;
   }
 
-  input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], .input-inline)):focus-visible,
+  input:where(
+      :not(
+        [type="checkbox"],
+        [type="radio"],
+        [type="range"],
+        [type="file"],
+        [type="color"],
+        .input-inline
+      )
+    ):focus-visible,
   textarea:where(:not(.input-inline)):focus-visible {
     outline: none;
     border-color: var(--focus);

@@ -50,6 +50,7 @@ const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
 try {
   const currentCAs = tls.getCACertificates();
   const systemCAs = tls.getCACertificates("system");
+
   if (systemCAs?.length) {
     tls.setDefaultCACertificates([...currentCAs, ...systemCAs]);
   }
@@ -60,15 +61,18 @@ try {
 }
 
 const VALID_CHANNELS = new Set(["development", "staging", "production"]);
+
 const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL: Record<string, string> = {
   development: "gristmill-dev",
   staging: "gristmill-staging",
   production: "gristmill",
 };
+
 const APP_NAME = "Gristmill";
 
 function isElectronBinaryExec(): boolean {
   const execPath = (process.execPath || "").toLowerCase();
+
   return (
     execPath.includes("/electron.app/contents/macos/electron") ||
     execPath.endsWith("/electron") ||
@@ -84,6 +88,7 @@ function inferDefaultChannel(): string {
   ) {
     return "development";
   }
+
   return "production";
 }
 
@@ -93,6 +98,7 @@ function resolveAppChannel(): string {
       const metadata = JSON.parse(
         fs.readFileSync(path.join(app.getAppPath(), "package.json"), "utf8")
       ) as { gristmillChannel?: string };
+
       if (metadata.gristmillChannel === "development") return "development";
     } catch (error) {
       debugLogger.warn("Could not read packaged app channel", {
@@ -113,26 +119,30 @@ function resolveAppChannel(): string {
 }
 
 const APP_CHANNEL = resolveAppChannel();
+
 process.env.GRISTMILL_CHANNEL = APP_CHANNEL;
 
 function configureChannelUserDataPath(): void {
   const profileName = APP_CHANNEL === "production" ? APP_NAME : `${APP_NAME}-${APP_CHANNEL}`;
   const explicitPath = app.commandLine.getSwitchValue("user-data-dir");
+
   const isolatedPath = explicitPath
     ? path.resolve(explicitPath)
     : path.join(app.getPath("appData"), profileName);
+
   if (APP_CHANNEL !== "production") {
     // Check the resolved root and known writable paths before creating the
     // profile or reading its .env, including explicit smoke profiles.
     const devSnapshotModule = require("./src/helpers/devSnapshot.js");
+
     if (devSnapshotModule.devProfileHasUnsafePaths(isolatedPath)) {
-      console.error(
-        "[devSnapshot] dev profile has an unsafe storage path; refusing to start."
-      );
+      console.error("[devSnapshot] dev profile has an unsafe storage path; refusing to start.");
       app.exit(1);
+
       return;
     }
   }
+
   // app.setPath throws when the directory does not exist; a first dev launch
   // has no profile directory yet.
   fs.mkdirSync(isolatedPath, { recursive: true });
@@ -149,7 +159,6 @@ require("dotenv").config({
   path: path.join(app.getPath("userData"), ".env"),
   override: false,
 });
-
 
 function getOAuthProtocol(): string {
   const fromEnv = (process.env.VITE_GRISTMILL_PROTOCOL || process.env.GRISTMILL_PROTOCOL || "")
@@ -176,6 +185,7 @@ function registerGristmillProtocol(): boolean {
   const protocol = OAUTH_PROTOCOL;
 
   let result: boolean;
+
   if (shouldRegisterProtocolWithAppArg()) {
     const appArg = process.argv[1] ? path.resolve(process.argv[1]) : path.resolve(".");
     result = app.setAsDefaultProtocolClient(protocol, process.execPath, [appArg]);
@@ -187,6 +197,7 @@ function registerGristmillProtocol(): boolean {
 }
 
 const protocolRegistered = registerGristmillProtocol();
+
 if (!protocolRegistered) {
   console.warn(`[Auth] Failed to register ${OAUTH_PROTOCOL}:// protocol handler`);
 }
@@ -205,11 +216,13 @@ if (!gotSingleInstanceLock) {
 // would otherwise create an empty dev database and mask the failure forever).
 if (APP_CHANNEL === "development" && gotSingleInstanceLock) {
   const devSnapshot = require("./src/helpers/devSnapshot.js");
+
   // Explicit smoke profiles were checked before userData was set; they skip
   // production import. The default profile gets checked again by snapshot.
   const devOk = app.commandLine.getSwitchValue("user-data-dir")
     ? true
     : devSnapshot.snapshotProductionProfileForDev();
+
   if (!devOk) {
     console.error("[devSnapshot] dev profile check failed; exiting. The next launch retries.");
     app.exit(1);
@@ -224,10 +237,9 @@ require("dotenv").config({
   override: false,
 });
 
-
-
 // Keep the packaged development app visibly distinct in macOS menus.
 const displayName = app.isPackaged && APP_CHANNEL === "development" ? "Gristmill Dev" : APP_NAME;
+
 if (process.platform === "darwin" && app.getName() !== displayName) {
   app.setName(displayName);
 }
@@ -235,10 +247,12 @@ if (process.platform === "darwin" && app.getName() !== displayName) {
 // Add global error handling for uncaught exceptions
 process.on("uncaughtException", (error: Error) => {
   console.error("Uncaught Exception:", error);
+
   // Don't exit the process for EPIPE errors as they're harmless
   if ((error as NodeJS.ErrnoException).code === "EPIPE") {
     return;
   }
+
   // For other errors, log and continue
   console.error("Error stack:", error.stack);
 });
@@ -249,24 +263,43 @@ process.on("unhandledRejection", (reason: unknown, promise: Promise<unknown>) =>
 
 // Manager instances - initialized after app.whenReady()
 let environmentManager: EnvironmentManagerWithByok | null = null;
+
 let windowManager: WindowManager | null = null;
+
 let hotkeyManager: WindowManager["hotkeyManager"] | null = null;
+
 let databaseManager: DatabaseManager | null = null;
+
 let whisperManager: WhisperManager | null = null;
+
 let parakeetManager: ParakeetManager | null = null;
+
 let diarizationManager: DiarizationManager | null = null;
+
 let trayManager: TrayManager | null = null;
+
 let globeKeyManager: GlobeKeyManager | null = null;
+
 let googleCalendarManager: GoogleCalendarManager | null = null;
+
 let microsoftCalendarManager: MicrosoftCalendarManager | null = null;
+
 let appleCalendarManager: AppleCalendarManager | null = null;
+
 let calendarReminderScheduler: CalendarReminderScheduler | null = null;
+
 let meetingDetectionEngine: MeetingDetectionEngine | null = null;
+
 let audioTapManager: AudioTapManager | null = null;
+
 let ipcHandlers: IPCHandlers | null = null;
+
 let cliBridge: CliBridge | null = null;
+
 let globeKeyAlertShown = false;
+
 const WHISPER_WAKE_REWARM_DELAY_MS = 3000;
+
 let wakeRewarmTimer: NodeJS.Timeout | null = null;
 
 // The lazily required singleton bridge: the module keeps its pre-cutover
@@ -306,10 +339,10 @@ function wasLaunchedAtLoginHiddenSafe(): boolean {
   try {
     return wasLaunchedAtLoginHidden();
   } catch (error) {
-    debugLogger.warn(
-      "Failed to detect a login launch",
-      { error: (error as Error | null | undefined)?.message }
-    );
+    debugLogger.warn("Failed to detect a login launch", {
+      error: (error as Error | null | undefined)?.message,
+    });
+
     return false;
   }
 }
@@ -338,48 +371,53 @@ function initializeCoreManagers(): void {
   parakeetManager = initializedParakeetManager;
   const initializedDiarizationManager = new DiarizationManager();
   diarizationManager = initializedDiarizationManager;
+
   const initializedCalendarReminderScheduler = new CalendarReminderScheduler(
     initializedDatabaseManager
   );
+
   calendarReminderScheduler = initializedCalendarReminderScheduler;
+
   const initializedGoogleCalendarManager = new GoogleCalendarManager(
     initializedDatabaseManager,
     initializedWindowManager,
     initializedCalendarReminderScheduler
   );
+
   googleCalendarManager = initializedGoogleCalendarManager;
+
   const initializedMicrosoftCalendarManager = new MicrosoftCalendarManager(
     initializedDatabaseManager,
     initializedCalendarReminderScheduler
   );
+
   microsoftCalendarManager = initializedMicrosoftCalendarManager;
+
   const initializedAppleCalendarManager = new AppleCalendarManager(
     initializedDatabaseManager,
     initializedCalendarReminderScheduler
   );
+
   appleCalendarManager = initializedAppleCalendarManager;
   const initializedMeetingProcessDetector = new MeetingProcessDetector();
+
   const initializedMeetingDetectionEngine = new MeetingDetectionEngine(
     initializedCalendarReminderScheduler,
     initializedMeetingProcessDetector,
     new AudioActivityDetector(
       // The capture-helper managers are created a few lines below; the provider
       // is only invoked on mic events, long after initialization completes.
-      createExcludedProcessIdProvider(() =>
-        collectAudioCaptureHelperPids([
-          audioTapManager,
-        ])
-      ),
+      createExcludedProcessIdProvider(() => collectAudioCaptureHelperPids([audioTapManager])),
       () => initializedMeetingProcessDetector.getDetectedProcesses().length > 0
     ),
     initializedWindowManager,
     initializedDatabaseManager,
     { callDetector: new MeetingCallDetector() }
   );
+
   meetingDetectionEngine = initializedMeetingDetectionEngine;
   initializedWindowManager.meetingDetectionEngine = initializedMeetingDetectionEngine;
-  initializedCalendarReminderScheduler.meetingDetectionEngine =
-    initializedMeetingDetectionEngine;
+  initializedCalendarReminderScheduler.meetingDetectionEngine = initializedMeetingDetectionEngine;
   const initializedAudioTapManager = new AudioTapManager();
   audioTapManager = initializedAudioTapManager;
 
@@ -410,19 +448,24 @@ function registerSidecars(): void {
     const manager = whisperManager;
     registerSidecar("whisper", () => manager.stopServer());
   }
+
   if (parakeetManager) {
     const manager = parakeetManager;
     registerSidecar("parakeet", () => manager.stopServer());
   }
+
   if (diarizationManager) {
     const manager = diarizationManager;
     registerSidecar("diarization", () => manager.shutdown());
   }
+
   const modelManager = requireModelManager();
   registerSidecar("llama", () => modelManager.stopServer());
+
   const onnxWorkerClient = require("./src/helpers/onnxWorkerClient") as {
     stop(): Promise<void>;
   };
+
   registerSidecar("onnx", () => onnxWorkerClient.stop());
 }
 
@@ -439,6 +482,7 @@ function initializeDeferredManagers(): void {
       if (globeKeyAlertShown) {
         return;
       }
+
       globeKeyAlertShown = true;
 
       const detailLines = [
@@ -469,6 +513,7 @@ function initializeDeferredManagers(): void {
 
 app.on("open-url", (event, url) => {
   event.preventDefault();
+
   if (!url.startsWith(`${OAUTH_PROTOCOL}://`)) return;
 
   void windowManager?.createControlPanelWindow().catch((error: Error) => {
@@ -492,22 +537,32 @@ async function startApp(): Promise<void> {
   registerSidecars();
 
   removeBbConnection(app.getPath("userData"));
-  const initializedCliBridge = new CliBridge({
-    databaseManager: initializedHandlers.databaseManager,
-    noteReadService: new NoteReadService(initializedHandlers.databaseManager, initializedHandlers.audioStorageManager.meetingRecordings),
-    deleteNoteInternal: (id) => initializedHandlers.deleteNoteInternal(id),
-    deleteTranscriptionInternal: (id) => initializedHandlers.deleteTranscriptionInternal(id),
-    noteWrites: initializedHandlers.noteWrites,
-    approveAudioPath: (filePath) => initializedHandlers.approveAudioPath(filePath),
-    transcribeLocalFile: (filePath, options) =>
-      initializedHandlers.transcribeLocalFile(filePath, options),
-    listLocalTranscriptionModels: () => initializedHandlers.listLocalTranscriptionModels(),
-    audioStorageManager: initializedHandlers.audioStorageManager,
-  }, app.getPath("userData"));
+
+  const initializedCliBridge = new CliBridge(
+    {
+      databaseManager: initializedHandlers.databaseManager,
+      noteReadService: new NoteReadService(
+        initializedHandlers.databaseManager,
+        initializedHandlers.audioStorageManager.meetingRecordings
+      ),
+      deleteNoteInternal: (id) => initializedHandlers.deleteNoteInternal(id),
+      deleteTranscriptionInternal: (id) => initializedHandlers.deleteTranscriptionInternal(id),
+      noteWrites: initializedHandlers.noteWrites,
+      approveAudioPath: (filePath) => initializedHandlers.approveAudioPath(filePath),
+      transcribeLocalFile: (filePath, options) =>
+        initializedHandlers.transcribeLocalFile(filePath, options),
+      listLocalTranscriptionModels: () => initializedHandlers.listLocalTranscriptionModels(),
+      audioStorageManager: initializedHandlers.audioStorageManager,
+    },
+    app.getPath("userData")
+  );
+
   cliBridge = initializedCliBridge;
+
   try {
     await initializedCliBridge.start();
     const connection = initializedCliBridge.getConnection();
+
     if (connection) writeBbConnection(app.getPath("userData"), connection.port, connection.token);
   } catch (err) {
     debugLogger.error("CLI bridge failed to start", { error: (err as Error).message });
@@ -520,7 +575,9 @@ async function startApp(): Promise<void> {
     try {
       installAgentCli();
     } catch (err) {
-      debugLogger.error("Notes CLI launcher could not be installed", { error: (err as Error).message });
+      debugLogger.error("Notes CLI launcher could not be installed", {
+        error: (err as Error).message,
+      });
     }
   }
 
@@ -528,7 +585,6 @@ async function startApp(): Promise<void> {
     debugLogger.info("Start minimized changed", { enabled });
     initializedEnvironmentManager.saveStartMinimized(enabled);
   });
-
 
   // In development, wait for Vite dev server to be ready
   if (process.env.NODE_ENV === "development") {
@@ -546,9 +602,12 @@ async function startApp(): Promise<void> {
 
   // Set up meeting mode hotkey
   const isMeetingPress = createHotkeyRepeatGate();
+
   const meetingHotkeyCallback = () => {
     if (!isMeetingPress()) return;
+
     if (!hotkeyManager || hotkeyManager.isInListeningMode()) return;
+
     // Fail closed during onboarding, like every other hotkey slot.
     if (!initializedWindowManager.isMeetingInputAllowed()) return;
     debugLogger.info("Meeting hotkey triggered", {}, "meeting");
@@ -566,12 +625,14 @@ async function startApp(): Promise<void> {
   });
 
   const savedMeetingKey = initializedEnvironmentManager.getMeetingKey() || "";
+
   if (savedMeetingKey) {
     const result = await (hotkeyManager as NonNullable<typeof hotkeyManager>).registerSlot(
       "meeting",
       savedMeetingKey,
       meetingHotkeyCallback
     );
+
     debugLogger.info(
       "Meeting hotkey startup registration",
       { savedMeetingKey, ...result },
@@ -581,6 +642,7 @@ async function startApp(): Promise<void> {
 
   // Phase 2: Initialize remaining managers after windows are visible
   initializeDeferredManagers();
+
   if (process.platform === "darwin") {
     // Restore a Globe preference marker left by a crash without starting any
     // Accessibility-protected event monitors during onboarding.
@@ -598,15 +660,14 @@ async function startApp(): Promise<void> {
     googleCalendarManager?.onWakeFromSleep();
     microsoftCalendarManager?.onWakeFromSleep();
     appleCalendarManager?.onWakeFromSleep();
+
     // Sleep evicts the local GPU model from VRAM; reload it once the driver settles. See #766.
     if (wakeRewarmTimer) clearTimeout(wakeRewarmTimer);
     wakeRewarmTimer = setTimeout(() => {
       wakeRewarmTimer = null;
-      whisperManager
-        ?.onWakeFromSleep()
-        .catch((err: Error) => {
-          debugLogger.debug("whisper wake re-warm error (non-fatal)", { error: err.message });
-        });
+      whisperManager?.onWakeFromSleep().catch((err: Error) => {
+        debugLogger.debug("whisper wake re-warm error (non-fatal)", { error: err.message });
+      });
     }, WHISPER_WAKE_REWARM_DELAY_MS);
   });
 
@@ -615,25 +676,24 @@ async function startApp(): Promise<void> {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     whisperModel: process.env.LOCAL_WHISPER_MODEL,
   };
-  (whisperManager as WhisperManager)
-    .initializeAtStartup(whisperSettings)
-    .catch((err: Error) => {
-      debugLogger.debug("Whisper startup init error (non-fatal)", { error: err.message });
-    });
+
+  (whisperManager as WhisperManager).initializeAtStartup(whisperSettings).catch((err: Error) => {
+    debugLogger.debug("Whisper startup init error (non-fatal)", { error: err.message });
+  });
 
   const parakeetSettings = {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     parakeetModel: process.env.PARAKEET_MODEL,
     language: process.env.DICTATION_LANGUAGE,
   };
-  (parakeetManager as ParakeetManager)
-    .initializeAtStartup(parakeetSettings)
-    .catch((err: Error) => {
-      debugLogger.debug("Parakeet startup init error (non-fatal)", { error: err.message });
-    });
+
+  (parakeetManager as ParakeetManager).initializeAtStartup(parakeetSettings).catch((err: Error) => {
+    debugLogger.debug("Parakeet startup init error (non-fatal)", { error: err.message });
+  });
 
   const cleanupProvider = process.env.CLEANUP_PROVIDER;
   const cleanupLocalModel = process.env.LOCAL_CLEANUP_MODEL;
+
   if (cleanupProvider === "local" && cleanupLocalModel) {
     const modelManager = requireModelManager();
     modelManager.prewarmServer(cleanupLocalModel).catch((err: Error) => {
@@ -644,16 +704,16 @@ async function startApp(): Promise<void> {
   const initializedTrayManager = trayManager as TrayManager;
   initializedTrayManager.setWindows(initializedWindowManager.controlPanelWindow);
   initializedTrayManager.setWindowManager(initializedWindowManager);
+
   if (databaseManager) initializedTrayManager.setCalendarSource(databaseManager);
   await initializedTrayManager.createTray();
-
-
 }
 
 // App event handlers
 if (gotSingleInstanceLock) {
   app.on("second-instance", async (_event, _commandLine) => {
     await app.whenReady();
+
     if (!windowManager) {
       return;
     }
@@ -661,7 +721,6 @@ if (gotSingleInstanceLock) {
     await windowManager.createControlPanelWindow().catch((error: Error) => {
       debugLogger.error("Failed to open control panel", { error: error.message }, "window");
     });
-
   });
 
   app
@@ -684,7 +743,6 @@ if (gotSingleInstanceLock) {
     // macOS keeps the app available in the dock and menu bar.
   });
 
-
   app.on("activate", () => {
     void windowManager?.createControlPanelWindow().catch((error: Error) => {
       debugLogger.error("Failed to open control panel", { error: error.message }, "window");
@@ -697,30 +755,40 @@ if (gotSingleInstanceLock) {
     isShuttingDown = true;
     event.preventDefault();
     performSyncTeardown();
-    void shutdownAll(async () => { await ipcHandlers?.shutdownMeetingWork(); })
-      .then((complete) => app.exit(complete ? 0 : 1));
+    void shutdownAll(async () => {
+      await ipcHandlers?.shutdownMeetingWork();
+    }).then((complete) => app.exit(complete ? 0 : 1));
   });
 }
 
 function performSyncTeardown(): void {
   removeBbConnection(app.getPath("userData"));
+
   if (wakeRewarmTimer) {
     clearTimeout(wakeRewarmTimer);
     wakeRewarmTimer = null;
   }
+
   if (cliBridge) {
     cliBridge.stop().catch(() => {});
     cliBridge = null;
   }
+
   if (hotkeyManager) {
     hotkeyManager.unregisterAll();
   } else {
     globalShortcut.unregisterAll();
   }
+
   if (globeKeyManager) globeKeyManager.stop();
+
   if (meetingDetectionEngine) meetingDetectionEngine.stop();
+
   if (googleCalendarManager) googleCalendarManager.stop();
+
   if (microsoftCalendarManager) microsoftCalendarManager.stop();
+
   if (appleCalendarManager) appleCalendarManager.stop();
+
   if (calendarReminderScheduler) calendarReminderScheduler.stop();
 }

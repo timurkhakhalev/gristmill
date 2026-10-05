@@ -45,7 +45,9 @@ interface ActionProcessingStoreState {
 }
 
 const cancelledFlags = new Map<number, boolean>();
+
 const processingFlags = new Map<number, boolean>();
+
 const successTimers = new Map<number, NodeJS.Timeout>();
 
 const IDLE_STATE: NoteActionState = { status: "idle", actionName: null };
@@ -144,16 +146,20 @@ export function runBackgroundAction(
   if (processingFlags.get(noteId)) return;
 
   const modelId = options.modelId;
+
   if (!modelId && !options.isCloudMode) {
     pushErrorEvent({ noteId, message: labels.noModel });
+
     return;
   }
 
   const settings = getSettings();
   const noteFormatting = selectResolvedNoteFormatting(settings);
+
   // A self-hosted config without a URL would fall through to a cloud provider.
   if (!options.isCloudMode && noteFormatting.mode === "self-hosted" && !noteFormatting.remoteUrl) {
     pushErrorEvent({ noteId, message: labels.noEndpoint });
+
     return;
   }
 
@@ -165,6 +171,7 @@ export function runBackgroundAction(
     try {
       const standalone =
         !!action.translation_key && STANDALONE_PROMPT_KEYS.has(action.translation_key);
+
       const basePrompt = standalone
         ? options.isMeetingNote
           ? MEETING_INPUT_PREAMBLE
@@ -172,12 +179,15 @@ export function runBackgroundAction(
         : options.isMeetingNote
           ? MEETING_SYSTEM_PROMPT
           : BASE_SYSTEM_PROMPT;
+
       const providerOverrides = buildNoteFormattingOverrides(noteFormatting, options.isCloudMode);
+
       const systemPrompt = appendDictionarySuffix(
         basePrompt + action.prompt,
         options.isMeetingNote ? settings.customDictionary : undefined,
         settings.uiLanguage
       );
+
       const enhanced = await reasoningService.processText(noteContent, modelId, null, {
         systemPrompt,
         maxTokens: NOTE_OUTPUT_MAX_TOKENS,
@@ -189,8 +199,10 @@ export function runBackgroundAction(
       if (cancelledFlags.get(noteId)) return;
 
       let title: string | undefined;
+
       if (options.allowTitleGeneration && getSettings().autoGenerateNoteTitle) {
         const generated = await generateNoteTitle(enhanced, modelId, providerOverrides);
+
         if (generated) title = generated;
       }
 
@@ -203,6 +215,7 @@ export function runBackgroundAction(
         enhancement_prompt: action.prompt,
         enhanced_at_content_hash: contentHash,
       };
+
       if (title) updates.title = title;
       await window.electronAPI.updateNote(noteId, updates);
 
@@ -213,16 +226,19 @@ export function runBackgroundAction(
         clearNoteState(noteId);
         successTimers.delete(noteId);
       }, 600);
+
       successTimers.set(noteId, timer);
     } catch (err) {
       if (cancelledFlags.get(noteId)) return;
       processingFlags.set(noteId, false);
       clearNoteState(noteId);
       const message = err instanceof Error ? err.message : labels.actionFailed;
+
       const { messageKey, messageParams } = (err ?? {}) as {
         messageKey?: string;
         messageParams?: Record<string, string | number>;
       };
+
       pushErrorEvent({ noteId, message, messageKey, messageParams });
     } finally {
       cancelledFlags.delete(noteId);
@@ -235,17 +251,21 @@ export function cancelAction(noteId: number): void {
   cancelledFlags.set(noteId, true);
   processingFlags.set(noteId, false);
   const timer = successTimers.get(noteId);
+
   if (timer) {
     clearTimeout(timer);
     successTimers.delete(noteId);
   }
+
   clearNoteState(noteId);
 }
 
 export function consumeErrorEvents(): ActionErrorEvent[] {
   const { errorEvents } = useActionProcessingStore.getState();
+
   if (errorEvents.length === 0) return [];
   useActionProcessingStore.setState({ errorEvents: [] });
+
   return errorEvents;
 }
 
@@ -254,5 +274,6 @@ export function selectNoteActionState(
   noteId: number | null
 ): NoteActionState {
   if (noteId == null) return IDLE_STATE;
+
   return state.noteStates[noteId] ?? IDLE_STATE;
 }

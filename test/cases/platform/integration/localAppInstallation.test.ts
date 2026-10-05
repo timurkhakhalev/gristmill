@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+
 const { installApp, assertAppStopped } = require("../../../../scripts/install-macos-local.cts");
 
 test("running-app protection resolves a symlinked bundle path", (t) => {
@@ -38,17 +39,22 @@ test(
     execFileSync("/usr/bin/codesign", ["--force", "--sign", "-", source]);
     let running = false;
     let failRegistration = false;
+
     const run = (command: string, args: string[]) => {
       if (command === "/bin/ps") return running ? `${target}/Contents/MacOS/Gristmill\n` : "";
+
       if (command.endsWith("/lsregister")) {
         if (failRegistration) {
           failRegistration = false;
           throw new Error("registration failed");
         }
+
         return "";
       }
+
       return execFileSync(command, args, { encoding: "utf8" });
     };
+
     assert.equal(installApp(source, target, run), null);
     const original = fs.readFileSync(path.join(target, "Contents/MacOS/Gristmill"));
     running = true;

@@ -1,6 +1,9 @@
 const fs = require("fs");
+
 const os = require("os");
+
 const path = require("path");
+
 import {
   parseOnnxWorkerRequest,
   type OnnxWorkerRequest,
@@ -18,7 +21,9 @@ let logStream: import("fs").WriteStream | null = null;
 
 function openLog(): void {
   const logPath = process.env.GRISTMILL_ONNX_WORKER_LOG;
+
   if (!logPath) return;
+
   try {
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
     logStream = fs.createWriteStream(logPath, { flags: "a" });
@@ -30,11 +35,17 @@ function openLog(): void {
 openLog();
 
 const FBANK_SAMPLE_RATE = 16000;
+
 const FBANK_FRAME_LENGTH_MS = 25;
+
 const FBANK_FRAME_SHIFT_MS = 10;
+
 const FBANK_NUM_MELS = 80;
+
 const FBANK_FRAME_LENGTH = Math.round((FBANK_SAMPLE_RATE * FBANK_FRAME_LENGTH_MS) / 1000);
+
 const FBANK_FRAME_SHIFT = Math.round((FBANK_SAMPLE_RATE * FBANK_FRAME_SHIFT_MS) / 1000);
+
 const FBANK_FFT_SIZE = 512;
 
 const SPEAKER_MAX_SAMPLES = FBANK_SAMPLE_RATE * 8;
@@ -56,30 +67,38 @@ let port: MessagePortLike | null = null;
 interface OrtTensorData {
   data: ArrayLike<number>;
 }
+
 interface OrtTensor {
   data: ArrayLike<number>;
 }
+
 type OrtTensorConstructor = new (
   type: "float32" | "int64",
   data: Float32Array | BigInt64Array,
   dims: number[]
 ) => OrtTensor;
+
 interface OrtSession {
   inputNames: readonly string[];
   run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensorData>>;
 }
+
 interface OrtModule {
   InferenceSession: {
     create(modelPath: string, options: Record<string, unknown>): Promise<OrtSession>;
   };
   Tensor: OrtTensorConstructor;
 }
+
 let ort: OrtModule | null = null;
+
 let speakerSession: OrtSession | null = null;
+
 let speakerInputName: string | null = null;
 
 function log(level: string, message: string, extra?: LogExtra): void {
   if (!logStream) return;
+
   const line = JSON.stringify({
     ts: new Date().toISOString(),
     level,
@@ -87,6 +106,7 @@ function log(level: string, message: string, extra?: LogExtra): void {
     message,
     ...(extra || {}),
   });
+
   try {
     logStream.write(line + "\n");
   } catch {
@@ -106,6 +126,7 @@ const SESSION_OPTIONS: Record<string, unknown> = {
 };
 
 let _melFilterbank: Float32Array[] | null = null;
+
 function getMelFilterbank(): Float32Array[] {
   if (_melFilterbank) return _melFilterbank;
 
@@ -116,22 +137,26 @@ function getMelFilterbank(): Float32Array[] {
   const melHigh = 1127 * Math.log(1 + highFreq / 700);
 
   const melPoints = new Float64Array(FBANK_NUM_MELS + 2);
+
   for (let i = 0; i < melPoints.length; i++) {
     const mel = melLow + ((melHigh - melLow) * i) / (FBANK_NUM_MELS + 1);
     melPoints[i] = 700 * (Math.exp(mel / 1127) - 1);
   }
 
   const binPoints = new Float64Array(melPoints.length);
+
   for (let i = 0; i < melPoints.length; i++) {
     binPoints[i] = Math.floor(((FBANK_FFT_SIZE + 1) * melPoints[i]) / FBANK_SAMPLE_RATE);
   }
 
   const bank = new Array<Float32Array>(FBANK_NUM_MELS);
+
   for (let m = 0; m < FBANK_NUM_MELS; m++) {
     const filter = new Float32Array(numBins);
     const left = binPoints[m];
     const center = binPoints[m + 1];
     const right = binPoints[m + 2];
+
     for (let k = 0; k < numBins; k++) {
       if (k >= left && k <= center && center > left) {
         filter[k] = (k - left) / (center - left);
@@ -139,10 +164,12 @@ function getMelFilterbank(): Float32Array[] {
         filter[k] = (right - k) / (right - center);
       }
     }
+
     bank[m] = filter;
   }
 
   _melFilterbank = bank;
+
   return _melFilterbank;
 }
 
@@ -150,15 +177,19 @@ function realFFT(frame: Float32Array): Float32Array {
   const n = FBANK_FFT_SIZE;
   const re = new Float64Array(n);
   const im = new Float64Array(n);
+
   for (let i = 0; i < frame.length && i < n; i++) re[i] = frame[i];
 
   for (let i = 1, j = 0; i < n; i++) {
     let bit = n >> 1;
+
     while (j & bit) {
       j ^= bit;
       bit >>= 1;
     }
+
     j ^= bit;
+
     if (i < j) {
       [re[i], re[j]] = [re[j], re[i]];
     }
@@ -168,9 +199,11 @@ function realFFT(frame: Float32Array): Float32Array {
     const angle = (-2 * Math.PI) / len;
     const wRe = Math.cos(angle);
     const wIm = Math.sin(angle);
+
     for (let i = 0; i < n; i += len) {
       let curRe = 1;
       let curIm = 0;
+
       for (let j = 0; j < len / 2; j++) {
         const uRe = re[i + j];
         const uIm = im[i + j];
@@ -189,9 +222,11 @@ function realFFT(frame: Float32Array): Float32Array {
 
   const numBins = n / 2 + 1;
   const powerSpectrum = new Float32Array(numBins);
+
   for (let i = 0; i < numBins; i++) {
     powerSpectrum[i] = re[i] * re[i] + im[i] * im[i];
   }
+
   return powerSpectrum;
 }
 
@@ -205,9 +240,11 @@ function computeFbank(samples: Float32Array): Fbank | null {
     0,
     Math.floor((samples.length - FBANK_FRAME_LENGTH) / FBANK_FRAME_SHIFT) + 1
   );
+
   if (numFrames === 0) return null;
 
   const hamming = new Float32Array(FBANK_FRAME_LENGTH);
+
   for (let i = 0; i < FBANK_FRAME_LENGTH; i++) {
     hamming[i] = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (FBANK_FRAME_LENGTH - 1));
   }
@@ -218,16 +255,21 @@ function computeFbank(samples: Float32Array): Fbank | null {
   for (let f = 0; f < numFrames; f++) {
     const start = f * FBANK_FRAME_SHIFT;
     const frame = new Float32Array(FBANK_FRAME_LENGTH);
+
     for (let i = 0; i < FBANK_FRAME_LENGTH; i++) {
       frame[i] = (samples[start + i] || 0) * hamming[i];
     }
+
     const power = realFFT(frame);
+
     for (let m = 0; m < FBANK_NUM_MELS; m++) {
       let energy = 0;
       const filter = melBank[m];
+
       for (let k = 0; k < power.length; k++) {
         energy += filter[k] * power[k];
       }
+
       features[f * FBANK_NUM_MELS + m] = Math.log(Math.max(energy, 1e-10));
     }
   }
@@ -242,6 +284,7 @@ async function speakerLoad({ modelPath }: { modelPath: string }): Promise<Speake
   speakerSession = await module.InferenceSession.create(modelPath, SESSION_OPTIONS);
   speakerInputName = speakerSession.inputNames[0];
   log("info", "speaker session loaded", { modelPath });
+
   return { ok: true };
 }
 
@@ -255,12 +298,14 @@ async function speakerExtract({
   }
 
   const allSamples = new Float32Array(samplesBuffer);
+
   const samples =
     allSamples.length > SPEAKER_MAX_SAMPLES
       ? allSamples.subarray(allSamples.length - SPEAKER_MAX_SAMPLES)
       : allSamples;
 
   const fbank = computeFbank(samples);
+
   if (!fbank) return { embeddingBuffer: null };
 
   const feeds = {
@@ -270,9 +315,11 @@ async function speakerExtract({
       FBANK_NUM_MELS,
     ]),
   };
+
   const results = await speakerSession.run(feeds);
   const output = results[Object.keys(results)[0]];
   const data = new Float32Array(Array.from(output.data));
+
   return { embeddingBuffer: data.buffer };
 }
 
@@ -290,6 +337,7 @@ const handlers: {
   shutdown: () => {
     log("info", "shutdown requested");
     setImmediate(() => process.exit(0));
+
     return { ok: true };
   },
 };
@@ -303,23 +351,39 @@ interface ReplyEnvelope {
 
 async function dispatch(raw: unknown): Promise<ReplyEnvelope> {
   const request: OnnxWorkerRequest | null = parseOnnxWorkerRequest(raw);
+
   if (!request) {
     const id = (raw as { id?: unknown } | null)?.id;
     const method = (raw as { method?: unknown } | null)?.method;
+
     return {
-      reply: { id: typeof id === "number" ? id : 0, error: { message: `unknown method: ${String(method)}` } },
+      reply: {
+        id: typeof id === "number" ? id : 0,
+        error: { message: `unknown method: ${String(method)}` },
+      },
       transferList: [],
     };
   }
 
-  const handler = handlers[request.method] as (payload?: unknown) => HandlerResult | Promise<HandlerResult>;
+  const handler = handlers[request.method] as (
+    payload?: unknown
+  ) => HandlerResult | Promise<HandlerResult>;
+
   try {
-    const result = await handler(request.method === "ping" || request.method === "shutdown" ? {} : request.payload);
+    const result = await handler(
+      request.method === "ping" || request.method === "shutdown" ? {} : request.payload
+    );
+
     // MessagePortMain transfers only ports, not ArrayBuffers — clone the result buffers instead.
     return { reply: { id: request.id, result }, transferList: [] };
   } catch (err) {
     const message = (err as Error | undefined)?.message || String(err);
-    log("error", "handler threw", { method: request.method, error: message, stack: (err as Error | undefined)?.stack });
+    log("error", "handler threw", {
+      method: request.method,
+      error: message,
+      stack: (err as Error | undefined)?.stack,
+    });
+
     return { reply: { id: request.id, error: { message } }, transferList: [] };
   }
 }
@@ -329,6 +393,7 @@ process.on("uncaughtException", (err: Error) => {
   process.stderr.write(`onnx worker uncaughtException: ${err?.stack || err?.message}\n`);
   process.exit(1);
 });
+
 process.on("unhandledRejection", (err: Error) => {
   log("fatal", "unhandledRejection", { error: err?.message, stack: err?.stack });
   process.stderr.write(`onnx worker unhandledRejection: ${err?.stack || err?.message}\n`);
@@ -337,7 +402,10 @@ process.on("unhandledRejection", (err: Error) => {
 
 const parentPort = process.parentPort as
   | {
-      once(event: "message", listener: (message: { data: unknown; ports?: unknown[] }) => void): void;
+      once(
+        event: "message",
+        listener: (message: { data: unknown; ports?: unknown[] }) => void
+      ): void;
     }
   | undefined;
 

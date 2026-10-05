@@ -1,4 +1,5 @@
 import { formatMeetingMaterial } from "./meetingPromptMaterial.js";
+
 export interface MeetingFollowUpMaterial {
   meetingTitle: string;
   manualNotes: string;

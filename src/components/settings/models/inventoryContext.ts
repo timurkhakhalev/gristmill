@@ -39,7 +39,9 @@ export const InventoryContext = createContext<LocalModelInventory | null>(null);
 
 export function useLocalModelInventory(): LocalModelInventory {
   const inventory = useContext(InventoryContext);
-  if (!inventory) throw new Error("useLocalModelInventory must be used inside LocalModelInventoryProvider");
+
+  if (!inventory)
+    throw new Error("useLocalModelInventory must be used inside LocalModelInventoryProvider");
+
   return inventory;
 }
-

@@ -1,7 +1,11 @@
 const fs = require("fs");
+
 const path = require("path");
+
 const { app } = require("electron");
+
 const { downloadFile } = require("./downloadUtils.js");
+
 const debugLogger = require("./debugLogger.js");
 
 // Issue #89: the Silero VAD model for whisper.cpp is a model asset, not a
@@ -11,16 +15,20 @@ const debugLogger = require("./debugLogger.js");
 // win when present.
 const VAD_MODEL_URL =
   "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin";
+
 const VAD_MODEL_FILE = "ggml-silero-v5.1.2.bin";
 
 let inFlight: Promise<string | null> | null = null;
 
 function bundledVadModelPath(): string | null {
   const candidates: string[] = [];
+
   if (process.resourcesPath) {
     candidates.push(path.join(process.resourcesPath, "bin", "whisper-vad", VAD_MODEL_FILE));
   }
+
   candidates.push(path.join(app.getAppPath(), "resources", "bin", "whisper-vad", VAD_MODEL_FILE));
+
   return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
@@ -30,9 +38,11 @@ function cacheVadModelPath(): string {
 
 export async function ensureWhisperVadModel(): Promise<string | null> {
   const bundled = bundledVadModelPath();
+
   if (bundled) return bundled;
 
   const cached = cacheVadModelPath();
+
   if (fs.existsSync(cached)) return cached;
 
   if (!inFlight) {
@@ -41,17 +51,16 @@ export async function ensureWhisperVadModel(): Promise<string | null> {
       await fs.promises.mkdir(path.dirname(cached), { recursive: true });
       await downloadFile(VAD_MODEL_URL, cached);
       debugLogger.info("Whisper VAD model downloaded", { destPath: cached }, "assets");
+
       return cached;
-    })().catch((error: Error) => {
-      debugLogger.warn(
-        "Whisper VAD model download failed",
-        { error: error.message },
-        "assets"
-      );
-      throw error;
-    }).finally(() => {
-      inFlight = null;
-    });
+    })()
+      .catch((error: Error) => {
+        debugLogger.warn("Whisper VAD model download failed", { error: error.message }, "assets");
+        throw error;
+      })
+      .finally(() => {
+        inFlight = null;
+      });
   }
 
   return inFlight;

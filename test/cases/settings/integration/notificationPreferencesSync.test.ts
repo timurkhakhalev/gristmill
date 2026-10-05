@@ -9,7 +9,11 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { createRendererServer, installBrowserGlobals, installHookDom } from "../../../lib/rendererTestHarness";
+import {
+  createRendererServer,
+  installBrowserGlobals,
+  installHookDom,
+} from "../../../lib/rendererTestHarness";
 import type { ViteDevServer } from "vite";
 
 type Prefs = {
@@ -31,6 +35,7 @@ async function mountProvider(t: TestContext, initialStorage: Record<string, stri
       electronAPI: {
         syncNotificationPreferences: async (prefs: Prefs) => {
           calls.push(prefs);
+
           return { success: true };
         },
         // initializeSettings also hydrates these; empty stubs keep it from
@@ -44,12 +49,20 @@ async function mountProvider(t: TestContext, initialStorage: Record<string, stri
   });
   const container = installHookDom(t);
   const vite = await createRendererServer(t, { cachePrefix: "notification-prefs-" });
+
   return { calls, storageEvents, container, vite };
 }
 
-async function renderProvider(vite: ViteDevServer, container: unknown): Promise<{ root: Root; store: { getState(): Record<string, unknown> } }> {
+async function renderProvider(
+  vite: ViteDevServer,
+  container: unknown
+): Promise<{ root: Root; store: { getState(): Record<string, unknown> } }> {
   const { SettingsProvider } = await vite.ssrLoadModule("/hooks/useSettings.ts");
-  const { useSettingsStore, initializeSettings } = await vite.ssrLoadModule("/stores/settingsStore.ts");
+
+  const { useSettingsStore, initializeSettings } = await vite.ssrLoadModule(
+    "/stores/settingsStore.ts"
+  );
+
   // The store registers its cross-window storage listener at the tail of
   // initializeSettings. Awaited here so the listener exists before any
   // synthetic storage event is dispatched — an un-awaited call leaves
@@ -61,6 +74,7 @@ async function renderProvider(vite: ViteDevServer, container: unknown): Promise<
     root.render(React.createElement(SettingsProvider, null, React.createElement("div")));
     await Promise.resolve();
   });
+
   return { root: root!, store: useSettingsStore as { getState(): Record<string, unknown> } };
 }
 
@@ -74,6 +88,7 @@ async function waitFor(predicate: () => boolean, label: string, attempts = 50): 
     if (predicate()) return;
     await new Promise((resolve) => setImmediate(resolve));
   }
+
   assert.fail(label);
 }
 
@@ -91,19 +106,25 @@ test("a notification setter reaches main through the provider without a reload",
     });
 
     await React.act(async () => {
-      (store.getState() as { setNotificationsEnabled(value: boolean): void }).setNotificationsEnabled(false);
+      (
+        store.getState() as { setNotificationsEnabled(value: boolean): void }
+      ).setNotificationsEnabled(false);
       await Promise.resolve();
     });
     assert.equal(last(calls).notificationsEnabled, false, "disable must reach main");
 
     await React.act(async () => {
-      (store.getState() as { setNotifyCalendarReminders(value: boolean): void }).setNotifyCalendarReminders(false);
+      (
+        store.getState() as { setNotifyCalendarReminders(value: boolean): void }
+      ).setNotifyCalendarReminders(false);
       await Promise.resolve();
     });
     assert.equal(last(calls).notifyCalendarReminders, false);
 
     await React.act(async () => {
-      (store.getState() as { setNotificationsEnabled(value: boolean): void }).setNotificationsEnabled(true);
+      (
+        store.getState() as { setNotificationsEnabled(value: boolean): void }
+      ).setNotificationsEnabled(true);
       await Promise.resolve();
     });
     assert.equal(last(calls).notificationsEnabled, true, "enable must reach main");
@@ -159,7 +180,9 @@ test("re-rendering with unchanged values does not resend preferences", async (t)
     // Setting the value it already holds is a no-op in the store; React does not
     // re-run the effect, and main is not told anything again.
     await React.act(async () => {
-      (store.getState() as { setNotificationsEnabled(value: boolean): void }).setNotificationsEnabled(true);
+      (
+        store.getState() as { setNotificationsEnabled(value: boolean): void }
+      ).setNotificationsEnabled(true);
       await Promise.resolve();
     });
     assert.equal(calls.length, 1, "unchanged values must not resend");

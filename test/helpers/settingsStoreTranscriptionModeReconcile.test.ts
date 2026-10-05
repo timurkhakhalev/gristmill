@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const {
   createRendererServer,
   installBrowserGlobals,
@@ -13,12 +15,14 @@ const {
 // first and would otherwise re-derive `transcriptionMode` from the very flag
 // under test.
 const MIGRATED = { _providerSettingsMigrated: "1" };
+
 // The meeting and upload one-shot copies mirror the base transcription keys once and then
 // latch, so seed them done except where a case is about that copy.
 const COPIES_DONE = { meetingFollowsTranscription: "false", uploadTranscriptionMigrated: "true" };
 
 test("startup repairs transcription routing that disagrees with the selected mode", async (t: import("node:test").TestContext) => {
   const { storage } = installBrowserGlobals(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "gristmill-transcription-mode-reconcile-test-",
   });
@@ -30,11 +34,14 @@ test("startup repairs transcription routing that disagrees with the selected mod
     writes.push(key);
     setItem(key, value);
   };
+
   const load = async (seed: any) => {
     storage.clear();
+
     for (const [key, value] of Object.entries(seed)) storage.setItem(key, value);
     writes.length = 0;
     const { useSettingsStore } = await reloadSettingsStore(vite);
+
     return useSettingsStore.getState();
   };
 
@@ -45,6 +52,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
       transcriptionMode: "local",
       useLocalWhisper: "false",
     });
+
     assert.equal(state.useLocalWhisper, true);
     assert.equal(state.transcriptionMode, "local");
     assert.equal(storage.getItem("useLocalWhisper"), "true");
@@ -61,6 +69,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
           useLocalWhisper: "false",
           cloudTranscriptionMode: "legacy",
         });
+
         assert.equal(state.cloudTranscriptionMode, "byok");
         assert.equal(storage.getItem("cloudTranscriptionMode"), "byok");
         assert.equal(state.transcriptionMode, mode);
@@ -77,6 +86,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
       uploadUseLocalWhisper: "false",
       uploadCloudTranscriptionMode: "legacy",
     });
+
     assert.equal(state.uploadCloudTranscriptionMode, "byok");
     assert.equal(storage.getItem("uploadCloudTranscriptionMode"), "byok");
   });
@@ -89,6 +99,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
       useLocalWhisper: "false",
       cloudTranscriptionMode: "byok",
     });
+
     assert.equal(state.cloudTranscriptionMode, "byok");
     assert.equal(storage.getItem("cloudTranscriptionMode"), "byok");
   });
@@ -101,6 +112,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
         transcriptionMode: mode,
         useLocalWhisper: "true",
       });
+
       assert.equal(state.useLocalWhisper, true);
       assert.equal(storage.getItem("useLocalWhisper"), "true");
     });
@@ -115,6 +127,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
       uploadTranscriptionMode: "local",
       uploadUseLocalWhisper: "false",
     });
+
     assert.equal(state.uploadUseLocalWhisper, true);
     assert.equal(storage.getItem("uploadUseLocalWhisper"), "true");
   });
@@ -126,6 +139,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
       meetingTranscriptionMode: "local",
       meetingUseLocalWhisper: "false",
     });
+
     assert.equal(state.meetingTranscriptionMode, "local", "the mode its router reads");
     assert.equal(storage.getItem("meetingUseLocalWhisper"), "false", "left untouched");
     assert.equal(
@@ -142,6 +156,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
       transcriptionMode: "local",
       useLocalWhisper: "false",
     });
+
     assert.equal(storage.getItem("uploadTranscriptionMode"), "local", "the copy ran");
     assert.equal(state.uploadUseLocalWhisper, true);
     assert.equal(storage.getItem("uploadUseLocalWhisper"), "true");
@@ -182,6 +197,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
       uploadUseLocalWhisper: "false",
       uploadCloudTranscriptionMode: "legacy",
     });
+
     assert.equal(state.useLocalWhisper, true, "transcription repaired toward local");
     assert.equal(state.uploadCloudTranscriptionMode, "byok", "upload repaired toward BYOK");
   });
@@ -207,6 +223,7 @@ test("startup repairs transcription routing that disagrees with the selected mod
       useLocalWhisper: "true",
       cloudTranscriptionMode: "byok",
     });
+
     assert.equal(state.useLocalWhisper, true);
     assert.deepEqual(
       writes.filter((key) =>

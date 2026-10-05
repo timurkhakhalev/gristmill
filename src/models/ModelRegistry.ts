@@ -138,8 +138,10 @@ function getTinfoilCloudProvider(): CloudProviderData | undefined {
 }
 
 const cachedTinfoilModels = readCachedTinfoilModels().models;
+
 if (cachedTinfoilModels.length > 0) {
   const tinfoilProvider = getTinfoilCloudProvider();
+
   if (tinfoilProvider) {
     tinfoilProvider.models = cachedTinfoilModels;
   }
@@ -157,6 +159,7 @@ class ModelRegistry {
     if (!ModelRegistry.instance) {
       ModelRegistry.instance = new ModelRegistry();
     }
+
     return ModelRegistry.instance;
   }
 
@@ -175,20 +178,24 @@ class ModelRegistry {
   getModel(modelId: string): { model: ModelDefinition; provider: ModelProvider } | undefined {
     for (const provider of this.providers.values()) {
       const model = provider.models.find((m) => m.id === modelId);
+
       if (model) {
         return { model, provider };
       }
     }
+
     return undefined;
   }
 
   getAllModels(): Array<ModelDefinition & { providerId: string }> {
     const models: Array<ModelDefinition & { providerId: string }> = [];
+
     for (const provider of this.providers.values()) {
       for (const model of provider.models) {
         models.push({ ...model, providerId: provider.id });
       }
     }
+
     return models;
   }
 
@@ -238,7 +245,9 @@ export interface ReasoningProvider {
 export type ReasoningProviders = Record<string, ReasoningProvider>;
 
 export type EnterpriseProvider = "bedrock" | "azure" | "vertex";
+
 export const ENTERPRISE_PROVIDERS: readonly EnterpriseProvider[] = ["bedrock", "azure", "vertex"];
+
 export function isEnterpriseProvider(value: unknown): value is EnterpriseProvider {
   return typeof value === "string" && (ENTERPRISE_PROVIDERS as readonly string[]).includes(value);
 }
@@ -320,10 +329,13 @@ export function getCloudProviderDefaultModelId(providerId: string): string | und
 
 export function applyTinfoilModels(models: CloudModelDefinition[]): void {
   const provider = getTinfoilCloudProvider();
+
   if (provider) {
     provider.models = models;
   }
+
   const reasoningProvider = REASONING_PROVIDERS.tinfoil;
+
   if (reasoningProvider) {
     reasoningProvider.models = models.map(toReasoningModel);
   }
@@ -346,6 +358,7 @@ export function getAllReasoningModels(): ReasoningModelWithProvider[] {
 
 export function getReasoningModelLabel(modelId: string): string {
   const model = getAllReasoningModels().find((m) => m.value === modelId);
+
   return model?.fullLabel || modelId;
 }
 
@@ -383,10 +396,14 @@ export function getModelProvider(modelId: string): string {
     // An unknown model here is one Tinfoil retired or added since our last
     // sync — don't let the id heuristics misroute it.
     if (storedProvider === "tinfoil") return "tinfoil";
+
     if (modelId.includes("claude")) return "anthropic";
+
     if (modelId.includes("gemini") && !modelId.includes("gemma")) return "gemini";
+
     if ((modelId.includes("gpt-4") || modelId.includes("gpt-5")) && !modelId.includes("gpt-oss"))
       return "openai";
+
     if (
       modelId.includes("qwen/") ||
       modelId.includes("openai/") ||
@@ -397,6 +414,7 @@ export function getModelProvider(modelId: string): string {
       modelId.includes("moonshotai/kimi-k2-")
     )
       return "groq";
+
     if (
       modelId.includes("qwen") ||
       modelId.includes("llama") ||
@@ -420,7 +438,9 @@ export function resolveInferenceProvider(
   modelId: string
 ): string {
   const provider = configuredProvider?.trim();
+
   if (provider && modelRegistry.getProvider(provider)) return "local";
+
   return provider || getModelProvider(modelId);
 }
 
@@ -445,6 +465,7 @@ export function getTranscriptionProvider(
 
 export function getTranscriptionModels(providerId: string): TranscriptionModelDefinition[] {
   const provider = getTranscriptionProvider(providerId);
+
   return provider?.models || [];
 }
 
@@ -454,6 +475,7 @@ export function getBatchTranscriptionModel(providerId: string): string | undefin
 
 export function getDefaultTranscriptionModel(providerId: string): string {
   const models = getTranscriptionModels(providerId);
+
   return models[0]?.id || "gpt-transcribe";
 }
 
@@ -470,12 +492,16 @@ export const WHISPER_MODEL_INFO = modelData.whisperModels;
 export function getCloudModel(modelId: string): CloudModelDefinition | undefined {
   for (const provider of modelData.cloudProviders) {
     const model = provider.models.find((m) => m.id === modelId);
+
     if (model) return model;
   }
+
   for (const provider of modelData.enterpriseProviders) {
     const model = provider.models.find((m) => m.id === modelId);
+
     if (model) return model;
   }
+
   return undefined;
 }
 
@@ -490,6 +516,7 @@ export interface OpenAiApiConfig {
 
 export function getOpenAiApiConfig(modelId: string, provider?: string): OpenAiApiConfig {
   const model = getCloudModel(modelId);
+
   if (model?.tokenParam) {
     return {
       tokenParam: model.tokenParam,
@@ -505,6 +532,7 @@ export function getOpenAiApiConfig(modelId: string, provider?: string): OpenAiAp
   // omitted here too — OpenRouter forwards the 400 rather than stripping it.
   if (provider === "openrouter" && modelId.includes("/")) {
     const upstream = getCloudModel(modelId.slice(modelId.lastIndexOf("/") + 1));
+
     return { tokenParam: "max_tokens", supportsTemperature: upstream?.supportsTemperature ?? true };
   }
 
@@ -553,7 +581,9 @@ export const PARAKEET_MODEL_INFO = modelData.parakeetModels;
 
 export function getWhisperModelConfig(modelId: string): WhisperModelConfig | null {
   const modelInfo = modelData.whisperModels[modelId];
+
   if (!modelInfo) return null;
+
   return {
     url: modelInfo.downloadUrl,
     size: modelInfo.sizeMb * 1_000_000,

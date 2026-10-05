@@ -3,10 +3,15 @@
 // @probe-origin test/scripts/calendarAvailabilityTypeProbe.test.js
 import { registerCalendarAvailabilityHandler } from "./src/helpers/calendarAvailabilityIpcHandler.js";
 import { createCalendarAvailabilityBridge } from "./src/preload/calendarAvailabilityBridge.js";
-import { validateCalendarAvailabilityRequest, computeCalendarAvailability } from "./src/helpers/calendarAvailability.js";
+import {
+  validateCalendarAvailabilityRequest,
+  computeCalendarAvailability,
+} from "./src/helpers/calendarAvailability.js";
 import type { AvailabilityResult } from "./src/contracts/calendarAvailability.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerCalendarAvailabilityHandler(ipcMain, {
   databaseManager: { getCalendarEventsInRange: () => [] },
@@ -32,10 +37,13 @@ async function useResponse(): Promise<string[]> {
 }
 void useResponse;
 
-const normalized = validateCalendarAvailabilityRequest({
-  start: "2026-08-25T07:00:00.000Z",
-  end: "2026-08-25T12:00:00.000Z",
-}, new Date("2026-08-25T06:00:00.000Z"));
+const normalized = validateCalendarAvailabilityRequest(
+  {
+    start: "2026-08-25T07:00:00.000Z",
+    end: "2026-08-25T12:00:00.000Z",
+  },
+  new Date("2026-08-25T06:00:00.000Z")
+);
 const computed = computeCalendarAvailability([], normalized);
 const slots: number = computed.availableSlots.length;
 void slots;

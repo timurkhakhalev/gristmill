@@ -1,13 +1,17 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/lib/versionedIntro.ts");
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map<string, string>(Object.entries(initial));
+
   return {
     getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => { values.set(key, value); },
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
   };
 }
 
@@ -42,6 +46,7 @@ test("malformed versions do not suppress an intro", async () => {
 test("intro configurations use independent storage keys", async () => {
   const { CONTAINER_OVERVIEW_INTRO, NOTES_STRUCTURE_INTRO, markIntroSeen, shouldShowIntro } =
     await load();
+
   const storage = memoryStorage();
 
   markIntroSeen(storage, CONTAINER_OVERVIEW_INTRO);

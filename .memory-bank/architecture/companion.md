@@ -14,10 +14,10 @@ It is different from the Google Meet Companion mode.
 
 `pnpm run build:companion` makes two unpacked extensions:
 
-| Folder | Name and look | Connects to |
-| --- | --- | --- |
-| `build/companion-dev` | Gristmill Companion (Dev), dark and gold icon, DEV label | `pnpm dev` or the packaged Gristmill Dev app |
-| `build/companion` | Gristmill Companion, cream and green icon | The production Gristmill app. Its popup has no diagnostics section and no diagnostic rendering code |
+| Folder                | Name and look                                            | Connects to                                                                                         |
+| --------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `build/companion-dev` | Gristmill Companion (Dev), dark and gold icon, DEV label | `pnpm dev` or the packaged Gristmill Dev app                                                        |
+| `build/companion`     | Gristmill Companion, cream and green icon                | The production Gristmill app. Its popup has no diagnostics section and no diagnostic rendering code |
 
 - Load the related folder unpacked from `chrome://extensions`. Both extensions can be installed at the same time.
 - Each extension has its own pinned public key and extension ID in `extension/identity.json`, its own native host, launcher and app-profile socket.

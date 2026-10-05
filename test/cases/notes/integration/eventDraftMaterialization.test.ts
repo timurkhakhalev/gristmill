@@ -10,15 +10,28 @@
 // controllable RichTextEditor seam (the fake DOM cannot host tiptap), holding
 // each IPC step on a deferred so typed input interleaves between the awaits.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react") as typeof import("react");
+
 const { createRoot } = require("react-dom/client");
-const { createRendererServer, installBrowserGlobals, installHookDom }: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  installHookDom,
+}: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
+
 import type { NoteItem } from "../../../../src/contracts/notes";
 
 const deferred = () => {
   let resolve!: (value?: unknown) => void;
-  const promise = new Promise<unknown>((r) => { resolve = r; });
+
+  const promise = new Promise<unknown>((r) => {
+    resolve = r;
+  });
+
   return { promise, resolve };
 };
 
@@ -26,12 +39,25 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 function noteFixture(id: number, title: string, content: string): NoteItem {
   return {
-    id, title, content, note_type: "meeting", space_id: 1,
-    folder_id: null, folder_ids: [], source_file: null,
-    audio_duration_seconds: null, created_at: "2026-10-02", updated_at: "2026-10-02",
-    enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null,
-    transcript: null, calendar_event_id: "evt-1", participants: null,
-    diarization_enabled: null, expected_speaker_count: null,
+    id,
+    title,
+    content,
+    note_type: "meeting",
+    space_id: 1,
+    folder_id: null,
+    folder_ids: [],
+    source_file: null,
+    audio_duration_seconds: null,
+    created_at: "2026-10-02",
+    updated_at: "2026-10-02",
+    enhanced_content: null,
+    enhancement_prompt: null,
+    enhanced_at_content_hash: null,
+    transcript: null,
+    calendar_event_id: "evt-1",
+    participants: null,
+    diarization_enabled: null,
+    expected_speaker_count: null,
   };
 }
 
@@ -53,20 +79,28 @@ interface DraftHarness {
 async function mountDraft(
   t: import("node:test").TestContext,
   ipc: {
-    createCalendarEventNote: (eventId: string, initial: { title?: string; content?: string }) => Promise<{ noteId: number; folderId: number | null; existing?: boolean } | null>;
+    createCalendarEventNote: (
+      eventId: string,
+      initial: { title?: string; content?: string }
+    ) => Promise<{ noteId: number; folderId: number | null; existing?: boolean } | null>;
     getNote: (id: number) => Promise<NoteItem | null>;
   }
 ): Promise<DraftHarness> {
   let root: ReturnType<typeof createRoot> | null = null;
-  t.after(async () => { if (root) await React.act(async () => root.unmount()); });
-  installBrowserGlobals(t, { window: {
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-    electronAPI: {
-      createCalendarEventNote: ipc.createCalendarEventNote,
-      getNote: ipc.getNote,
+  t.after(async () => {
+    if (root) await React.act(async () => root.unmount());
+  });
+  installBrowserGlobals(t, {
+    window: {
+      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+      electronAPI: {
+        createCalendarEventNote: ipc.createCalendarEventNote,
+        getNote: ipc.getNote,
+      },
     },
-  } });
+  });
   const container = installHookDom(t);
+
   const mockModules: Record<string, string> = {
     "react-i18next": `
       const t = (key) => key;
@@ -86,28 +120,41 @@ async function mountDraft(
     "./NoteParticipants": `export default function Empty() { return null; }`,
     "./NoteRecordControl": `export default function Empty() { return null; }`,
   };
+
   const vite = await createRendererServer(t, { mockModules, noExternal: ["react-i18next"] });
+
   const globals = globalThis as {
     __draftOnChange?: (value: string) => void;
     __draftDisabled?: boolean;
   };
-  const { default: EventNoteDraft } = await vite.ssrLoadModule("/components/notes/EventNoteDraft.tsx");
+
+  const { default: EventNoteDraft } = await vite.ssrLoadModule(
+    "/components/notes/EventNoteDraft.tsx"
+  );
 
   const handoffs: Handoff[] = [];
   const materializedNotes: number[] = [];
   root = createRoot(container as unknown as Element);
   await React.act(async () => {
-    root!.render(React.createElement(EventNoteDraft, {
-      event: draftEvent,
-      onBack: () => {},
-      onDraftHandoff: (handoff: Handoff) => { handoffs.push(handoff); },
-      onMaterialized: (note: NoteItem) => { materializedNotes.push(note.id); },
-    }));
+    root!.render(
+      React.createElement(EventNoteDraft, {
+        event: draftEvent,
+        onBack: () => {},
+        onDraftHandoff: (handoff: Handoff) => {
+          handoffs.push(handoff);
+        },
+        onMaterialized: (note: NoteItem) => {
+          materializedNotes.push(note.id);
+        },
+      })
+    );
   });
 
   return {
     typeContent: async (value: string) => {
-      await React.act(async () => { globals.__draftOnChange?.(value); });
+      await React.act(async () => {
+        globals.__draftOnChange?.(value);
+      });
     },
     handoffs,
     materializedNotes,
@@ -119,14 +166,17 @@ test("input typed during the whole create → get round-trip reaches the handoff
   const createGate = deferred();
   const getGate = deferred();
   const createCalls: Array<{ eventId: string; initial: { title?: string; content?: string } }> = [];
+
   const harness = await mountDraft(t, {
     createCalendarEventNote: async (eventId, initial) => {
       createCalls.push({ eventId, initial });
       await createGate.promise;
+
       return { noteId: 42, folderId: null };
     },
     getNote: async () => {
       await getGate.promise;
+
       return noteFixture(42, "Design review", "");
     },
   });
@@ -145,12 +195,18 @@ test("input typed during the whole create → get round-trip reaches the handoff
   getGate.resolve();
   await tick();
 
-  assert.deepEqual(harness.handoffs, [{
-    noteId: 42,
-    note: noteFixture(42, "Design review", ""),
-    mode: "replace",
-    draft: { content: "ABC" },
-  }], "the handoff carries the full latest revision, not the snapshot");
+  assert.deepEqual(
+    harness.handoffs,
+    [
+      {
+        noteId: 42,
+        note: noteFixture(42, "Design review", ""),
+        mode: "replace",
+        draft: { content: "ABC" },
+      },
+    ],
+    "the handoff carries the full latest revision, not the snapshot"
+  );
   assert.deepEqual(harness.materializedNotes, [42]);
 });
 
@@ -163,12 +219,18 @@ test("a reused note hands the draft off in append mode", async (t) => {
   await harness.typeContent("first input");
   await tick();
 
-  assert.deepEqual(harness.handoffs, [{
-    noteId: 7,
-    note: noteFixture(7, "Manual title", "Manual content"),
-    mode: "append",
-    draft: { content: "first input" },
-  }], "an existing note must not have its manual text clobbered");
+  assert.deepEqual(
+    harness.handoffs,
+    [
+      {
+        noteId: 7,
+        note: noteFixture(7, "Manual title", "Manual content"),
+        mode: "append",
+        draft: { content: "first input" },
+      },
+    ],
+    "an existing note must not have its manual text clobbered"
+  );
   assert.deepEqual(harness.materializedNotes, [7]);
 });
 

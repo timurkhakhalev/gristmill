@@ -31,6 +31,7 @@ const CONVERSATION_TITLE_MAX = 40;
 
 function conversationTitleFromMessage(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
+
   return flat.length > CONVERSATION_TITLE_MAX
     ? `${flat.slice(0, CONVERSATION_TITLE_MAX).trimEnd()}…`
     : flat || "Untitled";
@@ -86,8 +87,10 @@ export function useEmbeddedChat({
     if (!noteId) return;
     const session = persistence.getSession();
     const conversations = await window.electronAPI.getConversationsForNote(noteId);
+
     if (!persistence.isCurrent(session)) return;
     setNoteConversations(conversations ?? []);
+
     return conversations ?? [];
   }, [noteId, persistence]);
 
@@ -96,15 +99,19 @@ export function useEmbeddedChat({
   useEffect(() => {
     untitledConversationRef.current = null;
     setNoteConversations([]);
+
     if (!noteId) return;
     const session = persistence.getSession();
     let active = true;
     void (async () => {
       const conversations = await window.electronAPI.getConversationsForNote(noteId);
+
       if (!active || !persistence.isCurrent(session)) return;
       setNoteConversations(conversations);
+
       if (conversations.length) await persistence.loadConversation(conversations[0].id);
     })();
+
     return () => {
       active = false;
       streaming.cancelStream();
@@ -116,12 +123,18 @@ export function useEmbeddedChat({
     if (!noteId || conversationId === null) return;
     const session = getSession();
     let stale = false;
-    void window.electronAPI.getConversationsForNote(noteId).then(conversations => {
-      if (!stale && isCurrent(session)) setNoteConversations(conversations ?? []);
-    }).catch(() => {
-      if (!stale && isCurrent(session)) setNoteConversations([]);
-    });
-    return () => { stale = true; };
+    void window.electronAPI
+      .getConversationsForNote(noteId)
+      .then((conversations) => {
+        if (!stale && isCurrent(session)) setNoteConversations(conversations ?? []);
+      })
+      .catch(() => {
+        if (!stale && isCurrent(session)) setNoteConversations([]);
+      });
+
+    return () => {
+      stale = true;
+    };
   }, [noteId, conversationId, getSession, isCurrent]);
 
   const switchConversation = useCallback(
@@ -143,15 +156,18 @@ export function useEmbeddedChat({
     async (text: string) => {
       const id = await persistence.createConversation(conversationTitleFromMessage(text), noteId);
       untitledConversationRef.current = id;
+
       return id;
     },
     [noteId, persistence]
   );
+
   const sendMessageWithResult = useChatMessageSender({
     persistence,
     streaming,
     createConversation,
   });
+
   const sendMessage = useCallback(
     async (text: string): Promise<void> => {
       if (disabled) return;
@@ -159,14 +175,17 @@ export function useEmbeddedChat({
     },
     [disabled, sendMessageWithResult]
   );
+
   const sendActionMessage = useCallback(
     async (text: string, systemPrompt: string): Promise<void> => {
       if (disabled) return;
+
       const options: ChatSendOptions = {
         systemPrompt,
         disableTools: true,
         includeConversationHistory: false,
       };
+
       await sendMessageWithResult(text, options);
     },
     [disabled, sendMessageWithResult]

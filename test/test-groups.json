@@ -1,8 +1,6 @@
 [
   {
-    "domains": [
-      "platform"
-    ],
+    "domains": ["platform"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -22,10 +20,7 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "settings"
-    ],
+    "domains": ["ai", "settings"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -34,9 +29,7 @@
     ]
   },
   {
-    "domains": [
-      "notes"
-    ],
+    "domains": ["notes"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -58,9 +51,7 @@
     ]
   },
   {
-    "domains": [
-      "ai"
-    ],
+    "domains": ["ai"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -90,9 +81,7 @@
     ]
   },
   {
-    "domains": [
-      "settings"
-    ],
+    "domains": ["settings"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -106,10 +95,7 @@
     ]
   },
   {
-    "domains": [
-      "platform",
-      "settings"
-    ],
+    "domains": ["platform", "settings"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -118,9 +104,7 @@
     ]
   },
   {
-    "domains": [
-      "recording"
-    ],
+    "domains": ["recording"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -141,10 +125,7 @@
     ]
   },
   {
-    "domains": [
-      "platform",
-      "settings"
-    ],
+    "domains": ["platform", "settings"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -154,10 +135,7 @@
     ]
   },
   {
-    "domains": [
-      "recording",
-      "transcription"
-    ],
+    "domains": ["recording", "transcription"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -174,11 +152,7 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "notes",
-      "recording"
-    ],
+    "domains": ["ai", "notes", "recording"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -189,45 +163,25 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "notes",
-      "recording",
-      "transcription"
-    ],
+    "domains": ["ai", "notes", "recording", "transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/components/meetingTranscriptChat.test.ts"
-    ]
+    "files": ["test/components/meetingTranscriptChat.test.ts"]
   },
   {
-    "domains": [
-      "calendar",
-      "notes",
-      "recording"
-    ],
+    "domains": ["calendar", "notes", "recording"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/components/noteParticipantsMeetingCard.test.ts"
-    ]
+    "files": ["test/components/noteParticipantsMeetingCard.test.ts"]
   },
   {
-    "domains": [
-      "settings",
-      "transcription"
-    ],
+    "domains": ["settings", "transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/components/orukeetOrganization.test.ts"
-    ]
+    "files": ["test/components/orukeetOrganization.test.ts"]
   },
   {
-    "domains": [
-      "notes"
-    ],
+    "domains": ["notes"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -241,9 +195,7 @@
     ]
   },
   {
-    "domains": [
-      "transcription"
-    ],
+    "domains": ["transcription"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -261,20 +213,14 @@
     ]
   },
   {
-    "domains": [
-      "transcription"
-    ],
+    "domains": ["transcription"],
     "kind": "integration",
     "buildMain": false,
     "serial": true,
-    "files": [
-      "test/helpers/retryTranscriptionHandler.test.ts"
-    ]
+    "files": ["test/helpers/retryTranscriptionHandler.test.ts"]
   },
   {
-    "domains": [
-      "platform"
-    ],
+    "domains": ["platform"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -319,9 +265,7 @@
     ]
   },
   {
-    "domains": [
-      "ai"
-    ],
+    "domains": ["ai"],
     "kind": "integration",
     "buildMain": true,
     "files": [
@@ -331,9 +275,7 @@
     ]
   },
   {
-    "domains": [
-      "settings"
-    ],
+    "domains": ["settings"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -351,9 +293,7 @@
     ]
   },
   {
-    "domains": [
-      "recording"
-    ],
+    "domains": ["recording"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -381,10 +321,7 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "notes"
-    ],
+    "domains": ["ai", "notes"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -400,9 +337,7 @@
     ]
   },
   {
-    "domains": [
-      "ai"
-    ],
+    "domains": ["ai"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -443,10 +378,7 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "transcription"
-    ],
+    "domains": ["ai", "transcription"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -460,9 +392,7 @@
     ]
   },
   {
-    "domains": [
-      "calendar"
-    ],
+    "domains": ["calendar"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -480,30 +410,19 @@
     ]
   },
   {
-    "domains": [
-      "recording"
-    ],
+    "domains": ["recording"],
     "kind": "native",
     "buildMain": false,
-    "files": [
-      "test/helpers/audioActivityDetector.test.ts"
-    ]
+    "files": ["test/helpers/audioActivityDetector.test.ts"]
   },
   {
-    "domains": [
-      "recording",
-      "transcription"
-    ],
+    "domains": ["recording", "transcription"],
     "kind": "native",
     "buildMain": false,
-    "files": [
-      "test/helpers/audioFileUploadElectron.test.ts"
-    ]
+    "files": ["test/helpers/audioFileUploadElectron.test.ts"]
   },
   {
-    "domains": [
-      "calendar"
-    ],
+    "domains": ["calendar"],
     "kind": "integration",
     "buildMain": true,
     "files": [
@@ -512,9 +431,7 @@
     ]
   },
   {
-    "domains": [
-      "calendar"
-    ],
+    "domains": ["calendar"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -524,33 +441,19 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "platform",
-      "settings"
-    ],
+    "domains": ["ai", "calendar", "platform", "settings"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/canaryZeroSecrets.test.ts"
-    ]
+    "files": ["test/helpers/canaryZeroSecrets.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "notes"
-    ],
+    "domains": ["ai", "notes"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/cleanupFailureToast.test.ts"
-    ]
+    "files": ["test/helpers/cleanupFailureToast.test.ts"]
   },
   {
-    "domains": [
-      "notes"
-    ],
+    "domains": ["notes"],
     "kind": "integration",
     "buildMain": true,
     "files": [
@@ -560,32 +463,13 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "notes",
-      "platform",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "calendar", "notes", "platform", "recording", "settings", "transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/databaseLocalBehavior.test.ts",
-      "test/helpers/devSnapshot.test.ts"
-    ]
+    "files": ["test/helpers/databaseLocalBehavior.test.ts", "test/helpers/devSnapshot.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "notes",
-      "platform",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "calendar", "notes", "platform", "recording", "settings", "transcription"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -594,10 +478,7 @@
     ]
   },
   {
-    "domains": [
-      "notes",
-      "platform"
-    ],
+    "domains": ["notes", "platform"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -607,20 +488,13 @@
     ]
   },
   {
-    "domains": [
-      "platform"
-    ],
+    "domains": ["platform"],
     "kind": "native",
     "buildMain": true,
-    "files": [
-      "test/helpers/devRendererOrigin.test.ts"
-    ]
+    "files": ["test/helpers/devRendererOrigin.test.ts"]
   },
   {
-    "domains": [
-      "recording",
-      "transcription"
-    ],
+    "domains": ["recording", "transcription"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -636,10 +510,7 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "platform"
-    ],
+    "domains": ["ai", "platform"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -650,22 +521,13 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "settings"
-    ],
+    "domains": ["ai", "calendar", "settings"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/envSecretStorage.test.ts",
-      "test/helpers/secret*.test.ts"
-    ]
+    "files": ["test/helpers/envSecretStorage.test.ts", "test/helpers/secret*.test.ts"]
   },
   {
-    "domains": [
-      "transcription"
-    ],
+    "domains": ["transcription"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -688,20 +550,13 @@
     ]
   },
   {
-    "domains": [
-      "transcription"
-    ],
+    "domains": ["transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/parakeetOnlineStream.test.ts"
-    ]
+    "files": ["test/helpers/parakeetOnlineStream.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "transcription"
-    ],
+    "domains": ["ai", "transcription"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -710,12 +565,7 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "recording", "settings", "transcription"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -727,9 +577,7 @@
     ]
   },
   {
-    "domains": [
-      "transcription"
-    ],
+    "domains": ["transcription"],
     "kind": "integration",
     "buildMain": true,
     "files": [
@@ -738,56 +586,31 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "settings"
-    ],
+    "domains": ["ai", "settings"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/helpers/localServerPolicy.test.ts",
-      "test/helpers/retiredCloudModels.test.ts"
-    ]
+    "files": ["test/helpers/localServerPolicy.test.ts", "test/helpers/retiredCloudModels.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "platform",
-      "transcription"
-    ],
+    "domains": ["ai", "platform", "transcription"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/helpers/macInferenceSourceContract.test.ts"
-    ]
+    "files": ["test/helpers/macInferenceSourceContract.test.ts"]
   },
   {
-    "domains": [
-      "platform",
-      "transcription"
-    ],
+    "domains": ["platform", "transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/mainProcessEsmEntries.test.ts",
-      "test/helpers/urlDownloadIpc.test.ts"
-    ]
+    "files": ["test/helpers/mainProcessEsmEntries.test.ts", "test/helpers/urlDownloadIpc.test.ts"]
   },
   {
-    "domains": [
-      "recording"
-    ],
+    "domains": ["recording"],
     "kind": "integration",
     "buildMain": true,
-    "files": [
-      "test/helpers/meetingCoordinatorBridge.test.ts"
-    ]
+    "files": ["test/helpers/meetingCoordinatorBridge.test.ts"]
   },
   {
-    "domains": [
-      "calendar",
-      "recording"
-    ],
+    "domains": ["calendar", "recording"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -799,46 +622,25 @@
     ]
   },
   {
-    "domains": [
-      "notes",
-      "recording",
-      "transcription"
-    ],
+    "domains": ["notes", "recording", "transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/meetingProcessing.test.ts"
-    ]
+    "files": ["test/helpers/meetingProcessing.test.ts"]
   },
   {
-    "domains": [
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["recording", "settings", "transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/meetingRecordingRetention.test.ts"
-    ]
+    "files": ["test/helpers/meetingRecordingRetention.test.ts"]
   },
   {
-    "domains": [
-      "notes",
-      "recording",
-      "transcription"
-    ],
+    "domains": ["notes", "recording", "transcription"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/helpers/meetingTranscriptPersistence.test.ts"
-    ]
+    "files": ["test/helpers/meetingTranscriptPersistence.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "platform"
-    ],
+    "domains": ["ai", "platform"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -847,45 +649,25 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "recording", "settings", "transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/modelRegistryProviderFallback.test.ts"
-    ]
+    "files": ["test/helpers/modelRegistryProviderFallback.test.ts"]
   },
   {
-    "domains": [
-      "notes"
-    ],
+    "domains": ["notes"],
     "kind": "types",
     "buildMain": false,
-    "files": [
-      "test/helpers/notesContract.test.ts"
-    ]
+    "files": ["test/helpers/notesContract.test.ts"]
   },
   {
-    "domains": [
-      "platform",
-      "recording"
-    ],
+    "domains": ["platform", "recording"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/helpers/onnxWorkerClient.test.ts",
-      "test/helpers/onnxWorkerProtocol.test.ts"
-    ]
+    "files": ["test/helpers/onnxWorkerClient.test.ts", "test/helpers/onnxWorkerProtocol.test.ts"]
   },
   {
-    "domains": [
-      "platform",
-      "transcription"
-    ],
+    "domains": ["platform", "transcription"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -895,10 +677,7 @@
     ]
   },
   {
-    "domains": [
-      "calendar",
-      "notes"
-    ],
+    "domains": ["calendar", "notes"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -909,91 +688,43 @@
     ]
   },
   {
-    "domains": [
-      "settings"
-    ],
+    "domains": ["settings"],
     "kind": "integration",
     "buildMain": true,
-    "files": [
-      "test/helpers/preloadOnboardingBridge.test.ts"
-    ]
+    "files": ["test/helpers/preloadOnboardingBridge.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "notes",
-      "platform",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "calendar", "notes", "platform", "recording", "settings", "transcription"],
     "kind": "integration",
     "buildMain": true,
-    "files": [
-      "test/helpers/rendererBridgeContract.test.ts"
-    ]
+    "files": ["test/helpers/rendererBridgeContract.test.ts"]
   },
   {
-    "domains": [
-      "settings",
-      "transcription"
-    ],
+    "domains": ["settings", "transcription"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/helpers/retentionSettings.test.ts"
-    ]
+    "files": ["test/helpers/retentionSettings.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "platform",
-      "settings"
-    ],
+    "domains": ["ai", "calendar", "platform", "settings"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/helpers/secureCache.test.ts"
-    ]
+    "files": ["test/helpers/secureCache.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "notes",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "notes", "recording", "settings", "transcription"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/helpers/settingsSelectors.test.ts"
-    ]
+    "files": ["test/helpers/settingsSelectors.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "notes",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "notes", "recording", "settings", "transcription"],
     "kind": "types",
     "buildMain": false,
-    "files": [
-      "test/helpers/settingsSelectorsTypes.test.ts"
-    ]
+    "files": ["test/helpers/settingsSelectorsTypes.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "notes",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "notes", "recording", "settings", "transcription"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -1004,21 +735,13 @@
     ]
   },
   {
-    "domains": [
-      "platform"
-    ],
+    "domains": ["platform"],
     "kind": "native",
     "buildMain": false,
-    "files": [
-      "test/helpers/sidecarReaper.test.ts"
-    ]
+    "files": ["test/helpers/sidecarReaper.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "platform",
-      "transcription"
-    ],
+    "domains": ["ai", "platform", "transcription"],
     "kind": "integration",
     "buildMain": false,
     "files": [
@@ -1027,34 +750,19 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "settings", "transcription"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/helpers/transcriptionModelMemory.test.ts"
-    ]
+    "files": ["test/helpers/transcriptionModelMemory.test.ts"]
   },
   {
-    "domains": [
-      "platform",
-      "transcription"
-    ],
+    "domains": ["platform", "transcription"],
     "kind": "integration",
     "buildMain": true,
-    "files": [
-      "test/helpers/urlDownloadBridge.test.ts"
-    ]
+    "files": ["test/helpers/urlDownloadBridge.test.ts"]
   },
   {
-    "domains": [
-      "calendar",
-      "platform",
-      "recording"
-    ],
+    "domains": ["calendar", "platform", "recording"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -1063,21 +771,13 @@
     ]
   },
   {
-    "domains": [
-      "notes",
-      "settings"
-    ],
+    "domains": ["notes", "settings"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/m7bSettingsNotesLocalContract.test.ts"
-    ]
+    "files": ["test/m7bSettingsNotesLocalContract.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "platform"
-    ],
+    "domains": ["ai", "platform"],
     "kind": "types",
     "buildMain": false,
     "files": [
@@ -1090,10 +790,7 @@
     ]
   },
   {
-    "domains": [
-      "calendar",
-      "platform"
-    ],
+    "domains": ["calendar", "platform"],
     "kind": "types",
     "buildMain": false,
     "files": [
@@ -1103,10 +800,7 @@
     ]
   },
   {
-    "domains": [
-      "notes",
-      "platform"
-    ],
+    "domains": ["notes", "platform"],
     "kind": "types",
     "buildMain": false,
     "files": [
@@ -1116,15 +810,7 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "notes",
-      "platform",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "calendar", "notes", "platform", "recording", "settings", "transcription"],
     "kind": "types",
     "buildMain": false,
     "files": [
@@ -1133,36 +819,19 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "platform",
-      "recording",
-      "transcription"
-    ],
+    "domains": ["ai", "platform", "recording", "transcription"],
     "kind": "types",
     "buildMain": false,
-    "files": [
-      "test/scripts/type-probes/downloads.test.ts"
-    ]
+    "files": ["test/scripts/type-probes/downloads.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "platform",
-      "settings"
-    ],
+    "domains": ["ai", "calendar", "platform", "settings"],
     "kind": "types",
     "buildMain": false,
-    "files": [
-      "test/scripts/type-probes/env-secret.test.ts"
-    ]
+    "files": ["test/scripts/type-probes/env-secret.test.ts"]
   },
   {
-    "domains": [
-      "platform",
-      "transcription"
-    ],
+    "domains": ["platform", "transcription"],
     "kind": "types",
     "buildMain": false,
     "files": [
@@ -1172,26 +841,13 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "calendar",
-      "notes",
-      "platform",
-      "recording",
-      "settings",
-      "transcription"
-    ],
+    "domains": ["ai", "calendar", "notes", "platform", "recording", "settings", "transcription"],
     "kind": "types",
     "buildMain": true,
-    "files": [
-      "test/scripts/mainBuild.test.ts"
-    ]
+    "files": ["test/scripts/mainBuild.test.ts"]
   },
   {
-    "domains": [
-      "platform",
-      "recording"
-    ],
+    "domains": ["platform", "recording"],
     "kind": "types",
     "buildMain": false,
     "files": [
@@ -1202,10 +858,7 @@
     ]
   },
   {
-    "domains": [
-      "ai",
-      "calendar"
-    ],
+    "domains": ["ai", "calendar"],
     "kind": "unit",
     "buildMain": false,
     "files": [
@@ -1214,26 +867,15 @@
     ]
   },
   {
-    "domains": [
-      "notes",
-      "transcription"
-    ],
+    "domains": ["notes", "transcription"],
     "kind": "unit",
     "buildMain": false,
-    "files": [
-      "test/services/uploadNotes.test.ts"
-    ]
+    "files": ["test/services/uploadNotes.test.ts"]
   },
   {
-    "domains": [
-      "ai",
-      "notes",
-      "platform"
-    ],
+    "domains": ["ai", "notes", "platform"],
     "kind": "integration",
     "buildMain": false,
-    "files": [
-      "test/stores/actionProcessingNoteOutput.test.ts"
-    ]
+    "files": ["test/stores/actionProcessingNoteOutput.test.ts"]
   }
 ]

@@ -8,8 +8,11 @@ import { FOCUS_SYNC_THROTTLE_MS } from "./calendarSyncInterval.js";
 import type { AppleCalendarInput, AppleCalendarRow, CalendarEventInput } from "./database.js";
 
 const BINARY_NAME = "macos-calendar-listener";
+
 const HELPER_RESTART_BASE_MS = 1000;
+
 const HELPER_RESTART_MAX_MS = 30 * 1000;
+
 const AVAILABILITY_STATUSES: ReadonlySet<string> = new Set([
   "free",
   "tentative",
@@ -17,6 +20,7 @@ const AVAILABILITY_STATUSES: ReadonlySet<string> = new Set([
   "unavailable",
   "unknown",
 ]);
+
 const RESPONSE_STATUSES: ReadonlySet<string> = new Set([
   "accepted",
   "declined",
@@ -60,11 +64,13 @@ interface HelperSnapshotEvent {
 
 function isPermissionMessage(message: unknown): message is HelperPermissionMessage {
   const record = message as Record<string, unknown>;
+
   return record?.type === "permission" && typeof record.status === "string";
 }
 
 function isSnapshotMessage(message: unknown): message is HelperSnapshotMessage {
   const record = message as Record<string, unknown>;
+
   return (
     record?.type === "snapshot" &&
     Array.isArray((record as { calendars?: unknown }).calendars) &&
@@ -74,6 +80,7 @@ function isSnapshotMessage(message: unknown): message is HelperSnapshotMessage {
 
 function isHelperSnapshotEvent(value: unknown): value is HelperSnapshotEvent {
   const record = value as Record<string, unknown>;
+
   return (
     typeof record?.id === "string" &&
     typeof record.calendar_id === "string" &&
@@ -146,6 +153,7 @@ export class AppleCalendarManager {
 
   getConnectionStatus(): { connected: boolean; sourceNames: string[] } {
     const calendars = this.databaseManager.getAppleCalendars();
+
     return {
       connected: calendars.length > 0,
       sourceNames: [
@@ -169,9 +177,12 @@ export class AppleCalendarManager {
     if (process.platform !== "darwin") {
       return Promise.resolve({ success: false, reason: "unsupported" });
     }
+
     this._restartAttempts = 0;
+
     return new Promise<AppleConnectResult>((resolve) => {
       this._pendingConnect = { resolve, awaitingSnapshot: false };
+
       if (!this._spawnHelper(true)) {
         this._pendingConnect = null;
         resolve({ success: false, reason: "helper-missing" });
@@ -182,6 +193,7 @@ export class AppleCalendarManager {
   disconnect(): { success: boolean } {
     this.stop();
     this._clearStoredCalendarData();
+
     return { success: true };
   }
 
@@ -190,6 +202,7 @@ export class AppleCalendarManager {
       clearTimeout(this._restartTimer);
       this._restartTimer = null;
     }
+
     this._restartAttempts = 0;
     this._stopHelperProcess();
   }
@@ -198,6 +211,7 @@ export class AppleCalendarManager {
     if (this._helperProcess) {
       const child = this._helperProcess;
       this._helperProcess = null;
+
       try {
         child.kill();
       } catch {
@@ -209,6 +223,7 @@ export class AppleCalendarManager {
   syncOnFocus(): void {
     if (!this._helperProcess) return;
     const now = Date.now();
+
     if (now - this._lastFocusSync < FOCUS_SYNC_THROTTLE_MS) return;
     this._lastFocusSync = now;
     this._requestSync();
@@ -235,16 +250,20 @@ export class AppleCalendarManager {
       clearTimeout(this._restartTimer);
       this._restartTimer = null;
     }
+
     this._stopHelperProcess();
 
     const binaryPath = resolveBundledBinary(BINARY_NAME, "acal");
+
     if (!binaryPath) {
       debugLogger.warn("macos-calendar-listener binary not found", {}, "acal");
+
       return false;
     }
 
     let command = binaryPath;
     let args: string[] = requestAccess ? ["--request"] : [];
+
     if (!app.isPackaged) {
       // A terminal-launched dev app makes the terminal the helper's TCC
       // "responsible process", and its missing calendar usage strings abort
@@ -252,6 +271,7 @@ export class AppleCalendarManager {
       // for itself so its embedded Info.plist usage strings apply. Packaged
       // builds are self-responsible and keep the helper as the prompt source.
       const shimPath = resolveBundledBinary("macos-disclaim-exec", "acal");
+
       if (shimPath) {
         args = [binaryPath, ...args];
         command = shimPath;
@@ -269,6 +289,7 @@ export class AppleCalendarManager {
       const child = spawn(command, args, {
         stdio: ["pipe", "pipe", "pipe"],
       });
+
       this._helperProcess = child;
 
       let buffer = "";
@@ -276,10 +297,13 @@ export class AppleCalendarManager {
         if (this._helperProcess !== child) return;
         buffer += data.toString();
         let newlineIdx: number;
+
         while (this._helperProcess === child && (newlineIdx = buffer.indexOf("\n")) !== -1) {
           const line = buffer.slice(0, newlineIdx).trim();
           buffer = buffer.slice(newlineIdx + 1);
+
           if (!line) continue;
+
           try {
             this._handleMessage(JSON.parse(line));
           } catch (err) {
@@ -312,7 +336,12 @@ export class AppleCalendarManager {
 
       return true;
     } catch (err) {
-      debugLogger.warn("Failed to spawn macos-calendar-listener", { error: (err as Error).message }, "acal");
+      debugLogger.warn(
+        "Failed to spawn macos-calendar-listener",
+        { error: (err as Error).message },
+        "acal"
+      );
+
       return false;
     }
   }
@@ -342,6 +371,7 @@ export class AppleCalendarManager {
         { error: (err as Error).message },
         "acal"
       );
+
       return;
     }
 
@@ -349,6 +379,7 @@ export class AppleCalendarManager {
       HELPER_RESTART_BASE_MS * Math.pow(2, this._restartAttempts),
       HELPER_RESTART_MAX_MS
     );
+
     this._restartAttempts += 1;
     debugLogger.info(
       "Scheduling calendar listener restart",
@@ -358,6 +389,7 @@ export class AppleCalendarManager {
 
     this._restartTimer = setTimeout(() => {
       this._restartTimer = null;
+
       if (!this._spawnHelper(false)) this._scheduleHelperRestart();
     }, delay);
   }
@@ -382,9 +414,11 @@ export class AppleCalendarManager {
       } else if (status !== "notDetermined") {
         // notDetermined means the TCC prompt is up; wait for the re-emit
         this._pendingConnect = null;
+
         if (this.isConnected()) this._clearStoredCalendarData();
         pending.resolve({ success: false, reason: "denied" });
       }
+
       return;
     }
 
@@ -402,18 +436,23 @@ export class AppleCalendarManager {
       (cal): cal is AppleCalendarInput & { id: string; title: string } =>
         typeof cal?.id === "string" && typeof cal?.title === "string"
     );
+
     const events = message.events.filter(isHelperSnapshotEvent);
+
     try {
       this._restartAttempts = 0;
       this.databaseManager.saveAppleCalendars(calendars);
       this.databaseManager.replaceAppleCalendarEvents(events.map((event) => this._mapEvent(event)));
 
       const contacts: Array<{ email: string; displayName: string | null }> = [];
+
       for (const event of events) {
         for (const attendee of event.attendees || []) {
-          if (attendee.email) contacts.push({ email: attendee.email, displayName: attendee.name ?? null });
+          if (attendee.email)
+            contacts.push({ email: attendee.email, displayName: attendee.name ?? null });
         }
       }
+
       if (contacts.length > 0) this.databaseManager.upsertContacts(contacts);
 
       sendAcalEventsSynced();
@@ -427,7 +466,12 @@ export class AppleCalendarManager {
         this._broadcastConnectionChanged();
       }
     } catch (err) {
-      debugLogger.error("Error applying calendar snapshot", { error: (err as Error).message }, "acal");
+      debugLogger.error(
+        "Error applying calendar snapshot",
+        { error: (err as Error).message },
+        "acal"
+      );
+
       if (this._pendingConnect) {
         const pending = this._pendingConnect;
         this._pendingConnect = null;
@@ -439,6 +483,7 @@ export class AppleCalendarManager {
   private _mapEvent(event: HelperSnapshotEvent): CalendarEventInput {
     const attendees = event.attendees || [];
     const selfResponseStatus = attendees.find((attendee) => attendee.self === true)?.status;
+
     return {
       id: event.id,
       calendar_id: event.calendar_id,
@@ -490,4 +535,5 @@ export class AppleCalendarManager {
 }
 
 module.exports = AppleCalendarManager;
+
 module.exports.AppleCalendarManager = AppleCalendarManager;

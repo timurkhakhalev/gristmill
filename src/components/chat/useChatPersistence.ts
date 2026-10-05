@@ -36,7 +36,13 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
   const generation = useRef(0);
-  const pendingCreation = useRef<{ title: string; noteId?: number | null; scope?: ContainerScope } | null>(null);
+
+  const pendingCreation = useRef<{
+    title: string;
+    noteId?: number | null;
+    scope?: ContainerScope;
+  } | null>(null);
+
   const mounted = useRef(true);
   const [previousNoteId, setPreviousNoteId] = useState(noteId);
   const saving = useRef(new Set<string>());
@@ -45,6 +51,7 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
 
   useEffect(() => {
     mounted.current = true;
+
     return () => {
       mounted.current = false;
     };
@@ -57,12 +64,14 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
     }),
     []
   );
+
   const isCurrent = useCallback(
     (session: ChatSession) =>
       session.generation === generation.current &&
       session.conversationId === conversationIdRef.current,
     []
   );
+
   const handleNewChat = useCallback(() => {
     generation.current++;
     pendingCreation.current = null;
@@ -82,17 +91,21 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
     async (title: string, scopeNoteId?: number | null, scope?: ContainerScope) => {
       const session = getSession();
       pendingCreation.current = { title, noteId: scopeNoteId, scope };
+
       const conv = await window.electronAPI.createAgentConversation(
         title,
         scopeNoteId ?? undefined,
         scope?.spaceId,
         scope?.folderId ?? undefined
       );
+
       if (!mounted.current || !isCurrent(session)) return null;
+
       if (!conv) throw new Error("Conversation scope is no longer available");
       pendingCreation.current = null;
       conversationIdRef.current = conv.id;
       setConversationId(conv.id);
+
       return conv.id;
     },
     [getSession, isCurrent]
@@ -103,13 +116,18 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
       handleNewChat();
       const session = getSession();
       const conv = await window.electronAPI.getAgentConversation(id);
+
       if (!mounted.current || !isCurrent(session)) return;
+
       if (!conv) return;
+
       if (conv.id !== id || (noteId != null && conv.note_id !== noteId))
         throw new Error("Unexpected conversation identity");
+
       const loaded: Message[] = conv.messages.map((m) => {
         const parsed = m.metadata ? tryParseMetadata(m.metadata) : undefined;
         const toolCalls = parsed?.toolCalls as ToolCallInfo[] | undefined;
+
         return {
           id: crypto.randomUUID(),
           role: m.role as Message["role"],
@@ -118,6 +136,7 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
           ...(toolCalls ? { toolCalls } : {}),
         };
       });
+
       conversationIdRef.current = id;
       setConversationId(id);
       setMessages(loaded);
@@ -130,13 +149,16 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
       if (!isCurrent(session) || session.conversationId === null || saving.current.has(message.id))
         return false;
       saving.current.add(message.id);
+
       const update = (changes: Partial<Message>) => {
         if (mounted.current && isCurrent(session))
           setMessages((messages) =>
             messages.map((m) => (m.id === message.id ? { ...m, ...changes } : m))
           );
       };
+
       update({ isSaving: true });
+
       try {
         const saved = await window.electronAPI.addAgentMessage(
           session.conversationId,
@@ -144,12 +166,15 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
           message.content,
           message.toolCalls?.length ? { toolCalls: message.toolCalls } : undefined
         );
+
         if (!saved || saved.conversation_id !== session.conversationId)
           throw new Error("Message was not saved");
         update({ persistenceError: undefined });
+
         return true;
       } catch (error) {
         update({ persistenceError: error instanceof Error ? error.message : String(error) });
+
         return false;
       } finally {
         saving.current.delete(message.id);
@@ -158,40 +183,63 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
     },
     [isCurrent]
   );
+
   const saveUserMessage = useCallback(
     (session: ChatSession, message: Message) => saveMessage(session, message),
     [saveMessage]
   );
+
   const saveAssistantMessage = useCallback(
     (session: ChatSession, id: string, content: string, toolCalls?: ToolCallInfo[]) =>
       saveMessage(session, { id, role: "assistant", content, isStreaming: false, toolCalls }),
     [saveMessage]
   );
+
   const retrySaveMessage = useCallback(
     async (id: string) => {
       const message = messagesRef.current.find((m) => m.id === id && m.persistenceError);
+
       if (!message || saving.current.has(id)) return;
       const session = getSession();
+
       if (session.conversationId !== null) {
         await saveMessage(session, message);
+
         return;
       }
+
       const pending = pendingCreation.current;
+
       if (!pending || message.role !== "user") return;
       saving.current.add(id);
-      setMessages(messages => messages.map(m => m.id === id ? { ...m, isSaving: true } : m));
+      setMessages((messages) => messages.map((m) => (m.id === id ? { ...m, isSaving: true } : m)));
+
       try {
-        const conversationId = await createConversation(pending.title, pending.noteId, pending.scope);
+        const conversationId = await createConversation(
+          pending.title,
+          pending.noteId,
+          pending.scope
+        );
+
         if (conversationId === null) return;
         saving.current.delete(id);
         await saveMessage({ ...session, conversationId }, message);
       } catch (error) {
-        if (mounted.current && isCurrent(session)) setMessages(messages => messages.map(m =>
-          m.id === id ? { ...m, persistenceError: error instanceof Error ? error.message : String(error) } : m));
+        if (mounted.current && isCurrent(session))
+          setMessages((messages) =>
+            messages.map((m) =>
+              m.id === id
+                ? { ...m, persistenceError: error instanceof Error ? error.message : String(error) }
+                : m
+            )
+          );
       } finally {
         saving.current.delete(id);
-        if (mounted.current && generation.current === session.generation) setMessages(messages =>
-          messages.map(m => m.id === id ? { ...m, isSaving: false } : m));
+
+        if (mounted.current && generation.current === session.generation)
+          setMessages((messages) =>
+            messages.map((m) => (m.id === id ? { ...m, isSaving: false } : m))
+          );
       }
     },
     [createConversation, getSession, isCurrent, saveMessage]
@@ -214,6 +262,7 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
 
 function tryParseMetadata(raw: string | undefined): Record<string, unknown> | undefined {
   if (!raw) return undefined;
+
   try {
     return JSON.parse(raw);
   } catch {

@@ -1,31 +1,41 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const recoveryModulePath = require.resolve("../../src/helpers/micSelectionRecovery.ts");
+
 const originalLoad = Module._load;
+
 let currentSettings: unknown = null;
 
 async function loadRecovery() {
   delete require.cache[recoveryModulePath];
+
   const settings = {
     setSelectedMicDevice(deviceId: string, label: string) {
       settings.saved = { deviceId, label };
     },
     saved: null as { deviceId: string; label: string } | null,
   };
+
   currentSettings = settings;
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "../stores/settingsStore" || request === "../stores/settingsStore.js") {
       return { getSettings: () => currentSettings };
     }
+
     if (request === "../utils/logger" || request === "../utils/logger.js") {
       return { info() {} };
     }
+
     return originalLoad(request, parent, isMain);
   };
+
   try {
     const module = await import("../../src/helpers/micSelectionRecovery.ts");
+
     return { module, settings };
   } finally {
     Module._load = originalLoad;

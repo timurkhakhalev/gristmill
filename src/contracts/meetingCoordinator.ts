@@ -1,4 +1,11 @@
-import type { CompanionSetup, CompanionStatus, CompanionConfigureAction, CompanionReminderResponse, CompanionSelection, CompanionPlatformMute } from "./companion.js";
+import type {
+  CompanionSetup,
+  CompanionStatus,
+  CompanionConfigureAction,
+  CompanionReminderResponse,
+  CompanionSelection,
+  CompanionPlatformMute,
+} from "./companion.js";
 // Single source of truth for the meeting coordinator boundary: recording
 // prepare/start/send/stop/cancel, system-audio availability, recording locks,
 // the mic warm hold, detection preferences, session speaker configuration,
@@ -9,8 +16,17 @@ import type { CompanionSetup, CompanionStatus, CompanionConfigureAction, Compani
 // main.js. sessionId, noteId and detectionId are distinct fields and are never
 // interchangeable.
 import { z } from "zod";
-import { meetingPlatformSchema, meetingFrameAlignmentPointSchema, meetingFrameAlignmentSegmentSchema, meetingRecordingIdSchema } from "./meetingRecording.js";
-import type { MeetingProcessingConfig, MeetingProcessingConfigError, MeetingSource } from "./meetingRecording.js";
+import {
+  meetingPlatformSchema,
+  meetingFrameAlignmentPointSchema,
+  meetingFrameAlignmentSegmentSchema,
+  meetingRecordingIdSchema,
+} from "./meetingRecording.js";
+import type {
+  MeetingProcessingConfig,
+  MeetingProcessingConfigError,
+  MeetingSource,
+} from "./meetingRecording.js";
 
 // ---- channels -----------------------------------------------------------------
 
@@ -155,21 +171,21 @@ const failureMetadataSchema = z
   })
   .passthrough();
 
-export const meetingOptionsSchema = z
-  .object({
-    sessionId: z.string().optional(),
-    noteId: z.number().int().nullable().optional(),
-    groupId: meetingRecordingIdSchema.optional(),
-    autoEndEligible: z.boolean().optional(),
-    manualMicMuted: z.boolean().optional(),
-    restartSessionId: z.string().uuid().optional(),
-    recordingConfig: z.unknown().optional(),
-  });
+export const meetingOptionsSchema = z.object({
+  sessionId: z.string().optional(),
+  noteId: z.number().int().nullable().optional(),
+  groupId: meetingRecordingIdSchema.optional(),
+  autoEndEligible: z.boolean().optional(),
+  manualMicMuted: z.boolean().optional(),
+  restartSessionId: z.string().uuid().optional(),
+  recordingConfig: z.unknown().optional(),
+});
 
 // Renderer-facing option shapes (previous electron.ts declarations).
 export interface MeetingTranscriptionPrepareOptions {
   noteId?: number | null;
 }
+
 export interface MeetingTranscriptionStartOptions {
   noteId?: number | null;
   sessionId: string;
@@ -235,6 +251,7 @@ export const meetingMicIntentResultSchema = z.object({
   boundaryFrame: z.number().int().nonnegative().optional(),
   error: z.string().optional(),
 });
+
 export type MeetingMicIntentResult = z.infer<typeof meetingMicIntentResultSchema>;
 
 export interface MeetingClockProbeRequest {
@@ -254,8 +271,14 @@ export const meetingClockProbeRequestSchema = z.object({
 export const meetingClockProbeResultSchema = z.object({
   success: z.boolean(),
   nonce: z.string().uuid().optional(),
-  helperReceiveNs: z.string().regex(/^\d{1,20}$/).optional(),
-  helperSendNs: z.string().regex(/^\d{1,20}$/).optional(),
+  helperReceiveNs: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .optional(),
+  helperSendNs: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .optional(),
   helperGeneration: meetingRecordingIdSchema.optional(),
   helperFrame: z.number().int().nonnegative().optional(),
   error: z.string().optional(),
@@ -264,7 +287,11 @@ export const meetingClockProbeResultSchema = z.object({
 export interface MeetingCaptureStopRequest {
   sessionId: string;
   lastSequence: Partial<Record<MeetingSource, number>>;
-  microphoneBoundary?: { sourceGeneration: number; sourceFrame: number; alignment: z.infer<typeof meetingFrameAlignmentPointSchema> | null };
+  microphoneBoundary?: {
+    sourceGeneration: number;
+    sourceFrame: number;
+    alignment: z.infer<typeof meetingFrameAlignmentPointSchema> | null;
+  };
   incomplete?: boolean;
   errorCode?: string;
   suppressProcessing?: boolean;
@@ -277,7 +304,13 @@ export const meetingCaptureStopRequestSchema = z.object({
     mic: z.number().int().optional(),
     system: z.number().int().optional(),
   }),
-  microphoneBoundary: z.object({ sourceGeneration: z.number().int().positive(), sourceFrame: z.number().int().nonnegative().safe(), alignment: meetingFrameAlignmentPointSchema.nullable() }).optional(),
+  microphoneBoundary: z
+    .object({
+      sourceGeneration: z.number().int().positive(),
+      sourceFrame: z.number().int().nonnegative().safe(),
+      alignment: meetingFrameAlignmentPointSchema.nullable(),
+    })
+    .optional(),
   incomplete: z.boolean().optional(),
   errorCode: z.string().optional(),
   suppressProcessing: z.boolean().optional(),
@@ -290,6 +323,7 @@ export const meetingPrepareResultSchema = failureMetadataSchema.extend({
   success: z.boolean(),
   alreadyPrepared: z.boolean().optional(),
 });
+
 export type MeetingPrepareResult = z.infer<typeof meetingPrepareResultSchema>;
 
 export const meetingStartResultSchema = failureMetadataSchema.extend({
@@ -298,7 +332,11 @@ export const meetingStartResultSchema = failureMetadataSchema.extend({
   sessionId: z.string().optional(),
   recordingId: z.string().uuid().optional(),
   originAt: z.string().optional(),
-  monotonicOriginNs: z.string().regex(/^\d{1,20}$/).nullable().optional(),
+  monotonicOriginNs: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .nullable()
+    .optional(),
   helperGeneration: meetingRecordingIdSchema.optional(),
   systemAudioMode: z.enum(["native", "loopback", "portal", "unsupported"]).optional(),
   systemAudioStrategy: z
@@ -309,6 +347,7 @@ export const meetingStartResultSchema = failureMetadataSchema.extend({
     .nullable()
     .optional(),
 });
+
 export type MeetingStartResult = z.infer<typeof meetingStartResultSchema>;
 
 export const meetingStopResultSchema = z
@@ -322,21 +361,28 @@ export const meetingStopResultSchema = z
     reason: z.string().optional(),
   })
   .passthrough();
+
 export type MeetingStopResult = z.infer<typeof meetingStopResultSchema>;
 
-export const meetingCaptureAckSchema = z.object({ success: z.boolean(), sequence: z.number().int().nonnegative() });
+export const meetingCaptureAckSchema = z.object({
+  success: z.boolean(),
+  sequence: z.number().int().nonnegative(),
+});
+
 export type MeetingCaptureAck = z.infer<typeof meetingCaptureAckSchema>;
 
 export const meetingCancelResultSchema = z.object({
   success: z.boolean(),
   reason: z.literal("recording-active").optional(),
 });
+
 export type MeetingCancelResult = z.infer<typeof meetingCancelResultSchema>;
 
 export const meetingSetSystemAudioAvailableResultSchema = z.object({
   success: z.boolean(),
   reason: z.literal("stale-session").optional(),
 });
+
 export type MeetingSetSystemAudioAvailableResult = z.infer<
   typeof meetingSetSystemAudioAvailableResultSchema
 >;
@@ -347,6 +393,7 @@ export const recordingLockResultSchema = z
     holder: z.string().optional(),
   })
   .passthrough();
+
 export type RecordingLockResult = z.infer<typeof recordingLockResultSchema>;
 
 export const meetingDetectionPreferencesSchema = z
@@ -355,12 +402,14 @@ export const meetingDetectionPreferencesSchema = z
     audioDetection: z.boolean(),
   })
   .passthrough();
+
 export type MeetingDetectionPreferences = z.infer<typeof meetingDetectionPreferencesSchema>;
 
 export const meetingDetectionGetPreferencesResultSchema = z.union([
   z.object({ success: z.literal(true), preferences: meetingDetectionPreferencesSchema }),
   z.object({ success: z.literal(false), error: z.string() }),
 ]);
+
 export type MeetingDetectionGetPreferencesResult = z.infer<
   typeof meetingDetectionGetPreferencesResultSchema
 >;
@@ -371,6 +420,7 @@ export const simpleSuccessResultSchema = z
     error: z.string().optional(),
   })
   .passthrough();
+
 export type SimpleSuccessResult = z.infer<typeof simpleSuccessResultSchema>;
 
 /** The note linked to a calendar event; null when there is none (or it could not be created). */
@@ -382,6 +432,7 @@ export const calendarEventNoteResultSchema = z
     existing: z.boolean().optional(),
   })
   .nullable();
+
 export type CalendarEventNoteResult = z.infer<typeof calendarEventNoteResultSchema>;
 
 export const meetingAutoEndLifecycleResultSchema = z.object({
@@ -391,16 +442,17 @@ export const meetingAutoEndLifecycleResultSchema = z.object({
 });
 
 export const meetingNotificationDataSchema = z.union([
-  z.object({ kind: z.literal("meet-context-lost"), recordingId: z.string().uuid(), sessionId: z.string().uuid() }),
+  z.object({
+    kind: z.literal("meet-context-lost"),
+    recordingId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+  }),
   z.object({
     kind: z.literal("detection"),
     detectionId: z.string(),
     source: z.string(),
     key: z.string(),
-    event: z.union([
-      z.object({ summary: z.string().nullable() }),
-      z.null(),
-    ]),
+    event: z.union([z.object({ summary: z.string().nullable() }), z.null()]),
     variant: z.enum(["detected", "starting", "underway"]),
     joinUrl: z.string().nullable(),
   }),
@@ -427,12 +479,14 @@ export const pendingMeetingNoteNavigationSchema = z
     trigger: z.string().optional(),
   })
   .passthrough();
+
 export type PendingMeetingNoteNavigation = z.infer<typeof pendingMeetingNoteNavigationSchema>;
 
 export const registerMeetingHotkeyResultSchema = z.object({
   success: z.boolean(),
   message: z.string().optional(),
 });
+
 export type RegisterMeetingHotkeyResult = z.infer<typeof registerMeetingHotkeyResultSchema>;
 
 // ---- event payload schemas ------------------------------------------------------
@@ -445,6 +499,7 @@ export const meetingSegmentEventSchema = z
     timestamp: z.number().optional(),
   })
   .passthrough();
+
 export type MeetingSegmentEvent = z.infer<typeof meetingSegmentEventSchema>;
 
 export const meetingSpeakerIdentifiedEventSchema = z
@@ -455,6 +510,7 @@ export const meetingSpeakerIdentifiedEventSchema = z
     endTime: z.number(),
   })
   .passthrough();
+
 export type MeetingSpeakerIdentifiedEvent = z.infer<typeof meetingSpeakerIdentifiedEventSchema>;
 
 export const meetingSpeakersMergedEventSchema = z.array(
@@ -467,6 +523,7 @@ export const meetingSpeakersMergedEventSchema = z.array(
     })
     .passthrough()
 );
+
 export type MeetingSpeakersMergedEvent = z.infer<typeof meetingSpeakersMergedEventSchema>;
 
 export const meetingSessionSpeakerConfigEventSchema = z.object({
@@ -487,10 +544,13 @@ export const meetingTranscriptSegmentSchema = z
     suggestedProfileId: z.number().optional(),
     speakerStatus: z.enum(["provisional", "confirmed", "suggested", "locked"]).optional(),
     speakerLocked: z.boolean().optional(),
-    speakerLockSource: z.enum(["user", "diarization", "suggestion", "voice", "platform", "model"]).optional(),
+    speakerLockSource: z
+      .enum(["user", "diarization", "suggestion", "voice", "platform", "model"])
+      .optional(),
     speakerPlatform: meetingPlatformSchema.optional(),
   })
   .passthrough();
+
 export type MeetingTranscriptSegment = z.infer<typeof meetingTranscriptSegmentSchema>;
 
 export const meetingDiarizationCompleteEventSchema = z.object({
@@ -499,6 +559,7 @@ export const meetingDiarizationCompleteEventSchema = z.object({
   segments: z.array(meetingTranscriptSegmentSchema),
   speakerEmbeddings: z.record(z.string(), z.array(z.number())).nullable().optional(),
 });
+
 export type MeetingDiarizationCompleteEvent = z.infer<typeof meetingDiarizationCompleteEventSchema>;
 
 export const meetingSystemAudioSilentEventSchema = z.object({
@@ -544,7 +605,9 @@ export const meetingAutoEndRestartRequestEventSchema = z.object({
 export interface MeetingCoordinatorApi {
   finishPausedMeetRecording(recordingId: string): Promise<{ success: boolean }>;
   getMeetIntegrationSetup(): Promise<CompanionSetup>;
-  configureMeetIntegration(action: CompanionConfigureAction): Promise<{ success: boolean; error?: string }>;
+  configureMeetIntegration(
+    action: CompanionConfigureAction
+  ): Promise<{ success: boolean; error?: string }>;
   respondMeetContextReminder(request: CompanionReminderResponse): Promise<{ success: boolean }>;
   claimMeetingAutoEnd(sessionId: string): Promise<{ success: boolean }>;
   getMeetCompanionStatus(): Promise<CompanionStatus>;
@@ -564,8 +627,12 @@ export interface MeetingCoordinatorApi {
     sessionId: string,
     packet: MeetingCapturePacket
   ): Promise<MeetingCaptureAck>;
-  meetingTranscriptionSetMicIntent?(request: MeetingMicIntentRequest): Promise<MeetingMicIntentResult>;
-  meetingTranscriptionProbeClock?(request: MeetingClockProbeRequest): Promise<z.infer<typeof meetingClockProbeResultSchema>>;
+  meetingTranscriptionSetMicIntent?(
+    request: MeetingMicIntentRequest
+  ): Promise<MeetingMicIntentResult>;
+  meetingTranscriptionProbeClock?(
+    request: MeetingClockProbeRequest
+  ): Promise<z.infer<typeof meetingClockProbeResultSchema>>;
   meetingTranscriptionStop?(request?: MeetingCaptureStopRequest): Promise<MeetingStopResult>;
   meetingTranscriptionCancel?(): Promise<MeetingCancelResult>;
   meetingTranscriptionSetSystemAudioAvailable?(
@@ -575,9 +642,7 @@ export interface MeetingCoordinatorApi {
   acquireRecordingLock?(pipeline: string): Promise<RecordingLockResult>;
   releaseRecordingLock?(pipeline: string): Promise<RecordingLockResult>;
   meetingDetectionGetPreferences?(): Promise<MeetingDetectionGetPreferencesResult>;
-  meetingDetectionSetPreferences?(
-    prefs: Record<string, boolean>
-  ): Promise<SimpleSuccessResult>;
+  meetingDetectionSetPreferences?(prefs: Record<string, boolean>): Promise<SimpleSuccessResult>;
   setMeetingSessionSpeakerConfig?(config: {
     enabled: boolean;
     expectedCount: number;
@@ -602,13 +667,11 @@ export interface MeetingCoordinatorApi {
   getPendingMeetingNoteNavigation?(): Promise<PendingMeetingNoteNavigation | null>;
   meetingNotificationReady?(): Promise<unknown>;
   registerMeetingHotkey?(hotkey: string): Promise<RegisterMeetingHotkeyResult>;
-  onMeetingTranscriptionSegment?(
-    callback: (data: MeetingSegmentEvent) => void
+  onMeetingTranscriptionSegment?(callback: (data: MeetingSegmentEvent) => void): () => void;
+  onMeetingTranscriptionStopRequested?(
+    callback: (request: z.infer<typeof meetingStopRequestedEventSchema>) => void
   ): () => void;
-  onMeetingTranscriptionStopRequested?(callback: (request: z.infer<typeof meetingStopRequestedEventSchema>) => void): () => void;
-  onMeetingSpeakerIdentified?(
-    callback: (data: MeetingSpeakerIdentifiedEvent) => void
-  ): () => void;
+  onMeetingSpeakerIdentified?(callback: (data: MeetingSpeakerIdentifiedEvent) => void): () => void;
   onMeetingSpeakersMerged?(callback: (merges: MeetingSpeakersMergedEvent) => void): () => void;
   onMeetingSessionSpeakerConfigUpdated?(
     callback: (config: { enabled: boolean; expectedCount: number }) => void
@@ -628,9 +691,7 @@ export interface MeetingCoordinatorApi {
     callback: (data: MeetingSystemAudioInterruption) => void
   ): () => void;
   onMeetingSystemAudioResumed?(callback: () => void): () => void;
-  onMeetingNotificationData?(
-    callback: (data: MeetingNotificationData) => void
-  ): () => void;
+  onMeetingNotificationData?(callback: (data: MeetingNotificationData) => void): () => void;
   onMeetingAutoEndRequested?(callback: (request: MeetingAutoEndRequest) => void): () => void;
   onMeetingAutoEndRestartRequested?(
     callback: (request: MeetingAutoEndRestartRequest) => void

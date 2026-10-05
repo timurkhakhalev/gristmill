@@ -5,9 +5,12 @@
 // removes a replacement; isActive is the replacement-protection probe the
 // enterprise stream handler uses before sending terminal events.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { AgentStreamRequestRegistry }: typeof import("../../src/helpers/agentStreamRequestRegistry") = require("../../src/helpers/agentStreamRequestRegistry");
+const {
+  AgentStreamRequestRegistry,
+}: typeof import("../../src/helpers/agentStreamRequestRegistry") = require("../../src/helpers/agentStreamRequestRegistry");
 
 test("a repeated id of the same sender aborts the previous controller", () => {
   const registry = new AgentStreamRequestRegistry();

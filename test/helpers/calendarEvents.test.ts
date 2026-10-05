@@ -3,21 +3,31 @@
 // only the validation result ever crosses. Electron's BrowserWindow is
 // stubbed to capture broadcasts.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const sent: Array<{ channel: string; payload: unknown }> = [];
+
 const electronStub = {
   BrowserWindow: {
     getAllWindows: () => [
-      { isDestroyed: () => false, webContents: { send: (channel: string, payload: unknown) => sent.push({ channel, payload }) } },
+      {
+        isDestroyed: () => false,
+        webContents: {
+          send: (channel: string, payload: unknown) => sent.push({ channel, payload }),
+        },
+      },
     ],
   },
 };
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") return electronStub;
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -26,6 +36,7 @@ test.after(() => {
 });
 
 type SendersModule = typeof import("../../src/helpers/calendarEvents.js");
+
 let senders: SendersModule;
 
 test.before(async () => {
@@ -62,6 +73,7 @@ test("malformed payloads are dropped, not broadcast", () => {
   const errors: string[] = [];
   const originalError = console.error;
   console.error = (...args) => errors.push(args.join(" "));
+
   try {
     senders.sendGcalConnectionChanged({ accounts: [{ email: 42 }] });
     senders.sendGcalConnectionChanged({ accounts: null });
@@ -71,7 +83,9 @@ test("malformed payloads are dropped, not broadcast", () => {
   } finally {
     console.error = originalError;
   }
+
   assert.deepEqual(sent, []);
   assert.equal(errors.length, 5);
+
   for (const message of errors) assert.match(message, /dropped malformed/);
 });

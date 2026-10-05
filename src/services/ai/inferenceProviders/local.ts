@@ -17,6 +17,7 @@ export const localProvider: InferenceProvider = {
 
     const systemPrompt = config.systemPrompt || ctx.getSystemPrompt(agentName);
     const userContent = config.systemPrompt ? text : wrapCleanupTranscript(text);
+
     const result = await window.electronAPI.processLocalReasoning(userContent, model, agentName, {
       ...config,
       systemPrompt,
@@ -36,6 +37,7 @@ export const localProvider: InferenceProvider = {
       processingTimeMs,
       resultLength: outputText.length,
     });
+
     return outputText;
   },
 };

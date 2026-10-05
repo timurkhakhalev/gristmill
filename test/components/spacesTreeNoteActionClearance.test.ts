@@ -1,14 +1,24 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
+
 const i18next = require("i18next");
+
 const { initReactI18next } = require("react-i18next");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
 const PRIVATE_NOTE_TITLE = "خطة Private 2026";
+
 const TEAM_NOTE_TITLE = "Engineering ملاحظات";
 
 async function renderTree(t: TestContext, direction: string) {
@@ -21,6 +31,7 @@ async function renderTree(t: TestContext, direction: string) {
     initImmediate: false,
     interpolation: { escapeValue: false },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: `openwhispr-spaces-tree-note-clearance-${direction}-`,
     mockModules: {
@@ -127,8 +138,10 @@ async function renderTree(t: TestContext, direction: string) {
       "/SpaceMembersDialog": "export default function Mock() { return null; }",
     },
   });
+
   const { I18nextProvider } = await vite.ssrLoadModule("react-i18next");
   const { default: SpacesTree } = await vite.ssrLoadModule("/components/notes/SpacesTree.tsx");
+
   return renderToStaticMarkup(
     React.createElement(
       "div",
@@ -151,6 +164,7 @@ function openingTagForTitle(markup: string, title: string) {
   const encodedTitle = title.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
   const match = markup.match(new RegExp(`<div[^>]*title="${encodedTitle}[^"]*"[^>]*>`));
   assert.ok(match, `rendered note row for ${JSON.stringify(title)}`);
+
   return match![0];
 }
 
@@ -166,7 +180,10 @@ for (const direction of ["ltr", "rtl"]) {
       const actionPosition = row.indexOf('<button data-slot="dropdown-trigger"', titlePosition);
       assert.ok(titlePosition >= 0, `${title} is rendered in its own title span`);
       assert.ok(actionPosition > titlePosition, `${title} has a following action trigger`);
-      assert.match(row.slice(0, titlePosition), /<span dir="auto" class="[^"]*truncate min-w-0 flex-1/);
+      assert.match(
+        row.slice(0, titlePosition),
+        /<span dir="auto" class="[^"]*truncate min-w-0 flex-1/
+      );
       assert.match(row.slice(actionPosition, actionPosition + 500), /class="[^"]*h-5 w-5 shrink-0/);
     }
   });

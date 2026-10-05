@@ -17,6 +17,7 @@ export function useCopyFeedback(
     if (confirmedTextRef.current === text) return;
     confirmedTextRef.current = null;
     setCopied(false);
+
     if (timerRef.current) clearTimeout(timerRef.current);
   }, [text]);
 
@@ -31,6 +32,7 @@ export function useCopyFeedback(
     (copiedText: string, durationMs = resetMs) => {
       confirmedTextRef.current = copiedText;
       setCopied(true);
+
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => setCopied(false), durationMs);
     },
@@ -44,11 +46,14 @@ export function useCopyFeedback(
 
     try {
       const result = await window.electronAPI?.writeClipboard?.(textToCopy);
+
       if (result?.success === false) throw new Error("clipboard-write-failed");
+
       return true;
     } catch {
       try {
         await navigator.clipboard.writeText(textToCopy);
+
         return true;
       } catch {
         return false;
@@ -58,10 +63,12 @@ export function useCopyFeedback(
 
   const copy = useCallback(async () => {
     const textToCopy = text.trim();
+
     if (!textToCopy) return;
 
     if (!(await copyText(textToCopy))) {
       setCopied(false);
+
       return;
     }
 

@@ -10,7 +10,9 @@ import {
 import { createUrlDownloadBridge } from "./src/preload/urlDownloadBridge.js";
 import { registerUrlDownloadHandlers } from "./src/helpers/urlDownloadIpcHandlers.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 declare const ipcRenderer: IpcRenderer;
 
 // The bridge return type must stay connected to the shared API type.

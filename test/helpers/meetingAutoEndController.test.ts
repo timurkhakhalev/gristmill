@@ -1,8 +1,12 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const createMeetingAutoEndController: typeof import("../../src/helpers/meetingAutoEndController.ts").createMeetingAutoEndController & typeof import("../../src/helpers/meetingAutoEndController.ts") = require("../../src/helpers/meetingAutoEndController");
+const createMeetingAutoEndController: typeof import("../../src/helpers/meetingAutoEndController.ts").createMeetingAutoEndController &
+  typeof import("../../src/helpers/meetingAutoEndController.ts") = require("../../src/helpers/meetingAutoEndController");
+
 import type { MeetingAutoEndController } from "../../src/helpers/meetingAutoEndController.ts";
+
 const {
   SILENCE_WINDOW_MS,
   FAST_SILENCE_MS,
@@ -12,11 +16,13 @@ const {
 } = createMeetingAutoEndController;
 
 const START_TIME = 1_000_000;
+
 const TICK_MS = 1_000;
 
 const createHarness = () => {
   let now = START_TIME;
   const stops: unknown[] = [];
+
   const controller = createMeetingAutoEndController({
     now: () => now,
     onStop: (sessionId: string, reason: unknown) => stops.push({ sessionId, reason }),
@@ -24,6 +30,7 @@ const createHarness = () => {
 
   const runFor = (ms: number) => {
     let remaining = ms;
+
     while (remaining > 0) {
       const step = Math.min(TICK_MS, remaining);
       now += step;
@@ -45,8 +52,11 @@ const createHarness = () => {
 const beginOwnership = (controller: MeetingAutoEndController, sessionId = "s1") =>
   controller.beginSession({ sessionId, eligible: true, reliable: true, externalMicActive: true });
 
-const beginFallback = (controller: MeetingAutoEndController, sessionId = "s1", { reliable = true } = {}) =>
-  controller.beginSession({ sessionId, eligible: true, reliable, externalMicActive: false });
+const beginFallback = (
+  controller: MeetingAutoEndController,
+  sessionId = "s1",
+  { reliable = true } = {}
+) => controller.beginSession({ sessionId, eligible: true, reliable, externalMicActive: false });
 
 const micReleased = (controller: MeetingAutoEndController, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: false });
@@ -54,8 +64,12 @@ const micReleased = (controller: MeetingAutoEndController, sessionId = "s1") =>
 const micAcquired = (controller: MeetingAutoEndController, sessionId = "s1") =>
   controller.handleExternalMicState({ sessionId, reliable: true, externalMicActive: true });
 
-const audio = (controller: MeetingAutoEndController, micActive: boolean, systemActive: boolean, sessionId = "s1") =>
-  controller.handleAudioActivity({ sessionId, micActive, systemActive });
+const audio = (
+  controller: MeetingAutoEndController,
+  micActive: boolean,
+  systemActive: boolean,
+  sessionId = "s1"
+) => controller.handleAudioActivity({ sessionId, micActive, systemActive });
 
 test("ownership: a qualifying mic release stops after the confirm window", () => {
   const harness = createHarness();

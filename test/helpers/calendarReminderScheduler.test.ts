@@ -1,10 +1,12 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const CalendarReminderScheduler = require("../../src/helpers/calendarReminderScheduler.ts");
 
 function activeEvent(provider: string, id: string) {
   const now = Date.now();
+
   return {
     id,
     provider,
@@ -26,10 +28,12 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
     const timeBlock = activeEvent(provider, "time-block");
     timeBlock.attendees_count = 0;
     (timeBlock as any).hangout_link = undefined;
+
     const databaseManager = {
       getUpcomingEvents: () => [timeBlock],
       getActiveEvents: () => [timeBlock],
     };
+
     const scheduler = new CalendarReminderScheduler(databaseManager);
     let promptCount = 0;
     scheduler.meetingDetectionEngine = {
@@ -47,11 +51,15 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
   test(`reminds for a ${provider} time block with a meeting link`, () => {
     const timeBlock = activeEvent(provider, "meet-block");
     timeBlock.attendees_count = 0;
-    (timeBlock as any).hangout_link = (MEETING_LINK_BY_PROVIDER as Record<string, string>)[provider];
+    (timeBlock as any).hangout_link = (MEETING_LINK_BY_PROVIDER as Record<string, string>)[
+      provider
+    ];
+
     const databaseManager = {
       getUpcomingEvents: () => [timeBlock],
       getActiveEvents: () => [timeBlock],
     };
+
     const scheduler = new CalendarReminderScheduler(databaseManager);
     let promptCount = 0;
     scheduler.meetingDetectionEngine = {
@@ -72,10 +80,12 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
     const timeBlock = activeEvent(provider, "time-block");
     timeBlock.attendees_count = 0;
     (timeBlock as any).hangout_link = undefined;
+
     const databaseManager = {
       getUpcomingEvents: () => [timeBlock],
       getActiveEvents: () => [timeBlock],
     };
+
     const scheduler = new CalendarReminderScheduler(databaseManager);
     let promptCount = 0;
     scheduler.meetingDetectionEngine = {
@@ -94,10 +104,12 @@ for (const provider of Object.keys(MEETING_LINK_BY_PROVIDER)) {
 
 test("resetting one provider preserves reminders delivered by another provider", () => {
   const googleEvent = activeEvent("google", "meeting-1");
+
   const databaseManager = {
     getUpcomingEvents: () => [googleEvent],
     getActiveEvents: () => [googleEvent],
   };
+
   const scheduler = new CalendarReminderScheduler(databaseManager);
   let promptCount = 0;
   scheduler.meetingDetectionEngine = {
@@ -117,10 +129,12 @@ test("resetting one provider preserves reminders delivered by another provider",
 
 test("resetting a provider lets that provider's remaining event be re-armed", () => {
   const appleEvent = activeEvent("apple", "meeting-1");
+
   const databaseManager = {
     getUpcomingEvents: () => [appleEvent],
     getActiveEvents: () => [appleEvent],
   };
+
   const scheduler = new CalendarReminderScheduler(databaseManager);
   let promptCount = 0;
   scheduler.meetingDetectionEngine = {
@@ -140,10 +154,12 @@ test("resetting a provider lets that provider's remaining event be re-armed", ()
 test("reconciling a provider clears an active event removed by a snapshot", () => {
   const appleEvent = activeEvent("apple", "meeting-1");
   let activeEvents = [appleEvent];
+
   const databaseManager = {
     getUpcomingEvents: () => activeEvents,
     getActiveEvents: () => activeEvents,
   };
+
   const scheduler = new CalendarReminderScheduler(databaseManager);
   let promptCount = 0;
   scheduler.meetingDetectionEngine = {
@@ -174,10 +190,12 @@ test("resetting a provider re-arms the next meeting timer for upcoming events", 
     end_time: new Date(Date.now() + 1200_000).toISOString(),
     attendees_count: 1,
   };
+
   const databaseManager = {
     getUpcomingEvents: () => [futureEvent],
     getActiveEvents: () => [],
   };
+
   const scheduler = new CalendarReminderScheduler(databaseManager);
 
   scheduler.scheduleNextMeeting();

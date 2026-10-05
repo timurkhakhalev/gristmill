@@ -15,11 +15,14 @@ export const lanProvider: InferenceProvider = {
     try {
       const baseUrl = resolveSelfHostedOpenAIBase(lanUrl);
       const endpoint = buildApiUrl(baseUrl, "/chat/completions");
+
       const apiKey =
         config.customApiKey?.trim() ||
         (isAgentCall ? "" : settings.cleanupCustomApiKey?.trim()) ||
         "";
+
       const resolvedModel = model?.trim() || "default";
+
       return await ctx.callChatCompletionsApi(
         endpoint,
         apiKey,

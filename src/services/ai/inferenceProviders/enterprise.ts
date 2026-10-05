@@ -17,9 +17,11 @@ export const enterpriseProvider: InferenceProvider = {
     }
 
     const provider = config.provider || getSettings().cleanupProvider;
+
     if (!isEnterpriseProvider(provider)) {
       throw new Error(`Unsupported enterprise provider: ${provider}`);
     }
+
     const enterpriseId = provider as EnterpriseProviderId;
 
     logger.logReasoning("ENTERPRISE_START", { provider: enterpriseId, model, agentName });
@@ -29,6 +31,7 @@ export const enterpriseProvider: InferenceProvider = {
     const { supportsTemperature } = getOpenAiApiConfig(model);
 
     const startTime = Date.now();
+
     const result = await window.electronAPI.processEnterpriseReasoning(
       userContent,
       model,
@@ -51,6 +54,7 @@ export const enterpriseProvider: InferenceProvider = {
         processingTimeMs,
         error: result.error,
       });
+
       const enhanced = new Error(result.error || `${enterpriseId} reasoning failed`) as Error & {
         messageKey?: string;
         messageParams?: Record<string, string | number>;
@@ -65,6 +69,7 @@ export const enterpriseProvider: InferenceProvider = {
           underlyingError?: string;
         };
       };
+
       enhanced.messageKey = result.messageKey;
       enhanced.messageParams = result.messageParams;
       enhanced.action = result.action;
@@ -81,6 +86,7 @@ export const enterpriseProvider: InferenceProvider = {
       processingTimeMs,
       resultLength: result.text?.length || 0,
     });
+
     return result.text || "";
   },
 };

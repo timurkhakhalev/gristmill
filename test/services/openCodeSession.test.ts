@@ -1,7 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const loadSession = () => import("../../src/services/ai/openCodeSession.js");
+
 const loadProviders = () => import("../../src/services/ai/providers.js");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -48,6 +50,7 @@ async function captureChatHeaders(t: import("node:test").TestContext, baseUrl: s
   let sent: Record<string, string> | null = null;
   globalThis.fetch = async (input: unknown, init: { headers?: unknown } = {}) => {
     sent = (init.headers ?? {}) as Record<string, string>;
+
     const chunk = (delta: Record<string, unknown>, finishReason: string | null = null) =>
       `data: ${JSON.stringify({
         id: "chatcmpl-opencode-session-test",
@@ -56,6 +59,7 @@ async function captureChatHeaders(t: import("node:test").TestContext, baseUrl: s
         model: "kimi-k2.5",
         choices: [{ index: 0, delta, finish_reason: finishReason }],
       })}\n\n`;
+
     return new Response(`${chunk({ content: "ok" })}${chunk({}, "stop")}data: [DONE]\n\n`, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -63,13 +67,18 @@ async function captureChatHeaders(t: import("node:test").TestContext, baseUrl: s
   };
 
   const model = await getAIModel("custom", "kimi-k2.5", "test-key", baseUrl);
+
   // LanguageModel is a spec union; doStream exists on every member at runtime.
-  const { stream } = await (model as unknown as { doStream: (args: unknown) => Promise<{ stream: AsyncIterable<unknown> }> }).doStream({
+  const { stream } = await (
+    model as unknown as { doStream: (args: unknown) => Promise<{ stream: AsyncIterable<unknown> }> }
+  ).doStream({
     prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
   });
+
   for await (const _part of stream) {
     // Drain so the request completes.
   }
+
   return sent!;
 }
 

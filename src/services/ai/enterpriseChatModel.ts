@@ -31,10 +31,13 @@ const SERIALIZABLE_OPTION_KEYS = [
 
 function pickSerializableOptions(options: LanguageModelV3CallOptions) {
   const picked: Record<string, unknown> = {};
+
   for (const key of SERIALIZABLE_OPTION_KEYS) {
     const value = options[key];
+
     if (value !== undefined) picked[key] = value;
   }
+
   return picked;
 }
 
@@ -54,6 +57,7 @@ export function createEnterpriseChatModel(
 
     async doStream(options: LanguageModelV3CallOptions) {
       const api = window.electronAPI;
+
       if (
         !api ||
         typeof api.enterpriseStreamStart !== "function" ||
@@ -74,6 +78,7 @@ export function createEnterpriseChatModel(
             );
           },
         });
+
         return { stream: aborted };
       }
 
@@ -85,6 +90,7 @@ export function createEnterpriseChatModel(
       // (the listener is registered inside start), the initial no-op only
       // keeps the binding total.
       let errorLocally: (message: string) => void = () => {};
+
       // Removes both the envelope listener and the abort listener; safe to
       // call repeatedly and used by every terminal outcome (done/error
       // envelope, failed invoke, consumer cancel, pre-start abort).
@@ -110,7 +116,9 @@ export function createEnterpriseChatModel(
             cleanup();
             controller.error(new Error(message));
           };
+
           errorLocally = fail;
+
           const finish = () => {
             if (settled) return;
             settled = true;
@@ -122,6 +130,7 @@ export function createEnterpriseChatModel(
           // only forwards well-formed envelopes, filtered again by stream id.
           unsubscribe = api.onEnterpriseStreamPart((envelope) => {
             if (envelope.streamId !== streamId) return;
+
             if (envelope.error !== undefined) {
               fail(envelope.error);
             } else if (envelope.done) {
@@ -148,8 +157,10 @@ export function createEnterpriseChatModel(
               if (options.abortSignal?.aborted) {
                 void api.enterpriseStreamCancel(streamId);
                 fail("Aborted");
+
                 return;
               }
+
               if (result && !result.success) fail(result.error || "Enterprise stream failed");
             })
             .catch((error: Error) => fail(error.message));

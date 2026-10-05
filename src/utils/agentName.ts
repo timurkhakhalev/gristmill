@@ -3,6 +3,7 @@ import { getSettings, useSettingsStore } from "../stores/settingsStore";
 import { agentNameDictionaryChanges } from "../helpers/agentNameDictionary";
 
 const AGENT_NAME_KEY = "agentName";
+
 const DEFAULT_AGENT_NAME = "Gristmill";
 
 export const getAgentName = (): string => {
@@ -15,6 +16,7 @@ function syncAgentNameToDictionary(newName: string, oldName?: string): void {
     newName,
     oldName
   );
+
   if (add.length === 0 && remove.length === 0) return;
 
   useSettingsStore.getState().updateCustomDictionary({ add, remove });
@@ -29,6 +31,7 @@ export const setAgentName = (name: string): void => {
 
 export const ensureAgentNameInDictionary = (): void => {
   const name = getAgentName();
+
   if (name) syncAgentNameToDictionary(name);
 };
 

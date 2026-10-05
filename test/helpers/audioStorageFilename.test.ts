@@ -1,9 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { installElectronStub }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
+const {
+  installElectronStub,
+}: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
 
 installElectronStub();
+
 const AudioStorageManager: typeof import("../../src/helpers/audioStorage.ts").AudioStorageManager = require("../../src/helpers/audioStorage.ts");
 
 // Saved audio is named after the dictation's wall clock, so the name has to be

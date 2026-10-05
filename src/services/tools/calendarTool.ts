@@ -7,16 +7,19 @@ function getWindowMinutes(timeRange: TimeRange): number {
   if (timeRange === "week") return 10080;
 
   const now = new Date();
+
   if (timeRange === "tomorrow") {
     const endOfTomorrow = new Date(now);
     endOfTomorrow.setDate(endOfTomorrow.getDate() + 1);
     endOfTomorrow.setHours(23, 59, 59, 999);
+
     return Math.ceil((endOfTomorrow.getTime() - now.getTime()) / 60000);
   }
 
   // "today": remaining minutes until midnight
   const midnight = new Date(now);
   midnight.setHours(23, 59, 59, 999);
+
   return Math.max(1, Math.ceil((midnight.getTime() - now.getTime()) / 60000));
 }
 

@@ -1,13 +1,23 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { transcribeWithGemini } = require("../../src/helpers/geminiTranscription");
 
 const AUDIO = Buffer.from("fake-audio-bytes");
 
 function makeFetch(response: unknown) {
-  const calls: Array<{ url: string; init: { method?: string; headers?: Record<string, string>; body?: string } }> = [];
-  const fetchImpl = async (url: string, init: { method?: string; headers?: Record<string, string>; body?: string }) => {
+  const calls: Array<{
+    url: string;
+    init: { method?: string; headers?: Record<string, string>; body?: string };
+  }> = [];
+
+  const fetchImpl = async (
+    url: string,
+    init: { method?: string; headers?: Record<string, string>; body?: string }
+  ) => {
     calls.push({ url, init });
+
     return {
       ok: true,
       status: 200,
@@ -15,6 +25,7 @@ function makeFetch(response: unknown) {
       text: async () => JSON.stringify(response),
     };
   };
+
   return { fetchImpl, calls };
 }
 
@@ -110,6 +121,7 @@ test("HTTP statuses map to coded errors without leaking the key", async () => {
       status,
       text: async () => body,
     });
+
     return transcribeWithGemini({ audioBuffer: AUDIO, apiKey: "sk-secret" }, fetchImpl).then(
       () => assert.fail(`status ${status} must reject`),
       (error: unknown) => error
@@ -121,6 +133,7 @@ test("HTTP statuses map to coded errors without leaking the key", async () => {
     assert.equal(error.code, "INVALID_KEY");
     assert.equal(error.message.includes("sk-secret"), false);
   }
+
   assert.equal((await statusError(429)).code, "PROVIDER_RATE_LIMITED");
   assert.equal((await statusError(500)).code, "SERVER_ERROR");
 
@@ -137,6 +150,7 @@ test("a failed interaction status rejects even on HTTP 200", async () => {
     status: "failed",
     error: { code: "api_error", message: "decode error" },
   });
+
   await assert.rejects(
     transcribeWithGemini({ audioBuffer: AUDIO, apiKey: "k" }, fetchImpl),
     /Gemini transcription failed: decode error/

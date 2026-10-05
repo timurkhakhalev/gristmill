@@ -22,7 +22,6 @@ export const localLlmChannels = {
   llamaServerStatus: "llama-server-status",
 } as const;
 
-
 export const llmDownloadProgressEventSchema = z.object({
   type: z.enum(["progress", "complete", "error"]).optional(),
   modelId: z.string(),
@@ -34,6 +33,7 @@ export const llmDownloadProgressEventSchema = z.object({
   details: z.unknown().optional(),
   sequence: z.number().optional(),
 });
+
 export type LlmDownloadProgressEvent = z.infer<typeof llmDownloadProgressEventSchema>;
 
 // One bundled local LLM as the renderer sees it: the registry entry plus the

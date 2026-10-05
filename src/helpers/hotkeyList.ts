@@ -22,17 +22,21 @@ export function parseHotkeyList(value: StoredHotkeyListValue): string[] {
 
   const seen = new Set<string>();
   const result: string[] = [];
+
   for (let i = 0; i < raw.length; i++) {
     let hotkey = raw[i].trim();
+
     // A non-final segment ending in "+" lost its comma key to the split only if
     // the next raw element was empty (the trailing comma key produced an empty string).
     if (hotkey.endsWith("+") && i < raw.length - 1 && raw[i + 1].trim() === "") {
       hotkey += HOTKEY_LIST_SEPARATOR;
     }
+
     if (!hotkey || seen.has(hotkey)) continue;
     seen.add(hotkey);
     result.push(hotkey);
   }
+
   return result;
 }
 

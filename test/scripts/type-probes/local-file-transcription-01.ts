@@ -3,7 +3,9 @@
 // @probe-origin test/scripts/localFileTranscriptionTypeProbe.test.js
 import { registerLocalFileTranscriptionHandler } from "./src/helpers/localFileTranscriptionIpcHandler.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 // A handler missing transcribeLocalParakeet (and a wrong readFile) would
 // silently break the sherpa route; the compiler must reject it.

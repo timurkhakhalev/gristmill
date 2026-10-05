@@ -18,11 +18,7 @@ import { SelectField } from "../ui/SelectField";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
 import { Input } from "../ui/input";
 import type { FolderItem } from "../../contracts/containers";
-import {
-  findDefaultFolder,
-  DOWNLOAD_ERROR_KEYS,
-  transcriptionErrorKey,
-} from "./shared";
+import { findDefaultFolder, DOWNLOAD_ERROR_KEYS, transcriptionErrorKey } from "./shared";
 import { useSettings } from "../../hooks/useSettings";
 import {
   getAllReasoningModels,
@@ -59,6 +55,7 @@ import { UploadCompleteWarnings, UploadModelSettingsButton } from "./UploadAudio
 type UploadState = "idle" | "selected" | "downloading" | "transcribing" | "complete" | "error";
 
 const SUPPORTED_EXTENSIONS = ["mp3", "wav", "m4a", "webm", "ogg", "oga", "flac", "aac", "opus"];
+
 const UNSUPPORTED_IMPORT_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -80,7 +77,9 @@ const uploadFieldClass = cn(
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
+
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
@@ -89,13 +88,16 @@ function parseBatchUrls(text: string): { valid: string[]; skipped: number } {
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
+
   const seen = new Set<string>();
   const valid: string[] = [];
+
   for (const line of lines) {
     try {
       const parsed = new URL(line);
       const httpsOk = parsed.protocol === "https:";
       const supportedHost = !UNSUPPORTED_IMPORT_HOSTS.has(parsed.hostname.toLowerCase());
+
       if (httpsOk && supportedHost && !seen.has(line)) {
         seen.add(line);
         valid.push(line);
@@ -104,7 +106,9 @@ function parseBatchUrls(text: string): { valid: string[]; skipped: number } {
       // invalid line, counted as skipped
     }
   }
+
   const capped = valid.slice(0, MAX_BATCH_URLS);
+
   return { valid: capped, skipped: lines.length - capped.length };
 }
 
@@ -116,6 +120,7 @@ interface UploadAudioViewProps {
 export default function UploadAudioView({ onNoteCreated, onOpenSettings }: UploadAudioViewProps) {
   const { t } = useTranslation();
   const [state, setState] = useState<UploadState>("idle");
+
   const [file, setFile] = useState<{
     name: string;
     path: string;
@@ -124,10 +129,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     fromUrl?: boolean;
     durationSeconds?: number | null;
   } | null>(null);
+
   const [result, setResult] = useState<string | null>(null);
+
   const [partialWarning, setPartialWarning] = useState<{ failed: number; total: number } | null>(
     null
   );
+
   const [diarizationWarning, setDiarizationWarning] = useState(false);
   const [noteId, setNoteId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,11 +158,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const pendingSaveRef = useRef<Parameters<typeof saveUploadNote>[0] | null>(null);
 
   const [urlInput, setUrlInput] = useState("");
+
   const [downloadProgress, setDownloadProgress] = useState<{
     stage: string;
     percent: number;
     title?: string;
   } | null>(null);
+
   const [downloadedTempPath, setDownloadedTempPath] = useState<string | null>(null);
   const downloadedTempPathRef = useRef(downloadedTempPath);
   useEffect(() => {
@@ -169,9 +179,11 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const [diarizationEnabled, setDiarizationEnabled] = useState(
     () => localStorage.getItem("uploadDiarizationEnabled") === "true"
   );
+
   const [diarizationNumSpeakers, setDiarizationNumSpeakers] = useState<string>(
     () => localStorage.getItem("uploadDiarizationNumSpeakers") || ""
   );
+
   const [diarizationModelsReady, setDiarizationModelsReady] = useState<boolean | null>(null);
   const [diarizationDownloading, setDiarizationDownloading] = useState(false);
 
@@ -184,25 +196,30 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   }, [diarizationNumSpeakers]);
 
   const diarizationDownloadRef = useRef<Promise<boolean> | null>(null);
+
   // Callers share one in-flight download: a transcribe started while the
   // mount-time heal is still fetching has to wait for it, not give up and
   // report that speaker detection couldn't be applied.
   const ensureDiarizationModels = (): Promise<boolean> => {
     if (diarizationDownloadRef.current) return diarizationDownloadRef.current;
     setDiarizationDownloading(true);
+
     const pending = (async () => {
       try {
         await window.electronAPI.downloadDiarizationModels?.();
         const status = await window.electronAPI.getDiarizationModelStatus?.();
         const ready = status?.modelsDownloaded ?? false;
         setDiarizationModelsReady(ready);
+
         return ready;
       } finally {
         diarizationDownloadRef.current = null;
         setDiarizationDownloading(false);
       }
     })();
+
     diarizationDownloadRef.current = pending;
+
     return pending;
   };
 
@@ -219,6 +236,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     window.electronAPI.getDiarizationModelStatus?.().then((status) => {
       const ready = status?.modelsDownloaded ?? false;
       setDiarizationModelsReady(ready);
+
       // Heal a persisted-on toggle whose models were removed since; roll it back
       // if the download fails so it can't sit ON while doing nothing.
       if (!ready && localStorage.getItem("uploadDiarizationEnabled") === "true") {
@@ -244,6 +262,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
 
   const apiKeys = useSettings();
+
   const {
     openaiApiKey,
     groqApiKey,
@@ -256,6 +275,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     assemblyaiApiKey,
     customTranscriptionApiKey,
   } = apiKeys;
+
   const {
     useLocalWhisper,
     whisperModel,
@@ -267,6 +287,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     cloudTranscriptionBaseUrl,
     transcriptionMode,
   } = useSettingsStore(useShallow((settings) => selectResolvedUploadTranscription(settings)));
+
   const remoteTranscriptionUrl = useSettingsStore((s) => s.remoteTranscriptionUrl);
   const remoteTranscriptionModel = useSettingsStore((s) => s.remoteTranscriptionModel);
 
@@ -280,6 +301,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   // Mode detection
   const isSelfHosted = transcriptionMode === "self-hosted" && !useLocalWhisper;
+
   const uploadRoute = resolveTranscriptionRoute({
     settings: {
       useLocalWhisper,
@@ -295,6 +317,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     },
     providers: getTranscriptionProviders(),
   });
+
   const sizeCapBytes = "sizeCapBytes" in uploadRoute ? uploadRoute.sizeCapBytes : null;
   const byokMaxFileSizeMb = sizeCapBytes === null ? 0 : Math.floor(sizeCapBytes / (1024 * 1024));
   const byokTooLarge = !!file && sizeCapBytes !== null && file.sizeBytes > sizeCapBytes;
@@ -307,11 +330,14 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   useEffect(() => {
     mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
+
       if (urlDownloadActiveRef.current) {
         window.electronAPI.cancelUrlDownload();
       }
+
       if (downloadedTempPathRef.current) {
         window.electronAPI.deleteTempFile(downloadedTempPathRef.current);
       }
@@ -321,14 +347,17 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   useEffect(() => {
     // Keep upload destinations scoped to the private space.
     let cancelled = false;
+
     const loadFolders = async () => {
       try {
         const spaces = (await window.electronAPI.getSpaces?.()) ?? [];
         const privateSpace = spaces.find((space) => space.kind === "private");
         const items = (await window.electronAPI.getFolders?.(privateSpace?.id ?? null)) ?? [];
+
         if (cancelled) return;
         setFolders(items);
         const personal = findDefaultFolder(items);
+
         if (personal) {
           setSelectedFolderId(String(personal.id));
           setBatchFolderId(String(personal.id));
@@ -337,7 +366,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         if (!cancelled) console.error("Failed to load upload folders:", error);
       }
     };
+
     void loadFolders();
+
     return () => {
       cancelled = true;
     };
@@ -345,6 +376,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   useEffect(() => {
     let cancelled = false;
+
     const checkProviderReady = async () => {
       if (!useLocalWhisper) {
         if (isSelfHosted) {
@@ -354,6 +386,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
             settings: { cloudTranscriptionProvider, cloudTranscriptionBaseUrl },
             providers: getTranscriptionProviders(),
           });
+
           if (!cancelled) setProviderReady(route.transport !== "error");
         } else if (cloudTranscriptionProvider === "corti") {
           if (!cancelled) setProviderReady(!!(cortiClientId && cortiClientSecret));
@@ -374,23 +407,29 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               })
             );
         }
+
         return;
       }
+
       if (isSherpaLocalProvider(localTranscriptionProvider)) {
         const r = await window.electronAPI.listParakeetModels?.();
+
         if (!cancelled)
           setProviderReady(
             !!(r?.success && r.models.some((m: { downloaded?: boolean }) => m.downloaded))
           );
       } else {
         const r = await window.electronAPI.listWhisperModels?.();
+
         if (!cancelled)
           setProviderReady(
             !!(r?.success && r.models.some((m: { downloaded?: boolean }) => m.downloaded))
           );
       }
     };
+
     checkProviderReady();
+
     return () => {
       cancelled = true;
     };
@@ -419,18 +458,25 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     if (useLocalWhisper) {
       if (localTranscriptionProvider === "nvidia")
         return getParakeetModelInfo(parakeetModel)?.name ?? parakeetModel;
+
       if (localTranscriptionProvider === "cohere") return `Cohere · ${cohereModel || "default"}`;
+
       return `Whisper · ${whisperModel || "base"}`;
     }
+
     if (isSelfHosted) {
       const name = t("settingsPage.transcription.modes.selfHosted");
+
       return remoteTranscriptionModel ? `${name} · ${remoteTranscriptionModel}` : name;
     }
+
     const name =
       cloudTranscriptionProvider === "custom"
         ? t("notes.upload.custom")
         : cloudTranscriptionProvider.charAt(0).toUpperCase() + cloudTranscriptionProvider.slice(1);
+
     const model = getBatchTranscriptionModel(cloudTranscriptionProvider) ?? cloudTranscriptionModel;
+
     return `${name} · ${model}`;
   };
 
@@ -460,17 +506,22 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   const generateTitle = async (text: string): Promise<string> => {
     if (!useCleanupModel) return "";
+
     if (!getSettings().autoGenerateNoteTitle) return "";
     const model = effectiveCleanupModel || getAllReasoningModels()[0]?.value;
+
     if (!model) return "";
+
     return generateNoteTitle(text, model);
   };
 
   const handleBrowse = async () => {
     const res = await window.electronAPI.selectAudioFile({ multiple: true });
+
     if (res.canceled) return;
 
     const filePaths: string[] = res.filePaths || (res.filePath ? [res.filePath] : []);
+
     if (filePaths.length === 0) return;
 
     // While a batch runs (or a queue exists), new files join the queue.
@@ -481,15 +532,18 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       setFile({ name, path: fp, size: sizeBytes ? formatFileSize(sizeBytes) : "", sizeBytes });
       setState("selected");
       setError(null);
+
       return;
     }
 
     const items: Array<{ name: string; path: string; sizeBytes: number }> = [];
+
     for (const fp of filePaths) {
       const name = fp.split(/[/\\]/).pop() || "audio";
       const sizeBytes = (await window.electronAPI.getFileSize?.(fp)) ?? 0;
       items.push({ name, path: fp, sizeBytes });
     }
+
     batch.addFiles(items);
   };
 
@@ -497,14 +551,18 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     e.preventDefault();
     setIsDragOver(false);
     const files = e.dataTransfer.files;
+
     if (!files || files.length === 0) return;
 
     const validFiles: Array<{ name: string; path: string; sizeBytes: number }> = [];
+
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const ext = f.name.split(".").pop()?.toLowerCase() || "";
+
       if (SUPPORTED_EXTENSIONS.includes(ext)) {
         const filePath = window.electronAPI.getPathForFile(f);
+
         if (filePath) {
           validFiles.push({ name: f.name, path: filePath, sizeBytes: f.size });
         }
@@ -535,15 +593,18 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const releaseExecutionTemp = (executionTemp: string | null) => {
     if (!executionTemp) return;
     window.electronAPI.deleteTempFile(executionTemp);
+
     // CAS: an older execution may settle after a newer upload claimed the ref.
     // Clear only its own claim so the newer execution remains the owner.
     if (executionTempRef.current !== executionTemp) return;
     executionTempRef.current = null;
+
     if (downloadedTempPathRef.current === executionTemp) {
       downloadedTempPathRef.current = null;
       setDownloadedTempPath(null);
     }
   };
+
   // A settled error keeps the temp for Retry: hand it back to the view
   // state, which deletes it on reset or unmount as before. A view that
   // unmounted mid-run has no Retry to offer and its cleanup already ran
@@ -552,22 +613,28 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const keepExecutionTempForRetry = (executionTemp: string | null) => {
     if (!executionTemp || executionTempRef.current !== executionTemp) return;
     executionTempRef.current = null;
+
     if (!mountedRef.current) {
       window.electronAPI.deleteTempFile(executionTemp);
+
       return;
     }
+
     downloadedTempPathRef.current = executionTemp;
     setDownloadedTempPath(executionTemp);
   };
 
   const reset = () => {
     if (progressRef.current) clearInterval(progressRef.current);
+
     if (progressCleanupRef.current) progressCleanupRef.current();
     progressCleanupRef.current = null;
+
     if (downloadedTempPath) {
       window.electronAPI.deleteTempFile(downloadedTempPath);
       setDownloadedTempPath(null);
     }
+
     setState("idle");
     setFile(null);
     setResult(null);
@@ -582,6 +649,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     setBatchUrlNotice(null);
     setFolderMoveError(null);
     const personal = findDefaultFolder(folders);
+
     if (personal) setSelectedFolderId(String(personal.id));
   };
 
@@ -595,6 +663,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     const requestId = singleRequestIdRef.current;
     runIdRef.current++;
     singleRequestIdRef.current = null;
+
     if (requestId) {
       try {
         await window.electronAPI.cancelUploadTranscription({ requestId });
@@ -603,8 +672,10 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         // not depend on it.
       }
     }
+
     reset();
   };
+
   const handleTranscribe = async () => {
     if (!file || batch.isProcessing) return;
     const currentFile = file;
@@ -616,10 +687,12 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     // This execution now owns the downloaded temp: reset()/unmount see no
     // temp until it settles, so a Stop cannot delete it under open readers.
     executionTempRef.current = executionTemp;
+
     if (currentTempPath) {
       downloadedTempPathRef.current = null;
       setDownloadedTempPath(null);
     }
+
     setState("transcribing");
     setError(null);
     setProgress(0);
@@ -628,21 +701,26 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       setProgress((prev) => {
         if (prev >= 90) {
           if (progressRef.current) clearInterval(progressRef.current);
+
           return prev;
         }
+
         return prev + Math.random() * 6;
       });
     }, 500);
 
     try {
       const diarization = await buildDiarizationSettings();
+
       // The settings preparation is async (lazy model download); a Stop that
       // landed meanwhile must not start the IPC work at all.
       if (runId !== runIdRef.current) {
         // Cancelled before any reader started — the temp is free to delete.
         releaseExecutionTemp(executionTemp);
+
         return;
       }
+
       const res: FileTranscriptionResult = await transcribeFileWithSpeakers(
         currentFile.path,
         buildTranscriptionConfig(),
@@ -654,11 +732,14 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       if (runId !== runIdRef.current) {
         // Readers settled after a Stop: only now is the temp deleted.
         releaseExecutionTemp(executionTemp);
+
         return;
       }
+
       singleRequestIdRef.current = null;
 
       if (progressRef.current) clearInterval(progressRef.current);
+
       if (progressCleanupRef.current) progressCleanupRef.current();
       progressCleanupRef.current = null;
 
@@ -673,14 +754,18 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         setDiarizationWarning(!!res.diarizationWarning);
 
         let title: string;
+
         if (currentFile.fromUrl) {
           title = currentFile.name;
         } else {
           const aiTitle = await generateTitle(res.text);
+
           if (runId !== runIdRef.current) {
             releaseExecutionTemp(executionTemp);
+
             return;
           }
+
           title = aiTitle || uploadTitleFallback(res.text, currentFile.name);
         }
 
@@ -693,12 +778,16 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           durationSeconds: res.durationSeconds,
           segments: res.segments,
         };
+
         pendingSaveRef.current = pendingSave;
         const noteRes = await saveUploadNote(pendingSave);
+
         if (runId !== runIdRef.current) {
           releaseExecutionTemp(executionTemp);
+
           return;
         }
+
         if (noteRes.success && noteRes.note) {
           pendingSaveRef.current = null;
           setNoteId(noteRes.note.id);
@@ -731,15 +820,20 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       if (runId !== runIdRef.current) {
         // A thrown settlement after a Stop: readers are done, delete the temp.
         releaseExecutionTemp(executionTemp);
+
         return;
       }
+
       keepExecutionTempForRetry(executionTemp);
       singleRequestIdRef.current = null;
+
       if (progressRef.current) clearInterval(progressRef.current);
+
       if (progressCleanupRef.current) progressCleanupRef.current();
       progressCleanupRef.current = null;
       setProgress(0);
       const errorKey = transcriptionErrorKey(err);
+
       if (pendingSaveRef.current) {
         setError(t("notes.upload.noteSaveFailed"));
       } else if (errorKey) {
@@ -747,26 +841,31 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       } else {
         setError(err instanceof Error ? err.message : t("notes.upload.errorOccurred"));
       }
+
       setState("error");
     }
   };
 
   const handleUrlSubmit = async () => {
     const trimmed = urlInput.trim();
+
     if (!trimmed) return;
 
     // While a batch runs (or a queue exists), submitted URLs join the queue.
     if (batch.isProcessing || batch.hasQueue) {
       handleBatchUrlSubmit();
+
       return;
     }
 
     let parsed: URL;
+
     try {
       parsed = new URL(trimmed);
     } catch {
       setError(t("notes.upload.urlInvalid"));
       setState("error");
+
       return;
     }
 
@@ -774,6 +873,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     if (parsed.protocol !== "https:") {
       setError(t("notes.upload.urlInvalid"));
       setState("error");
+
       return;
     }
 
@@ -783,32 +883,39 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
     const downloadId = crypto.randomUUID();
     singleDownloadIdRef.current = downloadId;
+
     const cleanupProgress = window.electronAPI.onUrlDownloadProgress?.((data) => {
       if (data.downloadId && data.downloadId !== downloadId) return;
       setDownloadProgress(data);
     });
 
     urlDownloadActiveRef.current = true;
+
     try {
       const res = await window.electronAPI.downloadUrlAudio(trimmed, downloadId);
 
       if (!mountedRef.current) {
         // Unmounted mid-download: nothing owns the temp file anymore, delete it.
         if (res.success) window.electronAPI.deleteTempFile(res.tempPath);
+
         return;
       }
 
       if (!res.success) {
         const fail = res as { success: false; error: string; code?: string };
+
         if (fail.code === "DOWNLOAD_CANCELLED") {
           setState("idle");
+
           return;
         }
+
         const key = DOWNLOAD_ERROR_KEYS[fail.code || ""];
         setError(
           key ? t(`notes.upload.${key}`) : fail.error || t("notes.upload.urlDownloadFailed")
         );
         setState("error");
+
         return;
       }
 
@@ -837,36 +944,44 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   // save, a selected file's transcription, or the URL download.
   const handleRetry = async () => {
     const pending = pendingSaveRef.current;
+
     if (pending) {
       const runId = ++runIdRef.current;
       setState("transcribing");
       setError(null);
       let noteRes: Awaited<ReturnType<typeof saveUploadNote>>;
+
       try {
         noteRes = await saveUploadNote(pending);
       } catch {
         noteRes = { success: false } as Awaited<ReturnType<typeof saveUploadNote>>;
       }
+
       if (runId !== runIdRef.current) return;
+
       if (noteRes.success && noteRes.note) {
         pendingSaveRef.current = null;
         setNoteId(noteRes.note.id);
         // The temp is view-owned again (kept for Retry); hand it back to the
         // execution-owner path so it is still deleted exactly once.
         const temp = downloadedTempPathRef.current;
+
         if (temp) {
           downloadedTempPathRef.current = null;
           setDownloadedTempPath(null);
           executionTempRef.current = temp;
           releaseExecutionTemp(temp);
         }
+
         setState("complete");
       } else {
         setError(t("notes.upload.noteSaveFailed"));
         setState("error");
       }
+
       return;
     }
+
     if (file) {
       handleTranscribe();
     } else if (urlInput.trim()) {
@@ -882,11 +997,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   const handleBatchUrlSubmit = () => {
     const { valid, skipped } = parseBatchUrls(urlInput);
+
     if (valid.length > 0) {
       batch.addUrls(valid);
       setUrlInput("");
       setUrlExpanded(false);
     }
+
     setBatchUrlNotice(skipped > 0 ? t("notes.upload.urlsSkipped", { n: skipped }) : null);
   };
 
@@ -906,15 +1023,19 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   const handleCreateFolder = async () => {
     const trimmed = newFolderName.trim();
+
     if (!trimmed) return;
     const res = await window.electronAPI.createFolder(trimmed);
+
     if (res.success && res.folder) {
       setFolders((prev) => [...prev, res.folder!]);
       const newId = String(res.folder.id);
       setSelectedFolderId(newId);
+
       if (noteId != null) {
         try {
           const moved = await window.electronAPI.updateNote(noteId, { folder_id: res.folder.id });
+
           if (!moved.success) {
             showFolderMoveFailure(moved.error, newId);
           }
@@ -923,6 +1044,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         }
       }
     }
+
     setNewFolderName("");
     setShowNewFolderDialog(false);
   };
@@ -939,11 +1061,14 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   const handleFolderChange = (val: string) => {
     if (val === "__create_new__") {
       setShowNewFolderDialog(true);
+
       return;
     }
+
     const previous = selectedFolderId;
     setSelectedFolderId(val);
     setFolderMoveError(null);
+
     if (noteId != null) {
       // Root is a null folder in the DB, not 0 — Number("") would fail there.
       void window.electronAPI
@@ -957,11 +1082,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   const getTranscribingLabel = (): string => {
     if (useLocalWhisper) return t("notes.upload.transcribingLocal");
+
     if (isSelfHosted) {
       return t("notes.upload.transcribingProvider", {
         provider: t("settingsPage.transcription.modes.selfHosted"),
       });
     }
+
     return t("notes.upload.transcribingProvider", { provider: cloudTranscriptionProvider });
   };
 
@@ -1059,6 +1186,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                     }}
                     onPaste={(e) => {
                       const pasted = e.clipboardData.getData("text");
+
                       if (pasted.includes("\n")) {
                         e.preventDefault();
                         setUrlInput(pasted);
@@ -1260,6 +1388,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                 onChange={async (next) => {
                   if (diarizationDownloading) return;
                   setDiarizationEnabled(next);
+
                   // BYOK-native diarization needs no local models — don't download them.
                   if (
                     next &&
@@ -1267,6 +1396,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                     !shouldUseByokDiarize(buildTranscriptionConfig(), true)
                   ) {
                     const ready = await ensureDiarizationModels();
+
                     if (!ready) setDiarizationEnabled(false);
                   }
                 }}
@@ -1277,17 +1407,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               !useLocalWhisper &&
               !isSelfHosted &&
               cloudTranscriptionProvider === "openai" && (
-                <p className="text-2xs text-muted mt-1.5">
-                  {t("notes.upload.openaiDiarizeNote")}
-                </p>
+                <p className="text-2xs text-muted mt-1.5">{t("notes.upload.openaiDiarizeNote")}</p>
               )}
             {diarizationEnabled &&
               !useLocalWhisper &&
               !isSelfHosted &&
               cloudTranscriptionProvider === "mistral" && (
-                <p className="text-2xs text-muted mt-1.5">
-                  {t("notes.upload.mistralDiarizeNote")}
-                </p>
+                <p className="text-2xs text-muted mt-1.5">{t("notes.upload.mistralDiarizeNote")}</p>
               )}
             {diarizationEnabled &&
               !useLocalWhisper &&
@@ -1320,10 +1446,13 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                   value={diarizationNumSpeakers}
                   onChange={(e) => {
                     const raw = e.target.value;
+
                     if (raw === "") {
                       setDiarizationNumSpeakers("");
+
                       return;
                     }
+
                     const n = Math.max(2, Math.min(MAX_SPEAKER_COUNT, Number(raw)));
                     setDiarizationNumSpeakers(String(isNaN(n) ? "" : n));
                   }}
@@ -1333,9 +1462,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                     "mt-1 w-full h-8 px-2.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   )}
                 />
-                <p className="text-2xs text-muted mt-1.5">
-                  {t("notes.upload.numSpeakersHint")}
-                </p>
+                <p className="text-2xs text-muted mt-1.5">{t("notes.upload.numSpeakersHint")}</p>
               </div>
             )}
           </div>
@@ -1348,9 +1475,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
             <DialogTitle>{t("notes.upload.newFolder")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted">
-              {t("notes.upload.folderName")}
-            </label>
+            <label className="text-xs font-medium text-muted">{t("notes.upload.folderName")}</label>
             <Input
               dir="auto"
               value={newFolderName}
@@ -1424,10 +1549,12 @@ function IdleView({
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
+
     if (!f) return;
     // Delegate to handleBrowse which uses Electron's file dialog;
     // the hidden input is for keyboard-triggered file selection only.
     handleBrowse();
+
     // Reset input so the same file can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -1443,11 +1570,7 @@ function IdleView({
     <>
       <div className="flex flex-col items-center mb-5">
         <div className="w-10 h-10 rounded-xl bg-linear-to-b from-foreground/5 to-foreground/[0.02] dark:from-white/8 dark:to-white/3 border border-foreground/8 dark:border-white/10 flex items-center justify-center mb-4">
-          <Upload
-            size={17}
-            strokeWidth={1.5}
-            className="text-muted"
-          />
+          <Upload size={17} strokeWidth={1.5} className="text-muted" />
         </div>
         <h2 className="text-xs font-semibold text-foreground mb-1">{t("notes.upload.title")}</h2>
         <UploadModelSettingsButton
@@ -1503,17 +1626,12 @@ function IdleView({
         {!isDragOver ? (
           <div className="flex flex-col items-center gap-2 relative">
             <div className="w-8 h-8 rounded-full bg-foreground/[0.03] dark:bg-white/[0.04] flex items-center justify-center mb-1">
-              <Upload
-                size={14}
-                className="text-muted transition-colors"
-              />
+              <Upload size={14} className="text-muted transition-colors" />
             </div>
             <p className="text-xs text-muted group-hover:text-muted transition-colors">
               {t("notes.upload.dropOrBrowse")}
             </p>
-            <p className="text-xs text-muted tracking-wide">
-              {t("notes.upload.supportedFormats")}
-            </p>
+            <p className="text-xs text-muted tracking-wide">{t("notes.upload.supportedFormats")}</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2 relative">
@@ -1601,12 +1719,7 @@ function SelectedView({
         )}
 
         {/* Cancel button — always shown */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={reset}
-          className="h-8 text-xs text-muted"
-        >
+        <Button variant="ghost" size="sm" onClick={reset} className="h-8 text-xs text-muted">
           {t("notes.upload.cancel")}
         </Button>
       </div>
@@ -1658,12 +1771,7 @@ function TranscribingView({
           {file.name}
         </p>
       ) : null}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onCancel}
-        className="h-7 text-xs text-muted mt-4"
-      >
+      <Button variant="ghost" size="sm" onClick={onCancel} className="h-7 text-xs text-muted mt-4">
         {t("notes.upload.cancelTranscription")}
       </Button>
     </div>
@@ -1700,7 +1808,14 @@ function FolderSelect({
           { id: "__root__", label: t("notes.editor.noFolder") },
           ...folders.map((f) => ({ id: String(f.id), label: f.name })),
           ...(includeCreateNew
-            ? [{ id: "__create_new__", label: t("notes.upload.newFolder"), icon: <Plus size={12} className="text-primary" />, separated: true }]
+            ? [
+                {
+                  id: "__create_new__",
+                  label: t("notes.upload.newFolder"),
+                  icon: <Plus size={12} className="text-primary" />,
+                  separated: true,
+                },
+              ]
             : []),
         ]}
       />
@@ -1818,12 +1933,7 @@ function CompleteView({
             {t("notes.upload.openNote")}
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={reset}
-          className="h-8 text-xs text-muted"
-        >
+        <Button variant="ghost" size="sm" onClick={reset} className="h-8 text-xs text-muted">
           {t("notes.upload.uploadAnother")}
         </Button>
       </div>
@@ -1845,30 +1955,17 @@ function ErrorView({ t, error, reset, onRetry }: ErrorViewProps) {
         <div className="flex items-start gap-2.5">
           <AlertCircle size={14} className="text-danger/50 shrink-0 mt-0.5" />
           <p className="flex-1 text-xs text-danger/70 leading-relaxed">{error}</p>
-          <button
-            onClick={reset}
-            className="text-muted transition-colors shrink-0 p-0.5 rounded"
-          >
+          <button onClick={reset} className="text-muted transition-colors shrink-0 p-0.5 rounded">
             <X size={11} />
           </button>
         </div>
       </div>
 
       <div className="flex items-center gap-2 justify-center">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRetry}
-          className="h-7 text-xs text-muted"
-        >
+        <Button variant="ghost" size="sm" onClick={onRetry} className="h-7 text-xs text-muted">
           {t("notes.upload.retry")}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={reset}
-          className="h-7 text-xs text-muted"
-        >
+        <Button variant="ghost" size="sm" onClick={reset} className="h-7 text-xs text-muted">
           {t("notes.upload.startOver")}
         </Button>
       </div>

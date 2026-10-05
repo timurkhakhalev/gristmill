@@ -98,6 +98,7 @@ function Section({
 }
 
 const Group = SettingsCard;
+
 const Row = SettingsCardRow;
 
 function GeneralSettings() {
@@ -120,13 +121,16 @@ function GeneralSettings() {
   React.useEffect(() => {
     void window.electronAPI.getAutoStartEnabled?.().then((result) => setAutoStart(result.enabled));
   }, []);
+
   const updateAutoStart = async (enabled: boolean) => {
     const result = await window.electronAPI.setAutoStartEnabled?.(enabled);
+
     if (result?.success) {
       setAutoStart(enabled);
       setError("");
     } else setError(result?.error || t("common.error"));
   };
+
   return (
     <Section
       title={t("settingsModal.sections.general.label")}
@@ -159,20 +163,36 @@ function GeneralSettings() {
             className="w-44"
           />
         </Row>
-        <Row label={t("settingsPage.general.dateFormat.label")} description={t("settingsPage.general.dateFormat.description")}>
-          <SelectField value={dateFormat} onChange={(value) => setDateFormat(value as DateFormat)} options={[
-            { id: "locale", label: t("settingsPage.general.dateFormat.locale") },
-            { id: "dmy", label: "28.09.2026" },
-            { id: "mdy", label: "09/28/2026" },
-            { id: "ymd", label: "2026-09-28" },
-          ]} className="w-44" />
+        <Row
+          label={t("settingsPage.general.dateFormat.label")}
+          description={t("settingsPage.general.dateFormat.description")}
+        >
+          <SelectField
+            value={dateFormat}
+            onChange={(value) => setDateFormat(value as DateFormat)}
+            options={[
+              { id: "locale", label: t("settingsPage.general.dateFormat.locale") },
+              { id: "dmy", label: "28.09.2026" },
+              { id: "mdy", label: "09/28/2026" },
+              { id: "ymd", label: "2026-09-28" },
+            ]}
+            className="w-44"
+          />
         </Row>
-        <Row label={t("settingsPage.general.timeFormat.label")} description={t("settingsPage.general.timeFormat.description")}>
-          <SelectField value={timeFormat} onChange={(value) => setTimeFormat(value as TimeFormat)} options={[
-            { id: "locale", label: t("settingsPage.general.timeFormat.locale") },
-            { id: "12h", label: "3:35 PM" },
-            { id: "24h", label: "15:35" },
-          ]} className="w-44" />
+        <Row
+          label={t("settingsPage.general.timeFormat.label")}
+          description={t("settingsPage.general.timeFormat.description")}
+        >
+          <SelectField
+            value={timeFormat}
+            onChange={(value) => setTimeFormat(value as TimeFormat)}
+            options={[
+              { id: "locale", label: t("settingsPage.general.timeFormat.locale") },
+              { id: "12h", label: "3:35 PM" },
+              { id: "24h", label: "15:35" },
+            ]}
+            className="w-44"
+          />
         </Row>
         <Row
           label={t("settingsPage.general.colorScheme.label")}
@@ -229,6 +249,7 @@ function NotesSettings() {
   const noteFilesError = useSettingsStore((s) => s.noteFilesError);
   const autoTitle = useSettingsStore((s) => s.autoGenerateNoteTitle);
   const setAutoTitle = useSettingsStore((s) => s.setAutoGenerateNoteTitle);
+
   return (
     <Section
       title={t("settingsModal.sections.notes.label")}
@@ -247,9 +268,19 @@ function NotesSettings() {
             defaultValue: "Keep local note files available in the file manager.",
           })}
         >
-          <Toggle checked={noteFilesEnabled} disabled={noteFilesUpdating} onChange={(enabled) => { void setNoteFilesEnabled(enabled); }} />
+          <Toggle
+            checked={noteFilesEnabled}
+            disabled={noteFilesUpdating}
+            onChange={(enabled) => {
+              void setNoteFilesEnabled(enabled);
+            }}
+          />
         </Row>
-        {noteFilesError && <p role="alert" className="text-sm text-danger">{noteFilesError}</p>}
+        {noteFilesError && (
+          <p role="alert" className="text-sm text-danger">
+            {noteFilesError}
+          </p>
+        )}
       </Group>
     </Section>
   );
@@ -271,6 +302,7 @@ function PrivacySettings() {
     setAudioRetentionDays(next);
     setAudioRetentionInput(String(next));
   };
+
   return (
     <Section
       title={t("settingsModal.sections.privacyData.label")}
@@ -294,15 +326,20 @@ function PrivacySettings() {
               }}
               onBlur={() => {
                 const next = Number(audioRetentionInput);
+
                 if (!Number.isSafeInteger(next) || next < 0) {
                   setAudioRetentionInput(String(audioRetentionDays));
+
                   return;
                 }
+
                 if (next >= audioRetentionDays) return saveAudioRetention(next);
                 setPendingRetentionDays(next);
                 showConfirmDialog({
                   title: t("settingsPage.privacy.retentionDecreaseTitle"),
-                  description: t("settingsPage.privacy.retentionDecreaseDescription", { days: next }),
+                  description: t("settingsPage.privacy.retentionDecreaseDescription", {
+                    days: next,
+                  }),
                   confirmText: t("settingsPage.privacy.retentionDecreaseConfirm"),
                   variant: "destructive",
                   onConfirm: () => {
@@ -332,23 +369,28 @@ function PrivacySettings() {
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => showConfirmDialog({
-              title: t("settingsPage.privacy.deleteAllAudioTitle"),
-              description: t("settingsPage.privacy.deleteAllAudioConfirmDescription"),
-              confirmText: t("settingsPage.privacy.deleteAllAudioConfirm"),
-              variant: "destructive",
-              onConfirm: async () => {
-                setAudioDeleteMessage("");
-                try {
-                  const result = await window.electronAPI.deleteAllAudio();
-                  setAudioDeleteMessage(result.failed > 0
-                    ? t("settingsPage.privacy.deleteAllAudioFailed", { count: result.failed })
-                    : t("settingsPage.privacy.deleteAllAudioDone", { count: result.deleted }));
-                } catch (error) {
-                  setAudioDeleteMessage(error instanceof Error ? error.message : String(error));
-                }
-              },
-            })}
+            onClick={() =>
+              showConfirmDialog({
+                title: t("settingsPage.privacy.deleteAllAudioTitle"),
+                description: t("settingsPage.privacy.deleteAllAudioConfirmDescription"),
+                confirmText: t("settingsPage.privacy.deleteAllAudioConfirm"),
+                variant: "destructive",
+                onConfirm: async () => {
+                  setAudioDeleteMessage("");
+
+                  try {
+                    const result = await window.electronAPI.deleteAllAudio();
+                    setAudioDeleteMessage(
+                      result.failed > 0
+                        ? t("settingsPage.privacy.deleteAllAudioFailed", { count: result.failed })
+                        : t("settingsPage.privacy.deleteAllAudioDone", { count: result.deleted })
+                    );
+                  } catch (error) {
+                    setAudioDeleteMessage(error instanceof Error ? error.message : String(error));
+                  }
+                },
+              })
+            }
           >
             {t("settingsPage.privacy.deleteAllAudioButton")}
           </Button>
@@ -358,10 +400,12 @@ function PrivacySettings() {
         open={confirmDialog.open}
         onOpenChange={(open) => {
           if (open) return;
+
           if (pendingRetentionDays !== null) {
             setPendingRetentionDays(null);
             setAudioRetentionInput(String(audioRetentionDays));
           }
+
           hideConfirmDialog();
         }}
         title={confirmDialog.title}
@@ -377,8 +421,12 @@ function PrivacySettings() {
 
 function ModelsSection({ focus }: { focus?: string }) {
   const { t } = useTranslation();
+
   return (
-    <Section title={t("settingsModal.sections.models.label")} description={t("settingsModal.sections.models.description")}>
+    <Section
+      title={t("settingsModal.sections.models.label")}
+      description={t("settingsModal.sections.models.description")}
+    >
       <ModelsSettings focus={focus} />
     </Section>
   );
@@ -386,11 +434,17 @@ function ModelsSection({ focus }: { focus?: string }) {
 
 function ProvidersSection() {
   const { t } = useTranslation();
+
   return (
-    <Section title={t("settingsModal.sections.providers.label")} description={t("settingsModal.sections.providers.description")}>
+    <Section
+      title={t("settingsModal.sections.providers.label")}
+      description={t("settingsModal.sections.providers.description")}
+    >
       <ProvidersSettings />
       <section className="space-y-2">
-        <h3 className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("modelsSettings.bb.title")}</h3>
+        <h3 className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t("modelsSettings.bb.title")}
+        </h3>
         <BbAgentSettings />
       </section>
     </Section>
@@ -399,8 +453,12 @@ function ProvidersSection() {
 
 function OnDeviceSection() {
   const { t } = useTranslation();
+
   return (
-    <Section title={t("settingsModal.sections.onDevice.label")} description={t("settingsModal.sections.onDevice.description")}>
+    <Section
+      title={t("settingsModal.sections.onDevice.label")}
+      description={t("settingsModal.sections.onDevice.description")}
+    >
       <LocalModelInventoryProvider>
         <LocalModelsSettings />
       </LocalModelInventoryProvider>
@@ -409,9 +467,20 @@ function OnDeviceSection() {
 }
 
 /** A macOS permission's current state and action to request it while missing. */
-function PermissionStatus({ granted, checking = false, onOpen, actionLabel }: { granted: boolean; checking?: boolean; onOpen: () => void; actionLabel?: string }) {
+function PermissionStatus({
+  granted,
+  checking = false,
+  onOpen,
+  actionLabel,
+}: {
+  granted: boolean;
+  checking?: boolean;
+  onOpen: () => void;
+  actionLabel?: string;
+}) {
   const { t } = useTranslation();
   const state = checking ? "checking" : granted ? "granted" : "missing";
+
   return (
     <div className="flex items-center gap-3">
       <span role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -436,14 +505,19 @@ function PermissionStatus({ granted, checking = false, onOpen, actionLabel }: { 
 function RecordingSettings() {
   const { t } = useTranslation();
   const settings = useSettingsStore();
-  const { meetingKey, setMeetingKey, meetingHotkeyLayoutMode, setMeetingHotkeyLayoutMode } = settings;
+
+  const { meetingKey, setMeetingKey, meetingHotkeyLayoutMode, setMeetingHotkeyLayoutMode } =
+    settings;
+
   const permissions = usePermissions();
   const systemAudio = useSystemAudioPermission();
+
   const { registerHotkey, isRegistering, lastError } = useHotkeyRegistration({
     registerFn: async (key) =>
       (await window.electronAPI.registerMeetingHotkey?.(key)) ?? { success: false },
     onSuccess: setMeetingKey,
   });
+
   return (
     <Section
       title={t("settingsModal.sections.recording.label")}
@@ -454,10 +528,15 @@ function RecordingSettings() {
           label={t("settingsPage.general.meetingCompanion.label")}
           description={t("settingsPage.general.meetingCompanion.description")}
         >
-          <Toggle checked={settings.meetingCompanionEnabled} onChange={settings.setMeetingCompanionEnabled} />
+          <Toggle
+            checked={settings.meetingCompanionEnabled}
+            onChange={settings.setMeetingCompanionEnabled}
+          />
         </Row>
       </Group>
-      <Group><MeetIntegrationSettings /></Group>
+      <Group>
+        <MeetIntegrationSettings />
+      </Group>
       <Group title={t("settingsPage.general.meetingHotkey.title")}>
         <SettingsPanelRow>
           <div className="space-y-2">
@@ -471,7 +550,9 @@ function RecordingSettings() {
                 const result = (await window.electronAPI.registerMeetingHotkey?.("")) ?? {
                   success: false,
                 };
+
                 if (result.success) setMeetingKey("");
+
                 return result.success;
               }}
               disabled={isRegistering}
@@ -524,16 +605,20 @@ function RecordingSettings() {
         </Row>
         <Row
           label={t("hooks.permissions.settingsTitles.accessibility")}
-          description={permissions.accessibilityTroubleshooting
-            ? t("cleanupSettings.accessibilityHelp")
-            : t("cleanupSettings.accessibilityDetection")}
+          description={
+            permissions.accessibilityTroubleshooting
+              ? t("cleanupSettings.accessibilityHelp")
+              : t("cleanupSettings.accessibilityDetection")
+          }
         >
           <PermissionStatus
             granted={permissions.accessibilityPermissionGranted}
             onOpen={() => void permissions.requestAccessibilityPermission()}
-            actionLabel={t(permissions.accessibilityPromptRequested
-              ? "cleanupSettings.openSettings"
-              : "onboarding.rehaul.permissions.enable")}
+            actionLabel={t(
+              permissions.accessibilityPromptRequested
+                ? "cleanupSettings.openSettings"
+                : "onboarding.rehaul.permissions.enable"
+            )}
           />
         </Row>
       </Group>
@@ -543,6 +628,7 @@ function RecordingSettings() {
 
 function AdvancedSettings() {
   const { t } = useTranslation();
+
   return (
     <Section
       title={t("settingsModal.sections.advanced.label")}
@@ -559,9 +645,17 @@ export default function SettingsPage({
 }: SettingsPageProps) {
   const { t } = useTranslation();
   const section = sections.includes(activeSection) ? activeSection : "general";
+
   switch (section) {
     case "profile":
-      return <Section title={t("settingsModal.sections.profile.label")} description={t("settingsModal.sections.profile.description")}><ProfileNameField /></Section>;
+      return (
+        <Section
+          title={t("settingsModal.sections.profile.label")}
+          description={t("settingsModal.sections.profile.description")}
+        >
+          <ProfileNameField />
+        </Section>
+      );
     case "general":
       return <GeneralSettings />;
     case "notes":

@@ -83,11 +83,13 @@ export function ChatInput({
       });
     },
   });
+
   const isVoiceRecording = voice.status === "recording";
   const isVoiceTranscribing = voice.status === "transcribing";
 
   const handleSubmit = useCallback(() => {
     const text = inputText.trim();
+
     if (!text || !onTextSubmit) return;
     onTextSubmit(text);
     setInputText("");
@@ -107,6 +109,7 @@ export function ChatInput({
   const isIdle = agentState === "idle";
   const isListening = agentState === "listening";
   const isTranscribing = agentState === "transcribing";
+
   const isBusy =
     agentState === "thinking" || agentState === "streaming" || agentState === "tool-executing";
 

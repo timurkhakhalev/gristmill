@@ -4,7 +4,9 @@
 import { registerActionsHandlers } from "./src/helpers/actionsIpcHandlers.js";
 import { createActionsBridge } from "./src/preload/actionsBridge.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerActionsHandlers(ipcMain, {
   database: {
@@ -24,11 +26,15 @@ registerActionsHandlers(ipcMain, {
     ],
     getAction: (id: unknown) => (Number(id) > 0 ? null : null),
     createAction: (name: unknown, description: unknown, prompt: unknown, icon: unknown) => {
-      void name; void description; void prompt; void icon;
+      void name;
+      void description;
+      void prompt;
+      void icon;
       return { success: true, action: null };
     },
     updateAction: (id: unknown, updates: unknown) => {
-      void id; void updates;
+      void id;
+      void updates;
       return { success: false, action: null };
     },
     deleteAction: (id: unknown) => {

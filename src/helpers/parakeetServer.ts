@@ -1,7 +1,11 @@
 const fs = require("fs");
+
 const path = require("path");
+
 const debugLogger = require("./debugLogger.js");
+
 const { getModelsDirForService } = require("./modelDirUtils.js");
+
 const {
   getFFmpegPath,
   isWavFormat,
@@ -10,6 +14,7 @@ const {
   wavToFloat32Samples,
   computeFloat32RMS,
 } = require("./ffmpegUtils.js");
+
 import { getSafeTempDir } from "./safeTempDir.js";
 import { createAbortError } from "./abortError.js";
 import { ParakeetWsServer } from "./parakeetWsServer.js";
@@ -21,14 +26,19 @@ import {
 } from "./parakeetModelInfo.js";
 
 const SAMPLE_RATE = 16000;
+
 const BYTES_PER_SAMPLE = 4; // float32
+
 const MAX_SEGMENT_SECONDS = 15;
+
 // Cohere Transcribe accepts clips up to ~35s; longer segments mean fewer
 // mid-word cuts at chunk boundaries.
 const COHERE_MAX_SEGMENT_SECONDS = 30;
+
 // Cache-aware streaming models take arbitrarily long audio in one stream; the
 // bound only caps memory when transcribing very long files.
 const ONLINE_MAX_SEGMENT_SECONDS = 600;
+
 const SILENCE_RMS_THRESHOLD = 0.001;
 
 export class ParakeetServerManager {
@@ -52,6 +62,7 @@ export class ParakeetServerManager {
 
   isModelDownloaded(modelName: string): boolean {
     const modelDir = path.join(this.getModelsDir(), modelName);
+
     if (!fs.existsSync(modelDir)) return false;
 
     return getRequiredModelFiles(modelName).every((file) =>
@@ -68,6 +79,7 @@ export class ParakeetServerManager {
   ): Promise<{ wavBuffer: Buffer; filesToCleanup: string[] }> {
     if (isWavFormat(audioBuffer)) {
       const format = parseWavFormat(audioBuffer);
+
       if (
         format?.audioFormat === 1 &&
         format?.bitsPerSample === 16 &&
@@ -76,10 +88,12 @@ export class ParakeetServerManager {
       ) {
         return { wavBuffer: audioBuffer, filesToCleanup: [] };
       }
+
       debugLogger.debug("WAV input needs normalization", { format });
     }
 
     const ffmpegPath = getFFmpegPath();
+
     if (!ffmpegPath) {
       throw new Error(
         "FFmpeg not found - required for audio conversion. Please ensure FFmpeg is installed."
@@ -92,32 +106,41 @@ export class ParakeetServerManager {
     const tempWavPath = path.join(tempDir, `parakeet-${timestamp}.wav`);
 
     fs.writeFileSync(tempInputPath, audioBuffer);
+
     try {
       const inputStats = fs.statSync(tempInputPath);
       debugLogger.debug("Converting audio to WAV", { inputSize: inputStats.size });
 
       await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1, signal });
 
-      return { wavBuffer: fs.readFileSync(tempWavPath), filesToCleanup: [tempInputPath, tempWavPath] };
+      return {
+        wavBuffer: fs.readFileSync(tempWavPath),
+        filesToCleanup: [tempInputPath, tempWavPath],
+      };
     } catch (error) {
       this._cleanupFiles([tempInputPath, tempWavPath]);
       throw error;
     }
   }
 
-  async transcribe(audioBuffer: Buffer, options: {
-    modelName?: string;
-    language?: string | null;
-    signal?: AbortSignal;
-  } = {}): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
+  async transcribe(
+    audioBuffer: Buffer,
+    options: {
+      modelName?: string;
+      language?: string | null;
+      signal?: AbortSignal;
+    } = {}
+  ): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
     // signal is optional; only cancellable uploads pass one. Aborting stops
     // scheduling further segments — the in-flight one finishes server-side.
     const { modelName = "parakeet-tdt-0.6b-v3", language, signal } = options;
+
     const throwIfAborted = () => {
       if (signal?.aborted) throw createAbortError("Parakeet transcription cancelled");
     };
 
     const modelDir = path.join(this.getModelsDir(), modelName);
+
     if (!this.isModelDownloaded(modelName)) {
       throw new Error(`Parakeet model "${modelName}" not downloaded`);
     }
@@ -132,6 +155,7 @@ export class ParakeetServerManager {
     throwIfAborted();
 
     const { wavBuffer, filesToCleanup } = await this._ensureWav(audioBuffer, signal);
+
     try {
       throwIfAborted();
       const runtime = getModelRuntime(modelName);
@@ -148,6 +172,7 @@ export class ParakeetServerManager {
 
       const rms = computeFloat32RMS(samples);
       debugLogger.debug("Parakeet audio analysis", { durationSeconds, rms });
+
       if (rms < SILENCE_RMS_THRESHOLD) {
         return { text: "", elapsed: 0 };
       }
@@ -158,10 +183,12 @@ export class ParakeetServerManager {
           : getModelType(modelName) === "cohere-transcribe"
             ? COHERE_MAX_SEGMENT_SECONDS
             : MAX_SEGMENT_SECONDS;
+
       const maxSegmentBytes = maxSegmentSeconds * SAMPLE_RATE * BYTES_PER_SAMPLE;
 
       if (samples.length <= maxSegmentBytes) {
         const result = await this.wsServer.transcribe(samples, SAMPLE_RATE, { signal });
+
         if (result.text?.trim()) return result;
         throwIfAborted();
         // The RMS gate above already established audible audio, so an empty
@@ -172,6 +199,7 @@ export class ParakeetServerManager {
           samplesBytes: samples.length,
         });
         const retry = await this.wsServer.transcribe(samples, SAMPLE_RATE, { signal });
+
         return { ...retry, elapsed: (result.elapsed || 0) + (retry.elapsed || 0) };
       }
 
@@ -190,6 +218,7 @@ export class ParakeetServerManager {
         const segment = samples.subarray(offset, end);
         let result = await this.wsServer.transcribe(segment, SAMPLE_RATE, { signal });
         totalElapsed += result.elapsed || 0;
+
         if (!result.text && computeFloat32RMS(segment) >= SILENCE_RMS_THRESHOLD) {
           throwIfAborted();
           // An empty decode of audible audio silently amputates the transcript
@@ -200,6 +229,7 @@ export class ParakeetServerManager {
           });
           result = await this.wsServer.transcribe(segment, SAMPLE_RATE, { signal });
           totalElapsed += result.elapsed || 0;
+
           if (!result.text) {
             truncated = true;
             debugLogger.warn("Parakeet segment still empty after retry; transcript truncated", {
@@ -207,12 +237,15 @@ export class ParakeetServerManager {
             });
           }
         }
+
         // Latched after the retry so a discarded attempt's truncation dies with it.
         if (result.truncated) truncated = true;
+
         if (result.text) texts.push(result.text);
       }
 
       const text = texts.join(" ");
+
       return truncated
         ? { text, elapsed: totalElapsed, truncated }
         : { text, elapsed: totalElapsed };
@@ -236,9 +269,13 @@ export class ParakeetServerManager {
     }
   }
 
-  async startServer(modelName: string, language?: string | null): Promise<{ success: boolean; reason?: string; port?: number }> {
+  async startServer(
+    modelName: string,
+    language?: string | null
+  ): Promise<{ success: boolean; reason?: string; port?: number }> {
     const runtime = getModelRuntime(modelName);
     const modelDir = path.join(this.getModelsDir(), modelName);
+
     if (!this.isModelDownloaded(modelName)) {
       return { success: false, reason: `Model "${modelName}" not downloaded` };
     }
@@ -250,9 +287,11 @@ export class ParakeetServerManager {
         runtime,
         resolveModelLanguage(modelName, language)
       );
+
       return { success: true, port: this.wsServer.port ?? undefined };
     } catch (error) {
       debugLogger.error("Failed to start parakeet WS server", { error: (error as Error).message });
+
       return { success: false, reason: (error as Error).message };
     }
   }
@@ -261,7 +300,13 @@ export class ParakeetServerManager {
     await this.wsServer.stop();
   }
 
-  getServerStatus(): { available: boolean; running: boolean; starting: boolean; port: number | null; modelName: string | null } {
+  getServerStatus(): {
+    available: boolean;
+    running: boolean;
+    starting: boolean;
+    port: number | null;
+    modelName: string | null;
+  } {
     return this.wsServer.getStatus();
   }
 
@@ -270,9 +315,8 @@ export class ParakeetServerManager {
   }
 }
 
-
-
 // Dual export: legacy tests require this module as the class itself, while
 // the TS graph imports the named export.
 module.exports = ParakeetServerManager;
+
 module.exports.ParakeetServerManager = ParakeetServerManager;

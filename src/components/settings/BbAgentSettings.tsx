@@ -10,7 +10,9 @@ import { useBbCatalog } from "../bb/useBbCatalog";
 function GripIcon() {
   return (
     <svg viewBox="0 0 10 16" className="h-4 w-2.5" fill="currentColor" aria-hidden>
-      {[3, 8, 13].flatMap((y) => [2, 8].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.4" />))}
+      {[3, 8, 13].flatMap((y) =>
+        [2, 8].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.4" />)
+      )}
     </svg>
   );
 }
@@ -23,40 +25,68 @@ export default function BbAgentSettings() {
   const setPreferences = useSettingsStore((state) => state.setBbAgentPreferences);
   const [dragging, setDragging] = useState<string | null>(null);
 
-  if (error) return <p role="alert" className="text-sm text-danger">{error}</p>;
-  if (loading || !preferences) return <p className="text-sm text-muted">{t("bbAgent.loadingHarnesses")}</p>;
+  if (error)
+    return (
+      <p role="alert" className="text-sm text-danger">
+        {error}
+      </p>
+    );
+
+  if (loading || !preferences)
+    return <p className="text-sm text-muted">{t("bbAgent.loadingHarnesses")}</p>;
+
   if (!harnesses.length) return <p className="text-sm text-muted">{t("bbAgent.noHarness")}</p>;
 
   const ids = harnesses.map((item) => item.id);
+
   // Unavailable harnesses keep their saved slot at the end instead of being forgotten.
-  const move = (id: string, toIndex: number) => setPreferences({
-    ...preferences,
-    order: [...moveBbHarness(ids, id, toIndex), ...preferences.order.filter((item) => !ids.includes(item))],
-  });
-  const setEnabled = (id: string, enabled: boolean) => setPreferences({
-    ...preferences,
-    disabled: enabled ? preferences.disabled.filter((item) => item !== id) : [...preferences.disabled, id],
-  });
+  const move = (id: string, toIndex: number) =>
+    setPreferences({
+      ...preferences,
+      order: [
+        ...moveBbHarness(ids, id, toIndex),
+        ...preferences.order.filter((item) => !ids.includes(item)),
+      ],
+    });
+
+  const setEnabled = (id: string, enabled: boolean) =>
+    setPreferences({
+      ...preferences,
+      disabled: enabled
+        ? preferences.disabled.filter((item) => item !== id)
+        : [...preferences.disabled, id],
+    });
 
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted">{t("bbAgent.settingsDescription")}</p>
-      <ul className="divide-y divide-border rounded-lg border border-border" aria-label={t("bbAgent.harnesses")}>
+      <ul
+        className="divide-y divide-border rounded-lg border border-border"
+        aria-label={t("bbAgent.harnesses")}
+      >
         {harnesses.map((harness, index) => {
           const enabled = !preferences.disabled.includes(harness.id);
           const isDefault = preferences.defaultProvider === harness.id;
+
           return (
             <li
               key={harness.id}
               draggable
-              onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; setDragging(harness.id); }}
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "move";
+                setDragging(harness.id);
+              }}
               onDragEnd={() => setDragging(null)}
               onDragOver={(event) => {
                 if (!dragging || dragging === harness.id) return;
                 event.preventDefault();
                 move(dragging, index);
               }}
-              className={cn("flex items-center gap-3 px-3 py-2", dragging === harness.id && "opacity-50", !enabled && "text-muted")}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2",
+                dragging === harness.id && "opacity-50",
+                !enabled && "text-muted"
+              )}
             >
               <button
                 type="button"
@@ -74,7 +104,9 @@ export default function BbAgentSettings() {
               <HarnessIcon logo={harness.logo} className="size-5" />
               <span className="min-w-0 flex-1 truncate text-sm">{harness.displayName}</span>
               {isDefault ? (
-                <span className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted">{t("bbAgent.default")}</span>
+                <span className="rounded border border-border px-1.5 py-0.5 text-2xs text-muted">
+                  {t("bbAgent.default")}
+                </span>
               ) : (
                 <button
                   type="button"

@@ -46,6 +46,7 @@ export const downloadProgressEventSchema = z.object({
   code: z.string().optional(),
   sequence: z.number().optional(),
 });
+
 export type DownloadProgressEvent = z.infer<typeof downloadProgressEventSchema>;
 
 // Manager result shapes as they cross the wire. The index signature keeps the

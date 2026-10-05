@@ -20,9 +20,11 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -38,11 +40,7 @@ export function createCalendarAvailabilityBridge(
       ipcRenderer
         .invoke(calendarAvailabilityChannels.getAvailability, request)
         .then((raw) =>
-          parseResult(
-            availabilityResponseSchema,
-            raw,
-            calendarAvailabilityChannels.getAvailability
-          )
+          parseResult(availabilityResponseSchema, raw, calendarAvailabilityChannels.getAvailability)
         ),
   };
 }

@@ -9,7 +9,9 @@ import {
 } from "../contracts/meetingCompanion";
 
 const BAR_COUNT = 3;
+
 const BAR_FLOOR = 25;
+
 // Movement past this many px turns a press into a drag instead of a click.
 const DRAG_THRESHOLD_PX = 3;
 
@@ -17,6 +19,7 @@ const DRAG_THRESHOLD_PX = 3;
 // hidden below a hard floor. This changes the display, never the recorded signal.
 const barHeight = (level: number, index: number) => {
   const phase = 0.7 + 0.3 * Math.sin(index * 1.7);
+
   return `${Math.min(100, BAR_FLOOR + Math.sqrt(level) * 180 * phase)}%`;
 };
 
@@ -53,7 +56,9 @@ export default function MeetingCompanion() {
     const resetPress = () => {
       press.current = null;
     };
+
     window.addEventListener("blur", resetPress);
+
     return () => window.removeEventListener("blur", resetPress);
   }, []);
 
@@ -62,6 +67,7 @@ export default function MeetingCompanion() {
     const offState = api?.onMeetingCompanionState?.(setState);
     const offLevel = api?.onMeetingCompanionLevel?.(setLevel);
     api?.meetingCompanionReady?.();
+
     return () => {
       offState?.();
       offLevel?.();
@@ -69,6 +75,7 @@ export default function MeetingCompanion() {
   }, []);
 
   const warning = state.paused || state.waitingForMic;
+
   const label = state.paused
     ? t("notes.editor.capture.paused")
     : state.waitingForMic
@@ -84,19 +91,24 @@ export default function MeetingCompanion() {
 
   const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     const current = press.current;
+
     if (!current) return;
+
     // The window hides mid-gesture when the click brings the app forward, so a
     // pointerup can go missing; never drag without the button actually held.
     if ((e.buttons & 1) === 0) {
       press.current = null;
+
       return;
     }
+
     if (
       !current.dragging &&
       Math.hypot(e.screenX - current.x, e.screenY - current.y) < DRAG_THRESHOLD_PX
     ) {
       return;
     }
+
     current.dragging = true;
     window.electronAPI?.meetingCompanionDragMove?.(e.screenX, e.screenY);
   };
@@ -110,6 +122,7 @@ export default function MeetingCompanion() {
   const onPointerUp = () => {
     const current = press.current;
     press.current = null;
+
     if (current && !current.dragging) window.electronAPI?.openMeetingCompanionNote?.();
   };
 

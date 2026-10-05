@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -65,6 +66,7 @@ test("every panel anchor stays inside a negative-origin display", () => {
       null,
       anchor
     );
+
     const { workArea } = MONITOR_ABOVE;
     assert.ok(x >= workArea.x && x + width <= workArea.x + workArea.width, `${anchor} x`);
     assert.ok(y >= workArea.y && y + height <= workArea.y + workArea.height, `${anchor} y`);

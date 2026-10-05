@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -10,6 +11,7 @@ const {
   applyConfirmedSpeaker,
   applySuggestedSpeaker,
 }: typeof import("../../src/helpers/speakerAssignmentPolicy.ts") = require("../../src/helpers/speakerAssignmentPolicy.ts");
+
 import type { SpeakerSegment } from "../../src/helpers/speakerAssignmentPolicy.ts";
 
 test("canonicalizeSpeakerStatus maps legacy and current statuses correctly", () => {

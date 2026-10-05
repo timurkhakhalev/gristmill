@@ -1,17 +1,25 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { getEnterpriseAIModel } = require("../../src/helpers/enterpriseAiProviders.ts");
-const { mapEnterpriseError }: typeof import("../../src/helpers/enterpriseProviderErrors.ts") = require("../../src/helpers/enterpriseProviderErrors.ts");
+
+const {
+  mapEnterpriseError,
+}: typeof import("../../src/helpers/enterpriseProviderErrors.ts") = require("../../src/helpers/enterpriseProviderErrors.ts");
 
 const bedrockPrompt = [{ role: "user", content: [{ type: "text", text: "Hello" }] }];
 
 type EnterpriseModel = Awaited<ReturnType<typeof getEnterpriseAIModel>>;
+
 async function captureBedrockGenerationError(model: EnterpriseModel) {
   let error: unknown;
   await assert.rejects(model.doGenerate({ prompt: bedrockPrompt } as never), (caught: unknown) => {
     error = caught;
+
     return true;
   });
+
   return error as Error;
 }
 
@@ -26,11 +34,13 @@ test("direct Bedrock credentials are passed to the real SDK", async (t: import("
       url: String(url),
       headers: Object.fromEntries(new Headers(init!.headers as never)),
     };
+
     return new Response("{}", {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   };
+
   const model = await getEnterpriseAIModel("bedrock", "anthropic.claude-haiku", "", {
     bedrockRegion: "us-west-2",
     bedrockAccessKeyId: "AKIAEXAMPLE",
@@ -96,6 +106,7 @@ test("real Bedrock provider maps header-only AWS exception identities", async (t
           "X-Amzn-RequestId": scenario.requestId,
         },
       });
+
     const model = await getEnterpriseAIModel("bedrock", "anthropic.claude-haiku", "", {
       bedrockRegion: "us-west-2",
       bedrockAccessKeyId: "AKIAEXAMPLE",
@@ -122,11 +133,8 @@ test("real Bedrock provider maps header-only AWS exception identities", async (t
 });
 
 test("explicit Bedrock credential sources cannot fall through to populated AWS environment", async (t: import("node:test").TestContext) => {
-  const environmentKeys = [
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-  ];
+  const environmentKeys = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"];
+
   const originalEnvironment = new Map(
     environmentKeys.map((key) => [
       key,
@@ -136,6 +144,7 @@ test("explicit Bedrock credential sources cannot fall through to populated AWS e
       },
     ])
   );
+
   const originalFetch = global.fetch;
   let fetchCalls = 0;
   process.env.AWS_ACCESS_KEY_ID = "AKIAENVIRONMENT";
@@ -143,13 +152,16 @@ test("explicit Bedrock credential sources cannot fall through to populated AWS e
   process.env.AWS_SESSION_TOKEN = "environment-session-token";
   global.fetch = async () => {
     fetchCalls += 1;
+
     return new Response("{}", {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   };
+
   t.after(() => {
     global.fetch = originalFetch;
+
     for (const [key, original] of originalEnvironment) {
       if (original.present) process.env[key] = original.value;
       else delete process.env[key];
@@ -170,15 +182,13 @@ test("explicit Bedrock credential sources cannot fall through to populated AWS e
       label
     );
   }
+
   assert.equal(fetchCalls, 0);
 });
 
 test("Bedrock environment fallback remains available without an explicit credential source", async (t: import("node:test").TestContext) => {
-  const environmentKeys = [
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-  ];
+  const environmentKeys = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"];
+
   const originalEnvironment = new Map(
     environmentKeys.map((key) => [
       key,
@@ -188,6 +198,7 @@ test("Bedrock environment fallback remains available without an explicit credent
       },
     ])
   );
+
   const originalFetch = global.fetch;
   let request: { url: string; headers: Record<string, string> } | undefined;
   process.env.AWS_ACCESS_KEY_ID = "AKIAENVIRONMENT";
@@ -198,13 +209,16 @@ test("Bedrock environment fallback remains available without an explicit credent
       url: String(url),
       headers: Object.fromEntries(new Headers(init!.headers as never)),
     };
+
     return new Response("{}", {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   };
+
   t.after(() => {
     global.fetch = originalFetch;
+
     for (const [key, original] of originalEnvironment) {
       if (original.present) process.env[key] = original.value;
       else delete process.env[key];
@@ -214,6 +228,7 @@ test("Bedrock environment fallback remains available without an explicit credent
   const model = await getEnterpriseAIModel("bedrock", "anthropic.claude-haiku", "", {
     bedrockRegion: "us-west-2",
   });
+
   await assert.rejects(
     model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }] })
   );
@@ -235,6 +250,7 @@ test("direct Azure setup uses API-key auth", async (t: import("node:test").TestC
       headers: Object.fromEntries(new Headers(init!.headers as never)),
       body: JSON.parse(String(init!.body)),
     };
+
     return new Response("{}", {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -245,13 +261,11 @@ test("direct Azure setup uses API-key auth", async (t: import("node:test").TestC
     azureEndpoint: "https://legacy.example.com/custom/openai",
     azureApiVersion: "2024-10-21",
   });
+
   await assert.rejects(
     model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }] })
   );
-  assert.equal(
-    request!.url,
-    "https://legacy.example.com/custom/openai/responses"
-  );
+  assert.equal(request!.url, "https://legacy.example.com/custom/openai/responses");
   assert.equal(request!.headers["api-key"], "direct-api-key");
   assert.equal((request!.body as { model: string }).model, "deployment-a");
 });
@@ -267,6 +281,7 @@ test("manual Azure setup preserves legacy endpoints and API-key auth", async (t:
       url: String(url),
       headers: Object.fromEntries(new Headers(init!.headers as never)),
     };
+
     return new Response("{}", {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -277,12 +292,10 @@ test("manual Azure setup preserves legacy endpoints and API-key auth", async (t:
     azureEndpoint: "https://legacy.example.com/custom/openai",
     azureApiVersion: "2024-10-21",
   });
+
   await assert.rejects(
     model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }] })
   );
-  assert.equal(
-    request!.url,
-    "https://legacy.example.com/custom/openai/responses"
-  );
+  assert.equal(request!.url, "https://legacy.example.com/custom/openai/responses");
   assert.equal(request!.headers["api-key"], "legacy-api-key");
 });

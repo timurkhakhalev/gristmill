@@ -5,6 +5,7 @@ import { cn } from "../lib/utils";
 import { findRanges } from "../../utils/findMatches";
 
 const MATCH_HIGHLIGHT = "note-find-match";
+
 const ACTIVE_HIGHLIGHT = "note-find-active";
 
 /** Find-in-note bar. Matches live under `containerRef` and are painted with
@@ -27,7 +28,9 @@ export default function NoteFindBar({
 
   const ranges = useMemo(() => {
     const root = containerRef.current;
+
     if (!open || !query || !root) return [];
+
     return findRanges(root, query);
   }, [open, query, containerRef]);
 
@@ -50,23 +53,30 @@ export default function NoteFindBar({
   useEffect(() => {
     const highlights = (CSS as unknown as { highlights?: HighlightRegistry }).highlights;
     setMatchCount(ranges.length);
+
     if (!highlights) return;
+
     if (ranges.length === 0) {
       clearHighlights();
+
       return;
     }
+
     const active = ranges[Math.min(activeIndex, ranges.length - 1)];
     highlights.set(MATCH_HIGHLIGHT, new Highlight(...ranges));
     highlights.set(ACTIVE_HIGHLIGHT, new Highlight(active));
     const scroller = containerRef.current;
     const rect = active.getBoundingClientRect();
     const scrollerRect = scroller?.getBoundingClientRect();
+
     if (scroller && scrollerRect) {
       const offset = rect.top - scrollerRect.top;
+
       if (offset < 0 || offset > scroller.clientHeight - rect.height) {
         scroller.scrollTop += offset - scroller.clientHeight / 2;
       }
     }
+
     return clearHighlights;
   }, [ranges, activeIndex, clearHighlights, containerRef]);
 
@@ -76,6 +86,7 @@ export default function NoteFindBar({
     (delta: number) => {
       setActiveIndex((index) => {
         if (ranges.length === 0) return 0;
+
         return (index + delta + ranges.length) % ranges.length;
       });
     },
@@ -108,9 +119,14 @@ export default function NoteFindBar({
         className="w-44 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
       />
       <span
-        className={cn("shrink-0 px-1 text-2xs tabular-nums", noMatches ? "text-danger" : "text-muted")}
+        className={cn(
+          "shrink-0 px-1 text-2xs tabular-nums",
+          noMatches ? "text-danger" : "text-muted"
+        )}
       >
-        {query ? `${matchCount === 0 ? 0 : Math.min(activeIndex + 1, matchCount)}/${matchCount}` : ""}
+        {query
+          ? `${matchCount === 0 ? 0 : Math.min(activeIndex + 1, matchCount)}/${matchCount}`
+          : ""}
       </span>
       <button
         type="button"

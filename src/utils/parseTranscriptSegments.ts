@@ -1,8 +1,10 @@
 import type { TranscriptSegment } from "../stores/meetingRecordingStore";
 import { normalizeTranscriptSegments } from "./transcriptSpeakerState";
 import logger from "./logger";
+
 export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
   if (!raw.startsWith("[")) return [];
+
   try {
     const parsed = JSON.parse(raw) as Array<{
       text: string;
@@ -19,6 +21,7 @@ export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
       speakerLockSource?: TranscriptSegment["speakerLockSource"];
       speakerPlatform?: TranscriptSegment["speakerPlatform"];
     }>;
+
     return normalizeTranscriptSegments(
       parsed.map((s, i) => ({
         id: `stored-${i}`,
@@ -40,6 +43,7 @@ export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
     );
   } catch (e) {
     logger.warn("Failed to parse transcript segments", e);
+
     return [];
   }
 }

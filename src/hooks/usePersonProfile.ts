@@ -7,9 +7,13 @@ import type { ContactProfile } from "../contracts/speakerProfiles";
 // also when new People data is stored.
 
 const profiles = new Map<string, ContactProfile | null>();
+
 const queued = new Set<string>();
+
 const listeners = new Set<() => void>();
+
 let flushScheduled = false;
+
 let syncSubscribed = false;
 
 const keyOf = (email: string) => email.toLowerCase().trim();
@@ -22,12 +26,15 @@ function flush(): void {
   flushScheduled = false;
   const emails = [...queued];
   queued.clear();
+
   if (emails.length === 0) return;
   const lookup = window.electronAPI?.getContactProfiles;
+
   if (!lookup) return;
   void lookup(emails)
     .then((rows) => {
       for (const email of emails) profiles.set(email, null);
+
       for (const row of rows) profiles.set(keyOf(row.email), row);
     })
     .catch(() => {
@@ -38,6 +45,7 @@ function flush(): void {
 
 function request(email: string): void {
   queued.add(email);
+
   if (flushScheduled) return;
   flushScheduled = true;
   queueMicrotask(flush);
@@ -53,6 +61,7 @@ function subscribeToSync(): void {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 
@@ -62,8 +71,10 @@ export function usePersonProfile(email: string | null | undefined): ContactProfi
   useEffect(() => {
     if (!key) return;
     subscribeToSync();
+
     if (!profiles.has(key)) request(key);
   }, [key]);
+
   return useSyncExternalStore(subscribe, () => (key ? (profiles.get(key) ?? null) : null));
 }
 
@@ -71,7 +82,9 @@ export function usePersonProfile(email: string | null | undefined): ContactProfi
 export function nameFromEmail(email: string): string {
   const local = email.split("@")[0] || email;
   const parts = local.split(/[._-]+/).filter(Boolean);
+
   if (parts.length === 0) return local;
+
   return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
@@ -83,7 +96,10 @@ function isRealName(name: string | null | undefined, email: string): name is str
 /** The name to show for a person: Google People, then the invite's name, then one read from the email. */
 export function usePersonName(email: string, inviteName?: string | null): string {
   const profile = usePersonProfile(email);
+
   if (isRealName(profile?.display_name, email)) return profile.display_name;
+
   if (isRealName(inviteName, email)) return inviteName;
+
   return nameFromEmail(email);
 }

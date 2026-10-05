@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const WhisperServerManager: typeof import("../../src/helpers/whisperServer") = require("../../src/helpers/whisperServer");
@@ -129,6 +130,7 @@ test("resolveWhisperThreads caps automatic and manual thread counts", () => {
     {},
     { availableParallelism: 64, env: {} }
   );
+
   const manual = WhisperServerManager.resolveWhisperThreads(
     {},
     { availableParallelism: 64, env: { WHISPER_THREADS: "128" } }
@@ -164,16 +166,19 @@ test("getVadSignature changes when VAD settings or model path change", () => {
     vadModelPath: "/m.bin",
     vadConfig: { threshold: 0.5 },
   });
+
   const b = WhisperServerManager.getVadSignature({
     vadEnabled: true,
     vadModelPath: "/m.bin",
     vadConfig: { threshold: 0.6 },
   });
+
   const c = WhisperServerManager.getVadSignature({
     vadEnabled: false,
     vadModelPath: "/m.bin",
     vadConfig: { threshold: 0.6 },
   });
+
   const d = WhisperServerManager.getVadSignature({
     vadEnabled: true,
     vadModelPath: null,

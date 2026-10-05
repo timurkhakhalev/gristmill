@@ -6,10 +6,7 @@ import type { LanguageModel } from "ai";
 import { API_ENDPOINTS } from "../../config/constants.mts";
 import { openCodeSessionHeaders } from "./openCodeSession.js";
 
-export type TinfoilLanguageModelFactory = (
-  apiKey: string,
-  model: string
-) => Promise<LanguageModel>;
+export type TinfoilLanguageModelFactory = (apiKey: string, model: string) => Promise<LanguageModel>;
 
 // OpenRouter's reasoning control is a top-level request field the AI SDK
 // can't emit, so inject it at the fetch boundary.
@@ -21,6 +18,7 @@ const withDisabledReasoning: typeof fetch = (input, init) => {
       init = { ...init, body: JSON.stringify(body) };
     } catch {}
   }
+
   return fetch(input, init);
 };
 
@@ -69,6 +67,7 @@ export async function createAIModel(
               fetch: (input, init) => {
                 const headers = new Headers(init?.headers);
                 headers.delete("authorization");
+
                 return fetch(input, { ...init, headers });
               },
             }

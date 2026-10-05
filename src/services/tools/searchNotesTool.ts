@@ -52,15 +52,19 @@ export function createSearchNotesTool(options: SearchToolOptions): ToolDefinitio
 
       const spaces = (await window.electronAPI.getSpaces?.()) ?? [];
       let space: SpaceItem | undefined;
+
       if (fixedScope) {
         space = spaces.find((s) => s.id === fixedScope.spaceId);
       } else if (spaceName) {
         const resolved = resolveSpace(spaces, spaceName);
+
         if (resolved.error) {
           return { success: false, data: null, displayText: resolved.error };
         }
+
         space = resolved.space;
       }
+
       const spaceId = fixedScope?.spaceId ?? space?.id ?? null;
       const folderId = fixedScope?.folderId ?? null;
 
@@ -77,13 +81,11 @@ export function createSearchNotesTool(options: SearchToolOptions): ToolDefinitio
   };
 }
 
-function summaryText(
-  count: number,
-  query: string,
-  space: SpaceItem | undefined
-): string {
+function summaryText(count: number, query: string, space: SpaceItem | undefined): string {
   const scope = space ? ` in ${space.name}` : "";
+
   if (count === 0) return `No notes found for "${query}"${scope}`;
+
   return `Found ${count} note${count === 1 ? "" : "s"} for "${query}"${scope}`;
 }
 
@@ -98,6 +100,7 @@ async function executeLocalSearch(
   const notes = await window.electronAPI.searchNotes(query, limit, spaceId, folderId);
 
   const spaceNameById = new Map(spaces.map((s) => [s.id, s.name]));
+
   const results = notes.map((note) => ({
     id: note.id,
     title: note.title,

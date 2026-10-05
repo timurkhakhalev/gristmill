@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const {
   createRendererServer,
   installBrowserGlobals,
@@ -20,15 +22,21 @@ interface DiarizationEvent {
 // the note's own text, so the live half would look like it had vanished.
 
 const NOTE_ID = 11;
+
 const START_ARGS = { noteId: NOTE_ID, noteTitle: "Standup", folderId: null, autoEndEligible: true };
 
 function createElectronAPI() {
   const noopListener = () => () => {};
+
   const state: {
     diarizationCallback: ((data: DiarizationEvent) => void) | null;
     updatedTranscripts: Array<{ id: number; transcript: string }>;
   } = { diarizationCallback: null, updatedTranscripts: [] };
-  const notes = new Map<number, { id: number; transcript: string }>([[NOTE_ID, { id: NOTE_ID, transcript: "" }]]);
+
+  const notes = new Map<number, { id: number; transcript: string }>([
+    [NOTE_ID, { id: NOTE_ID, transcript: "" }],
+  ]);
+
   const api = {
     checkSystemAudioAccess: async () => ({
       granted: true,
@@ -52,12 +60,15 @@ function createElectronAPI() {
     updateNote: async (id: number, patch: { transcript: string }) => {
       state.updatedTranscripts.push({ id, transcript: patch.transcript });
       const note = notes.get(id);
+
       if (note) note.transcript = patch.transcript;
+
       return { success: true };
     },
     saveNoteSpeakerEmbeddings: async () => ({ success: true }),
     onMeetingDiarizationComplete: (callback: (data: DiarizationEvent) => void) => {
       state.diarizationCallback = callback;
+
       return () => {
         state.diarizationCallback = null;
       };
@@ -70,6 +81,7 @@ function createElectronAPI() {
     onMeetingTranscriptionFatalError: noopListener,
     onMeetingSystemAudioSilent: noopListener,
   };
+
   return { api, state };
 }
 
@@ -78,10 +90,14 @@ async function loadStore(t: TestContext, api: Record<string, unknown>) {
   installBrowserGlobals(t, {
     window: { electronAPI: api, setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms) },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-meeting-diarization-publish-test-",
   });
-  return (vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as Promise<typeof import("../../src/stores/meetingRecordingStore.ts")>);
+
+  return vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as Promise<
+    typeof import("../../src/stores/meetingRecordingStore.ts")
+  >;
 }
 
 const ENRICHED = [{ id: "d0", text: "hello there", speaker: "speaker_0", speakerName: "Ada" }];
@@ -90,6 +106,7 @@ const ENRICHED = [{ id: "d0", text: "hello there", speaker: "speaker_0", speaker
 const settle = async () => {
   for (let i = 0; i < 20; i += 1) await Promise.resolve();
   await new Promise((resolve) => setTimeout(resolve, 0));
+
   for (let i = 0; i < 20; i += 1) await Promise.resolve();
 };
 

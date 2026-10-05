@@ -22,7 +22,9 @@ export interface CalendarAvailabilityServiceDeps {
   };
 }
 
-function connectedCalendarProviders(calendarProviders: CalendarProviderEntry[]): CalendarProviderEntry[] {
+function connectedCalendarProviders(
+  calendarProviders: CalendarProviderEntry[]
+): CalendarProviderEntry[] {
   return calendarProviders.filter(
     ({ provider, manager }) =>
       (provider !== "apple" || process.platform === "darwin") && manager?.isConnected?.()
@@ -43,6 +45,7 @@ export function getCalendarAvailability({
   const now = clock();
   const normalized = validateCalendarAvailabilityRequest(request, now);
   const connectedProviders = connectedCalendarProviders(calendarProviders);
+
   if (connectedProviders.length === 0) {
     throw new Error(USER_CORRECTABLE_ERRORS.noCalendarConnected);
   }
@@ -52,11 +55,13 @@ export function getCalendarAvailability({
   const bufferMs = normalized.bufferMinutes * 60 * 1000;
   const queryStart = new Date(startMs - bufferMs).toISOString();
   const queryEnd = new Date(endMs + bufferMs).toISOString();
+
   const events = databaseManager.getCalendarEventsInRange(
     queryStart,
     queryEnd,
     connectedProviders.map(({ provider }) => provider)
   );
+
   const { availableSlots, hasMore, isEntireRangeFree } = computeCalendarAvailability(
     events,
     normalized

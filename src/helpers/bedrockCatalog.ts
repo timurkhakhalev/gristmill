@@ -27,13 +27,17 @@ function profileIdByModelId(
   inferenceProfileSummaries: InferenceProfileSummary[] | undefined | null
 ): Map<string, string> {
   const map = new Map();
+
   for (const profile of inferenceProfileSummaries || []) {
     if (!profile?.inferenceProfileId) continue;
+
     for (const model of profile.models || []) {
       const modelId = model?.modelArn?.split("/").pop();
+
       if (modelId && !map.has(modelId)) map.set(modelId, profile.inferenceProfileId);
     }
   }
+
   return map;
 }
 
@@ -47,12 +51,15 @@ export function normalizeBedrockCatalog(
 
   for (const summary of modelSummaries || []) {
     if (!summary?.modelId) continue;
+
     if (!(summary.outputModalities || []).includes("TEXT")) continue;
     const status = summary.modelLifecycle?.status;
+
     if (status && status !== "ACTIVE") continue;
 
     const types = summary.inferenceTypesSupported || [];
     const value = types.includes("ON_DEMAND") ? summary.modelId : profiles.get(summary.modelId);
+
     if (!value || seen.has(value)) continue;
     seen.add(value);
 
@@ -64,5 +71,6 @@ export function normalizeBedrockCatalog(
   }
 
   models.sort((a, b) => a.vendor.localeCompare(b.vendor) || a.label.localeCompare(b.label));
+
   return models;
 }

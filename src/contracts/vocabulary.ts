@@ -18,6 +18,7 @@ export const snippetSchema = z.object({
 export type Snippet = z.infer<typeof snippetSchema>;
 
 export const dictionaryWordsSchema = z.array(z.string());
+
 export type DictionaryWords = z.infer<typeof dictionaryWordsSchema>;
 
 export const dictionaryChangeResultSchema = z.object({
@@ -36,11 +37,17 @@ const idArg = z.union([z.number(), z.string(), z.null()]);
 // normalizes the entries; tightening them here would delete stored data
 // shapes the JS boundary accepted.
 export const setDictionaryArgsSchema = z.tuple([z.unknown()]);
+
 export const applyDictionaryChangesArgsSchema = z.tuple([z.unknown().optional()]);
+
 export const hardDeleteDictionaryArgsSchema = z.tuple([idArg]);
+
 export const getSnippetsArgsSchema = z.tuple([]);
+
 export const setSnippetsArgsSchema = z.tuple([z.unknown()]);
+
 export const hardDeleteSnippetArgsSchema = z.tuple([idArg]);
+
 // undo-learned-corrections accepts anything: it filters to non-empty strings
 // and fails quietly otherwise.
 export const undoLearnedCorrectionsArgsSchema = z.tuple([z.unknown().optional()]);

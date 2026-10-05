@@ -79,6 +79,7 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (editorRef) editorRef.current = editor;
+
     return () => {
       if (editorRef) editorRef.current = null;
     };
@@ -87,6 +88,7 @@ export function RichTextEditor({
   // Sync external value changes (e.g. dictation, programmatic updates)
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
+
     if (value === internalValueRef.current) return;
 
     internalValueRef.current = value;

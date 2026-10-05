@@ -10,22 +10,22 @@ Check selection policy lives in [quality steering](../steerings/quality.md); com
 - A test can belong to several domains. It runs one time.
 - Selection is explicit. It is not automatic impact analysis.
 
-| Domain | Behavior |
-| --- | --- |
-| `notes` | Notes, editor, folders, search, imports and note output |
-| `recording` | Capture, microphone and system tracks, Stop, recovery and speakers |
-| `transcription` | Files, transcription routes, queue, diarization and cancellation |
-| `calendar` | OAuth, events, reminders, availability and meeting cards |
-| `ai` | Models, providers, chat, tools and generated content |
-| `settings` | Preferences, migrations, secrets and onboarding |
-| `platform` | Electron, windows, builds, runtime and shared infrastructure |
+| Domain          | Behavior                                                           |
+| --------------- | ------------------------------------------------------------------ |
+| `notes`         | Notes, editor, folders, search, imports and note output            |
+| `recording`     | Capture, microphone and system tracks, Stop, recovery and speakers |
+| `transcription` | Files, transcription routes, queue, diarization and cancellation   |
+| `calendar`      | OAuth, events, reminders, availability and meeting cards           |
+| `ai`            | Models, providers, chat, tools and generated content               |
+| `settings`      | Preferences, migrations, secrets and onboarding                    |
+| `platform`      | Electron, windows, builds, runtime and shared infrastructure       |
 
-| Kind | Test environment |
-| --- | --- |
-| `unit` | Pure logic or isolated behavior with mocked dependencies |
+| Kind          | Test environment                                                         |
+| ------------- | ------------------------------------------------------------------------ |
+| `unit`        | Pure logic or isolated behavior with mocked dependencies                 |
 | `integration` | Real database, file system, renderer harness, subprocess or IPC contract |
-| `types` | TypeScript compiler probes. A file can also contain runtime assertions |
-| `native` | GUI, Swift or native helpers, or OS process integration |
+| `types`       | TypeScript compiler probes. A file can also contain runtime assertions   |
+| `native`      | GUI, Swift or native helpers, or OS process integration                  |
 
 - Classification is for each file. For mixed files, use the stronger requirement.
 - A unit selection gives a fast development loop. It does not replace the integration, type or native checks that the changed behavior needs.
@@ -69,4 +69,3 @@ pnpm test --domain calendar --domain notes
 - Compatible cases in one file can share a Vite server. Restore stores, globals, mocks and singleton state between cases.
 - Keep different module-mock environments separate until their isolation is proved.
 - Do not disable test process isolation globally.
-

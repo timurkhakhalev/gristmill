@@ -9,17 +9,14 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, ...props }, ref) => {
     return (
       <textarea
-        className={cn(
-          FIELD_CLASS,
-          "flex min-h-20 py-2 resize-y cursor-text",
-          className
-        )}
+        className={cn(FIELD_CLASS, "flex min-h-20 py-2 resize-y cursor-text", className)}
         ref={ref}
         {...props}
       />
     );
   }
 );
+
 Textarea.displayName = "Textarea";
 
 export { Textarea };

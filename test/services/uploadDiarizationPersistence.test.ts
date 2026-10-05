@@ -1,6 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+
 import type { ViteDevServer } from "vite";
 
 // Regression for the upload/URL-ingest path dropping diarization metadata: the
@@ -32,17 +35,26 @@ const gateMocks = {
 };
 
 let vitePromise: Promise<ViteDevServer> | undefined;
+
 const cleanup: Array<() => Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
+
 async function getVite() {
-  const vite = await (vitePromise ??= createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) }, {
-    cachePrefix: "openwhispr-upload-diarization-test-",
-    mockModules: gateMocks,
-  }));
+  const vite = await (vitePromise ??= createRendererServer(
+    { after: (close: () => Promise<void>) => cleanup.push(close) },
+    {
+      cachePrefix: "openwhispr-upload-diarization-test-",
+      mockModules: gateMocks,
+    }
+  ));
+
   const module = await vite.moduleGraph.getModuleByUrl("/stores/batchQueueStore.ts");
+
   if (module) vite.moduleGraph.invalidateModule(module);
+
   return vite;
 }
 
@@ -51,16 +63,23 @@ interface QueueItem {
   noteId?: number;
 }
 
-async function waitForQueueSettled(store: { getState: () => { queue: QueueItem[]; isProcessing: boolean } }, timeoutMs = 5000) {
+async function waitForQueueSettled(
+  store: { getState: () => { queue: QueueItem[]; isProcessing: boolean } },
+  timeoutMs = 5000
+) {
   const deadline = Date.now() + timeoutMs;
+
   for (;;) {
     const { queue, isProcessing } = store.getState();
+
     if (!isProcessing && queue.every((i) => i.status === "done" || i.status === "error")) {
       return queue;
     }
+
     if (Date.now() > deadline) {
       throw new Error(`queue never settled: ${JSON.stringify(store.getState().queue)}`);
     }
+
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
@@ -77,10 +96,12 @@ function installUploadElectronAPI(
     diarize: [] as Array<Record<string, unknown>>,
     deletedTempFiles: [] as unknown[],
   };
+
   Object.assign(window.electronAPI, {
     transcribeAudioFile: async () => ({ success: true, text: "hello from the recording" }),
     diarizeAudioFile: async (_filePath: string, options: Record<string, unknown>) => {
       calls.diarize.push(options);
+
       return {
         success: true,
         segments: [
@@ -93,20 +114,26 @@ function installUploadElectronAPI(
     mergeSpeakerText: async () => ({ success: true, text: "[Speaker 1] hello [Speaker 2] hi" }),
     saveNote: async (...args: unknown[]) => {
       calls.saveNote.push(args);
+
       return { success: true, note: { id: 7 } };
     },
     updateNote: async (id: number, updates: Record<string, unknown>) => {
       calls.updateNote.push([id, updates]);
+
       return { success: true, note: { id } };
     },
     deleteTempFile: (path: string) => calls.deletedTempFiles.push(path),
     cancelUrlDownload: () => {},
   });
+
   return calls;
 }
 
 test("a diarized file upload persists the diarization metadata", async (t: import("node:test").TestContext) => {
-  const { window } = installBrowserGlobals(t) as { window: { electronAPI: Record<string, unknown> } };
+  const { window } = installBrowserGlobals(t) as {
+    window: { electronAPI: Record<string, unknown> };
+  };
+
   const vite = await getVite();
   // The renderer never knows a picked file's duration up front; the diarizer's
   // measured duration is the only source, so it must land on the note row.
@@ -121,7 +148,15 @@ test("a diarized file upload persists the diarization metadata", async (t: impor
   assert.equal(queue[0].noteId, 7);
 
   assert.equal(calls.saveNote.length, 1);
-  const [, content, noteType, sourceFile, audioDuration] = calls.saveNote[0] as [unknown, string, string, string, number];
+
+  const [, content, noteType, sourceFile, audioDuration] = calls.saveNote[0] as [
+    unknown,
+    string,
+    string,
+    string,
+    number,
+  ];
+
   assert.equal(content, "[Speaker 1] hello [Speaker 2] hi");
   assert.equal(noteType, "upload");
   assert.equal(sourceFile, "board-meeting.m4a");
@@ -139,6 +174,7 @@ test("a diarized file upload persists the diarization metadata", async (t: impor
   assert.deepEqual(
     calls.updateNote.map(([id, updates]) => {
       const { transcript, ...rest } = updates;
+
       return [id, rest, typeof transcript === "string" && transcript.includes("[Speaker 1] hello")];
     }),
     [[7, { diarization_enabled: 1, expected_speaker_count: 2, content: "" }, true]]
@@ -146,7 +182,10 @@ test("a diarized file upload persists the diarization metadata", async (t: impor
 });
 
 test("a diarized URL ingest persists the diarization metadata", async (t: import("node:test").TestContext) => {
-  const { window } = installBrowserGlobals(t) as { window: { electronAPI: Record<string, unknown> } };
+  const { window } = installBrowserGlobals(t) as {
+    window: { electronAPI: Record<string, unknown> };
+  };
+
   const vite = await getVite();
   // The download's known duration beats the diarizer's measurement.
   const calls = installUploadElectronAPI(window, { diarizedDurationSeconds: 9999 });
@@ -169,7 +208,15 @@ test("a diarized URL ingest persists the diarization metadata", async (t: import
   assert.equal(queue[0].status, "done");
 
   assert.equal(calls.saveNote.length, 1);
-  const [title, , noteType, sourceFile, audioDuration] = calls.saveNote[0] as [string, unknown, string, string, number];
+
+  const [title, , noteType, sourceFile, audioDuration] = calls.saveNote[0] as [
+    string,
+    unknown,
+    string,
+    string,
+    number,
+  ];
+
   assert.equal(title, "Board Meeting Recording");
   assert.equal(noteType, "upload");
   assert.equal(sourceFile, "Board Meeting Recording");
@@ -178,6 +225,7 @@ test("a diarized URL ingest persists the diarization metadata", async (t: import
   assert.deepEqual(
     calls.updateNote.map(([id, updates]) => {
       const { transcript, ...rest } = updates;
+
       return [id, rest, typeof transcript === "string" && transcript.includes("[Speaker 1] hello")];
     }),
     [[7, { diarization_enabled: 1, expected_speaker_count: 2, content: "" }, true]]
@@ -186,7 +234,10 @@ test("a diarized URL ingest persists the diarization metadata", async (t: import
 });
 
 test("an upload without diarization leaves the note columns untouched", async (t: import("node:test").TestContext) => {
-  const { window } = installBrowserGlobals(t) as { window: { electronAPI: Record<string, unknown> } };
+  const { window } = installBrowserGlobals(t) as {
+    window: { electronAPI: Record<string, unknown> };
+  };
+
   const vite = await getVite();
   const calls = installUploadElectronAPI(window, { diarizedDurationSeconds: 4359.87 });
 

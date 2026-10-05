@@ -4,6 +4,7 @@ import { cn } from "../lib/utils";
 // icon) and the "Gristmill" wordmark outlined from Newsreader SemiBold so it needs no
 // bundled font. The wordmark follows the text colour.
 const MARK_GREEN = "#65704C";
+
 const MARK_GOLD = "#C49A62";
 
 // `adaptive` lightens the green on dark surfaces; the cream onboarding tile keeps it fixed.

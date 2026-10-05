@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { extractNoteCards } = require("../../src/components/chat/noteCards.ts");
 
 const completed = (name: string, metadata: unknown, result?: unknown) => ({
@@ -10,6 +12,7 @@ const completed = (name: string, metadata: unknown, result?: unknown) => ({
   result,
   metadata,
 });
+
 const extractCards = (toolCalls: unknown) => extractNoteCards(toolCalls, "Note");
 
 test("note tools with single-object metadata still produce one card each", () => {
@@ -17,6 +20,7 @@ test("note tools with single-object metadata still produce one card each", () =>
     completed("create_note", { id: 7, title: "Kickoff" }),
     completed("get_note", { id: 9 }, 'Retrieved note: "Roadmap"'),
   ]);
+
   assert.deepEqual(cards, [
     { noteId: 7, title: "Kickoff" },
     { noteId: 9, title: "Roadmap" },
@@ -32,6 +36,7 @@ test("search_notes array metadata produces a card per hit, skipping null and non
       { id: 4, title: "" },
     ]),
   ]);
+
   assert.deepEqual(cards, [
     { noteId: 3, title: "Sales sync" },
     { noteId: 4, title: "Note" },
@@ -47,6 +52,7 @@ test("search cards dedupe against note-tool cards and each other", () => {
     ]),
     completed("search_notes", [{ id: 5, title: "Q3 plan" }]),
   ]);
+
   assert.deepEqual(cards, [
     { noteId: 3, title: "Sales sync" },
     { noteId: 5, title: "Q3 plan" },
@@ -55,10 +61,12 @@ test("search cards dedupe against note-tool cards and each other", () => {
 
 test("search cards cap at 5 across the whole turn", () => {
   const hits = Array.from({ length: 9 }, (_, i) => ({ id: i + 1, title: `Note ${i + 1}` }));
+
   const cards = extractCards([
     completed("search_notes", hits.slice(0, 4)),
     completed("search_notes", hits.slice(4)),
   ]);
+
   assert.equal(cards.length, 5);
 });
 
@@ -67,6 +75,7 @@ test("incomplete or unknown tools produce nothing", () => {
     { ...completed("search_notes", [{ id: 1, title: "x" }]), status: "executing" },
     completed("copy_to_clipboard", { id: 2 }),
   ]);
+
   assert.deepEqual(cards, []);
 });
 
@@ -84,6 +93,7 @@ test("skips non-positive, non-integer, and coerced falsy note ids", () => {
       { id: 10, title: "Valid Note" },
     ]),
   ]);
+
   assert.deepEqual(cards, [{ noteId: 10, title: "Valid Note" }]);
 });
 
@@ -92,6 +102,7 @@ test("falls back to default title for whitespace-only titles in metadata or hits
     completed("create_note", { id: 12, title: "   \n\t " }),
     completed("search_notes", [{ id: 14, title: "   " }]),
   ]);
+
   assert.deepEqual(cards, [
     { noteId: 12, title: "Note" },
     { noteId: 14, title: "Note" },

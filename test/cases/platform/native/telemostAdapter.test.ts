@@ -6,14 +6,25 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { build } from "esbuild";
 
-test("Telemost prejoin and shell controls never invent a connected call or confirmed Leave", async t => {
+test("Telemost prejoin and shell controls never invent a connected call or confirmed Leave", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-telemost-dom-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const bundle = await build({ entryPoints: [path.resolve("extension/src/telemostAdapter.ts")], bundle: true, platform: "browser", format: "iife", globalName: "adapter", write: false });
+
+  const bundle = await build({
+    entryPoints: [path.resolve("extension/src/telemostAdapter.ts")],
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    globalName: "adapter",
+    write: false,
+  });
+
   const fixture = fs.readFileSync("test/fixtures/telemost/v1/prejoin.html", "utf8");
   const connected = fs.readFileSync("test/fixtures/telemost/v1/in-call.html", "utf8");
   const entry = path.join(directory, "fixture.cjs");
-  fs.writeFileSync(entry, `const {app,BrowserWindow}=require('electron');
+  fs.writeFileSync(
+    entry,
+    `const {app,BrowserWindow}=require('electron');
 const assert=require('node:assert/strict');
 app.setPath('userData', ${JSON.stringify(path.join(directory, "profile"))});
 app.whenReady().then(async()=>{const win=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true}});
@@ -52,11 +63,17 @@ await run('<h1 id="home-hub-page-title">Home</h1>');
 assert.equal((await check('adapter.readTelemostContext([document],"7000",true)')).confirmedLeave,true);
 await run('<div>Disconnected</div>');assert.equal((await check('adapter.readTelemostContext([document],"8000",true)')).confirmedLeave,false);
 console.log('telemost DOM fixtures passed');
-} finally {win.destroy();app.quit();}}).catch(error=>{console.error(error);app.exit(1);});`);
+} finally {win.destroy();app.quit();}}).catch(error=>{console.error(error);app.exit(1);});`
+  );
   const { ELECTRON_RUN_AS_NODE: _ignored, ...env } = process.env;
   const executable: string = require("electron");
-  const output = await new Promise<string>((resolve, reject) => execFile(executable, [entry], { env, timeout: 20_000 }, (error, stdout, stderr) => {
-    if (error) reject(new Error(`${error.message}\n${stdout}\n${stderr}`)); else resolve(stdout);
-  }));
+
+  const output = await new Promise<string>((resolve, reject) =>
+    execFile(executable, [entry], { env, timeout: 20_000 }, (error, stdout, stderr) => {
+      if (error) reject(new Error(`${error.message}\n${stdout}\n${stderr}`));
+      else resolve(stdout);
+    })
+  );
+
   assert.match(output, /telemost DOM fixtures passed/);
 });

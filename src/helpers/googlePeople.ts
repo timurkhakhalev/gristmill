@@ -14,11 +14,14 @@ export const PEOPLE_SCOPES = {
 /** True when a token's granted scope includes no People scope at all: reconnecting would add names and photos. */
 export function lacksPeopleAccess(grantedScope: string | null | undefined): boolean {
   const granted = new Set((grantedScope ?? "").split(/\s+/));
+
   return !Object.values(PEOPLE_SCOPES).some((scope) => granted.has(scope));
 }
 
 const PEOPLE_API_BASE = "https://people.googleapis.com/v1";
+
 const PAGE_SIZE = 1000;
+
 // Bounds a very large directory or address book to a few requests per sync.
 const MAX_PAGES_PER_SOURCE = 10;
 
@@ -36,7 +39,9 @@ interface PeoplePerson {
 
 type ApiGet = (url: string) => Promise<unknown>;
 
-function primary<T extends { metadata?: { primary?: boolean } }>(items: T[] | undefined): T | undefined {
+function primary<T extends { metadata?: { primary?: boolean } }>(
+  items: T[] | undefined
+): T | undefined {
   return items?.find((item) => item.metadata?.primary) ?? items?.[0];
 }
 
@@ -45,7 +50,9 @@ export function profilesOf(person: PeoplePerson): GooglePersonProfile[] {
   const displayName = primary(person.names)?.displayName?.trim() || null;
   const photo = primary(person.photos);
   const photoUrl = photo?.url && !photo.default ? photo.url : null;
+
   if (!displayName && !photoUrl) return [];
+
   return (person.emailAddresses ?? [])
     .map((address) => address.value?.toLowerCase().trim())
     .filter((email): email is string => Boolean(email))
@@ -60,16 +67,25 @@ async function collect(
 ): Promise<PeoplePerson[]> {
   const people: PeoplePerson[] = [];
   let pageToken: string | undefined;
+
   for (let page = 0; page < MAX_PAGES_PER_SOURCE; page++) {
     const query = new URLSearchParams({ ...params, pageSize: String(PAGE_SIZE) });
+
     if (pageToken) query.set("pageToken", pageToken);
-    const data = (await apiGet(`${PEOPLE_API_BASE}${path}?${query.toString()}`)) as Record<string, unknown> & {
+
+    const data = (await apiGet(`${PEOPLE_API_BASE}${path}?${query.toString()}`)) as Record<
+      string,
+      unknown
+    > & {
       nextPageToken?: string;
     };
-    people.push(...(((data[itemsKey] as PeoplePerson[] | undefined) ?? [])));
+
+    people.push(...((data[itemsKey] as PeoplePerson[] | undefined) ?? []));
     pageToken = data.nextPageToken;
+
     if (!pageToken) break;
   }
+
   return people;
 }
 
@@ -85,27 +101,60 @@ export async function fetchGooglePeople(
 ): Promise<GooglePersonProfile[]> {
   const granted = new Set(grantedScope.split(/\s+/));
   const sources: Array<[string, () => Promise<PeoplePerson[]>]> = [];
+
   if (granted.has(PEOPLE_SCOPES.otherContacts)) {
-    sources.push(["otherContacts", () =>
-      collect(apiGet, "/otherContacts", { readMask: "names,emailAddresses,photos" }, "otherContacts")]);
+    sources.push([
+      "otherContacts",
+      () =>
+        collect(
+          apiGet,
+          "/otherContacts",
+          { readMask: "names,emailAddresses,photos" },
+          "otherContacts"
+        ),
+    ]);
   }
+
   if (granted.has(PEOPLE_SCOPES.contacts)) {
-    sources.push(["contacts", () =>
-      collect(apiGet, "/people/me/connections", { personFields: "names,emailAddresses,photos" }, "connections")]);
+    sources.push([
+      "contacts",
+      () =>
+        collect(
+          apiGet,
+          "/people/me/connections",
+          { personFields: "names,emailAddresses,photos" },
+          "connections"
+        ),
+    ]);
   }
+
   if (granted.has(PEOPLE_SCOPES.directory)) {
-    sources.push(["directory", () =>
-      collect(
-        apiGet,
-        "/people:listDirectoryPeople",
-        { readMask: "names,emailAddresses,photos", sources: "DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE" },
-        "people"
-      )]);
+    sources.push([
+      "directory",
+      () =>
+        collect(
+          apiGet,
+          "/people:listDirectoryPeople",
+          {
+            readMask: "names,emailAddresses,photos",
+            sources: "DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE",
+          },
+          "people"
+        ),
+    ]);
   }
-  sources.push(["self", async () =>
-    [(await apiGet(`${PEOPLE_API_BASE}/people/me?personFields=names,emailAddresses,photos`)) as PeoplePerson]]);
+
+  sources.push([
+    "self",
+    async () => [
+      (await apiGet(
+        `${PEOPLE_API_BASE}/people/me?personFields=names,emailAddresses,photos`
+      )) as PeoplePerson,
+    ],
+  ]);
 
   const byEmail = new Map<string, GooglePersonProfile>();
+
   for (const [source, load] of sources) {
     try {
       for (const person of await load()) {
@@ -123,5 +172,6 @@ export async function fetchGooglePeople(
       onSourceError(source, error as Error);
     }
   }
+
   return Array.from(byEmail.values());
 }

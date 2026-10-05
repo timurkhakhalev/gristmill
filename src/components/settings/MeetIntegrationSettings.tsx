@@ -19,15 +19,19 @@ export function MeetIntegrationSettings() {
       .catch((failure) => {
         if (active) setError(String(failure));
       });
+
     return () => {
       active = false;
     };
   }, []);
+
   const configure = async (action: "enable" | "disable" | "reveal") => {
     setBusy(true);
     setError(null);
+
     try {
       const result = await window.electronAPI?.configureMeetIntegration(action);
+
       if (!result?.success) throw new Error(result?.error ?? t("meetIntegration.setupFailed"));
       setSetup(await window.electronAPI!.getMeetIntegrationSetup());
     } catch (failure) {
@@ -36,6 +40,7 @@ export function MeetIntegrationSettings() {
       setBusy(false);
     }
   };
+
   return (
     <div className="space-y-3 p-4">
       <div className="flex items-center justify-between gap-4">
@@ -51,13 +56,20 @@ export function MeetIntegrationSettings() {
         />
       </div>
       {setup?.enabled && !setup.installed && (
-        <p role="alert" className="text-xs text-destructive">{t("meetIntegration.setupFailed")}</p>
+        <p role="alert" className="text-xs text-destructive">
+          {t("meetIntegration.setupFailed")}
+        </p>
       )}
       {setup?.enabled && (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer">{t("meetIntegration.openExtension")}</summary>
           <p className="my-2">{t("meetIntegration.installInstructions")}</p>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void configure("reveal")}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void configure("reveal")}
+          >
             {t("meetIntegration.selectExtension")}
           </Button>
         </details>

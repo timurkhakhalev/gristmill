@@ -1,5 +1,6 @@
 function findStoredWord(words: string[], word: string): string | undefined {
   const needle = word.toLowerCase();
+
   return words.find((w) => typeof w === "string" && w.trim().toLowerCase() === needle);
 }
 

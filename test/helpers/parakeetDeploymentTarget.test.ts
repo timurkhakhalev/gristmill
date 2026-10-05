@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const sherpaDownloader = require("../../scripts/download-sherpa-onnx.cts");
@@ -62,13 +63,16 @@ test("rejects a packaged ONNX Runtime library missing a universal architecture s
 
 test("validates the versioned ONNX Runtime library from a packaged app", () => {
   const appPath = "/tmp/OpenWhispr.app";
+
   const result = sherpaDownloader.verifyPackagedMacosParakeet?.(appPath, {
     readDirectory(directory: string) {
       assert.equal(directory, `${appPath}/Contents/Resources/bin`);
+
       return ["libonnxruntime.dylib", "libonnxruntime.1.27.0.dylib"];
     },
     runVtool(libraryPath: unknown) {
       assert.equal(libraryPath, `${appPath}/Contents/Resources/bin/libonnxruntime.1.27.0.dylib`);
+
       return UNIVERSAL_VTOOL_OUTPUT;
     },
   });

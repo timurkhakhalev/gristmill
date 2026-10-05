@@ -42,6 +42,7 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
   className = "",
 }) => {
   const baseClasses = "space-y-3 p-3 rounded-lg border";
+
   const variantClasses = {
     default: "bg-card/50 dark:bg-surface-2/50 border-border/70 dark:border-border-subtle",
     highlighted: "bg-primary/5 dark:bg-primary/10 border-primary/20 dark:border-primary/30",

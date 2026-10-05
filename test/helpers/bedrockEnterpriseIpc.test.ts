@@ -1,13 +1,24 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+
 const originalLoad = Module._load;
+
 const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+
 const listeners = new Map<string, (event: unknown, ...args: unknown[]) => void>();
-const generateCalls : unknown[] = [];
-let generateBehavior: (options: unknown) => Promise<unknown> = async () => ({ text: "hello", finishReason: "stop" });
+
+const generateCalls: unknown[] = [];
+
+let generateBehavior: (options: unknown) => Promise<unknown> = async () => ({
+  text: "hello",
+  finishReason: "stop",
+});
+
 let handlerContext;
 
 const electronStub = {
@@ -21,8 +32,10 @@ const electronStub = {
     requestSingleInstanceLock: () => true,
   },
   ipcMain: {
-    handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn),
-    on: (channel: string, fn: (event: unknown, ...args: unknown[]) => void) => listeners.set(channel, fn),
+    handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) =>
+      handlers.set(channel, fn),
+    on: (channel: string, fn: (event: unknown, ...args: unknown[]) => void) =>
+      listeners.set(channel, fn),
     removeHandler: () => {},
   },
   net: {
@@ -55,38 +68,51 @@ const electronStub = {
 
 Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") return electronStub;
+
   if ((parent as { filename?: string } | null)?.filename === handlersModulePath) {
     if (request === "./debugLogger") {
       return new Proxy({}, { get: () => () => {} });
     }
+
     if (request === "ai") {
       return {
         generateText: async (options: unknown) => {
           generateCalls.push(options);
+
           return generateBehavior(options);
         },
       };
     }
+
     if (request === "./enterpriseAiProviders") {
       return {
-        getEnterpriseAIModel: async (_provider: string, _model: string, _apiKey: string, _enterprise: unknown) => {
+        getEnterpriseAIModel: async (
+          _provider: string,
+          _model: string,
+          _apiKey: string,
+          _enterprise: unknown
+        ) => {
           return { provider: "bedrock-test-model" };
         },
       };
     }
+
     if (request === "./cortiTranscription") {
       return { transcribeAudio: async () => ({ text: "corti text" }) };
     }
+
     if (request === "./tinfoilTranscription") {
       return {
         transcribeWithTinfoil: async () => ({ text: "tinfoil text", model: "tinfoil-model" }),
         getTinfoilChatModels: () => [],
       };
     }
+
     if (request === "./windowBroadcast") {
       return { broadcastToWindows: () => {} };
     }
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -94,7 +120,9 @@ function anything(): unknown {
   return new Proxy(function () {}, {
     get: (target: object, property: string | symbol) => {
       if (property === Symbol.toPrimitive || property === "toString") return () => "";
+
       if (property === "then") return undefined;
+
       return anything();
     },
     apply: () => anything(),
@@ -102,22 +130,29 @@ function anything(): unknown {
 }
 
 function buildFakeThis() {
-  const { AgentStreamRequestRegistry }: typeof import("../../src/helpers/agentStreamRequestRegistry") = require("../../src/helpers/agentStreamRequestRegistry");
+  const {
+    AgentStreamRequestRegistry,
+  }: typeof import("../../src/helpers/agentStreamRequestRegistry") = require("../../src/helpers/agentStreamRequestRegistry");
+
   const target = {
     sessionId: "test-session",
     _enterpriseReasoningRequests: new AgentStreamRequestRegistry(),
   };
+
   return new Proxy(target, {
-    get: (value: object, property: string | symbol) => (property in value ? (value as Record<string, unknown>)[property as string] : anything()),
+    get: (value: object, property: string | symbol) =>
+      property in value ? (value as Record<string, unknown>)[property as string] : anything(),
   });
 }
 
 function sender(id: unknown) {
   const eventListeners = new Map<unknown, (event: unknown) => void>();
   let destroyed = false;
+
   return {
     id,
-    once: (event: unknown, listener: (event: unknown) => void) => eventListeners.set(event, listener),
+    once: (event: unknown, listener: (event: unknown) => void) =>
+      eventListeners.set(event, listener),
     removeListener: (event: unknown, listener: (event: unknown) => void) => {
       if (eventListeners.get(event) === listener) eventListeners.delete(event);
     },
@@ -137,11 +172,13 @@ function retryable503() {
   });
 }
 
-
-
 test.before(() => {
   delete require.cache[handlersModulePath];
-  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
+
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(
+    handlersModulePath
+  );
+
   handlerContext = buildFakeThis();
   Ctor.prototype.setupHandlers.call(handlerContext);
   assert.ok(handlers.get("test-enterprise-connection"));
@@ -164,15 +201,19 @@ test("Check connection asks for at least 16 output tokens, the Azure Responses A
     ["bedrock", { model: "anthropic.claude-haiku", bedrockRegion: "eu-west-1" }],
     ["azure", { model: "gpt-4.1-mini", azureEndpoint: "https://acme.openai.azure.com" }],
   ];
+
   for (const [provider, config] of probes as Array<[string, unknown]>) {
     const result: unknown = await handlers.get("test-enterprise-connection")!(
       { sender: sender(3) },
       provider,
       config
     );
+
     assert.deepEqual(result, { success: true }, provider);
   }
+
   assert.equal(generateCalls.length, probes.length);
+
   for (const call of generateCalls as Array<{ maxOutputTokens: number }>) {
     assert.ok(
       call.maxOutputTokens >= 16,
@@ -185,11 +226,15 @@ test("Check connection uses the Bedrock retry policy and disables nested AI SDK 
   let attempts = 0;
   generateBehavior = async () => {
     attempts += 1;
+
     if (attempts === 1) throw retryable503();
+
     return { text: "hello", finishReason: "stop" };
   };
+
   const originalRandom = Math.random;
   Math.random = () => 0;
+
   try {
     const result: unknown = await handlers.get("test-enterprise-connection")!(
       { sender: sender(2) },
@@ -202,7 +247,9 @@ test("Check connection uses the Bedrock retry policy and disables nested AI SDK 
 
     assert.deepEqual(result, { success: true });
     assert.equal(generateCalls.length, 2);
-    assert.ok(generateCalls.every((call: unknown) => (call as { maxRetries: number }).maxRetries === 0));
+    assert.ok(
+      generateCalls.every((call: unknown) => (call as { maxRetries: number }).maxRetries === 0)
+    );
   } finally {
     Math.random = originalRandom;
   }
@@ -219,15 +266,22 @@ test("Check connection retries timed-out Bedrock attempts with the existing time
       });
     });
   };
+
   const originalRandom = Math.random;
   Math.random = () => 0;
   let watchdog!: ReturnType<typeof setTimeout>;
+
   try {
-    const request: any = handlers.get("test-enterprise-connection")!({ sender: sender(1) }, "bedrock", {
-      model: "anthropic.claude-haiku",
-      bedrockRegion: "eu-west-1",
-      timeoutMs: 5,
-    });
+    const request: any = handlers.get("test-enterprise-connection")!(
+      { sender: sender(1) },
+      "bedrock",
+      {
+        model: "anthropic.claude-haiku",
+        bedrockRegion: "eu-west-1",
+        timeoutMs: 5,
+      }
+    );
+
     const result = await Promise.race([
       request,
       new Promise((_, reject) => {
@@ -250,11 +304,15 @@ test("cleanup uses the Bedrock retry policy and returns the eventual text", asyn
   let attempts = 0;
   generateBehavior = async () => {
     attempts += 1;
+
     if (attempts === 1) throw retryable503();
+
     return { text: "cleaned dictation", finishReason: "stop" };
   };
+
   const originalRandom = Math.random;
   Math.random = () => 0;
+
   try {
     const result: unknown = await handlers.get("process-enterprise-reasoning")!(
       { sender: sender(3) },
@@ -271,7 +329,9 @@ test("cleanup uses the Bedrock retry policy and returns the eventual text", asyn
 
     assert.deepEqual(result, { success: true, text: "cleaned dictation" });
     assert.equal(generateCalls.length, 2);
-    assert.ok(generateCalls.every((call: unknown) => (call as { maxRetries: number }).maxRetries === 0));
+    assert.ok(
+      generateCalls.every((call: unknown) => (call as { maxRetries: number }).maxRetries === 0)
+    );
   } finally {
     Math.random = originalRandom;
   }
@@ -281,8 +341,10 @@ test("note formatting preserves the AI SDK retry policy", async () => {
   generateBehavior = async () => {
     throw retryable503();
   };
+
   const originalRandom = Math.random;
   Math.random = () => 0;
+
   try {
     const result: any = await handlers.get("process-enterprise-reasoning")!(
       { sender: sender(6) },
@@ -309,6 +371,7 @@ test("chat intelligence preserves the AI SDK retry policy", async () => {
   generateBehavior = async () => {
     throw retryable503();
   };
+
   const result: any = await handlers.get("process-enterprise-reasoning")!(
     { sender: sender(7) },
     "chat message",
@@ -358,6 +421,7 @@ test("Bedrock cleanup cancellation aborts only the requesting renderer without r
       systemPrompt: "Clean the dictation",
     }
   );
+
   await started;
   listeners.get("enterprise-reasoning-cancel")!({ sender: otherSender });
   assert.equal(requestSignal.aborted, false);

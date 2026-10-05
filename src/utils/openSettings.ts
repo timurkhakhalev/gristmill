@@ -6,7 +6,10 @@ export function openSettings(section?: string) {
 }
 
 export function onOpenSettingsRequest(handler: (section?: string) => void) {
-  const listener = (event: Event) => handler((event as CustomEvent<{ section?: string }>).detail?.section);
+  const listener = (event: Event) =>
+    handler((event as CustomEvent<{ section?: string }>).detail?.section);
+
   window.addEventListener(OPEN_SETTINGS_EVENT, listener);
+
   return () => window.removeEventListener(OPEN_SETTINGS_EVENT, listener);
 }

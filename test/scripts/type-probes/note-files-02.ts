@@ -5,12 +5,20 @@ import { createNoteFilesBridge } from "./src/preload/noteFilesBridge.ts";
 import { registerNoteFilesHandlers } from "./src/helpers/noteFilesIpcHandlers.ts";
 import { CliBridge, getBridgeFilePath } from "./src/helpers/cliBridge.ts";
 import type { CliBridgeOperations } from "./src/helpers/cliBridge.ts";
-import { parseGranolaCsv, parseCsv, mapHeaders, normalizeDate, deterministicUuid } from "./src/helpers/granolaImport.ts";
+import {
+  parseGranolaCsv,
+  parseCsv,
+  mapHeaders,
+  normalizeDate,
+  deterministicUuid,
+} from "./src/helpers/granolaImport.ts";
 import { AudioStorageManager } from "./src/helpers/audioStorage.ts";
 import { MarkdownMirror } from "./src/helpers/markdownMirror.ts";
 import { noteFilesChannels, type NoteFilesApi } from "./src/contracts/noteFiles.ts";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 declare const ipcRendererLike: {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
 };
@@ -53,7 +61,9 @@ const ops: CliBridgeOperations = {
   noteWrites: { saveNote: () => ({ success: false }), updateNote: () => ({ success: false }) },
   approveAudioPath: () => undefined,
   transcribeLocalFile: async () => ({ success: true, text: "t" }),
-  listLocalTranscriptionModels: () => [{ model: "base", provider: "whisper", downloaded: true, default: true }],
+  listLocalTranscriptionModels: () => [
+    { model: "base", provider: "whisper", downloaded: true, default: true },
+  ],
   audioStorageManager: { deleteAudio: () => ({ success: true }) },
 };
 const cli = new CliBridge(ops, "/tmp");

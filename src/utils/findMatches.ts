@@ -12,43 +12,50 @@ export function matchOffsets(
   const needle = caseSensitive ? query : query.toLowerCase();
   const out: Array<[number, number]> = [];
   let from = 0;
+
   for (;;) {
     const at = haystack.indexOf(needle, from);
+
     if (at === -1) break;
     out.push([at, at + needle.length]);
     from = at + needle.length;
   }
+
   return out;
 }
 
 /** Text nodes under `root`, skipping script/style and collapsed nodes. */
 export function collectTextNodes(root: Node): Text[] {
   const nodes: Text[] = [];
+
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = (node as Text).parentElement;
+
       if (!parent) return NodeFilter.FILTER_REJECT;
       const tag = parent.tagName;
+
       if (tag === "SCRIPT" || tag === "STYLE") return NodeFilter.FILTER_REJECT;
+
       return node.nodeValue ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
     },
   });
+
   let current = walker.nextNode();
+
   while (current) {
     nodes.push(current as Text);
     current = walker.nextNode();
   }
+
   return nodes;
 }
 
 /** DOM Ranges for every match of `query` under `root`. A match spanning
  * multiple text nodes is skipped (rare inside one editor paragraph). */
-export function findRanges(
-  root: Node,
-  query: string,
-  caseSensitive = false
-): Range[] {
+export function findRanges(root: Node, query: string, caseSensitive = false): Range[] {
   const ranges: Range[] = [];
+
   for (const node of collectTextNodes(root)) {
     for (const [start, end] of matchOffsets(node.nodeValue ?? "", query, caseSensitive)) {
       const range = document.createRange();
@@ -57,5 +64,6 @@ export function findRanges(
       ranges.push(range);
     }
   }
+
   return ranges;
 }

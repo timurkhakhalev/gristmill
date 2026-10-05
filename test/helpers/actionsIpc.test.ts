@@ -4,16 +4,23 @@
 // wrong-shaped calls throw before the DB runs, failures send no event,
 // successes defer exactly one validated event.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const Module = require("node:module");
 
 type ActionsModule = typeof import("../../src/helpers/actionsIpcHandlers.js");
+
 type ActionsDb = Parameters<ActionsModule["registerActionsHandlers"]>[1]["database"];
+
 let registerActionsHandlers: ActionsModule["registerActionsHandlers"];
+
 const handlers = new Map();
+
 let sent: Array<{ channel: string; data: unknown }> | null = null;
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -32,6 +39,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -47,15 +55,24 @@ function setup(database: ActionsDb) {
   handlers.clear();
   sent = [];
   registerActionsHandlers(
-    { handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn) },
+    {
+      handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) =>
+        handlers.set(channel, fn),
+    },
     { database }
   );
+
   return handlers;
 }
 
-function call(handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>, channel: string, ...args: unknown[]): any {
+function call(
+  handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>,
+  channel: string,
+  ...args: unknown[]
+): any {
   const handler = handlers.get(channel);
   assert.ok(handler, `handler registered for ${channel}`);
+
   return handler!(null, ...args);
 }
 
@@ -65,6 +82,7 @@ function fakeDb() {
   const thrower = (name: string) => () => {
     throw new Error(`fake db: ${name} not set`);
   };
+
   return {
     getActions: thrower("getActions"),
     getAction: thrower("getAction"),
@@ -93,6 +111,7 @@ test("get channels pass through rows and null for missing ids", async () => {
     getActions: () => [ACTION],
     getAction: (id: unknown) => (id === 9 ? ACTION : null),
   };
+
   const h = setup(db);
   assert.deepEqual(await call(h, "db-get-actions"), [ACTION]);
   assert.deepEqual(await call(h, "db-get-action", 9), ACTION);
@@ -105,6 +124,7 @@ test("create defers action-created exactly once on success, never on failure", a
     ...fakeDb(),
     createAction: () => ({ success: true, action: ACTION }),
   };
+
   const h = setup(db);
   const result = await call(h, "db-create-action", "Summarize", "d", "p");
   assert.equal(result.success, true);
@@ -117,6 +137,7 @@ test("create defers action-created exactly once on success, never on failure", a
     ...fakeDb(),
     createAction: () => ({ success: false, error: "nope" }),
   };
+
   const h2 = setup(failing);
   const failed = await call(h2, "db-create-action", "", "", "");
   assert.equal(failed.success, false);
@@ -128,8 +149,11 @@ test("update defers action-updated; unknown id yields success false without even
   const db = {
     ...fakeDb(),
     updateAction: (id: unknown) =>
-      id === 9 ? { success: true, action: { ...ACTION, name: "Renamed" } } : { success: false, action: null },
+      id === 9
+        ? { success: true, action: { ...ACTION, name: "Renamed" } }
+        : { success: false, action: null },
   };
+
   const h = setup(db);
   const ok = await call(h, "db-update-action", 9, { name: "Renamed" });
   assert.equal(ok.action.name, "Renamed");
@@ -148,6 +172,7 @@ test("delete defers action-deleted with the called id; builtin delete stays sile
     ...fakeDb(),
     deleteAction: (id: unknown) => ({ success: id === 9 }),
   };
+
   const h = setup(db);
   assert.deepEqual(await call(h, "db-delete-action", 9), { success: true });
   await flush();
@@ -161,17 +186,21 @@ test("delete defers action-deleted with the called id; builtin delete stays sile
 
 test("wrong-shaped args reject before the database runs", async () => {
   let touched = false;
+
   const db = {
     ...fakeDb(),
     createAction: () => {
       touched = true;
+
       return { success: true, action: ACTION };
     },
     deleteAction: () => {
       touched = true;
+
       return { success: true };
     },
   };
+
   const h = setup(db);
   await assert.rejects(call(h, "db-delete-action", "nine"));
   await assert.rejects(call(h, "db-delete-action", 1.5));
@@ -184,6 +213,7 @@ test("malformed DB rows are rejected at the handler boundary", async () => {
     ...fakeDb(),
     getActions: () => [{ ...ACTION, is_builtin: true }],
   };
+
   const h = setup(db);
   await assert.rejects(call(h, "db-get-actions"));
 });

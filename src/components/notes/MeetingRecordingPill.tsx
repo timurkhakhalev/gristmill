@@ -2,7 +2,11 @@ import { MeetingMicButton } from "./MeetingMicButton";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Square } from "../icons";
-import { finishMeeting, stopRecording, useMeetingRecordingStore } from "../../stores/meetingRecordingStore";
+import {
+  finishMeeting,
+  stopRecording,
+  useMeetingRecordingStore,
+} from "../../stores/meetingRecordingStore";
 import { cn } from "../lib/utils";
 import { formatMmSs } from "../../utils/formatDuration";
 import { isControlPanelWindow } from "../../utils/windowContext";
@@ -14,6 +18,7 @@ interface MeetingRecordingPillProps {
 }
 
 const BAR_COUNT = 4;
+
 const BAR_FLOOR = 18;
 
 const computeBarHeight = (level: number, index: number) => {
@@ -22,6 +27,7 @@ const computeBarHeight = (level: number, index: number) => {
   // visible range — linear scaling kept bars clamped at the floor.
   const phase = 0.7 + 0.3 * Math.sin(index * 1.7);
   const scaled = Math.sqrt(level) * 180 * phase;
+
   return `${Math.max(BAR_FLOOR, Math.min(100, scaled))}%`;
 };
 
@@ -32,8 +38,10 @@ function useElapsedSeconds(startedAt: number | null, running: boolean): number {
     const update = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
     update();
     const timer = window.setInterval(update, 1000);
+
     return () => window.clearInterval(timer);
   }, [startedAt, running]);
+
   return elapsed;
 }
 
@@ -58,13 +66,18 @@ export default function MeetingRecordingPill({
   const isViewingRecordingNote =
     activeView === "personal-notes" && activeNoteId === recordingNoteId;
 
-  if ((!isRecording && capturePhase !== "paused") || isViewingRecordingNote || !isControlPanelWindow()) {
+  if (
+    (!isRecording && capturePhase !== "paused") ||
+    isViewingRecordingNote ||
+    !isControlPanelWindow()
+  ) {
     return null;
   }
 
   const handleStop = async () => {
     if (isStopping) return;
     setIsStopping(true);
+
     try {
       if (recordingNoteId) await finishMeeting();
       else await stopRecording();
@@ -75,11 +88,13 @@ export default function MeetingRecordingPill({
 
   const paused = capturePhase === "paused";
   const warning = paused || isWaitingForMic;
+
   const status = paused
     ? t("notes.editor.capture.paused")
     : isWaitingForMic
       ? t("notes.meetingPill.waitingForMicrophone")
       : formatMmSs(elapsed);
+
   const title = recordingNoteTitle?.trim() || t("notes.meetingPill.returnToNote");
   const returnLabel = t("notes.meetingPill.returnToNote");
   const stopLabel = t("notes.editor.capture.finishMeeting");

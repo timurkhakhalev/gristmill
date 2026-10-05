@@ -42,6 +42,7 @@ export const calendarIntegrationChannels = {
 // --- Shared DTO --------------------------------------------------------------
 
 export type CalendarResponseStatus = "needsAction" | "declined" | "tentative" | "accepted";
+
 export type CalendarAvailabilityStatus = "free" | "tentative" | "busy" | "unavailable" | "unknown";
 
 // The public calendar event, projected from a `calendar_events` row. SQLite
@@ -70,6 +71,7 @@ export const calendarEventSchema = z.object({
   /** Plain-text description, flattened from the provider's HTML at sync time. */
   description: z.string().nullable(),
 });
+
 export type CalendarEvent = z.infer<typeof calendarEventSchema>;
 
 export interface CalendarAttendee {
@@ -94,6 +96,7 @@ export const googleCalendarSummarySchema = z.object({
   is_selected: z.number().int(),
   is_primary: z.number().int(),
 });
+
 export type GoogleCalendarSummary = z.infer<typeof googleCalendarSummarySchema>;
 
 // --- Connection status -------------------------------------------------------
@@ -110,6 +113,7 @@ export const googleConnectionStatusSchema = z.object({
   /** Accounts connected before names and photos were requested; reconnecting grants them. */
   peopleAccessMissing: z.array(z.string()).optional(),
 });
+
 export type GoogleConnectionStatus = z.infer<typeof googleConnectionStatusSchema>;
 
 export const microsoftConnectionStatusSchema = z.object({
@@ -117,12 +121,14 @@ export const microsoftConnectionStatusSchema = z.object({
   accounts: z.array(z.object({ email: z.string() })),
   configured: z.boolean().optional(),
 });
+
 export type MicrosoftConnectionStatus = z.infer<typeof microsoftConnectionStatusSchema>;
 
 export const appleConnectionStatusSchema = z.object({
   connected: z.boolean(),
   sourceNames: z.array(z.string()),
 });
+
 export type AppleConnectionStatus = z.infer<typeof appleConnectionStatusSchema>;
 
 // Historical alias kept for renderer state typing; Google's status is the
@@ -135,12 +141,14 @@ export const oauthResultSchema = z.union([
   z.object({ success: z.literal(true), email: z.string() }),
   z.object({ success: z.literal(false), error: z.string().optional() }),
 ]);
+
 export type CalendarOAuthResult = z.infer<typeof oauthResultSchema>;
 
 const commandFailureSchema = z.object({
   success: z.literal(false),
   error: z.string().optional(),
 });
+
 export type CalendarCommandFailure = z.infer<typeof commandFailureSchema>;
 
 // A sync command reports `partial: true` when some calendars updated and
@@ -150,6 +158,7 @@ export const calendarCommandResultSchema = z.union([
   z.object({ success: z.literal(true), partial: z.literal(true).optional() }),
   commandFailureSchema,
 ]);
+
 export type CalendarCommandResult = z.infer<typeof calendarCommandResultSchema>;
 
 // Apple connect resolves after the first EventKit snapshot or the denial —
@@ -162,6 +171,7 @@ export const appleConnectResultSchema = z.union([
     error: z.string().optional(),
   }),
 ]);
+
 export type AppleConnectResult = z.infer<typeof appleConnectResultSchema>;
 
 // Reads degrade to empty shapes on internal errors — the UI keeps rendering
@@ -170,18 +180,21 @@ export const upcomingEventsResultSchema = z.object({
   success: z.boolean(),
   events: z.array(calendarEventSchema),
 });
+
 export type UpcomingEventsResult = z.infer<typeof upcomingEventsResultSchema>;
 
 export const calendarEventResultSchema = z.object({
   success: z.boolean(),
   event: calendarEventSchema.nullable(),
 });
+
 export type CalendarEventResult = z.infer<typeof calendarEventResultSchema>;
 
 export const googleCalendarsResultSchema = z.object({
   success: z.boolean(),
   calendars: z.array(googleCalendarSummarySchema),
 });
+
 export type GoogleCalendarsResult = z.infer<typeof googleCalendarsResultSchema>;
 
 // --- Command arguments ---------------------------------------------------------
@@ -189,9 +202,13 @@ export type GoogleCalendarsResult = z.infer<typeof googleCalendarsResultSchema>;
 export const upcomingEventsArgsSchema = z.tuple([
   z.number().int().positive().max(527040).optional(),
 ]);
+
 export const calendarEventArgsSchema = z.tuple([z.string().min(1)]);
+
 export const calendarSelectionArgsSchema = z.tuple([z.string().min(1), z.boolean()]);
+
 export const primaryOnlyArgsSchema = z.tuple([z.boolean()]);
+
 export const disconnectArgsSchema = z.tuple([z.string().min(1).optional()]);
 
 // --- Event payloads ------------------------------------------------------------
@@ -199,6 +216,7 @@ export const disconnectArgsSchema = z.tuple([z.string().min(1).optional()]);
 export const calendarAccountsEventSchema = z.object({
   accounts: z.array(z.object({ email: z.string() })),
 });
+
 export type CalendarAccountsEvent = z.infer<typeof calendarAccountsEventSchema>;
 
 // Synced events carry no fields; unknown keys are a malformed payload, so the
@@ -221,6 +239,7 @@ function asInt(value: unknown): number | null {
 export function projectCalendarEvent(row: unknown): CalendarEvent | null {
   if (typeof row !== "object" || row === null) return null;
   const record = row as Record<string, unknown>;
+
   const parsed = calendarEventSchema.safeParse({
     id: record.id,
     calendar_id: record.calendar_id,
@@ -240,6 +259,7 @@ export function projectCalendarEvent(row: unknown): CalendarEvent | null {
     attendees: asStringOrNull(record.attendees),
     description: asStringOrNull(record.description),
   });
+
   return parsed.success ? parsed.data : null;
 }
 
@@ -248,6 +268,7 @@ export function projectCalendarEvent(row: unknown): CalendarEvent | null {
 export function projectGoogleCalendarSummary(row: unknown): GoogleCalendarSummary | null {
   if (typeof row !== "object" || row === null) return null;
   const record = row as Record<string, unknown>;
+
   const parsed = googleCalendarSummarySchema.safeParse({
     id: record.id,
     account_email: asStringOrNull(record.account_email),
@@ -257,6 +278,7 @@ export function projectGoogleCalendarSummary(row: unknown): GoogleCalendarSummar
     is_selected: asInt(record.is_selected),
     is_primary: asInt(record.is_primary),
   });
+
   return parsed.success ? parsed.data : null;
 }
 

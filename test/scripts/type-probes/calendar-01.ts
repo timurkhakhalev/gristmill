@@ -3,7 +3,9 @@
 // @probe-origin test/scripts/calendarTypeProbe.test.js
 import { registerCalendarIntegrationHandlers } from "./src/helpers/calendarIpcHandlers.ts";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 // Missing getUpcomingEvents/getCalendarEventById and the Apple manager would
 // silently break the neutral reads; the compiler must reject the registration.

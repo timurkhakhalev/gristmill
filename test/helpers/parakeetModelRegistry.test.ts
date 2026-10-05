@@ -1,8 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const modelData = require("../../src/models/modelRegistryData.json");
+
 const { BINARIES } = require("../../scripts/download-sherpa-onnx.cts");
+
 const {
   getModelRuntime,
   getModelType,
@@ -27,7 +30,9 @@ test("Nemotron sherpa model uses the streaming runtime and bundled online server
   assert.equal(model.language, "en");
   assert.deepEqual(model.supportedLanguages, ["en"]);
 
-  for (const [platformArch, config] of Object.entries(BINARIES as Record<string, { onlineBinaryPath: string; onlineOutputName: string }>)) {
+  for (const [platformArch, config] of Object.entries(
+    BINARIES as Record<string, { onlineBinaryPath: string; onlineOutputName: string }>
+  )) {
     assert.match(config.onlineBinaryPath, /sherpa-onnx-online-websocket-server/);
     assert.match(config.onlineOutputName, new RegExp(`^sherpa-onnx-online-ws-${platformArch}`));
   }

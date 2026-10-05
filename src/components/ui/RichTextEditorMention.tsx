@@ -26,6 +26,7 @@ const suggestionRender: SuggestionOptions<
   const position = (clientRect?: (() => DOMRect | null) | null) => {
     const element = component?.element as HTMLElement | undefined;
     const rect = clientRect?.();
+
     if (!element || !rect) return;
     element.style.position = "fixed";
     element.style.zIndex = "9999";
@@ -51,8 +52,10 @@ const suggestionRender: SuggestionOptions<
     onKeyDown: (props) => {
       if (props.event.key === "Escape") {
         if (component) (component.element as HTMLElement).style.display = "none";
+
         return true;
       }
+
       return component?.ref?.onKeyDown(props.event) ?? false;
     },
     onExit: () => {
@@ -65,6 +68,7 @@ const suggestionRender: SuggestionOptions<
 
 const toSuggestionItems = (people: MentionPerson[], query: string): MentionSuggestionItem[] => {
   const q = query.toLowerCase();
+
   return people
     .filter((p) => !q || p.name.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q))
     .slice(0, 6)
@@ -92,7 +96,9 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
           priority: 100,
           getAttrs: (element) => {
             const label = (element.textContent || "").replace(/^@/, "").trim();
+
             if (!label) return false;
+
             return { label, email: parseMentionEmail(element.getAttribute("href")) };
           },
         },
@@ -101,6 +107,7 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
     renderHTML({ node, HTMLAttributes }) {
       const label = node.attrs.label as string;
       const email = node.attrs.email as string | null;
+
       return [
         "a",
         mergeAttributes(HTMLAttributes, {

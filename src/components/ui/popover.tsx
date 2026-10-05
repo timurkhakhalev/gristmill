@@ -23,6 +23,7 @@ function Popover({
   children: React.ReactNode;
 }) {
   const anchorRef = React.useRef<HTMLElement | null>(null);
+
   return (
     <AnchorContext.Provider value={anchorRef}>
       <HeroPopover isOpen={open} defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
@@ -34,17 +35,25 @@ function Popover({
 
 /** Opens the popover on press. The child must be a single focusable element. */
 function PopoverTrigger({ children }: { asChild?: boolean; children: React.ReactElement }) {
-  return <Pressable>{children as React.ReactElement<React.DOMAttributes<Element>, string>}</Pressable>;
+  return (
+    <Pressable>{children as React.ReactElement<React.DOMAttributes<Element>, string>}</Pressable>
+  );
 }
 
 /** Positions the popover against an element without making it the trigger. */
 function PopoverAnchor({ children }: { asChild?: boolean; children: React.ReactElement }) {
   const anchorRef = React.useContext(AnchorContext);
-  const child = React.Children.only(children) as React.ReactElement<{ ref?: React.Ref<HTMLElement> }>;
+
+  const child = React.Children.only(children) as React.ReactElement<{
+    ref?: React.Ref<HTMLElement>;
+  }>;
+
   const childRef = (child.props as { ref?: React.Ref<HTMLElement> }).ref;
+
   const setRef = React.useCallback(
     (node: HTMLElement | null) => {
       if (anchorRef) anchorRef.current = node;
+
       if (typeof childRef === "function") childRef(node);
       else if (childRef && typeof childRef === "object") {
         (childRef as React.RefObject<HTMLElement | null>).current = node;
@@ -52,10 +61,12 @@ function PopoverAnchor({ children }: { asChild?: boolean; children: React.ReactE
     },
     [anchorRef, childRef]
   );
+
   return React.cloneElement(child, { ref: setRef });
 }
 
 type Side = "top" | "bottom" | "left" | "right";
+
 type Align = "start" | "center" | "end";
 
 function PopoverContent({
@@ -80,7 +91,11 @@ function PopoverContent({
   // React Aria cross-axis placements are top/bottom beside a left/right popover and start/end above or below one.
   const beside = side === "left" || side === "right";
   const crossAlign = beside ? (align === "start" ? "top" : "bottom") : align;
-  const placement = (align === "center" ? side : `${side} ${crossAlign}`) as React.ComponentProps<typeof HeroPopover.Content>["placement"];
+
+  const placement = (align === "center" ? side : `${side} ${crossAlign}`) as React.ComponentProps<
+    typeof HeroPopover.Content
+  >["placement"];
+
   return (
     <HeroPopover.Content
       placement={placement}
@@ -92,7 +107,9 @@ function PopoverContent({
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       className={cn("flex min-w-[220px] flex-col p-0", OVERLAY_CLASS)}
     >
-      <HeroPopover.Dialog className={cn("min-h-0 overflow-y-auto p-2 outline-none", className)}>{children}</HeroPopover.Dialog>
+      <HeroPopover.Dialog className={cn("min-h-0 overflow-y-auto p-2 outline-none", className)}>
+        {children}
+      </HeroPopover.Dialog>
     </HeroPopover.Content>
   );
 }

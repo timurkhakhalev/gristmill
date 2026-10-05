@@ -1,6 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 test("secret settings expose values only after encrypted persistence succeeds", async (t: import("node:test").TestContext) => {
   const { storage } = installBrowserGlobals(t, {
@@ -12,15 +17,19 @@ test("secret settings expose values only after encrypted persistence succeeds", 
       },
     },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: "gristmill-secret-settings-persistence-",
     mockModules: {
-      "/services/ReasoningService": "export default class ReasoningService { static clearApiKeyCache() {} }",
+      "/services/ReasoningService":
+        "export default class ReasoningService { static clearApiKeyCache() {} }",
     },
   });
+
   const { useSettingsStore, setResolvedLLMConfig } = (await vite.ssrLoadModule(
     "/stores/settingsStore.ts"
-  ) as typeof import("../../src/stores/settingsStore.ts"));
+  )) as typeof import("../../src/stores/settingsStore.ts");
+
   const store = useSettingsStore.getState();
 
   assert.deepEqual(await store.setOpenaiApiKey("openai-secret"), { success: false });

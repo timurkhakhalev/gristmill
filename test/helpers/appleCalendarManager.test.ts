@@ -1,8 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const managerModulePath = require.resolve("../../src/helpers/appleCalendarManager.ts");
+
 const originalLoad = Module._load;
 
 function loadManager(children?: unknown[]) {
@@ -11,10 +14,15 @@ function loadManager(children?: unknown[]) {
     if (request === "electron") {
       return { app: { isPackaged: true }, BrowserWindow: { getAllWindows: () => [] } };
     }
+
     if (children && request === "child_process") return { spawn: () => children.shift() };
-    if (children && request.includes("binaryResolver")) return { resolveBundledBinary: () => "/owned-test-helper" };
+
+    if (children && request.includes("binaryResolver"))
+      return { resolveBundledBinary: () => "/owned-test-helper" };
+
     return originalLoad.call(this, request, parent, isMain);
   };
+
   try {
     return require(managerModulePath);
   } finally {
@@ -25,11 +33,14 @@ function loadManager(children?: unknown[]) {
 test("an unexpected helper exit schedules a restart while Apple Calendar is connected", () => {
   const originalPlatform = process.platform;
   Object.defineProperty(process, "platform", { value: "darwin" });
+
   try {
     const AppleCalendarManager = loadManager();
+
     const databaseManager = {
       getAppleCalendars: () => [{ id: "calendar-1" }],
     };
+
     const manager = new AppleCalendarManager(databaseManager, {});
     const child = {};
     let restartCount = 0;
@@ -72,9 +83,11 @@ test("_mapEvent falls back to a meeting link found in location or notes", () => 
 
 test("a deliberate stop prevents the exited child from scheduling a restart", () => {
   const AppleCalendarManager = loadManager();
+
   const databaseManager = {
     getAppleCalendars: () => [{ id: "calendar-1" }],
   };
+
   const manager = new AppleCalendarManager(databaseManager, {});
   const child = { kill: () => {} };
   let restartCount = 0;
@@ -92,6 +105,7 @@ test("a deliberate stop prevents the exited child from scheduling a restart", ()
 test("_mapEvent preserves EventKit availability and the current user's response", () => {
   const AppleCalendarManager = loadManager();
   const manager = new AppleCalendarManager({}, {});
+
   const mapped = manager._mapEvent({
     id: "evt-availability",
     calendar_id: "calendar-1",
@@ -107,24 +121,57 @@ test("_mapEvent preserves EventKit availability and the current user's response"
   assert.equal(mapped.self_response_status, "declined");
 });
 
-test("stdout from disconnected or replaced helpers cannot change data or pending permission", t => {
+test("stdout from disconnected or replaced helpers cannot change data or pending permission", (t) => {
   const { EventEmitter } = require("node:events");
-  const makeChild = () => Object.assign(new EventEmitter(), {
-    stdout: new EventEmitter(), stderr: new EventEmitter(), kill: () => true,
-  });
-  const old = makeChild(), replacement = makeChild();
+
+  const makeChild = () =>
+    Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      kill: () => true,
+    });
+
+  const old = makeChild(),
+    replacement = makeChild();
+
   const Apple = loadManager([old, replacement]);
   let rows: Array<{ id: string; title: string }> = [{ id: "old", title: "Old" }];
-  let writes = 0, reminders = 0;
+
+  let writes = 0,
+    reminders = 0;
+
   const db = {
     getAppleCalendars: () => rows,
-    clearAppleCalendarData: () => { rows = []; writes++; },
-    saveAppleCalendars: (calendars: typeof rows) => { rows = calendars; writes++; },
-    replaceAppleCalendarEvents: () => { writes++; }, upsertContacts() {},
+    clearAppleCalendarData: () => {
+      rows = [];
+      writes++;
+    },
+    saveAppleCalendars: (calendars: typeof rows) => {
+      rows = calendars;
+      writes++;
+    },
+    replaceAppleCalendarEvents: () => {
+      writes++;
+    },
+    upsertContacts() {},
   };
-  const manager = new Apple(db, { reset() {}, reconcileProvider() {}, scheduleNextMeeting: () => { reminders++; } });
-  t.after(() => { manager.stop(); delete require.cache[managerModulePath]; });
-  const emit = (child: typeof old, payload: unknown) => child.stdout.emit("data", Buffer.from(JSON.stringify(payload) + "\n"));
+
+  const manager = new Apple(db, {
+    reset() {},
+    reconcileProvider() {},
+    scheduleNextMeeting: () => {
+      reminders++;
+    },
+  });
+
+  t.after(() => {
+    manager.stop();
+    delete require.cache[managerModulePath];
+  });
+
+  const emit = (child: typeof old, payload: unknown) =>
+    child.stdout.emit("data", Buffer.from(JSON.stringify(payload) + "\n"));
+
   const snapshot = { type: "snapshot", calendars: [{ id: "old", title: "Old" }], events: [] };
   assert.equal(manager._spawnHelper(false), true);
   manager.disconnect();
@@ -135,7 +182,12 @@ test("stdout from disconnected or replaced helpers cannot change data or pending
   assert.deepEqual([writes, reminders], baseline);
   assert.equal(manager._spawnHelper(false), true);
   let resolved = 0;
-  manager._pendingConnect = { awaitingSnapshot: false, resolve: () => { resolved++; } };
+  manager._pendingConnect = {
+    awaitingSnapshot: false,
+    resolve: () => {
+      resolved++;
+    },
+  };
   emit(old, { type: "permission", status: "denied" });
   emit(old, snapshot);
   assert.equal(resolved, 0);

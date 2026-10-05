@@ -9,17 +9,20 @@ export const availabilityIntervalSchema = z.object({
   start: z.string(),
   end: z.string(),
 });
+
 export type AvailabilityInterval = z.infer<typeof availabilityIntervalSchema>;
 
 export const availabilitySlotSchema = availabilityIntervalSchema.extend({
   durationMinutes: z.number(),
 });
+
 export type AvailabilitySlot = z.infer<typeof availabilitySlotSchema>;
 
 export const availabilityCoverageSchema = z.object({
   source: z.literal("local-calendar-cache"),
   lookaheadDays: z.number(),
 });
+
 export type AvailabilityCoverage = z.infer<typeof availabilityCoverageSchema>;
 
 // The service projects the internal computation onto exactly these fields.
@@ -31,6 +34,7 @@ export const availabilityResultSchema = z.object({
   hasMore: z.boolean(),
   coverage: availabilityCoverageSchema,
 });
+
 export type AvailabilityResult = z.infer<typeof availabilityResultSchema>;
 
 // Discriminated wire result: success carries availability, failure an error
@@ -39,6 +43,7 @@ export const availabilityResponseSchema = z.union([
   z.object({ success: z.literal(true), availability: availabilityResultSchema }),
   z.object({ success: z.literal(false), error: z.string() }),
 ]);
+
 export type AvailabilityResponse = z.infer<typeof availabilityResponseSchema>;
 
 // The one renderer IPC channel for availability.

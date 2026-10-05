@@ -1,10 +1,10 @@
 import http from "http";
 
 const DEFAULT_DEV_SERVER_PORT = 5183;
+
 const parseDevServerPort = (): number => {
-  const raw =
-    process.env.VITE_DEV_SERVER_PORT ||
-    String(DEFAULT_DEV_SERVER_PORT);
+  const raw = process.env.VITE_DEV_SERVER_PORT || String(DEFAULT_DEV_SERVER_PORT);
+
   const parsed = Number(raw);
 
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
@@ -15,6 +15,7 @@ const parseDevServerPort = (): number => {
 };
 
 const DEV_SERVER_PORT = parseDevServerPort();
+
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}/`;
 
 export interface AppFilePathInfo {
@@ -62,8 +63,10 @@ export class DevServerManager {
       } catch {
         // Dev server not ready yet, continue waiting
       }
+
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
+
     return false;
   }
 
@@ -100,6 +103,9 @@ export class DevServerManager {
 }
 
 module.exports = DevServerManager;
+
 module.exports.DevServerManager = DevServerManager;
+
 module.exports.DEV_SERVER_PORT = DEV_SERVER_PORT;
+
 module.exports.DEV_SERVER_URL = DEV_SERVER_URL;

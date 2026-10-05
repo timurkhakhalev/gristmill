@@ -1,9 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("fs");
+
 const os = require("os");
+
 const path = require("path");
+
 const { EventEmitter } = require("events");
+
 const { PassThrough } = require("stream");
 
 function createElectronMock(response: unknown) {
@@ -13,8 +19,11 @@ function createElectronMock(response: unknown) {
       request() {
         const request = new EventEmitter();
         request.setHeader = () => {};
+
         request.abort = () => {};
+
         request.end = () => queueMicrotask(() => request.emit("response", response));
+
         return request;
       },
     },
@@ -22,7 +31,12 @@ function createElectronMock(response: unknown) {
 }
 
 type FetchInit = Parameters<typeof fetch>[1];
-type FetchImpl = (url: string, init?: FetchInit & { headers?: Record<string, string> }) => Promise<Response>;
+
+type FetchImpl = (
+  url: string,
+  init?: FetchInit & { headers?: Record<string, string> }
+) => Promise<Response>;
+
 function loadWithNetFetch(fetchImpl: FetchImpl) {
   const electronPath = require.resolve("electron");
   const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
@@ -31,10 +45,14 @@ function loadWithNetFetch(fetchImpl: FetchImpl) {
     exports: { app: { isReady: () => false }, net: { fetch: fetchImpl } },
   } as unknown as import("node:module").Module;
   delete require.cache[downloadUtilsPath];
+
   return {
-    downloadUtils: require(downloadUtilsPath) as typeof import("../../src/helpers/downloadUtils.ts"),
+    downloadUtils: require(
+      downloadUtilsPath
+    ) as typeof import("../../src/helpers/downloadUtils.ts"),
     restore() {
       delete require.cache[downloadUtilsPath];
+
       if (originalElectronCache) require.cache[electronPath] = originalElectronCache;
       else delete require.cache[electronPath];
     },
@@ -43,10 +61,13 @@ function loadWithNetFetch(fetchImpl: FetchImpl) {
 
 test("fetchJson sends the app User-Agent and returns the parsed body", async (t: import("node:test").TestContext) => {
   const calls: Array<{ url: string; init?: FetchInit & { headers?: Record<string, string> } }> = [];
+
   const { downloadUtils, restore } = loadWithNetFetch(async (url: string, init) => {
     calls.push({ url, init });
+
     return Response.json({ tag_name: "v1" });
   });
+
   t.after(restore);
 
   assert.deepEqual(await downloadUtils.fetchJson("https://example.com/release.json"), {
@@ -62,20 +83,26 @@ test("fetchJson rejects a non-2xx response even when its body is valid JSON", as
   const { downloadUtils, restore } = loadWithNetFetch(async () =>
     Response.json({ error: "Entry not found" }, { status: 404 })
   );
+
   t.after(restore);
 
   await assert.rejects(
     () => downloadUtils.fetchJson("https://example.com/missing.json"),
-    (error: unknown) => (error as { isHttpError?: boolean }).isHttpError === true && (error as { statusCode?: number }).statusCode === 404
+    (error: unknown) =>
+      (error as { isHttpError?: boolean }).isHttpError === true &&
+      (error as { statusCode?: number }).statusCode === 404
   );
 });
 
 test("fetchJson forwards caller init and keeps the User-Agent alongside caller headers", async (t: import("node:test").TestContext) => {
   const calls: Array<{ url: string; init?: FetchInit & { headers?: Record<string, string> } }> = [];
+
   const { downloadUtils, restore } = loadWithNetFetch(async (url: string, init) => {
     calls.push({ url, init });
+
     return Response.json({});
   });
+
   t.after(restore);
   const signal = new AbortController().signal;
 
@@ -86,7 +113,15 @@ test("fetchJson forwards caller init and keeps the User-Agent alongside caller h
     signal,
   });
 
-  const { init } = calls[0]! as { init: { credentials?: string; cache?: string; signal?: AbortSignal; headers?: Record<string, string> } };
+  const { init } = calls[0]! as {
+    init: {
+      credentials?: string;
+      cache?: string;
+      signal?: AbortSignal;
+      headers?: Record<string, string>;
+    };
+  };
+
   assert.equal(init.credentials, "omit");
   assert.equal(init.cache, "no-store");
   assert.equal(init.signal, signal);
@@ -113,31 +148,45 @@ test("downloadFile waits for a cancelled write stream to close before removing i
   const openStarted = new Promise<void>((resolve) => (onOpenStarted = resolve));
   const order: unknown[] = [];
 
-  require.cache[electronPath] = { exports: createElectronMock(response) } as unknown as import("node:module").Module;
+  require.cache[electronPath] = {
+    exports: createElectronMock(response),
+  } as unknown as import("node:module").Module;
   delete require.cache[downloadUtilsPath];
 
-  fs.createWriteStream = ((filePath: Parameters<typeof fs.createWriteStream>[0], options?: object) => {
+  fs.createWriteStream = ((
+    filePath: Parameters<typeof fs.createWriteStream>[0],
+    options?: object
+  ) => {
     const stream = originalCreateWriteStream(filePath, {
       ...(options ?? {}),
       fs: {
         open: (...args: unknown[]) => {
           const callback = args.at(-1);
           onOpenStarted();
-          openGate.then(() => (fs.open as (...a: unknown[]) => void)(...args.slice(0, -1), callback));
+          openGate.then(() =>
+            (fs.open as (...a: unknown[]) => void)(...args.slice(0, -1), callback)
+          );
         },
         write: fs.write.bind(fs),
         writev: fs.writev.bind(fs),
         close: fs.close.bind(fs),
       },
     });
+
     stream.once("close", () => order.push("close"));
+
     return stream;
   }) as typeof fs.createWriteStream;
 
   try {
-    const { createDownloadSignal, downloadFile }: typeof import("../../src/helpers/downloadUtils.ts") = require(downloadUtilsPath);
+    const {
+      createDownloadSignal,
+      downloadFile,
+    }: typeof import("../../src/helpers/downloadUtils.ts") = require(downloadUtilsPath);
+
     const { signal, abort } = createDownloadSignal();
     let settled: "resolved" | { isAbort?: boolean } | null = null;
+
     const done = downloadFile("https://example.com/model.bin", destination, {
       signal,
       maxRetries: 0,
@@ -151,6 +200,7 @@ test("downloadFile waits for a cancelled write stream to close before removing i
 
     await openStarted;
     abort();
+
     for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
 
     assert.equal(settled, null, "cancellation must not settle while the open is still pending");
@@ -169,6 +219,7 @@ test("downloadFile waits for a cancelled write stream to close before removing i
     fs.createWriteStream = originalCreateWriteStream;
     releaseOpen();
     delete require.cache[downloadUtilsPath];
+
     if (originalElectronCache) require.cache[electronPath] = originalElectronCache;
     else delete require.cache[electronPath];
     fs.rmSync(tempDir, { recursive: true, force: true });

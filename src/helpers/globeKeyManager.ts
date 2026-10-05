@@ -16,12 +16,16 @@ const ARCH_CPU_TYPE = {
 
 // Maximum number of rapid automatic restarts before giving up
 const MAX_RESTART_ATTEMPTS = 3;
+
 // Delay between restart attempts (ms)
 const RESTART_DELAY_MS = 1000;
+
 // After this much sustained uptime, reset restart counter (allows future restarts after sleep/wake)
 const RESTART_RESET_MS = 10000;
+
 // Crash recovery is best-effort and must never hold the rest of app startup.
 const PREFERENCE_RECOVERY_TIMEOUT_MS = 2000;
+
 const PREFERENCE_RECOVERY_TERMINATION_TIMEOUT_MS = 1000;
 
 export class GlobeKeyManager extends EventEmitter {
@@ -73,32 +77,40 @@ export class GlobeKeyManager extends EventEmitter {
 
   _sendConfiguration(): boolean {
     const child = this.process;
+
     if (!child?.stdin?.writable) {
       return false;
     }
+
     try {
       // write() returning false is backpressure, not failure.
       child.stdin.write(`${JSON.stringify(this.config)}\n`);
+
       return true;
     } catch (error) {
       debugLogger.warn("[GlobeKeyManager] Failed to send configuration", {
         error: (error as Error).message,
       });
+
       return false;
     }
   }
 
   _listenerArgs(): string[] {
     const args: string[] = [];
+
     if (this.config.mouseButtons.length > 0) {
       args.push(this.config.mouseButtons.join(","));
     }
+
     if (this.preferenceStatePath) {
       args.push("--globe-preference-state", this.preferenceStatePath);
     }
+
     if (this.config.suppressGlobeAction) {
       args.push("--suppress-system-globe-action");
     }
+
     return args;
   }
 
@@ -106,22 +118,28 @@ export class GlobeKeyManager extends EventEmitter {
     if (!this.isSupported || !this.preferenceStatePath) {
       return Promise.resolve();
     }
+
     // Local snapshot: the property can be mutated while the recovery promise
     // below is pending, and spawn's args need a stable string.
     const preferenceStatePath = this.preferenceStatePath;
+
     if (!fs.existsSync(preferenceStatePath)) {
       return Promise.resolve();
     }
 
     const listenerPath = this.resolveListenerBinary();
+
     if (!listenerPath) {
       debugLogger.warn("[GlobeKeyManager] Preference recovery skipped — binary not found");
+
       return Promise.resolve();
     }
 
     const archMismatch = this._checkArchMismatch(listenerPath);
+
     if (archMismatch) {
       debugLogger.warn("[GlobeKeyManager] Preference recovery skipped", { error: archMismatch });
+
       return Promise.resolve();
     }
 
@@ -130,19 +148,25 @@ export class GlobeKeyManager extends EventEmitter {
       let recoveryTimeout: NodeJS.Timeout | null = null;
       let terminationTimeout: NodeJS.Timeout | null = null;
       let terminationRequested = false;
+
       const finish = (error?: Error | null, code?: number | null): void => {
         if (settled) return;
         settled = true;
+
         if (recoveryTimeout) clearTimeout(recoveryTimeout);
+
         if (terminationTimeout) clearTimeout(terminationTimeout);
+
         if (error || code !== 0) {
           debugLogger.warn("[GlobeKeyManager] Preference recovery failed", {
             error: error?.message,
             code,
           });
         }
+
         resolve();
       };
+
       const blockListenerStart = (error: Error): void => {
         this._preferenceRecoveryBlocked = true;
         finish(error);
@@ -151,13 +175,10 @@ export class GlobeKeyManager extends EventEmitter {
       try {
         const child = spawn(
           listenerPath,
-          [
-            "--globe-preference-state",
-            preferenceStatePath,
-            "--restore-leftover-globe-preference",
-          ],
+          ["--globe-preference-state", preferenceStatePath, "--restore-leftover-globe-preference"],
           { stdio: "ignore" }
         );
+
         child.once("error", (error) => {
           if (terminationRequested) {
             blockListenerStart(error);
@@ -175,12 +196,15 @@ export class GlobeKeyManager extends EventEmitter {
         );
         recoveryTimeout = setTimeout(() => {
           terminationRequested = true;
+
           try {
             child.kill("SIGKILL");
           } catch (error) {
             blockListenerStart(error as Error);
+
             return;
           }
+
           if (!settled) {
             terminationTimeout = setTimeout(
               () =>
@@ -202,22 +226,28 @@ export class GlobeKeyManager extends EventEmitter {
   start(): void {
     if (!this.isSupported) {
       debugLogger.info("[GlobeKeyManager] Skipped — not macOS");
+
       return;
     }
+
     if (this._preferenceRecoveryBlocked) {
       this.reportError(
         new Error("Globe listener blocked because preference recovery could not be terminated")
       );
+
       return;
     }
+
     if (this.process) {
       debugLogger.info("[GlobeKeyManager] Skipped — already running");
+
       return;
     }
 
     this._isStopping = false;
 
     const listenerPath = this.resolveListenerBinary();
+
     if (!listenerPath) {
       debugLogger.info("[GlobeKeyManager] Binary not found in any candidate path");
       this.reportError(
@@ -225,6 +255,7 @@ export class GlobeKeyManager extends EventEmitter {
           "macOS Globe listener binary not found. Run `npm run compile:globe` before packaging."
         )
       );
+
       return;
     }
 
@@ -232,8 +263,10 @@ export class GlobeKeyManager extends EventEmitter {
 
     // Verify binary architecture matches the running process
     const archMismatch = this._checkArchMismatch(listenerPath);
+
     if (archMismatch) {
       this.reportError(new Error(archMismatch));
+
       return;
     }
 
@@ -241,12 +274,14 @@ export class GlobeKeyManager extends EventEmitter {
       fs.accessSync(listenerPath, fs.constants.X_OK);
     } catch {
       debugLogger.info("[GlobeKeyManager] Binary not executable, attempting chmod");
+
       try {
         fs.chmodSync(listenerPath, 0o755);
       } catch {
         this.reportError(
           new Error(`macOS Globe listener is not executable and chmod failed: ${listenerPath}`)
         );
+
         return;
       }
     }
@@ -270,6 +305,7 @@ export class GlobeKeyManager extends EventEmitter {
     if (this._restartResetTimer) clearTimeout(this._restartResetTimer);
     this._restartResetTimer = setTimeout(() => {
       this._restartResetTimer = null;
+
       if (this._restartCount > 0) {
         debugLogger.info("[GlobeKeyManager] Sustained uptime — restart counter reset");
         this._restartCount = 0;
@@ -291,26 +327,31 @@ export class GlobeKeyManager extends EventEmitter {
             this.emit("globe-interrupted");
           } else if (line.startsWith("RIGHT_MOD_DOWN:")) {
             const modifier = line.replace("RIGHT_MOD_DOWN:", "").trim();
+
             if (modifier) {
               this.emit("right-modifier-down", modifier);
             }
           } else if (line.startsWith("RIGHT_MOD_UP:")) {
             const modifier = line.replace("RIGHT_MOD_UP:", "").trim();
+
             if (modifier) {
               this.emit("right-modifier-up", modifier);
             }
           } else if (line.startsWith("MODIFIER_UP:")) {
             const modifier = line.replace("MODIFIER_UP:", "").trim().toLowerCase();
+
             if (modifier) {
               this.emit("modifier-up", modifier);
             }
           } else if (line.startsWith("MOUSE_BUTTON_DOWN:")) {
             const button = line.replace("MOUSE_BUTTON_DOWN:", "").trim();
+
             if (button) {
               this.emit("mouse-button-down", button);
             }
           } else if (line.startsWith("MOUSE_BUTTON_UP:")) {
             const button = line.replace("MOUSE_BUTTON_UP:", "").trim();
+
             if (button) {
               this.emit("mouse-button-up", button);
             }
@@ -321,6 +362,7 @@ export class GlobeKeyManager extends EventEmitter {
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (data: string) => {
       const message = data.toString().trim();
+
       if (message.length > 0) {
         if (message.includes("Failed to create event monitor")) {
           this.reportError(new Error(message));
@@ -333,17 +375,21 @@ export class GlobeKeyManager extends EventEmitter {
     child.on("error", (error) => {
       debugLogger.info("[GlobeKeyManager] Process error", { error: error.message });
       this.reportError(error);
+
       if (this.process === child) this.process = null;
     });
 
     child.on("exit", (code: number | null, signal: string | null) => {
       debugLogger.info("[GlobeKeyManager] Process exited", { code, signal });
+
       // Only clear instance state if this is still the current process — a prior
       // stop()+start() (e.g. a setConfiguration fallback) may have already replaced it.
       if (this.process !== child) {
         return;
       }
+
       this.process = null;
+
       if (this._restartResetTimer) {
         clearTimeout(this._restartResetTimer);
         this._restartResetTimer = null;
@@ -358,7 +404,9 @@ export class GlobeKeyManager extends EventEmitter {
         const error = new Error(
           `Globe key listener exited with code ${code ?? "null"} signal ${signal ?? "null"}`
         );
+
         this.reportError(error);
+
         return;
       }
 
@@ -392,10 +440,12 @@ export class GlobeKeyManager extends EventEmitter {
 
   stop(): void {
     this._isStopping = true;
+
     if (this._restartResetTimer) {
       clearTimeout(this._restartResetTimer);
       this._restartResetTimer = null;
     }
+
     if (this.process) {
       this.process.kill();
       this.process = null;
@@ -406,7 +456,9 @@ export class GlobeKeyManager extends EventEmitter {
     if (this.hasReportedError) {
       return;
     }
+
     this.hasReportedError = true;
+
     if (this.process) {
       try {
         this.process.kill();
@@ -416,6 +468,7 @@ export class GlobeKeyManager extends EventEmitter {
         this.process = null;
       }
     }
+
     debugLogger.error("GlobeKeyManager error", { error: error.message }, "hotkey");
     this.emit("error", error);
   }
@@ -428,18 +481,22 @@ export class GlobeKeyManager extends EventEmitter {
       fs.closeSync(fd);
 
       const magic = header.readUInt32LE(0);
+
       if (magic !== 0xfeedfacf) {
         return `Globe listener binary is not a valid 64-bit Mach-O file (magic: 0x${magic.toString(16)})`;
       }
 
       const cpuType = header.readInt32LE(4);
       const expectedCpu = ARCH_CPU_TYPE[process.arch as "arm64" | "x64"];
+
       if (expectedCpu && cpuType !== expectedCpu) {
         const archNames: Record<number, string> = {
           [ARCH_CPU_TYPE.arm64]: "arm64",
           [ARCH_CPU_TYPE.x64]: "x86_64",
         };
+
         const binaryArch = archNames[cpuType] || `unknown(0x${cpuType.toString(16)})`;
+
         return (
           `Globe listener binary architecture mismatch: binary is ${binaryArch} ` +
           `but this Mac requires ${process.arch}. The app may have been built incorrectly. ` +
@@ -451,11 +508,13 @@ export class GlobeKeyManager extends EventEmitter {
         arch: process.arch,
         cpuType: `0x${cpuType.toString(16)}`,
       });
+
       return null;
     } catch (err) {
       debugLogger.warn("[GlobeKeyManager] Could not verify binary architecture", {
         error: (err as Error).message,
       });
+
       // Don't block startup on verification failure — let spawn attempt proceed
       return null;
     }
@@ -489,6 +548,7 @@ export class GlobeKeyManager extends EventEmitter {
     for (const candidate of candidatePaths) {
       try {
         const stats = fs.statSync(candidate);
+
         if (stats.isFile()) {
           return candidate;
         }
@@ -502,4 +562,5 @@ export class GlobeKeyManager extends EventEmitter {
 }
 
 module.exports = GlobeKeyManager;
+
 module.exports.GlobeKeyManager = GlobeKeyManager;

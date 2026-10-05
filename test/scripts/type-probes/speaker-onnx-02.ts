@@ -3,7 +3,9 @@
 // @probe-origin test/scripts/speakerOnnxTypeProbe.test.js
 import { registerSpeakerHandlers } from "./src/helpers/speakerIpcHandlers.ts";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerSpeakerHandlers(ipcMain, {
   databaseManager: {

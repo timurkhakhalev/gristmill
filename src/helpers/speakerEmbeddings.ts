@@ -1,7 +1,11 @@
 const fs = require("fs");
+
 const path = require("path");
+
 const debugLogger = require("./debugLogger.js");
+
 const { getModelsDirForService } = require("./modelDirUtils.js");
+
 import type { OnnxWorkerClient } from "./onnxWorkerClient.js";
 import type { SpeakerExtractResult } from "../contracts/onnxWorker.js";
 
@@ -9,11 +13,17 @@ import type { SpeakerExtractResult } from "../contracts/onnxWorker.js";
 const onnxWorkerClient = require("./onnxWorkerClient.js") as OnnxWorkerClient;
 
 export const SAMPLE_RATE = 16000;
+
 export const EMBEDDING_DIM = 512;
+
 export const MIN_SEGMENT_SECONDS = 1.5;
+
 export const MIN_SEGMENT_SAMPLES = SAMPLE_RATE * MIN_SEGMENT_SECONDS;
+
 export const MAX_EMBEDDING_SECONDS = 8;
+
 export const MAX_EMBEDDING_SAMPLES = SAMPLE_RATE * MAX_EMBEDDING_SECONDS;
+
 const MODEL_FILE = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
 
 export class SpeakerEmbeddings {
@@ -26,6 +36,7 @@ export class SpeakerEmbeddings {
   getModelPath(): string {
     if (process.resourcesPath) {
       const bundledPath = path.join(process.resourcesPath, "bin", "diarization-models", MODEL_FILE);
+
       if (fs.existsSync(bundledPath)) {
         return bundledPath;
       }
@@ -40,11 +51,13 @@ export class SpeakerEmbeddings {
 
   _ensureLoaded(): Promise<unknown> {
     if (this.loadPromise) return this.loadPromise;
+
     if (!this.isAvailable()) {
       return Promise.reject(
         new Error(`Speaker embedding model not found at ${this.getModelPath()}`)
       );
     }
+
     const modelPath = this.getModelPath();
     debugLogger.debug("speaker-embeddings loading model", { modelPath });
     this.loadPromise = onnxWorkerClient
@@ -54,6 +67,7 @@ export class SpeakerEmbeddings {
         this.loadPromise = null;
         throw err;
       });
+
     return this.loadPromise;
   }
 
@@ -71,19 +85,26 @@ export class SpeakerEmbeddings {
     })) as SpeakerExtractResult;
 
     if (!embeddingBuffer) return null;
+
     return new Float32Array(embeddingBuffer);
   }
 
   async extractEmbeddingFromSamples(samples: Float32Array): Promise<Float32Array | null> {
     if (samples.length < MIN_SEGMENT_SAMPLES) return null;
+
     const capped =
       samples.length > MAX_EMBEDDING_SAMPLES
         ? samples.subarray(samples.length - MAX_EMBEDDING_SAMPLES)
         : samples;
+
     return this._extractEmbeddingFromSamples(capped);
   }
 
-  async extractEmbedding(wavPath: string, startSec: number, endSec: number): Promise<Float32Array | null> {
+  async extractEmbedding(
+    wavPath: string,
+    startSec: number,
+    endSec: number
+  ): Promise<Float32Array | null> {
     if (endSec - startSec < MIN_SEGMENT_SECONDS) return null;
 
     const buf = fs.readFileSync(wavPath);
@@ -101,6 +122,7 @@ export class SpeakerEmbeddings {
 
     for (let i = 0; i < numSamples; i++) {
       const bytePos = offset + i * bytesPerSample;
+
       if (bytePos + 1 >= buf.length) break;
       const int16 = buf.readInt16LE(bytePos);
       samples[i] = int16 / 32768;
@@ -135,14 +157,17 @@ export class SpeakerEmbeddings {
     if (embeddings.length === 0) return new Float32Array(EMBEDDING_DIM);
 
     const centroid = new Float32Array(EMBEDDING_DIM);
+
     for (const emb of embeddings) {
       for (let i = 0; i < EMBEDDING_DIM; i++) {
         centroid[i] += emb[i];
       }
     }
+
     for (let i = 0; i < EMBEDDING_DIM; i++) {
       centroid[i] /= embeddings.length;
     }
+
     return centroid;
   }
 
@@ -150,17 +175,23 @@ export class SpeakerEmbeddings {
     let dot = 0;
     let normA = 0;
     let normB = 0;
+
     for (let i = 0; i < a.length; i++) {
       dot += a[i] * b[i];
       normA += a[i] * a[i];
       normB += b[i] * b[i];
     }
+
     const denom = Math.sqrt(normA) * Math.sqrt(normB);
+
     return denom === 0 ? 0 : dot / denom;
   }
 }
 
 const instance = new SpeakerEmbeddings();
+
 module.exports = instance;
+
 module.exports.SpeakerEmbeddings = SpeakerEmbeddings;
+
 module.exports.MAX_EMBEDDING_SECONDS = MAX_EMBEDDING_SECONDS;

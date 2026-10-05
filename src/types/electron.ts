@@ -64,7 +64,8 @@ export interface DictationRealtimeSessionOptions {
 export type NoteRecordingConfigFailure = { success: false } & PolicyFailureMetadata;
 
 export type NoteRecordingConfigResult =
-  { success: true; providers: NoteRecordingProvider[] } | NoteRecordingConfigFailure;
+  | { success: true; providers: NoteRecordingProvider[] }
+  | NoteRecordingConfigFailure;
 
 export type TranscriptionErrorCode =
   | "TIMEOUT"
@@ -104,7 +105,6 @@ export interface ActiveAccountScope {
   accountId: string;
   authGeneration: number;
 }
-
 
 // NoteItem and the Notes IPC surface live in src/contracts/notes.ts; import
 // from there instead of re-adding row/cloud-era fields here.
@@ -248,8 +248,13 @@ export interface AudioDiagnosticsResult {
 }
 
 export type SystemAudioMode = "native" | "loopback" | "portal" | "unsupported";
+
 export type SystemAudioStrategy =
-  "native" | "loopback" | "pipewire-loopback" | "wasapi-loopback" | "unsupported";
+  | "native"
+  | "loopback"
+  | "pipewire-loopback"
+  | "wasapi-loopback"
+  | "unsupported";
 
 export interface SystemAudioAccessResult {
   granted: boolean;
@@ -449,13 +454,21 @@ export interface ConversationCreateAckResult {
 }
 
 export type OnboardingDemoKind = "dictation" | "assistant";
+
 /**
  * "partial" streams the transcript, "processing" carries the final transcript,
  * "replying" streams the assistant demo's reply, and "level" mirrors the
  * microphone level while listening.
  */
 export type OnboardingDemoStatus =
-  "listening" | "level" | "processing" | "partial" | "replying" | "success" | "error";
+  | "listening"
+  | "level"
+  | "processing"
+  | "partial"
+  | "replying"
+  | "success"
+  | "error";
+
 export interface OnboardingDemoEvent {
   demoId: string;
   kind: OnboardingDemoKind;
@@ -474,7 +487,6 @@ declare global {
       // Onboarding/window controls, credentials, hotkeys, language, logging,
       // clipboard, permissions, cleanup and app metadata come from the shared
       // DesktopSettingsApi contract.
-
 
       // Vocabulary operations come from the shared VocabularyApi contract
       // (six renderer operations + the two subscriptions); dictionary export
@@ -497,7 +509,6 @@ declare global {
       // contract (three operations + the progress subscription).
       onFolderDeleted?: (callback: (payload: { id: number }) => void) => () => void;
 
-
       // Audio
 
       // Whisper/Parakeet model lifecycle (downloads, status, servers, VAD
@@ -510,8 +521,6 @@ declare global {
       // Local/Anthropic/enterprise one-shot reasoning, the Bedrock cleanup
       // cancel and the enterprise stream lifecycle come from the shared
       // ReasoningApi contract.
-
-
 
       // Globe key listener for hotkey capture (macOS only)
       onGlobeKeyPressed?: (callback: () => void) => () => void;
@@ -528,7 +537,9 @@ declare global {
 
       // Settings shortcut (Cmd+, / Ctrl+,)
       onShowSettings?: (callback: () => void) => () => void;
-      onTrayOpenEvent?: (callback: (event: import("../contracts/calendar").CalendarEvent) => void) => () => void;
+      onTrayOpenEvent?: (
+        callback: (event: import("../contracts/calendar").CalendarEvent) => void
+      ) => () => void;
       onTrayNewNote?: (callback: () => void) => () => void;
       onAccessibilityMissing?: (callback: () => void) => () => void;
 
@@ -560,14 +571,32 @@ declare global {
       // Google Calendar commands/events live in the shared
       // CalendarIntegrationApi contract (availability has its own bridge).
 
-
-
       // Meeting transcription, detection, auto-end, notification and
       // note-navigation operations/events come from the shared
       // MeetingCoordinatorApi contract. register-meeting-hotkey lives there
       // too (its handler moved to the typed meetingHotkeyIpcHandler owner).
-
-      } & NotesApi & UrlDownloadApi & VocabularyApi & ContainersApi & ChatPersistenceApi & ActionsApi & LocalFileTranscriptionApi & CalendarAvailabilityApi & UploadTranscriptionApi & ReasoningApi & BbApi & CalendarIntegrationApi & NoteFilesApi & LocalModelLifecycleApi & LocalLlmModelsApi & SpeakerApi & TranscriptionExecutionApi & TranscriptionDataApi & DesktopSettingsApi & MeetingCoordinatorApi & MeetingProcessingApi & MeetingCompanionApi;
+    } & NotesApi &
+      UrlDownloadApi &
+      VocabularyApi &
+      ContainersApi &
+      ChatPersistenceApi &
+      ActionsApi &
+      LocalFileTranscriptionApi &
+      CalendarAvailabilityApi &
+      UploadTranscriptionApi &
+      ReasoningApi &
+      BbApi &
+      CalendarIntegrationApi &
+      NoteFilesApi &
+      LocalModelLifecycleApi &
+      LocalLlmModelsApi &
+      SpeakerApi &
+      TranscriptionExecutionApi &
+      TranscriptionDataApi &
+      DesktopSettingsApi &
+      MeetingCoordinatorApi &
+      MeetingProcessingApi &
+      MeetingCompanionApi;
 
     api?: {
       sendDebugLog: (message: string) => void;

@@ -2,7 +2,9 @@ import { cn } from "../lib/utils";
 
 /** Placeholder block shaped like content that is still loading. */
 export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden="true" className={cn("animate-pulse rounded-md bg-foreground/6", className)} />;
+  return (
+    <div aria-hidden="true" className={cn("animate-pulse rounded-md bg-foreground/6", className)} />
+  );
 }
 
 /** Entry for content that replaces a skeleton: a short fade with a slight rise. */

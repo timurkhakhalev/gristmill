@@ -10,17 +10,21 @@ const root = fileURLToPath(new URL('.', import.meta.url))
 
 test('copied consumer enforces policy and supports narrow exceptions', () => {
   const consumer = mkdtempSync(join(tmpdir(), 'typescript-policy-consumer-'))
+
   try {
     cpSync(join(root, 'plugin'), join(consumer, 'plugin'), { recursive: true })
     cpSync(join(root, '.oxlintrc.json'), join(consumer, '.oxlintrc.json'))
     cpSync(join(root, '.oxfmtrc.json'), join(consumer, '.oxfmtrc.json'))
     writeFileSync(join(consumer, 'package.json'), '{"type":"module"}')
     symlinkSync(join(root, 'node_modules'), join(consumer, 'node_modules'), 'dir')
+
     const run = (tool, args) => {
       const result = spawnSync(join(root, 'node_modules/.bin', tool), args, { cwd: consumer, encoding: 'utf8', timeout: 20000 })
       assert.ifError(result.error)
+
       return { status: result.status, output: result.stdout + result.stderr }
     }
+
     const cases = [
       ['export function bad(value: string | number) { return typeof value === "number" }', 'no-runtime-typeof'],
       ['export function bad(value: unknown) { return value }', 'no-unknown-parameters'],
@@ -38,12 +42,14 @@ test('copied consumer enforces policy and supports narrow exceptions', () => {
       ['export const items = [1, 2].reduce<number[]>((acc, item) => [...acc, item], [])', 'no-accumulating-spread'],
       ['export function first() { return 1 }\nexport function second() { return 2 }', 'require-readable-spacing'],
     ]
+
     for (const [source, rule] of cases) {
       writeFileSync(join(consumer, 'sample.ts'), source)
       const result = run('oxlint', ['sample.ts'])
       assert.equal(result.status, 1, `${rule}: ${result.output}`)
       assert.ok(result.output.includes(rule), `${rule}: ${result.output}`)
     }
+
     const allowed = `export function isNumber(value: string | number): value is number {\n  return typeof value === 'number'\n}\n\nexport const browserAvailable = typeof document !== 'undefined'\n\nexport const kind = 'ready' as const\n\nexport function checked(value: string | number): string {\n  if (isNumber(value)) throw new Error('Expected string')\n\n  // SAFETY: the preceding guard rejects numbers from this string | number union.\n  return value as string\n}\n`
     writeFileSync(join(consumer, 'sample.ts'), allowed)
     const accepted = run('oxlint', ['sample.ts'])
@@ -61,13 +67,16 @@ test('copied consumer enforces policy and supports narrow exceptions', () => {
     writeFileSync(join(consumer, 'other-input.ts'), parser)
     assert.ok(run('oxlint', ['other-input.ts']).output.includes('no-unknown-parameters'))
     writeFileSync(join(consumer, 'sample.ts'), 'export function one(){return 1}\nexport function two(){return 2}\n')
+
     for (let pass = 0; pass < 2; pass++) {
       assert.equal(run('oxlint', ['sample.ts', '--fix']).status, 0)
       assert.equal(run('oxfmt', ['sample.ts', '--write']).status, 0)
       const output = readFileSync(join(consumer, 'sample.ts'), 'utf8')
+
       if (pass === 0) writeFileSync(join(consumer, 'expected.txt'), output)
       else assert.equal(output, readFileSync(join(consumer, 'expected.txt'), 'utf8'))
     }
+
     assert.equal(run('oxlint', ['sample.ts']).status, 0)
     mkdirSync(join(consumer, 'tools/quality'), { recursive: true })
     cpSync(join(root, 'plugin'), join(consumer, 'tools/quality/plugin'), { recursive: true })

@@ -30,7 +30,10 @@ export const diarizationDownloadProgressEventSchema = z.object({
   error: z.string().optional(),
   code: z.string().optional(),
 });
-export type DiarizationDownloadProgressEvent = z.infer<typeof diarizationDownloadProgressEventSchema>;
+
+export type DiarizationDownloadProgressEvent = z.infer<
+  typeof diarizationDownloadProgressEventSchema
+>;
 
 /** The best-known name and photo for an email (locally linked name first, then Google People and calendar names). */
 export interface ContactProfile {
@@ -103,7 +106,10 @@ export interface CancelDiarizationResult {
 
 export interface SpeakerApi {
   searchContacts(query: string): Promise<{ success: boolean; contacts: SpeakerContact[] }>;
-  upsertContact(contact: { email: string; displayName?: string | null }): Promise<{ success: boolean }>;
+  upsertContact(contact: {
+    email: string;
+    displayName?: string | null;
+  }): Promise<{ success: boolean }>;
   getContactProfiles(emails: string[]): Promise<ContactProfile[]>;
   getSpeakerMappings(noteId: number): Promise<SpeakerMappingEntry[]>;
   setSpeakerMapping(

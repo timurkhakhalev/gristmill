@@ -1,8 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const managerModulePath = require.resolve("../../src/helpers/googleCalendarManager.ts");
+
 const originalLoad = Module._load;
 
 test("getConnectionStatus reports Google OAuth registration state", () => {
@@ -11,11 +14,13 @@ test("getConnectionStatus reports Google OAuth registration state", () => {
   const previousSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
   delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
   delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+
   try {
     const manager = new GoogleCalendarManager({ getGoogleAccounts: () => [] }, null, {
       scheduleNextMeeting: () => {},
       reset: () => {},
     });
+
     assert.equal(manager.getConnectionStatus().configured, false);
     process.env.GOOGLE_CALENDAR_CLIENT_ID = "client-id";
     assert.equal(manager.getConnectionStatus().configured, false);
@@ -24,6 +29,7 @@ test("getConnectionStatus reports Google OAuth registration state", () => {
   } finally {
     if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
     else process.env.GOOGLE_CALENDAR_CLIENT_ID = previousId;
+
     if (previousSecret === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
     else process.env.GOOGLE_CALENDAR_CLIENT_SECRET = previousSecret;
   }
@@ -36,25 +42,31 @@ test("Google desktop OAuth exchanges and refreshes tokens with its client secret
   const previousSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
   process.env.GOOGLE_CALENDAR_CLIENT_ID = "desktop-client-id";
   process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "desktop-client-secret";
+
   try {
     const oauth = new GoogleCalendarOAuth({});
     const requests: Array<{ url: string; params: URLSearchParams }> = [];
     oauth._httpsPost = async (url: string, body: unknown) => {
       requests.push({ url, params: new URLSearchParams(body as Record<string, string>) });
+
       return {};
     };
+
     await oauth.exchangeCodeForTokens("auth-code", "http://127.0.0.1/callback", "verifier");
     await oauth.refreshAccessToken("refresh-token");
     assert.equal(requests.length, 2);
+
     for (const { params } of requests) {
       assert.equal(params.get("client_id"), "desktop-client-id");
       assert.equal(params.get("client_secret"), "desktop-client-secret");
     }
+
     assert.equal(requests[0].params.get("code_verifier"), "verifier");
     assert.equal(requests[1].params.get("refresh_token"), "refresh-token");
   } finally {
     if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_ID;
     else process.env.GOOGLE_CALENDAR_CLIENT_ID = previousId;
+
     if (previousSecret === undefined) delete process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
     else process.env.GOOGLE_CALENDAR_CLIENT_SECRET = previousSecret;
   }
@@ -66,8 +78,10 @@ function loadManagerModule() {
     if (request === "electron") {
       return { net: {}, BrowserWindow: { getAllWindows: () => [] } };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
+
   try {
     return require(managerModulePath);
   } finally {
@@ -88,7 +102,9 @@ test("_syncCalendar fetches all pages when nextPageToken is returned", async () 
     removeStaleCalendarEvents: (provider: string, calendarId: string, keptIds: string[]) => {
       prunedEventsMap.push({ provider, calendarId, keptIds });
     },
-    upsertCalendarEvents: (events: import("../../src/helpers/database.js").CalendarEventInput[]) => {
+    upsertCalendarEvents: (
+      events: import("../../src/helpers/database.js").CalendarEventInput[]
+    ) => {
       upsertedEvents.push(...events);
     },
     removeCalendarEvents: () => {},
@@ -108,6 +124,7 @@ test("_syncCalendar fetches all pages when nextPageToken is returned", async () 
   const apiCalls: Array<{ path: string; email: string }> = [];
   manager._apiGet = async (path: string, email: string) => {
     apiCalls.push({ path, email });
+
     if (!path.includes("pageToken=")) {
       return {
         items: [
@@ -122,6 +139,7 @@ test("_syncCalendar fetches all pages when nextPageToken is returned", async () 
         nextPageToken: "token-page-2",
       };
     }
+
     if (path.includes("pageToken=token-page-2")) {
       return {
         items: [
@@ -130,6 +148,7 @@ test("_syncCalendar fetches all pages when nextPageToken is returned", async () 
         nextSyncToken: "sync-token-final",
       };
     }
+
     throw new Error(`Unexpected path: ${path}`);
   };
 
@@ -139,6 +158,7 @@ test("_syncCalendar fetches all pages when nextPageToken is returned", async () 
   assert.equal(apiCalls.length, 2, "should make 2 API calls for 2 pages");
   const firstPageParams = new URL(apiCalls[0].path, "https://www.googleapis.com").searchParams;
   const secondPageParams = new URL(apiCalls[1].path, "https://www.googleapis.com").searchParams;
+
   for (const name of ["singleEvents", "orderBy", "timeMin", "timeMax"]) {
     assert.equal(
       secondPageParams.get(name),
@@ -146,6 +166,7 @@ test("_syncCalendar fetches all pages when nextPageToken is returned", async () 
       `should preserve ${name} across pages`
     );
   }
+
   assert.equal(secondPageParams.get("pageToken"), "token-page-2");
   assert.equal(upsertedEvents.length, 2, "should upsert events from both pages");
   assert.equal(upsertedEvents[0]!.id, "event-1");
@@ -172,15 +193,18 @@ test("_syncCalendar preserves incremental sync parameters across pages", async (
     updateCalendarSyncToken: () => {},
     upsertContacts: () => {},
   };
+
   const reminderScheduler = {
     scheduleNextMeeting: () => {},
     reset: () => {},
   };
+
   const manager = new GoogleCalendarManager(databaseManager, null, reminderScheduler);
 
   const apiCalls: Array<{ path: string; email: string }> = [];
   manager._apiGet = async (path: string, email: string) => {
     apiCalls.push({ path, email });
+
     return apiCalls.length === 1
       ? { items: [], nextPageToken: "token-page-2" }
       : { items: [], nextSyncToken: "sync-token-final" };
@@ -207,6 +231,7 @@ test("_syncCalendar discards an expired sync token and re-runs a full window syn
   const GoogleCalendarManager = loadManagerModule();
 
   let savedToken = null;
+
   const databaseManager = {
     getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
@@ -218,12 +243,14 @@ test("_syncCalendar discards an expired sync token and re-runs a full window syn
     },
     upsertContacts: () => {},
   };
+
   const reminderScheduler = { scheduleNextMeeting: () => {}, reset: () => {} };
   const manager = new GoogleCalendarManager(databaseManager, null, reminderScheduler);
 
   const apiCalls: Array<{ path: string; email: string }> = [];
   manager._apiGet = async (path: string) => {
     apiCalls.push({ path, email: "" });
+
     return { items: [], nextSyncToken: "sync-token-fresh" };
   };
 
@@ -250,6 +277,7 @@ test("_syncCalendar keeps the stored expiry when an incremental sync reuses the 
   const GoogleCalendarManager = loadManagerModule();
 
   let savedToken = null;
+
   const databaseManager = {
     getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
@@ -261,6 +289,7 @@ test("_syncCalendar keeps the stored expiry when an incremental sync reuses the 
     },
     upsertContacts: () => {},
   };
+
   const reminderScheduler = { scheduleNextMeeting: () => {}, reset: () => {} };
   const manager = new GoogleCalendarManager(databaseManager, null, reminderScheduler);
 
@@ -287,6 +316,7 @@ test("_syncCalendar keeps the stored expiry when an incremental sync reuses the 
 // must return an explicit whole-pass outcome.
 test("syncEvents reports a full failure when every calendar errors", async () => {
   const GoogleCalendarManager = loadManagerModule();
+
   const databaseManager = {
     getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
@@ -300,10 +330,12 @@ test("syncEvents reports a full failure when every calendar errors", async () =>
     updateCalendarSyncToken: () => {},
     upsertContacts: () => {},
   };
+
   const manager = new GoogleCalendarManager(databaseManager, null, {
     scheduleNextMeeting: () => {},
     reset: () => {},
   });
+
   manager._apiGet = async () => {
     throw new Error("provider down");
   };
@@ -321,6 +353,7 @@ test("syncEvents reports a full failure when every calendar errors", async () =>
 test("syncEvents keeps successful updates and reports a partial outcome", async () => {
   const GoogleCalendarManager = loadManagerModule();
   const upsertedIds: string[] = [];
+
   const databaseManager = {
     getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
@@ -336,12 +369,15 @@ test("syncEvents keeps successful updates and reports a partial outcome", async 
     updateCalendarSyncToken: () => {},
     upsertContacts: () => {},
   };
+
   const manager = new GoogleCalendarManager(databaseManager, null, {
     scheduleNextMeeting: () => {},
     reset: () => {},
   });
+
   manager._apiGet = async (path: string) => {
     if (path.includes("/calendars/cal-bad/")) throw new Error("calendar b failed");
+
     return {
       items: [
         {
@@ -366,6 +402,7 @@ test("syncEvents keeps successful updates and reports a partial outcome", async 
 
 test("syncEvents reports a clean outcome when every calendar succeeds", async () => {
   const GoogleCalendarManager = loadManagerModule();
+
   const databaseManager = {
     getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
@@ -376,10 +413,12 @@ test("syncEvents reports a clean outcome when every calendar succeeds", async ()
     updateCalendarSyncToken: () => {},
     upsertContacts: () => {},
   };
+
   const manager = new GoogleCalendarManager(databaseManager, null, {
     scheduleNextMeeting: () => {},
     reset: () => {},
   });
+
   manager._apiGet = async () => ({ items: [], nextSyncToken: "token" });
 
   assert.deepEqual(await manager.syncEvents(), {
@@ -394,21 +433,26 @@ test("_syncCalendar preserves meeting links from Google event location and descr
   const GoogleCalendarManager = loadManagerModule();
 
   const upsertedEvents: import("../../src/helpers/database.js").CalendarEventInput[] = [];
+
   const databaseManager = {
     getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
     getGoogleAccounts: () => [],
     removeStaleCalendarEvents: () => {},
-    upsertCalendarEvents: (events: import("../../src/helpers/database.js").CalendarEventInput[]) => {
+    upsertCalendarEvents: (
+      events: import("../../src/helpers/database.js").CalendarEventInput[]
+    ) => {
       upsertedEvents.push(...events);
     },
     removeCalendarEvents: () => {},
     updateCalendarSyncToken: () => {},
     upsertContacts: () => {},
   };
+
   const reminderScheduler = {
     scheduleNextMeeting: () => {},
     reset: () => {},
   };
+
   const manager = new GoogleCalendarManager(databaseManager, null, reminderScheduler);
 
   manager._apiGet = async () => ({

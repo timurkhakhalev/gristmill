@@ -4,10 +4,38 @@ import { cn } from "../lib/utils";
 import { FOLDER_COLOR_HEX } from "./folderColors";
 
 const EMOJI = [
-  "📄", "📝", "📓", "📚", "📌", "⭐", "🔥", "💡",
-  "🎯", "🚀", "💼", "📅", "📞", "🎙️", "👥", "🤝",
-  "💬", "📈", "💰", "🧾", "🛠️", "🧪", "🔒", "🏠",
-  "🎨", "🎬", "🎧", "✈️", "🌍", "❤️", "✅", "⚠️",
+  "📄",
+  "📝",
+  "📓",
+  "📚",
+  "📌",
+  "⭐",
+  "🔥",
+  "💡",
+  "🎯",
+  "🚀",
+  "💼",
+  "📅",
+  "📞",
+  "🎙️",
+  "👥",
+  "🤝",
+  "💬",
+  "📈",
+  "💰",
+  "🧾",
+  "🛠️",
+  "🧪",
+  "🔒",
+  "🏠",
+  "🎨",
+  "🎬",
+  "🎧",
+  "✈️",
+  "🌍",
+  "❤️",
+  "✅",
+  "⚠️",
 ];
 
 /** Curated emoji grid for naming a note or folder; the pick is the stored icon itself. */
@@ -24,6 +52,7 @@ export function EmojiIconGrid({
   onColorSelect?: (color: string | null) => void;
 }) {
   const { t } = useTranslation();
+
   return (
     <div className="flex w-56 flex-col gap-2">
       <div className="grid grid-cols-8 gap-0.5">
@@ -44,7 +73,11 @@ export function EmojiIconGrid({
         ))}
       </div>
       {onColorSelect && (
-        <div role="group" aria-label={t("notes.context.folderColor")} className="flex items-center gap-1.5 px-0.5">
+        <div
+          role="group"
+          aria-label={t("notes.context.folderColor")}
+          className="flex items-center gap-1.5 px-0.5"
+        >
           {Object.entries(FOLDER_COLOR_HEX).map(([name, hex]) => (
             <button
               key={name}

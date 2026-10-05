@@ -5,11 +5,19 @@
 // model-list candidate ordering. Pins the equivalence the connection test
 // now relies on by importing the shared helpers directly.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const providerTest: typeof import("../../src/helpers/providerConnectionTest.ts") = require("../../src/helpers/providerConnectionTest.ts");
-const { isSecureHttpEndpoint }: typeof import("../../src/utils/urlUtils.ts") = require("../../src/utils/urlUtils.ts");
-const { normalizeBaseUrl, getModelListBaseCandidates }: typeof import("../../src/config/constants.mts") = require("../../src/config/constants.mts");
+
+const {
+  isSecureHttpEndpoint,
+}: typeof import("../../src/utils/urlUtils.ts") = require("../../src/utils/urlUtils.ts");
+
+const {
+  normalizeBaseUrl,
+  getModelListBaseCandidates,
+}: typeof import("../../src/config/constants.mts") = require("../../src/config/constants.mts");
 
 const BASE_URLS = [
   "https://api.example.com/v1",
@@ -58,6 +66,7 @@ test("secure-host policy agrees on private/public HTTP across the matrix", () =>
     ["ftp://api.example.com", false],
     ["not a url", false],
   ];
+
   for (const [url, expected] of expectations) {
     assert.equal(isSecureHttpEndpoint(url), expected, url);
   }
@@ -69,26 +78,43 @@ test("normalizeBaseUrl and candidates agree across suffixes and decorators", () 
     ["https://api.example.com/v1/models", "https://api.example.com/v1"],
     ["https://api.example.com/v1/audio/transcriptions", "https://api.example.com/v1"],
     ["https://api.example.com/v1/responses", "https://api.example.com/v1"],
-    ["https://api.example.com/v1/chat/completions?api-version=2025-03-01-preview", "https://api.example.com/v1?api-version=2025-03-01-preview"],
+    [
+      "https://api.example.com/v1/chat/completions?api-version=2025-03-01-preview",
+      "https://api.example.com/v1?api-version=2025-03-01-preview",
+    ],
     ["  https://api.example.com/v1/  ", "https://api.example.com/v1"],
   ]) {
     assert.equal(normalizeBaseUrl(url), expected, url);
   }
+
   // Every candidate ends in a bare base; /models endpoints are derived from it.
   for (const url of BASE_URLS) {
     for (const candidate of getModelListBaseCandidates(url)) {
-      assert.ok(!/\/(models|chat\/completions|responses)$/.test(candidate), `${url} → ${candidate}`);
+      assert.ok(
+        !/\/(models|chat\/completions|responses)$/.test(candidate),
+        `${url} → ${candidate}`
+      );
     }
   }
 });
 
 test("resolveProviderRequest custom endpoints honor the same private-HTTP rule", () => {
-  const lan = providerTest.resolveProviderRequest({ provider: "custom", baseUrl: "http://10.0.0.5:8080/v1", apiKey: "k" });
+  const lan = providerTest.resolveProviderRequest({
+    provider: "custom",
+    baseUrl: "http://10.0.0.5:8080/v1",
+    apiKey: "k",
+  });
+
   assert.equal(lan.endpoints.length > 0, true);
   assert.match(lan.endpoints[0], /^http:\/\/10\.0\.0\.5:8080\/v1\/models$/);
 
   assert.throws(
-    () => providerTest.resolveProviderRequest({ provider: "custom", baseUrl: "http://api.example.com/v1", apiKey: "k" }),
+    () =>
+      providerTest.resolveProviderRequest({
+        provider: "custom",
+        baseUrl: "http://api.example.com/v1",
+        apiKey: "k",
+      }),
     /Public endpoints must use HTTPS/
   );
 });

@@ -1,12 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const {
   createRendererServer,
   installBrowserGlobals,
   reloadSettingsStore,
 } = require("../lib/rendererTestHarness.ts");
 
-const modelRegistryData = require("../../src/models/modelRegistryData.json") as typeof import("../../src/models/modelRegistryData.json");
+const modelRegistryData =
+  require("../../src/models/modelRegistryData.json") as typeof import("../../src/models/modelRegistryData.json");
 
 // Groq retired qwen3-32b and both Llamas on 2026-08-16. The registry entries
 // are gone, so a persisted scope selection would 404 on every request until
@@ -21,6 +24,7 @@ test("retired groq model selections migrate to served replacements", async (t: i
   );
 
   const { storage } = installBrowserGlobals(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-retired-groq-models-test-",
   });

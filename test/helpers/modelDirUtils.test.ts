@@ -1,8 +1,13 @@
 const assert = require("assert");
+
 const fs = require("fs");
+
 const os = require("os");
+
 const path = require("path");
+
 const Module = require("node:module");
+
 const { describe, it, beforeEach, afterEach }: typeof import("node:test") = require("node:test");
 
 describe("modelDirUtils cache policy (#1279, #1399)", () => {
@@ -14,7 +19,11 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
 
   function loadFresh(homeDir: unknown) {
     mockedHome = homeDir;
-    Module._load = function loadWithElectronStub(request: string, parent: unknown, isMain: boolean) {
+    Module._load = function loadWithElectronStub(
+      request: string,
+      parent: unknown,
+      isMain: boolean
+    ) {
       if (request === "electron") {
         return {
           app: {
@@ -23,10 +32,13 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
           },
         };
       }
+
       return originalLoad.call(this, request, parent, isMain);
     };
+
     const resolved = require.resolve("../../src/helpers/modelDirUtils");
     delete require.cache[resolved];
+
     return require("../../src/helpers/modelDirUtils");
   }
 
@@ -41,6 +53,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const redirectedProfile = path.join(tempRoot, "RedirectedUsers", "stan");
     const redirectedRoot = path.join(redirectedProfile, ".cache", "gristmill");
     process.env.USERPROFILE = redirectedProfile;
+
     return { home, legacyRoot, redirectedRoot };
   }
 
@@ -48,6 +61,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     fs.mkdirSync(directory, { recursive: true });
     const filePath = path.join(directory, name);
     fs.writeFileSync(filePath, contents);
+
     return filePath;
   }
 
@@ -55,7 +69,9 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const originals = Object.fromEntries(
       Object.keys(overrides).map((method) => [method, fs[method]])
     );
+
     Object.assign(fs, overrides);
+
     try {
       return callback();
     } finally {
@@ -73,9 +89,11 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
 
   afterEach(() => {
     Module._load = originalLoad;
+
     if (originalPlatform) {
       Object.defineProperty(process, "platform", originalPlatform);
     }
+
     process.env = { ...originalEnv };
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
@@ -220,6 +238,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const { getCacheRoot, getModelsDirForService } = loadFresh(
       path.join(tempRoot, "使用者", "詩涵")
     );
+
     const root = getCacheRoot();
     assert.strictEqual(root, path.join(programData, "Gristmill", "cache"));
     assert.ok(fs.existsSync(root));
@@ -285,6 +304,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
 
     const { getCacheRoot } = loadFresh(home);
     const originalRenameSync = fs.renameSync;
+
     const root = withFsOverrides(
       {
         renameSync: (from: string, to: string) => {
@@ -292,6 +312,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
             const error = Object.assign(new Error("cross-volume move"), { code: "EXDEV" });
             throw error;
           }
+
           return originalRenameSync(from, to);
         },
       },
@@ -313,6 +334,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const { getCacheRoot } = loadFresh(home);
     const originalRenameSync = fs.renameSync;
     const originalCpSync = fs.cpSync;
+
     const firstResolution = withFsOverrides(
       {
         renameSync: (from: string, to: string) => {
@@ -320,10 +342,12 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
             const error = Object.assign(new Error("cross-volume move blocked"), { code: "EXDEV" });
             throw error;
           }
+
           return originalRenameSync(from, to);
         },
         cpSync: (from: string, to: string, options: unknown) => {
           if (from === legacyModels) throw new Error("copy blocked");
+
           return originalCpSync(from, to, options);
         },
       },
@@ -352,6 +376,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const { getCacheRoot } = loadFresh(home);
     const originalRenameSync = fs.renameSync;
     const originalRmSync = fs.rmSync;
+
     const root = withFsOverrides(
       {
         renameSync: (from: string, to: string) => {
@@ -359,10 +384,12 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
             const error = Object.assign(new Error("cross-volume move"), { code: "EXDEV" });
             throw error;
           }
+
           return originalRenameSync(from, to);
         },
         rmSync: (target: unknown, options: unknown) => {
           if (target === parakeetStaging) throw new Error("staging cleanup blocked");
+
           return originalRmSync(target, options);
         },
       },
@@ -386,6 +413,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
     const { getCacheRoot } = loadFresh(home);
     const originalRenameSync = fs.renameSync;
     const originalRmSync = fs.rmSync;
+
     const root = withFsOverrides(
       {
         renameSync: (from: string, to: string) => {
@@ -393,6 +421,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
             const error = Object.assign(new Error("cross-volume move"), { code: "EXDEV" });
             throw error;
           }
+
           return originalRenameSync(from, to);
         },
         rmSync: (target: unknown, options: unknown) => {
@@ -400,6 +429,7 @@ describe("modelDirUtils cache policy (#1279, #1399)", () => {
             fs.unlinkSync(firstModel);
             throw new Error("source cleanup interrupted");
           }
+
           return originalRmSync(target, options);
         },
       },

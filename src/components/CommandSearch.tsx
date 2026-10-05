@@ -1,16 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../hooks/useUiLocale";
-import {
-  Search,
-  FileText,
-  Mic,
-  Folder,
-  Lock,
-  Users,
-  Upload,
-  ChevronDown,
-} from "./icons";
+import { Search, FileText, Mic, Folder, Lock, Users, Upload, ChevronDown } from "./icons";
 import { cn } from "./lib/utils";
 import { Dropdown, Label, Modal, Separator } from "@heroui/react";
 import type { FolderItem, SpaceItem } from "../contracts/containers";
@@ -100,7 +91,9 @@ export default function CommandSearch({
     const version = searchVersionRef.current;
     window.electronAPI
       .getNotes()
-      .then((items) => { if (searchVersionRef.current === version && !query.trim()) setNotes(items); })
+      .then((items) => {
+        if (searchVersionRef.current === version && !query.trim()) setNotes(items);
+      })
       .catch(() => {});
   }, [open, query]);
 
@@ -114,8 +107,11 @@ export default function CommandSearch({
       setTranscriptSearchPending(false);
       window.electronAPI
         .getNotes()
-        .then((items) => { if (searchVersionRef.current === version) setNotes(items); })
+        .then((items) => {
+          if (searchVersionRef.current === version) setNotes(items);
+        })
         .catch(() => {});
+
       return;
     }
 
@@ -124,13 +120,25 @@ export default function CommandSearch({
     setSearchError(false);
     setTranscriptSearchPending(true);
     searchTimerRef.current = setTimeout(() => {
-      void window.electronAPI.searchNoteContent(query, scopeSpaceId)
-        .then((hits) => { if (searchVersionRef.current === version) setNotes(hits.map((hit) => hit.note)); })
-        .catch(() => { if (searchVersionRef.current === version) setSearchError(true); });
-      void window.electronAPI.searchNoteTranscripts(query, scopeSpaceId)
-        .then((hits) => { if (searchVersionRef.current === version) setNoteTranscriptHits(hits); })
-        .catch(() => { if (searchVersionRef.current === version) setSearchError(true); })
-        .finally(() => { if (searchVersionRef.current === version) setTranscriptSearchPending(false); });
+      void window.electronAPI
+        .searchNoteContent(query, scopeSpaceId)
+        .then((hits) => {
+          if (searchVersionRef.current === version) setNotes(hits.map((hit) => hit.note));
+        })
+        .catch(() => {
+          if (searchVersionRef.current === version) setSearchError(true);
+        });
+      void window.electronAPI
+        .searchNoteTranscripts(query, scopeSpaceId)
+        .then((hits) => {
+          if (searchVersionRef.current === version) setNoteTranscriptHits(hits);
+        })
+        .catch(() => {
+          if (searchVersionRef.current === version) setSearchError(true);
+        })
+        .finally(() => {
+          if (searchVersionRef.current === version) setTranscriptSearchPending(false);
+        });
     }, 200);
 
     return () => {
@@ -175,7 +183,9 @@ export default function CommandSearch({
       const space = spaceMap.get(note.space_id);
       const folder = note.folder_id != null ? folderMap.get(note.folder_id) : undefined;
       const folderLabel = folder ? defaultFolderDisplayName(folder, t) : "";
+
       if (!space) return folderLabel;
+
       return folder ? `${spaceLabel(space)} / ${folderLabel}` : spaceLabel(space);
     },
     [spaceMap, folderMap, spaceLabel, t]
@@ -183,14 +193,18 @@ export default function CommandSearch({
 
   const jumpTargets = useMemo<JumpTarget[]>(() => {
     const q = query.trim().toLowerCase();
+
     if (!q) return [];
     const targets: JumpTarget[] = [];
+
     for (const space of spaces) {
       const label = spaceLabel(space);
+
       if (label.toLowerCase().includes(q)) {
         targets.push({ key: `s:${space.id}`, spaceId: space.id, folderId: null, label, space });
       }
     }
+
     for (const folder of folders) {
       if (folderMatchesQuery(folder, t, q)) {
         targets.push({
@@ -202,6 +216,7 @@ export default function CommandSearch({
         });
       }
     }
+
     return targets.slice(0, 5);
   }, [query, spaces, folders, spaceMap, spaceLabel, t]);
 
@@ -209,15 +224,21 @@ export default function CommandSearch({
     const slice = query.trim()
       ? transcriptions.filter((tr) => tr.text.toLowerCase().includes(query.toLowerCase()))
       : transcriptions;
+
     return slice.slice(0, 5);
   }, [transcriptions, query]);
 
   const flatItems = useMemo<FlatItem[]>(() => {
     const items: FlatItem[] = [];
+
     for (const target of jumpTargets) items.push({ kind: "container", target });
+
     for (const note of scopedNotes) items.push({ kind: "note", note });
+
     for (const hit of noteTranscriptHits) items.push({ kind: "noteTranscript", hit });
+
     for (const transcript of filteredTranscripts) items.push({ kind: "transcript", transcript });
+
     return items;
   }, [jumpTargets, scopedNotes, noteTranscriptHits, filteredTranscripts]);
 
@@ -245,6 +266,7 @@ export default function CommandSearch({
       } else if (e.key === "Enter") {
         e.preventDefault();
         const item = flatItems[selectedIndex];
+
         if (item) selectItem(item);
       }
     },
@@ -257,6 +279,7 @@ export default function CommandSearch({
   }, [selectedIndex]);
 
   const hasResults = flatItems.length > 0;
+
   return (
     <Modal isOpen={open} onOpenChange={onOpenChange}>
       <Modal.Backdrop>
@@ -265,196 +288,244 @@ export default function CommandSearch({
             aria-label={t("commandSearch.title")}
             className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-overlay p-0 text-overlay-foreground shadow-overlay"
           >
-
-          {/* Search input */}
-          <div className="flex items-center gap-2.5 px-3.5 py-3 border-b border-border/70">
-            <Search size={14} className="shrink-0 text-muted" />
-            {spaces.length > 1 && (
-              <Dropdown>
-                <Dropdown.Trigger
-                  className={cn(
-                    "flex shrink-0 items-center gap-1 rounded-md border border-border bg-subtle",
-                    "px-1.5 py-0.5 text-2xs outline-none transition-colors data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus",
-                    scopeSpace ? "text-foreground" : "text-muted hover:text-foreground"
-                  )}
-                >
-                  <span className="max-w-32 truncate">
-                    {scopeSpace ? <span dir="auto">{spaceLabel(scopeSpace)}</span> : t("commandSearch.allSpaces")}
-                  </span>
-                  <ChevronDown size={11} className="shrink-0 text-muted" />
-                </Dropdown.Trigger>
-                <Dropdown.Popover placement="bottom start">
-                  <Dropdown.Menu
-                    aria-label={t("commandSearch.allSpaces")}
-                    selectionMode="single"
-                    selectedKeys={[scopeSpace ? String(scopeSpace.id) : ALL_SPACES_KEY]}
-                    onAction={(key) => {
-                      selectScope(key === ALL_SPACES_KEY ? null : spaces.find((space) => String(space.id) === key)?.id ?? null);
-                      requestAnimationFrame(() => inputRef.current?.focus());
-                    }}
+            {/* Search input */}
+            <div className="flex items-center gap-2.5 px-3.5 py-3 border-b border-border/70">
+              <Search size={14} className="shrink-0 text-muted" />
+              {spaces.length > 1 && (
+                <Dropdown>
+                  <Dropdown.Trigger
+                    className={cn(
+                      "flex shrink-0 items-center gap-1 rounded-md border border-border bg-subtle",
+                      "px-1.5 py-0.5 text-2xs outline-none transition-colors data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus",
+                      scopeSpace ? "text-foreground" : "text-muted hover:text-foreground"
+                    )}
                   >
-                    <Dropdown.Item id={ALL_SPACES_KEY} textValue={t("commandSearch.allSpaces")}>
-                      <Label>{t("commandSearch.allSpaces")}</Label>
-                      <Dropdown.ItemIndicator />
-                    </Dropdown.Item>
-                    <Separator className="my-1" />
-                    {spaces.map((space) => (
-                      <Dropdown.Item key={space.id} id={String(space.id)} textValue={spaceLabel(space)}>
-                        <Label dir="auto">{spaceLabel(space)}</Label>
+                    <span className="max-w-32 truncate">
+                      {scopeSpace ? (
+                        <span dir="auto">{spaceLabel(scopeSpace)}</span>
+                      ) : (
+                        t("commandSearch.allSpaces")
+                      )}
+                    </span>
+                    <ChevronDown size={11} className="shrink-0 text-muted" />
+                  </Dropdown.Trigger>
+                  <Dropdown.Popover placement="bottom start">
+                    <Dropdown.Menu
+                      aria-label={t("commandSearch.allSpaces")}
+                      selectionMode="single"
+                      selectedKeys={[scopeSpace ? String(scopeSpace.id) : ALL_SPACES_KEY]}
+                      onAction={(key) => {
+                        selectScope(
+                          key === ALL_SPACES_KEY
+                            ? null
+                            : (spaces.find((space) => String(space.id) === key)?.id ?? null)
+                        );
+                        requestAnimationFrame(() => inputRef.current?.focus());
+                      }}
+                    >
+                      <Dropdown.Item id={ALL_SPACES_KEY} textValue={t("commandSearch.allSpaces")}>
+                        <Label>{t("commandSearch.allSpaces")}</Label>
                         <Dropdown.ItemIndicator />
                       </Dropdown.Item>
-                    ))}
-                  </Dropdown.Menu>
-                </Dropdown.Popover>
-              </Dropdown>
-            )}
-            <input
-              dir="auto"
-              ref={inputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={t("commandSearch.placeholder")}
-              autoFocus
-              className="flex-1 text-sm text-foreground placeholder:text-muted"
-              style={{
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                boxShadow: "none",
-                padding: 0,
-              }}
-            />
-            {query && (
-              <button
-                onClick={() => setQuery("")}
-                className="text-2xs text-muted hover:text-muted-foreground transition-colors outline-none"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+                      <Separator className="my-1" />
+                      {spaces.map((space) => (
+                        <Dropdown.Item
+                          key={space.id}
+                          id={String(space.id)}
+                          textValue={spaceLabel(space)}
+                        >
+                          <Label dir="auto">{spaceLabel(space)}</Label>
+                          <Dropdown.ItemIndicator />
+                        </Dropdown.Item>
+                      ))}
+                    </Dropdown.Menu>
+                  </Dropdown.Popover>
+                </Dropdown>
+              )}
+              <input
+                dir="auto"
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t("commandSearch.placeholder")}
+                autoFocus
+                className="flex-1 text-sm text-foreground placeholder:text-muted"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  boxShadow: "none",
+                  padding: 0,
+                }}
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  className="text-2xs text-muted hover:text-muted-foreground transition-colors outline-none"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-          {/* Results list */}
-          <div ref={listRef} className="overflow-y-auto max-h-[340px] p-1.5">
-            {!hasResults ? (
-              <div className="flex items-center justify-center py-10">
-                <p className="text-xs text-muted">
-                  {searchError ? t("commandSearch.searchError", { defaultValue: "Search failed" }) : transcriptSearchPending ? t("commandSearch.searchingTranscripts", { defaultValue: "Searching transcripts…" }) : query.trim()
-                    ? t("commandSearch.noResults")
-                    : t("commandSearch.emptyState")}
-                </p>
-              </div>
-            ) : (
-              <>
-                {jumpTargets.length > 0 && (
-                  <div>
-                    <SectionHeader
-                      icon={<Folder size={11} />}
-                      label={t("commandSearch.sections.jumpTo")}
-                    />
-                    {jumpTargets.map((target) => {
-                      const idx = flatItems.findIndex(
-                        (fi) => fi.kind === "container" && fi.target.key === target.key
-                      );
-                      return (
-                        <ContainerRow
-                          key={target.key}
-                          target={target}
-                          showSpaceHint={target.folderId != null && spaces.length > 1}
-                          spaceLabel={spaceLabel}
-                          idx={idx}
-                          isSelected={selectedIndex === idx}
-                          onSelect={() => selectItem({ kind: "container", target })}
-                          onHover={() => setSelectedIndex(idx)}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+            {/* Results list */}
+            <div ref={listRef} className="overflow-y-auto max-h-[340px] p-1.5">
+              {!hasResults ? (
+                <div className="flex items-center justify-center py-10">
+                  <p className="text-xs text-muted">
+                    {searchError
+                      ? t("commandSearch.searchError", { defaultValue: "Search failed" })
+                      : transcriptSearchPending
+                        ? t("commandSearch.searchingTranscripts", {
+                            defaultValue: "Searching transcripts…",
+                          })
+                        : query.trim()
+                          ? t("commandSearch.noResults")
+                          : t("commandSearch.emptyState")}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {jumpTargets.length > 0 && (
+                    <div>
+                      <SectionHeader
+                        icon={<Folder size={11} />}
+                        label={t("commandSearch.sections.jumpTo")}
+                      />
+                      {jumpTargets.map((target) => {
+                        const idx = flatItems.findIndex(
+                          (fi) => fi.kind === "container" && fi.target.key === target.key
+                        );
 
-                {scopedNotes.length > 0 && (
-                  <div className={jumpTargets.length > 0 ? "mt-0.5" : ""}>
-                    <SectionHeader
-                      icon={<FileText size={11} />}
-                      label={t("commandSearch.sections.notes")}
-                    />
-                    {scopedNotes.map((note) => {
-                      const idx = flatItems.findIndex(
-                        (fi) => fi.kind === "note" && fi.note.id === note.id
-                      );
-                      return (
-                        <NoteRow
-                          key={note.id}
-                          note={note}
-                          breadcrumb={noteBreadcrumb(note)}
-                          idx={idx}
-                          isSelected={selectedIndex === idx}
-                          onSelect={() => selectItem({ kind: "note", note })}
-                          onHover={() => setSelectedIndex(idx)}
-                          t={t}
-                          locale={locale}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+                        return (
+                          <ContainerRow
+                            key={target.key}
+                            target={target}
+                            showSpaceHint={target.folderId != null && spaces.length > 1}
+                            spaceLabel={spaceLabel}
+                            idx={idx}
+                            isSelected={selectedIndex === idx}
+                            onSelect={() => selectItem({ kind: "container", target })}
+                            onHover={() => setSelectedIndex(idx)}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
 
-                {noteTranscriptHits.length > 0 && (
-                  <div className="mt-0.5">
-                    <SectionHeader icon={<Mic size={11} />} label={t("commandSearch.sections.transcripts")} />
-                    {noteTranscriptHits.map((hit) => {
-                      const idx = flatItems.findIndex((item) => item.kind === "noteTranscript" && item.hit.note.id === hit.note.id);
-                      return (
-                        <button key={hit.note.id} type="button" data-idx={idx}
-                          onClick={() => selectItem({ kind: "noteTranscript", hit })}
-                          onMouseEnter={() => setSelectedIndex(idx)}
-                          className={cn("w-full rounded-lg px-2.5 py-2 text-start", selectedIndex === idx ? "bg-primary/8" : "hover:bg-default")}>
-                          <span className="block truncate text-sm">{hit.note.title}</span>
-                          <span className="block truncate text-xs text-muted">{hit.matches[0]?.snippet}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {searchError && <p className="px-2.5 py-2 text-xs text-destructive">{t("commandSearch.searchError", { defaultValue: "Search failed" })}</p>}
-                {transcriptSearchPending && <p className="px-2.5 py-2 text-xs text-muted">{t("commandSearch.searchingTranscripts", { defaultValue: "Searching transcripts…" })}</p>}
+                  {scopedNotes.length > 0 && (
+                    <div className={jumpTargets.length > 0 ? "mt-0.5" : ""}>
+                      <SectionHeader
+                        icon={<FileText size={11} />}
+                        label={t("commandSearch.sections.notes")}
+                      />
+                      {scopedNotes.map((note) => {
+                        const idx = flatItems.findIndex(
+                          (fi) => fi.kind === "note" && fi.note.id === note.id
+                        );
 
-                {filteredTranscripts.length > 0 && (
-                  <div className={jumpTargets.length > 0 || scopedNotes.length > 0 ? "mt-0.5" : ""}>
-                    <SectionHeader
-                      icon={<Mic size={11} />}
-                      label={t("commandSearch.sections.transcripts")}
-                    />
-                    {filteredTranscripts.map((transcript) => {
-                      const idx = flatItems.findIndex(
-                        (fi) => fi.kind === "transcript" && fi.transcript.id === transcript.id
-                      );
-                      return (
-                        <TranscriptRow
-                          key={transcript.id}
-                          transcript={transcript}
-                          idx={idx}
-                          isSelected={selectedIndex === idx}
-                          onSelect={() => selectItem({ kind: "transcript", transcript })}
-                          onHover={() => setSelectedIndex(idx)}
-                          t={t}
-                          locale={locale}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                        return (
+                          <NoteRow
+                            key={note.id}
+                            note={note}
+                            breadcrumb={noteBreadcrumb(note)}
+                            idx={idx}
+                            isSelected={selectedIndex === idx}
+                            onSelect={() => selectItem({ kind: "note", note })}
+                            onHover={() => setSelectedIndex(idx)}
+                            t={t}
+                            locale={locale}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
 
-          {/* Footer */}
-          <div className="flex items-center gap-4 px-3.5 py-2 border-t border-border/70 bg-subtle/15">
-            <FooterHint keys={["↑", "↓"]} label={t("commandSearch.footer.navigate")} />
-            <FooterHint keys={["↵"]} label={t("commandSearch.footer.open")} />
-            <FooterHint keys={["Esc"]} label={t("commandSearch.footer.dismiss")} />
-          </div>
+                  {noteTranscriptHits.length > 0 && (
+                    <div className="mt-0.5">
+                      <SectionHeader
+                        icon={<Mic size={11} />}
+                        label={t("commandSearch.sections.transcripts")}
+                      />
+                      {noteTranscriptHits.map((hit) => {
+                        const idx = flatItems.findIndex(
+                          (item) =>
+                            item.kind === "noteTranscript" && item.hit.note.id === hit.note.id
+                        );
+
+                        return (
+                          <button
+                            key={hit.note.id}
+                            type="button"
+                            data-idx={idx}
+                            onClick={() => selectItem({ kind: "noteTranscript", hit })}
+                            onMouseEnter={() => setSelectedIndex(idx)}
+                            className={cn(
+                              "w-full rounded-lg px-2.5 py-2 text-start",
+                              selectedIndex === idx ? "bg-primary/8" : "hover:bg-default"
+                            )}
+                          >
+                            <span className="block truncate text-sm">{hit.note.title}</span>
+                            <span className="block truncate text-xs text-muted">
+                              {hit.matches[0]?.snippet}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {searchError && (
+                    <p className="px-2.5 py-2 text-xs text-destructive">
+                      {t("commandSearch.searchError", { defaultValue: "Search failed" })}
+                    </p>
+                  )}
+                  {transcriptSearchPending && (
+                    <p className="px-2.5 py-2 text-xs text-muted">
+                      {t("commandSearch.searchingTranscripts", {
+                        defaultValue: "Searching transcripts…",
+                      })}
+                    </p>
+                  )}
+
+                  {filteredTranscripts.length > 0 && (
+                    <div
+                      className={jumpTargets.length > 0 || scopedNotes.length > 0 ? "mt-0.5" : ""}
+                    >
+                      <SectionHeader
+                        icon={<Mic size={11} />}
+                        label={t("commandSearch.sections.transcripts")}
+                      />
+                      {filteredTranscripts.map((transcript) => {
+                        const idx = flatItems.findIndex(
+                          (fi) => fi.kind === "transcript" && fi.transcript.id === transcript.id
+                        );
+
+                        return (
+                          <TranscriptRow
+                            key={transcript.id}
+                            transcript={transcript}
+                            idx={idx}
+                            isSelected={selectedIndex === idx}
+                            onSelect={() => selectItem({ kind: "transcript", transcript })}
+                            onHover={() => setSelectedIndex(idx)}
+                            t={t}
+                            locale={locale}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center gap-4 px-3.5 py-2 border-t border-border/70 bg-subtle/15">
+              <FooterHint keys={["↑", "↓"]} label={t("commandSearch.footer.navigate")} />
+              <FooterHint keys={["↵"]} label={t("commandSearch.footer.open")} />
+              <FooterHint keys={["Esc"]} label={t("commandSearch.footer.dismiss")} />
+            </div>
           </Modal.Dialog>
         </Modal.Container>
       </Modal.Backdrop>
@@ -466,9 +537,7 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
   return (
     <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
       <span className="text-muted">{icon}</span>
-      <span className="text-2xs font-semibold uppercase tracking-wide text-muted">
-        {label}
-      </span>
+      <span className="text-2xs font-semibold uppercase tracking-wide text-muted">{label}</span>
     </div>
   );
 }
@@ -491,10 +560,9 @@ function ContainerRow({
   onHover: () => void;
 }) {
   const { space } = target;
-  const iconClass = cn(
-    "shrink-0 transition-colors",
-    isSelected ? "text-primary" : "text-muted"
-  );
+
+  const iconClass = cn("shrink-0 transition-colors", isSelected ? "text-primary" : "text-muted");
+
   return (
     <button
       type="button"
@@ -503,9 +571,7 @@ function ContainerRow({
       onMouseEnter={onHover}
       className={cn(
         "group flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-start transition-colors duration-100 outline-none",
-        isSelected
-          ? "bg-primary/8 dark:bg-primary/10"
-          : "hover:bg-default dark:hover:bg-white/4"
+        isSelected ? "bg-primary/8 dark:bg-primary/10" : "hover:bg-default dark:hover:bg-white/4"
       )}
     >
       {target.folderId != null ? (
@@ -523,10 +589,7 @@ function ContainerRow({
         {target.label}
       </p>
       {showSpaceHint && space && (
-        <span
-          dir="auto"
-          className="text-2xs text-muted truncate shrink-0 max-w-32"
-        >
+        <span dir="auto" className="text-2xs text-muted truncate shrink-0 max-w-32">
           {spaceLabel(space)}
         </span>
       )}
@@ -555,8 +618,10 @@ function NoteRow({
 }) {
   const { dateFormat } = useDateTimePreferences();
   const preview = stripMarkdownPreview(note.content).slice(0, 90);
+
   const NoteIcon =
     note.note_type === "meeting" ? Users : note.note_type === "upload" ? Upload : FileText;
+
   return (
     <button
       type="button"
@@ -565,9 +630,7 @@ function NoteRow({
       onMouseEnter={onHover}
       className={cn(
         "group flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-start transition-colors duration-100 outline-none",
-        isSelected
-          ? "bg-primary/8 dark:bg-primary/10"
-          : "hover:bg-default dark:hover:bg-white/4"
+        isSelected ? "bg-primary/8 dark:bg-primary/10" : "hover:bg-default dark:hover:bg-white/4"
       )}
     >
       <NoteIcon
@@ -628,6 +691,7 @@ function TranscriptRow({
   locale?: string;
 }) {
   const { dateFormat } = useDateTimePreferences();
+
   return (
     <button
       type="button"
@@ -636,9 +700,7 @@ function TranscriptRow({
       onMouseEnter={onHover}
       className={cn(
         "group flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-start transition-colors duration-100 outline-none",
-        isSelected
-          ? "bg-primary/8 dark:bg-primary/10"
-          : "hover:bg-default dark:hover:bg-white/4"
+        isSelected ? "bg-primary/8 dark:bg-primary/10" : "hover:bg-default dark:hover:bg-white/4"
       )}
     >
       <Mic

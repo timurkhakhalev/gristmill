@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -10,9 +11,11 @@ const {
 test("stop-completion validation rejects invalid, stale, and non-owning sessions", async () => {
   const owner = { id: "owner" };
   const calls: unknown[] = [];
+
   const engine = {
     completeAutoEndSession: async (sessionId: string, sender: unknown) => {
       calls.push({ sessionId, sender });
+
       return sessionId === "meeting-2" && sender === owner;
     },
   };
@@ -42,9 +45,11 @@ test("stop-completion validation rejects invalid, stale, and non-owning sessions
 test("overlay response validation accepts only restart or dismiss for a live offer", () => {
   const overlay = { id: "overlay" };
   const calls: unknown[] = [];
+
   const engine = {
     respondToAutoEndNotification: (sessionId: string, action: string, sender: unknown) => {
       calls.push({ sessionId, action, sender });
+
       return sessionId === "meeting-2" && action === "restart" && sender === overlay;
     },
   };
@@ -72,36 +77,42 @@ test("overlay response validation accepts only restart or dismiss for a live off
 
 test("main IPC resolves the current engine and scopes both actions to event.sender", async () => {
   const handlers = new Map();
+
   const ipcMain = {
     handle: (channel: string, handler: unknown) => handlers.set(channel, handler),
   };
+
   const sender = { id: "renderer" };
   const calls: unknown[] = [];
+
   let engine = {
     completeAutoEndSession: async (_sessionId: string, _eventSender: unknown) => false,
-    respondToAutoEndNotification: (_sessionId: string, _action: string, _eventSender: unknown) => false,
+    respondToAutoEndNotification: (_sessionId: string, _action: string, _eventSender: unknown) =>
+      false,
   };
+
   registerMeetingAutoEndLifecycleHandlers(ipcMain, () => engine);
 
-  assert.deepEqual(
-    await handlers.get("meeting-auto-end-completed")({ sender }, "meeting-1"),
-    { success: false, reason: "stale-session" }
-  );
+  assert.deepEqual(await handlers.get("meeting-auto-end-completed")({ sender }, "meeting-1"), {
+    success: false,
+    reason: "stale-session",
+  });
 
   engine = {
     completeAutoEndSession: async (sessionId: string, eventSender: unknown) => {
       calls.push(["completed", sessionId, eventSender]);
+
       return true;
     },
     respondToAutoEndNotification: (sessionId: string, action: string, eventSender: unknown) => {
       calls.push(["respond", sessionId, action, eventSender]);
+
       return true;
     },
   };
-  assert.deepEqual(
-    await handlers.get("meeting-auto-end-completed")({ sender }, "meeting-2"),
-    { success: true }
-  );
+  assert.deepEqual(await handlers.get("meeting-auto-end-completed")({ sender }, "meeting-2"), {
+    success: true,
+  });
   assert.deepEqual(
     await handlers.get("meeting-auto-end-respond")({ sender }, "meeting-2", "dismiss"),
     { success: true }

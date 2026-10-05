@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -27,6 +28,7 @@ test("threshold ramps between the boundaries and is monotonic", () => {
   const mid = clusterThresholdForDuration(
     (THRESHOLD_RAMP_START_SECONDS + THRESHOLD_RAMP_END_SECONDS) / 2
   );
+
   assert.ok(mid > DEFAULT_CLUSTER_THRESHOLD && mid < LONG_AUDIO_CLUSTER_THRESHOLD);
   assert.ok(
     clusterThresholdForDuration(THRESHOLD_RAMP_START_SECONDS + 60) <= mid,
@@ -66,6 +68,7 @@ test("clusters below the minimum total speaking time are dropped", () => {
     { start: 31, end: 60, speaker: "speaker_1" },
     { start: 60, end: 60.3, speaker: "speaker_7" },
   ];
+
   const kept = dropNegligibleClusters(segments);
   assert.deepEqual(
     kept.map((s: { speaker: string }) => s.speaker),
@@ -79,6 +82,7 @@ test("a cluster whose short segments add up past the minimum survives", () => {
     { start: 30, end: 30.6, speaker: "speaker_1" },
     { start: 40, end: 40.6, speaker: "speaker_1" },
   ];
+
   assert.equal(dropNegligibleClusters(segments).length, 3);
 });
 
@@ -87,6 +91,7 @@ test("dropping never empties the result or touches a clean input", () => {
     { start: 0, end: 0.3, speaker: "speaker_0" },
     { start: 1, end: 1.2, speaker: "speaker_1" },
   ];
+
   assert.deepEqual(dropNegligibleClusters(allTiny), allTiny);
 
   const clean = [{ start: 0, end: 10, speaker: "speaker_0" }];

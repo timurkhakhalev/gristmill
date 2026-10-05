@@ -56,6 +56,7 @@ export function removeNoteFromLists(state: NoteListsState, id: number): RemoveNo
   let sourceItems: NoteItem[] | null = null;
   let sourceKey: string | null = null;
   let changed = false;
+
   for (const [key, items] of Object.entries(state.notesByContainer)) {
     if (!items.some((n) => n.id === id)) continue;
     sourceItems = items;
@@ -69,6 +70,7 @@ export function removeNoteFromLists(state: NoteListsState, id: number): RemoveNo
   changed = changed || inFlat;
 
   let activeNoteId = state.activeNoteId;
+
   if (changed && state.activeNoteId === id) {
     // Pick the neighbor from what the user is looking at: the flat list when
     // it held the note, else the note's source container.
@@ -102,6 +104,7 @@ export function teardownNoteContainers(
   const expandedContainers = new Set(
     [...state.expandedContainers].filter((key) => !removedKeys.has(key))
   );
+
   const activeNoteId =
     state.activeNoteId != null && removedNotes.some((note) => note.id === state.activeNoteId)
       ? null

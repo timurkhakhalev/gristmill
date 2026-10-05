@@ -8,12 +8,17 @@
 // existing .icns.
 
 const fs: typeof import("fs") = require("fs");
+
 const os: typeof import("os") = require("os");
+
 const path: typeof import("path") = require("path");
+
 const { execFileSync, spawnSync }: typeof import("child_process") = require("child_process");
 
 const ICON_BUNDLE = path.join(__dirname, "..", "src", "assets", "gristmill.icon");
+
 const OUTPUT_CAR = path.join(__dirname, "..", "src", "assets", "Assets.car");
+
 const APP_ICON_NAME = "gristmill";
 
 if (process.platform !== "darwin") {
@@ -27,6 +32,7 @@ if (!fs.existsSync(ICON_BUNDLE)) {
 }
 
 const actoolLookup = spawnSync("xcrun", ["--find", "actool"], { encoding: "utf8" });
+
 if (actoolLookup.status !== 0) {
   console.warn(
     "compile-macos-icon: actool unavailable (requires full Xcode, not just CLT). " +
@@ -37,6 +43,7 @@ if (actoolLookup.status !== 0) {
 
 function compileIcon() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-icon-"));
+
   try {
     execFileSync(
       "xcrun",
@@ -59,12 +66,14 @@ function compileIcon() {
     );
 
     const producedCar = path.join(tmpDir, "Assets.car");
+
     if (!fs.existsSync(producedCar)) {
       console.warn(
         "compile-macos-icon: actool ran but did not emit Assets.car " +
           "(likely a partial Xcode install on the runner). " +
           "Falling back to icon.icns; no Liquid Glass on macOS 26+."
       );
+
       return;
     }
 
@@ -75,5 +84,7 @@ function compileIcon() {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
+
 compileIcon();
+
 export type {};

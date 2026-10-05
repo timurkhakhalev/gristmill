@@ -1,13 +1,23 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const fs: typeof import("node:fs/promises") = require("node:fs/promises");
+
 const http = require("node:http");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
-const { buildGguf, LLAMA_3_2_3B_ENTRIES }: typeof import("./harness/ggufFixtures") = require("./harness/ggufFixtures");
+
+const {
+  buildGguf,
+  LLAMA_3_2_3B_ENTRIES,
+}: typeof import("./harness/ggufFixtures") = require("./harness/ggufFixtures");
 
 // Drives the primary local LLM path end to end — the IPC bridge
 // (localReasoningBridge) → modelManagerBridge.runInference →
@@ -18,12 +28,14 @@ const { buildGguf, LLAMA_3_2_3B_ENTRIES }: typeof import("./harness/ggufFixtures
 // its happy path without spawning anything.
 
 const originalLoad = Module._load;
+
 const CHAIN_MODULES = [
   "../../src/services/localReasoningBridge.ts",
   "../../src/helpers/modelManagerBridge.ts",
   "../../src/helpers/modelDirUtils.ts",
   "../../src/helpers/llamaServer.ts",
 ].map((relative) => require.resolve(relative));
+
 let electronHome = os.tmpdir();
 
 function loadChain() {
@@ -35,11 +47,13 @@ function loadChain() {
         app: {
           isReady: () => true,
           getAppPath: () => process.cwd(),
-          getPath: (name: string) => (name === "home" ? electronHome : path.join(electronHome, name)),
+          getPath: (name: string) =>
+            name === "home" ? electronHome : path.join(electronHome, name),
         },
         net: {},
       };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
@@ -47,6 +61,7 @@ function loadChain() {
     require("../../src/helpers/modelDirUtils.ts");
     const bridge = require("../../src/services/localReasoningBridge.ts").default;
     const modelManager = require("../../src/helpers/modelManagerBridge.ts").default;
+
     return { bridge, modelManager };
   } finally {
     Module._load = originalLoad;
@@ -57,6 +72,7 @@ function loadChain() {
 // ceiling is computed from the model's own architecture rather than falling
 // back to the baseline the moment a caller asks for a bigger window.
 const MODEL_FILE = Buffer.concat([buildGguf(LLAMA_3_2_3B_ENTRIES), Buffer.alloc(1_000_001, 1)]);
+
 const ROOMY_MACHINE_BYTES = 48 * 1024 * 1024 * 1024;
 
 // Stands up the stub server plus a bridge whose model manager already
@@ -67,6 +83,7 @@ async function setupChain(t: import("node:test").TestContext, respond: any) {
   t.after(() => fs.rm(home, { recursive: true, force: true }));
 
   const requests: any[] = [];
+
   const server = http.createServer((req: any, res: any) => {
     let raw = "";
     req.on("data", (chunk: unknown) => (raw += chunk));
@@ -76,6 +93,7 @@ async function setupChain(t: import("node:test").TestContext, respond: any) {
       res.end(JSON.stringify(respond()));
     });
   });
+
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
 
@@ -140,11 +158,14 @@ test("a caller's contextSize reaches the server start (regression: it was droppe
     serverManager.ready = true;
     serverManager.process = {};
   };
-  Object.defineProperty(serverManager, "stopProcess", { value: async () => {
-    serverManager.ready = false;
-    serverManager.process = null;
-    serverManager.contextSize = null;
-  } });
+
+  Object.defineProperty(serverManager, "stopProcess", {
+    value: async () => {
+      serverManager.ready = false;
+      serverManager.process = null;
+      serverManager.contextSize = null;
+    },
+  });
   serverManager.contextSize = 16384;
 
   await bridge.processText("short text", modelId, { contextSize: 32768 });

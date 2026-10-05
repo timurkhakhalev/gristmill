@@ -7,9 +7,14 @@ import { registerUploadCancelHandler } from "./src/helpers/uploadCancelIpcHandle
 import { createUploadTranscriptionBridge } from "./src/preload/uploadTranscriptionBridge.js";
 import { buildMultipartBody } from "./src/helpers/remoteTranscriptionIpcHandler.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
-const registry = { register: (id: unknown) => ({ signal: undefined, release: () => {} }), cancel: () => 0 };
+const registry = {
+  register: (id: unknown) => ({ signal: undefined, release: () => {} }),
+  cancel: () => 0,
+};
 
 registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: registry });
 
@@ -21,7 +26,8 @@ registerFileDiarizationHandlers(ipcMain, {
       void options;
       return [];
     },
-    capSpeakerClusters: (segments: Array<{ start: number; end: number; speaker: string }>) => segments,
+    capSpeakerClusters: (segments: Array<{ start: number; end: number; speaker: string }>) =>
+      segments,
   },
   resolveAllowedAudioPath: (p: string) => (p.endsWith(".wav") ? p : null),
   convertToWav: async (input: string, output: string) => {
@@ -31,7 +37,8 @@ registerFileDiarizationHandlers(ipcMain, {
   createTempWavPath: () => "/tmp/w.wav",
   fileSize: () => 32000,
   resolveClusterThreshold: (d: number) => d * 0 + 0.55,
-  dropNegligibleClusters: (segments: Array<{ start: number; end: number; speaker: string }>) => segments,
+  dropNegligibleClusters: (segments: Array<{ start: number; end: number; speaker: string }>) =>
+    segments,
   pcm16Mono16kBytesPerSecond: 32000,
   maxSpeakerCount: 16,
   removeFile: () => {},
@@ -77,6 +84,11 @@ async function useAll(): Promise<string> {
   const diar = await bridge.diarizeAudioFile("/tmp/a.wav", { numSpeakers: 2 });
   const merged = await bridge.mergeSpeakerText([], "text", 1);
   const cancelled = await bridge.cancelUploadTranscription({ requestId: "r" });
-  return [byok.text ?? "", String(diar.success), merged.text ?? "", String(cancelled.cancelled)].join();
+  return [
+    byok.text ?? "",
+    String(diar.success),
+    merged.text ?? "",
+    String(cancelled.cancelled),
+  ].join();
 }
 void useAll;

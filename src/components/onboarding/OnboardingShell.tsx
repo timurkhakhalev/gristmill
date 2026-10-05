@@ -45,6 +45,7 @@ function OnboardingWindowControls() {
   const minimizeLabel = t("windowControls.minimize");
   const maximizeLabel = t(isMaximized ? "windowControls.restore" : "windowControls.maximize");
   const closeLabel = t("windowControls.close");
+
   const buttonClass =
     "inline-flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 text-[var(--onboarding-text-secondary)] hover:bg-[var(--onboarding-surface-tertiary)] focus-visible:ring-[color-mix(in_srgb,var(--onboarding-accent)_30%,transparent)]";
 
@@ -357,7 +358,6 @@ export function CompactOnboardingFrame({
       <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[30rem] flex-1 flex-col">
         {children}
       </div>
-
     </section>
   );
 }

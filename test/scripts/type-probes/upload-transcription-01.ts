@@ -3,7 +3,9 @@
 // @probe-origin test/scripts/uploadTranscriptionTypeProbe.test.js
 import { registerRemoteTranscriptionHandler } from "./src/helpers/remoteTranscriptionIpcHandler.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 // Missing postMultipart and the provider clients would silently break every
 // remote route; the compiler must reject the registration.
@@ -16,7 +18,10 @@ registerRemoteTranscriptionHandler(ipcMain, {
   getCortiClientSecret: () => "secret",
   getTinfoilKey: () => "key",
   getGeminiKey: () => "key",
-  uploadCancelRegistry: { register: () => ({ signal: undefined, release: () => {} }), cancel: () => 0 },
+  uploadCancelRegistry: {
+    register: () => ({ signal: undefined, release: () => {} }),
+    cancel: () => 0,
+  },
   logDebug: () => {},
   logWarn: () => {},
   logError: () => {},

@@ -5,16 +5,20 @@ function splitUrlDecorators(value: string): { path: string; query: string; hash:
   let path = value;
   let hash = "";
   const hashIndex = path.indexOf("#");
+
   if (hashIndex >= 0) {
     hash = path.slice(hashIndex);
     path = path.slice(0, hashIndex);
   }
+
   let query = "";
   const queryIndex = path.indexOf("?");
+
   if (queryIndex >= 0) {
     query = path.slice(queryIndex);
     path = path.slice(0, queryIndex);
   }
+
   return { path, query, hash };
 }
 
@@ -27,6 +31,7 @@ export const normalizeBaseUrl = (value?: string | null): string => {
   if (!value) return "";
 
   const trimmed = value.trim();
+
   if (!trimmed) return "";
 
   const { path: rawPath, query, hash } = splitUrlDecorators(trimmed);
@@ -57,11 +62,14 @@ export const normalizeBaseUrl = (value?: string | null): string => {
 
 export const buildApiUrl = (base: string, path: string): string => {
   const normalizedBase = normalizeBaseUrl(base) || "https://api.openai.com/v1";
+
   if (!path) {
     return normalizedBase;
   }
+
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const { path: originAndPath, query, hash } = splitUrlDecorators(normalizedBase);
+
   return joinUrlDecorators(`${originAndPath}${normalizedPath}`, query, hash);
 };
 
@@ -69,6 +77,7 @@ export const ensureV1Suffix = (base: string): string => {
   if (!base) return base;
   const normalized = normalizeBaseUrl(base) || base;
   const { path, query, hash } = splitUrlDecorators(normalized);
+
   return joinUrlDecorators(path.endsWith("/v1") ? path : `${path}/v1`, query, hash);
 };
 
@@ -78,13 +87,17 @@ export const ensureV1Suffix = (base: string): string => {
 // (/api/v1 or /api/v0) has its OpenAI-compatible sibling at /v1.
 export const getModelListBaseCandidates = (base: string): string[] => {
   const normalized = normalizeBaseUrl(base);
+
   if (!normalized) return [];
   const { path, query, hash } = splitUrlDecorators(normalized);
   const nativeApiMatch = path.match(/^(.+?)\/api\/v[01]$/i);
+
   if (nativeApiMatch) {
     return [normalized, joinUrlDecorators(`${nativeApiMatch[1]}/v1`, query, hash)];
   }
+
   const withV1 = ensureV1Suffix(normalized);
+
   return withV1 === normalized ? [normalized] : [normalized, withV1];
 };
 
@@ -93,10 +106,12 @@ const env = (typeof import.meta !== "undefined" && (import.meta as any).env) || 
 const computeBaseUrl = (candidates: Array<string | undefined>, fallback: string): string => {
   for (const candidate of candidates) {
     const normalized = normalizeBaseUrl(candidate);
+
     if (normalized) {
       return normalized;
     }
   }
+
   return fallback;
 };
 

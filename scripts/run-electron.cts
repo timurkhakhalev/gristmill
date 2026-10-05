@@ -6,14 +6,19 @@
  */
 
 const { spawn }: typeof import("child_process") = require("child_process");
+
 const { constants }: typeof import("os") = require("os");
+
 const path: typeof import("path") = require("path");
+
 const {
   ensureSqliteRuntime,
 }: import("./ensure-sqlite-runtime.cts").API = require("./ensure-sqlite-runtime.cts");
+
 const {
   launchMacElectron,
 }: import("./launch-macos-electron.cts").API = require("./launch-macos-electron.cts");
+
 const {
   prepareDevBundle,
 }: import("./dev-electron-bundle.cts").API = require("./dev-electron-bundle.cts");
@@ -31,11 +36,13 @@ function resolveElectronPath(): string {
     console.error(
       "[run-electron] This usually means npm lifecycle scripts were skipped or the Electron download failed."
     );
+
     if (process.env.ELECTRON_SKIP_BINARY_DOWNLOAD) {
       console.error(
         "[run-electron] ELECTRON_SKIP_BINARY_DOWNLOAD is set; unset it before reinstalling Electron."
       );
     }
+
     console.error(
       "[run-electron] Try: npm config set ignore-scripts false && npm rebuild electron"
     );
@@ -62,19 +69,25 @@ async function runElectron({
 } = {}) {
   await ensureRuntime("electron");
   let binary = electronPath || resolveElectronPath();
+
   if (platform === "darwin" && !electronPath && args.includes("--dev")) {
     binary = prepareDevBundle(binary);
   }
+
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
+
   // Dev-only: expose CDP when requested, while preserving app arguments.
   const chromiumFlags = env.GRISTMILL_DEBUG_CDP
     ? [`--remote-debugging-port=${env.GRISTMILL_DEBUG_CDP}`]
     : [];
+
   console.log("[run-electron] Starting Electron:", binary, appDir, args);
+
   if (platform === "darwin") {
     return launchMacElectron(binary, [...chromiumFlags, appDir, ...args], env, spawnProcess);
   }
+
   return spawnProcess(binary, [...chromiumFlags, appDir, ...args], {
     stdio: "inherit",
     env,
@@ -102,4 +115,5 @@ if (require.main === module) {
 }
 
 module.exports = api;
+
 export type API = typeof api;

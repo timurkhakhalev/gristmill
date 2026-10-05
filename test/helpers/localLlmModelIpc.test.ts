@@ -1,17 +1,22 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { localLlmChannels }: typeof import("../../src/contracts/localLlmModels.ts") = require("../../src/contracts/localLlmModels.ts");
 const {
-  registerLocalLlmModelHandlers,
-} = require("../../src/helpers/localLlmModelIpcHandlers.ts");
+  localLlmChannels,
+}: typeof import("../../src/contracts/localLlmModels.ts") = require("../../src/contracts/localLlmModels.ts");
+
+const { registerLocalLlmModelHandlers } = require("../../src/helpers/localLlmModelIpcHandlers.ts");
+
 const LocalModelDownloadStatus: typeof import("../../src/helpers/localModelDownloadStatus.ts").LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus.ts");
 
-function createHarness(overrides: {
-  modelManager?: Record<string, unknown>;
-  llamaCppInstaller?: Record<string, unknown>;
-  deps?: Record<string, unknown>;
-} = {}) {
+function createHarness(
+  overrides: {
+    modelManager?: Record<string, unknown>;
+    llamaCppInstaller?: Record<string, unknown>;
+    deps?: Record<string, unknown>;
+  } = {}
+) {
   const handlers = new Map<string, (...args: unknown[]) => any>();
   const sent: [string, any][] = [];
   const calls = { persist: 0, stopServer: 0 };
@@ -21,8 +26,12 @@ function createHarness(overrides: {
     modelManager: {
       getModelsWithStatus: async () => [],
       isModelDownloaded: async () => false,
-      downloadModel: async (modelId: string, onProgress: (progress: number, downloaded: number, total: number) => void) => {
+      downloadModel: async (
+        modelId: string,
+        onProgress: (progress: number, downloaded: number, total: number) => void
+      ) => {
         onProgress(50, 5, 10);
+
         return `/models/${modelId}.gguf`;
       },
       deleteModel: async () => {},
@@ -60,19 +69,30 @@ function createHarness(overrides: {
         active.set(`${type}:${id}`, true);
       },
       update: (type: string, id: unknown, updates: Record<string, unknown>) => {
-        const current : any = { progress: 0, downloadedBytes: 0, totalBytes: 0, ...active.get(`${type}:${id}`), ...updates };
+        const current: any = {
+          progress: 0,
+          downloadedBytes: 0,
+          totalBytes: 0,
+          ...active.get(`${type}:${id}`),
+          ...updates,
+        };
+
         active.set(`${type}:${id}`, current);
+
         return { modelType: type, modelId: id, phase: "downloading", sequence: 3, ...current };
       },
       finish: (type: string, id: unknown) => {
         if (!active.has(`${type}:${id}`)) return null;
         const current = active.get(`${type}:${id}`);
         active.delete(`${type}:${id}`);
+
         return { modelType: type, modelId: id, phase: "downloading", sequence: 7, ...current };
       },
       getActiveDownloads: () => [],
     },
-    progressSender: { sendToControlPanel: (channel: string, payload: unknown) => sent.push([channel, payload]) },
+    progressSender: {
+      sendToControlPanel: (channel: string, payload: unknown) => sent.push([channel, payload]),
+    },
     joinPath: (...segments: string[]) => segments.join("/"),
     persistEnvAfterServerStart: () => {
       calls.persist += 1;
@@ -81,12 +101,19 @@ function createHarness(overrides: {
     ...overrides.deps,
   };
 
-  registerLocalLlmModelHandlers({ handle: (c: string, fn: (...args: unknown[]) => unknown) => handlers.set(c, fn) }, deps);
+  registerLocalLlmModelHandlers(
+    { handle: (c: string, fn: (...args: unknown[]) => unknown) => handlers.set(c, fn) },
+    deps
+  );
+
   const invoke = (channel: string, ...args: unknown[]) => {
     const handler = handlers.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
+
     return handler({}, ...args);
   };
+
   return { handlers, invoke, sent, calls };
 }
 
@@ -121,6 +148,7 @@ test("download failure surfaces the manager error code and an error event", asyn
       },
     },
   });
+
   const result = await h.invoke(localLlmChannels.modelDownload, "qwen");
 
   assert.equal(result.success, false);
@@ -148,6 +176,7 @@ test("a tracker-held download short-circuits before the manager", async () => {
       },
     },
   });
+
   const result = await h.invoke(localLlmChannels.modelDownload, "qwen");
   assert.deepEqual(result.code, "DOWNLOAD_IN_PROGRESS");
   assert.equal(result.success, false);
@@ -163,6 +192,7 @@ test("a manager DOWNLOAD_IN_PROGRESS failure emits no error event", async () => 
       },
     },
   });
+
   const result = await h.invoke(localLlmChannels.modelDownload, "qwen");
   assert.equal(result.code, "DOWNLOAD_IN_PROGRESS");
   assert.equal(h.sent.length, 0);
@@ -186,6 +216,7 @@ test("llama-server start reports the port and persists env only on success", asy
   const missing = createHarness({
     modelManager: { findModelById: () => null },
   });
+
   const failed = await missing.invoke(localLlmChannels.llamaServerStart, "nope");
   assert.equal(failed.success, false);
   assert.equal(missing.calls.persist, 0);
@@ -201,6 +232,7 @@ test("model-check passes the raw id through to the manager", async () => {
   const h = createHarness({
     modelManager: { isModelDownloaded: async (modelId: unknown) => modelId === "qwen" },
   });
+
   assert.equal(await h.invoke(localLlmChannels.modelCheck, "qwen"), true);
   assert.equal(await h.invoke(localLlmChannels.modelCheck, "other"), false);
 });
@@ -215,6 +247,7 @@ test("active downloads come straight from the tracker", async () => {
     totalBytes: 10,
     sequence: 2,
   };
+
   const h = createHarness({
     deps: {
       downloadStatus: {
@@ -226,6 +259,7 @@ test("active downloads come straight from the tracker", async () => {
       },
     },
   });
+
   assert.deepEqual(await h.invoke(localLlmChannels.modelGetActiveDownloads), [row]);
 });
 
@@ -241,8 +275,12 @@ test("progress sequences come from the shared tracker", async () => {
       modelManager: {
         getModelsWithStatus: async () => [],
         isModelDownloaded: async () => false,
-        downloadModel: async (modelId: string, onProgress: (progress: number, downloaded: number, total: number) => void) => {
+        downloadModel: async (
+          modelId: string,
+          onProgress: (progress: number, downloaded: number, total: number) => void
+        ) => {
           onProgress(10, 1, 10);
+
           return "/models/x.gguf";
         },
         deleteModel: async () => {},
@@ -267,6 +305,7 @@ test("progress sequences come from the shared tracker", async () => {
     }
   );
   const download = handlers.get(localLlmChannels.modelDownload);
+
   if (!download) throw new Error("Download handler was not registered");
   const result = await download({}, "qwen");
   assert.equal(result.success, true);

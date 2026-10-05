@@ -1,9 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { EventEmitter } = require("node:events");
+
 const Module = require("node:module");
 
 const originalLoad = Module._load;
+
 // Routes broadcast through the shared windowBroadcast module, which reaches for
 // Electron's BrowserWindow; capture the calls so they can be asserted here.
 const broadcasts: Array<{ channel: string; payload: unknown }> = [];
@@ -12,13 +16,16 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
   // tsx-resolved imports keep the .js extension; legacy requires do not.
   if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
     return {
-      broadcastToWindows: (channel: string, payload: unknown) => broadcasts.push({ channel, payload }),
+      broadcastToWindows: (channel: string, payload: unknown) =>
+        broadcasts.push({ channel, payload }),
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 const { NoteWriteService } = require("../../src/helpers/noteWriteService.ts");
+
 const CliBridge = require("../../src/helpers/cliBridge.ts");
 
 Module._load = originalLoad;
@@ -37,11 +44,13 @@ function makeRequest(body: string | Buffer[]) {
   request.destroy = () => {
     request.destroyed = true;
   };
+
   const chunks = Array.isArray(body) ? body : [body];
   setImmediate(() => {
     for (const chunk of chunks) request.emit("data", chunk);
     request.emit("end");
   });
+
   return request;
 }
 
@@ -68,31 +77,51 @@ function makeResponse(): {
 
 function noteRow(content = ""): import("../../src/contracts/notes.ts").NoteItem {
   return {
-    id: 1, title: "T", content, note_type: "personal",
-    source_file: null, audio_duration_seconds: null,
-    created_at: "2026-10-04T00:00:00Z", updated_at: "2026-10-04T00:00:00Z",
-    enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null,
-    folder_id: null, folder_ids: [], space_id: 1, transcript: null,
-    calendar_event_id: null, participants: null, diarization_enabled: null, expected_speaker_count: null,
+    id: 1,
+    title: "T",
+    content,
+    note_type: "personal",
+    source_file: null,
+    audio_duration_seconds: null,
+    created_at: "2026-10-04T00:00:00Z",
+    updated_at: "2026-10-04T00:00:00Z",
+    enhanced_content: null,
+    enhancement_prompt: null,
+    enhanced_at_content_hash: null,
+    folder_id: null,
+    folder_ids: [],
+    space_id: 1,
+    transcript: null,
+    calendar_event_id: null,
+    participants: null,
+    diarization_enabled: null,
+    expected_speaker_count: null,
   };
 }
 
 function noteWrites(saveNote: (title: string, content: string) => unknown) {
   return new NoteWriteService({
     database: { saveNote, updateNote: () => ({ success: false }) },
-    mirrorWrite: () => {}, refreshMeetingSpeakerConfigFromNote: () => {},
+    mirrorWrite: () => {},
+    refreshMeetingSpeakerConfigFromNote: () => {},
   });
 }
 
 test("CLI request body limit counts UTF-8 bytes, not JavaScript characters", async () => {
   let saveCalls = 0;
-  const bridge = new CliBridge({
-    databaseManager: {},
-    noteWrites: noteWrites(() => {
-      saveCalls += 1;
-      return { success: true, note: noteRow() };
-    }),
-  }, process.cwd());
+
+  const bridge = new CliBridge(
+    {
+      databaseManager: {},
+      noteWrites: noteWrites(() => {
+        saveCalls += 1;
+
+        return { success: true, note: noteRow() };
+      }),
+    },
+    process.cwd()
+  );
+
   bridge.token = "test-token";
   bridge.port = 8200;
 
@@ -114,7 +143,19 @@ test("CLI request body limit counts UTF-8 bytes, not JavaScript characters", asy
 
 test("read token is rejected by the bridge before a write route runs", async () => {
   let writes = 0;
-  const bridge = new CliBridge({ databaseManager: {}, noteWrites: noteWrites(() => { writes++; return { success: true, note: noteRow() }; }) }, process.cwd());
+
+  const bridge = new CliBridge(
+    {
+      databaseManager: {},
+      noteWrites: noteWrites(() => {
+        writes++;
+
+        return { success: true, note: noteRow() };
+      }),
+    },
+    process.cwd()
+  );
+
   bridge.token = "write-token";
   bridge.readToken = "read-token";
   bridge.port = 8200;
@@ -129,13 +170,19 @@ test("read token is rejected by the bridge before a write route runs", async () 
 
 test("multibyte content split across request chunks is preserved", async () => {
   let savedContent = null;
-  const bridge = new CliBridge({
-    databaseManager: {},
-    noteWrites: noteWrites((_title, content) => {
-      savedContent = content;
-      return { success: true, note: noteRow(content) };
-    }),
-  }, process.cwd());
+
+  const bridge = new CliBridge(
+    {
+      databaseManager: {},
+      noteWrites: noteWrites((_title, content) => {
+        savedContent = content;
+
+        return { success: true, note: noteRow(content) };
+      }),
+    },
+    process.cwd()
+  );
+
   bridge.token = "test-token";
   bridge.port = 8200;
 
@@ -154,13 +201,19 @@ test("multibyte content split across request chunks is preserved", async () => {
 
 test("a JSON body exactly at the byte limit is accepted", async () => {
   let saveCalls = 0;
-  const bridge = new CliBridge({
-    databaseManager: {},
-    noteWrites: noteWrites(() => {
-      saveCalls += 1;
-      return { success: true, note: noteRow() };
-    }),
-  }, process.cwd());
+
+  const bridge = new CliBridge(
+    {
+      databaseManager: {},
+      noteWrites: noteWrites(() => {
+        saveCalls += 1;
+
+        return { success: true, note: noteRow() };
+      }),
+    },
+    process.cwd()
+  );
+
   bridge.token = "test-token";
   bridge.port = 8200;
 

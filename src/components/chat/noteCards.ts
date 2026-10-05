@@ -6,6 +6,7 @@ export interface NoteCardRef {
 }
 
 const NOTE_TOOLS = new Set(["create_note", "update_note", "get_note"]);
+
 // Search answers can ground on many hits; cap the cards so a broad search
 // doesn't bury the answer under a wall of note buttons.
 const MAX_SEARCH_CARDS = 5;
@@ -18,9 +19,11 @@ function cardFromHit(
   // Results without a local numeric ID cannot be opened from the note library.
   if (hit.id == null) return null;
   const noteId = Number(hit.id);
+
   if (!Number.isSafeInteger(noteId) || noteId <= 0 || seen.has(noteId)) return null;
   seen.add(noteId);
   const rawTitle = typeof hit.title === "string" ? hit.title.trim() : "";
+
   return { noteId, title: rawTitle || fallbackTitle };
 }
 
@@ -38,25 +41,31 @@ export function extractNoteCards(
 
   for (const tc of toolCalls) {
     if (tc.status !== "completed") continue;
+
     if (NOTE_TOOLS.has(tc.name) && tc.metadata && !Array.isArray(tc.metadata)) {
       if (!tc.metadata.id) continue;
       const noteId = Number(tc.metadata.id);
+
       if (!Number.isSafeInteger(noteId) || noteId <= 0 || seen.has(noteId)) continue;
       seen.add(noteId);
       const metaTitle = typeof tc.metadata.title === "string" ? tc.metadata.title.trim() : "";
+
       const resultTitle =
         tc.result?.replace(/^(Created|Updated|Retrieved) note: "(.+)"$/, "$2")?.trim() || "";
+
       const title = metaTitle || resultTitle || fallbackTitle;
       cards.push({ noteId, title });
     } else if (tc.name === "search_notes" && Array.isArray(tc.metadata)) {
       for (const hit of tc.metadata) {
         if (searchCards >= MAX_SEARCH_CARDS) break;
         const card = cardFromHit(hit, seen, fallbackTitle);
+
         if (!card) continue;
         cards.push(card);
         searchCards += 1;
       }
     }
   }
+
   return cards;
 }

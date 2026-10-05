@@ -37,6 +37,7 @@ export function createScrollFollowController({
     },
     update: (metrics) => {
       const distanceToBottom = getScrollBottomDistance(metrics);
+
       if (readerLeftBottom) {
         if (distanceToBottom > rejoinThreshold) {
           readerMovedAway = true;
@@ -45,10 +46,12 @@ export function createScrollFollowController({
           readerMovedAway = false;
           following = true;
         }
+
         return following;
       }
 
       following = distanceToBottom <= nearBottomThreshold;
+
       return following;
     },
     follow: () => {

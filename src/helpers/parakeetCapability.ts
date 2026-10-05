@@ -1,4 +1,5 @@
 export const PARAKEET_MINIMUM_MACOS_VERSION = "15.5";
+
 export const PARAKEET_UNSUPPORTED_OS_CODE = "PARAKEET_UNSUPPORTED_OS";
 
 export function compareVersions(left: string, right: string): number {
@@ -8,6 +9,7 @@ export function compareVersions(left: string, right: string): number {
 
   for (let index = 0; index < length; index += 1) {
     const difference = (leftParts[index] || 0) - (rightParts[index] || 0);
+
     if (difference !== 0) return difference > 0 ? 1 : -1;
   }
 
@@ -54,6 +56,7 @@ export function getParakeetCapability({
 
 export function assertParakeetSupported(options?: ParakeetCapabilityOptions): void {
   const capability = getParakeetCapability(options);
+
   if (capability.supported) return;
 
   throw Object.assign(new Error(capability.message as string), {

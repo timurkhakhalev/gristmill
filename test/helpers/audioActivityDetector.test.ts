@@ -1,18 +1,35 @@
 const test: typeof import("node:test") = require("node:test");
+
 const { afterEach }: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const { EventEmitter }: typeof import("node:events") = require("node:events");
+
 const childProcess = require("node:child_process");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
 
 const detectorModulePath = require.resolve("../../src/helpers/audioActivityDetector.ts");
 
 type ExecResponse = { stdout?: string; stderr?: string; error?: Error; promise?: Promise<unknown> };
-interface DetectorOptions { excludedProcessIds?: () => number[]; ownPids?: number[]; execResponses?: ExecResponse[]; spawnError?: string; isMeetingAppRunning?: (name: string) => boolean | Promise<boolean>; }
+
+interface DetectorOptions {
+  excludedProcessIds?: () => number[];
+  ownPids?: number[];
+  execResponses?: ExecResponse[];
+  spawnError?: string;
+  isMeetingAppRunning?: (name: string) => boolean | Promise<boolean>;
+}
+
 type LogEntry = { message: unknown; data?: unknown };
+
 // Private members cannot enter an intersection (it collapses to never), so the
 // under-test view redeclares the shape the tests actually touch.
 type DetectorUnderTest = import("node:events").EventEmitter & {
@@ -35,8 +52,16 @@ type DetectorUnderTest = import("node:events").EventEmitter & {
   resetPrompt: () => void;
   on: (event: string, listener: (...args: never[]) => void) => import("node:events").EventEmitter;
 };
-type FakeChild = import("node:events").EventEmitter & { stdout: import("node:events").EventEmitter; stderr: import("node:events").EventEmitter; killed: boolean; kill: (signal?: string) => boolean };
+
+type FakeChild = import("node:events").EventEmitter & {
+  stdout: import("node:events").EventEmitter;
+  stderr: import("node:events").EventEmitter;
+  killed: boolean;
+  kill: (signal?: string) => boolean;
+};
+
 const originalLoad = Module._load;
+
 const originalPlatform = process.platform;
 
 // The detector reads process.platform both at load time (poll interval) and at
@@ -47,11 +72,21 @@ function setPlatform(platform: string) {
 
 afterEach(() => setPlatform(originalPlatform));
 
-function loadDetector(platform: string, spawn: (command: string, args: string[], options: unknown) => FakeChild, exec: unknown, logEntries: LogEntry[]) {
+function loadDetector(
+  platform: string,
+  spawn: (command: string, args: string[], options: unknown) => FakeChild,
+  exec: unknown,
+  logEntries: LogEntry[]
+) {
   delete require.cache[detectorModulePath];
   setPlatform(platform);
 
-  Module._load = function loadWithMocks(this: unknown, request: string, parent: unknown, isMain: boolean) {
+  Module._load = function loadWithMocks(
+    this: unknown,
+    request: string,
+    parent: unknown,
+    isMain: boolean
+  ) {
     if (request === "./debugLogger" || request === "./debugLogger.js") {
       return {
         info(message: unknown, data?: unknown) {
@@ -62,20 +97,26 @@ function loadDetector(platform: string, spawn: (command: string, args: string[],
         error() {},
       };
     }
+
     if (request === "child_process") {
       return { ...childProcess, exec, spawn };
     }
+
     // Binary resolution hits the real filesystem, so without this the platform
     // under test would be decided by which listener binaries happen to be built
     // on the host rather than by setPlatform().
     if (request === "./binaryResolver" || request === "./binaryResolver.js") {
       return { resolveBundledBinary: (name: string) => `/fake/bin/${name}` };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
   try {
-    return require(detectorModulePath) as unknown as new (getExcluded: () => number[], isMeetingAppRunning?: (name: string) => boolean | Promise<boolean>) => DetectorUnderTest;
+    return require(detectorModulePath) as unknown as new (
+      getExcluded: () => number[],
+      isMeetingAppRunning?: (name: string) => boolean | Promise<boolean>
+    ) => DetectorUnderTest;
   } finally {
     Module._load = originalLoad;
   }
@@ -91,12 +132,15 @@ function createFakeChild(spawnError?: string): FakeChild {
   child.kill = () => {
     child.killed = true;
     process.nextTick(() => child.emit("exit", null));
+
     return true;
   };
+
   process.nextTick(() => {
     if (spawnError) child.emit("error", new Error(spawnError));
     else child.emit("spawn");
   });
+
   return child;
 }
 
@@ -105,32 +149,47 @@ function createFakeChild(spawnError?: string): FakeChild {
 // here. Both spellings feed the detector's excluded-pid provider.
 function createDetector(
   platform: string,
-  { excludedProcessIds, ownPids, execResponses = [], spawnError, isMeetingAppRunning }: DetectorOptions = {}
+  {
+    excludedProcessIds,
+    ownPids,
+    execResponses = [],
+    spawnError,
+    isMeetingAppRunning,
+  }: DetectorOptions = {}
 ) {
   const getExcludedProcessIds =
     excludedProcessIds ?? (ownPids ? () => [...ownPids] : () => [process.pid]);
+
   const children: FakeChild[] = [];
   const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
   const execCalls: Array<{ command: string; options: unknown }> = [];
   const logEntries: LogEntry[] = [];
   const fakeExec = (() => {}) as (() => void) & Record<PropertyKey, unknown>;
-  fakeExec[Symbol.for("nodejs.util.promisify.custom")] = async (command: string, options: unknown) => {
+  fakeExec[Symbol.for("nodejs.util.promisify.custom")] = async (
+    command: string,
+    options: unknown
+  ) => {
     execCalls.push({ command, options });
     const response = execResponses.shift();
+
     if (!response || response.error) {
       throw response?.error || new Error("exec unavailable in test");
     }
+
     if (response.promise) {
       return response.promise;
     }
+
     return { stdout: response.stdout, stderr: response.stderr || "" };
   };
+
   const AudioActivityDetector = loadDetector(
     platform,
     (command: string, args: string[], options: unknown) => {
       calls.push({ command, args, options });
       const child = createFakeChild(spawnError);
       children.push(child);
+
       return child;
     },
     fakeExec,
@@ -139,13 +198,16 @@ function createDetector(
 
   const detector = new AudioActivityDetector(getExcludedProcessIds, isMeetingAppRunning);
   detector._isMicActive = async () => false;
+
   return { detector, children, calls, execCalls, logEntries };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 // flush() pends on the mocked setTimeout, so mock-timer tests drain the
 // reconcile promise chain through the unmocked immediate queue instead.
 const flushImmediate = () => new Promise((resolve) => setImmediate(resolve));
+
 const PLATFORMS = ["darwin"];
 
 for (const platform of PLATFORMS) {
@@ -156,11 +218,17 @@ for (const platform of PLATFORMS) {
     await detector.start();
 
     assert.equal(detector._eventDriven, false);
+
     if (platform === "darwin") {
-      assert.equal(detector.checkInterval, undefined, "device-wide polling cannot attribute mic use");
+      assert.equal(
+        detector.checkInterval,
+        undefined,
+        "device-wide polling cannot attribute mic use"
+      );
     } else {
       assert.notEqual(detector.checkInterval, null, "polling must take over");
     }
+
     detector.stop();
   });
 
@@ -232,12 +300,13 @@ test("darwin: attributed microphone transitions drive the sustained timer", asyn
   detector.stop();
 });
 
-
 test("darwin: PID events exclude current OpenWhispr processes and continue during recording", async () => {
   let excludedProcessIds = [101, 102];
+
   const { detector, children } = createDetector("darwin", {
     excludedProcessIds: () => excludedProcessIds,
   });
+
   const externalStates: unknown[] = [];
   detector.on("external-mic-state-changed", (state) => externalStates.push(state));
 
@@ -255,7 +324,11 @@ test("darwin: PID events exclude current OpenWhispr processes and continue durin
     { reliable: true, externalMicActive: true },
   ]);
   assert.equal(detector._sustainedTimer, null, "recording must still suppress meeting prompts");
-  assert.deepEqual([...(detector._activeMicPids ?? new Set<number>())], [202], "own pids never enter the set");
+  assert.deepEqual(
+    [...(detector._activeMicPids ?? new Set<number>())],
+    [202],
+    "own pids never enter the set"
+  );
 
   // The exclusion list is read live: a helper that spawned after start() is
   // excluded from its first MIC_START.
@@ -423,9 +496,11 @@ test("darwin: aggregate activity prompts once a running meeting app corroborates
 test("darwin: a meeting app launching during aggregate activity is re-evaluated", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let meetingAppRunning = false;
+
   const { detector, children } = createDetector("darwin", {
     isMeetingAppRunning: () => meetingAppRunning,
   });
+
   t.after(() => detector.stop());
   const detections: unknown[] = [];
   detector.on("sustained-audio-detected", (data) => detections.push(data));
@@ -445,9 +520,11 @@ test("darwin: a meeting app launching during aggregate activity is re-evaluated"
 test("darwin: a meeting app quitting before the sustained window cancels the aggregate prompt", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let meetingAppRunning = true;
+
   const { detector, children } = createDetector("darwin", {
     isMeetingAppRunning: () => meetingAppRunning,
   });
+
   t.after(() => detector.stop());
   const detections: unknown[] = [];
   detector.on("sustained-audio-detected", (data) => detections.push(data));
@@ -479,9 +556,11 @@ test("darwin: attributed transitions prompt without a running meeting app", asyn
 test("darwin: regaining PID capability discards unattributed aggregate state", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
   let meetingAppRunning = false;
+
   const { detector, children } = createDetector("darwin", {
     isMeetingAppRunning: () => meetingAppRunning,
   });
+
   t.after(() => detector.stop());
   const detections: unknown[] = [];
   detector.on("sustained-audio-detected", (data) => detections.push(data));
@@ -571,12 +650,15 @@ test("darwin: a listener that fails to launch is not respawned", async (t: impor
 
 test("darwin: exclusion-provider failure emits reliability loss", async () => {
   let providerFails = false;
+
   const { detector, children } = createDetector("darwin", {
     excludedProcessIds: () => {
       if (providerFails) throw new Error("metrics unavailable");
+
       return [process.pid];
     },
   });
+
   const externalStates: unknown[] = [];
   detector.on("external-mic-state-changed", (state) => externalStates.push(state));
 
@@ -595,12 +677,15 @@ test("darwin: exclusion-provider failure emits reliability loss", async () => {
 test("darwin: native snapshots exclude background speech while preserving meeting capture", async (t: import("node:test").TestContext) => {
   if (originalPlatform !== "darwin") {
     t.skip("the native microphone listener requires macOS");
+
     return;
   }
 
   const compiler = childProcess.spawnSync("swiftc", ["--version"], { encoding: "utf8" });
+
   if (compiler.error?.code === "ENOENT" || compiler.status !== 0) {
     t.skip("no Swift compiler is available for the native-state test");
+
     return;
   }
 
@@ -624,6 +709,7 @@ test("darwin: native snapshots exclude background speech while preserving meetin
     // Filling Swift's compiler-managed module cache can exceed a tight timeout.
     { encoding: "utf8", timeout: 600_000 }
   );
+
   assert.equal(compileResult.status, 0, compileResult.error?.message || compileResult.stderr);
 
   const coreSpeech = {
@@ -632,8 +718,10 @@ test("darwin: native snapshots exclude background speech while preserving meetin
     inputRunning: true,
     bundleID: "com.apple.CoreSpeech",
   };
+
   const browser = { objectID: 2, pid: 102, inputRunning: true, bundleID: "com.google.Chrome" };
   const unknown = { objectID: 3, pid: 103, inputRunning: true, bundleID: null };
+
   const scenarios = [
     {
       name: "playback alone keeps PID monitoring available without active meeting capture",
@@ -686,6 +774,7 @@ test("darwin: native snapshots exclude background speech while preserving meetin
         encoding: "utf8",
         timeout: 5000,
       });
+
       assert.equal(result.status, 0, result.error?.message || result.stderr);
       assert.deepEqual(JSON.parse(result.stdout), expected);
     });
@@ -706,6 +795,7 @@ test("darwin: native snapshots exclude background speech while preserving meetin
       expected: { lines: [], mode: "aggregate" },
     },
   ];
+
   for (const { name, fixture, expected } of recoveryScenarios) {
     await t.test(name, () => {
       const result = childProcess.spawnSync(
@@ -713,6 +803,7 @@ test("darwin: native snapshots exclude background speech while preserving meetin
         ["--recover-from-aggregate", JSON.stringify(fixture)],
         { encoding: "utf8", timeout: 5000 }
       );
+
       assert.equal(result.status, 0, result.error?.message || result.stderr);
       const lines = result.stdout.trim().split("\n");
       const summary = JSON.parse(lines.pop());
@@ -726,7 +817,9 @@ test("darwin: native snapshots exclude background speech while preserving meetin
 // remember the last known state and re-evaluate it when the gate lifts.
 // Mirrors SUSTAINED_EVENT_DRIVEN_MS and COOLDOWN_MS in audioActivityDetector.ts.
 const SUSTAINED_MS = 2 * 1000;
+
 const COOLDOWN_MS = 5 * 60 * 1000;
+
 // Mirrors LISTENER_RESPAWN_BASE_MS in audioActivityDetector.ts.
 const RESPAWN_MS = 5 * 1000;
 

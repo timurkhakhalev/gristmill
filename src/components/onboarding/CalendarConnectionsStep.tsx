@@ -25,6 +25,7 @@ export default function CalendarConnectionsStep() {
 
   const ensureSystemAudio = useCallback(async () => {
     if (systemAudio.granted || !canManageSystemAudioInApp(systemAudio)) return true;
+
     return systemAudio.request();
   }, [systemAudio]);
 
@@ -33,6 +34,7 @@ export default function CalendarConnectionsStep() {
       setConnecting(provider);
       setError(null);
       setAppleDenied(false);
+
       try {
         // Recording a meeting needs system audio; connecting a calendar does not.
         // Awaited so the permission dialog doesn't race the OAuth browser window,
@@ -42,6 +44,7 @@ export default function CalendarConnectionsStep() {
 
         if (provider === "google") {
           const result = await window.electronAPI?.gcalStartOAuth?.();
+
           if (result?.success && result.email) {
             const current = useSettingsStore.getState().gcalAccounts;
             store.setGcalAccounts([
@@ -53,6 +56,7 @@ export default function CalendarConnectionsStep() {
           }
         } else if (provider === "microsoft") {
           const result = await window.electronAPI?.mcalStartOAuth?.();
+
           if (result?.success && result.email) {
             const current = useSettingsStore.getState().mcalAccounts;
             store.setMcalAccounts([
@@ -64,6 +68,7 @@ export default function CalendarConnectionsStep() {
           }
         } else {
           const result = await window.electronAPI?.acalConnect?.();
+
           if (result?.success) {
             store.setAppleCalendarConnected(true);
           } else if (result?.success === false && result.reason === "denied") {
@@ -90,15 +95,19 @@ export default function CalendarConnectionsStep() {
     void window.electronAPI?.mcalGetConnectionStatus().then((status) => {
       setMicrosoftConfigured(Boolean(status.configured));
     });
+
     const google = window.electronAPI?.onGcalConnectionChanged((data) => {
       store.setGcalAccounts(data.accounts);
     });
+
     const microsoft = window.electronAPI?.onMcalConnectionChanged((data) => {
       store.setMcalAccounts(data.accounts);
     });
+
     const apple = window.electronAPI?.onAcalConnectionChanged((data) => {
       store.setAppleCalendarConnected(data.connected);
     });
+
     return () => {
       google?.();
       microsoft?.();

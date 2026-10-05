@@ -1,19 +1,27 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 let vitePromise: Promise<import("vite").ViteDevServer> | undefined;
+
 const cleanup: Array<() => Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
+
 function getVite() {
-  return vitePromise ??= createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) }, {
-    cachePrefix: "openwhispr-file-diarization-warning-test-",
-    mockModules: {
-      "/lib/auth": "export const withSessionRefresh = (fn) => fn();",
-    },
-  });
+  return (vitePromise ??= createRendererServer(
+    { after: (close: () => Promise<void>) => cleanup.push(close) },
+    {
+      cachePrefix: "openwhispr-file-diarization-warning-test-",
+      mockModules: {
+        "/lib/auth": "export const withSessionRefresh = (fn) => fn();",
+      },
+    }
+  ));
 }
 
 function localConfig() {
@@ -34,21 +42,34 @@ function localConfig() {
 }
 
 async function loadFileTranscription(t: import("node:test").TestContext) {
-  const { window } = installBrowserGlobals(t) as { window: { electronAPI: Record<string, unknown> } };
+  const { window } = installBrowserGlobals(t) as {
+    window: { electronAPI: Record<string, unknown> };
+  };
+
   const vite = await getVite();
   const module = await vite.moduleGraph.getModuleByUrl("/services/fileTranscription.ts");
+
   if (module) vite.moduleGraph.invalidateModule(module);
-  const mod = (await vite.ssrLoadModule("/services/fileTranscription.ts") as typeof import("../../src/services/fileTranscription.ts"));
+
+  const mod = (await vite.ssrLoadModule(
+    "/services/fileTranscription.ts"
+  )) as typeof import("../../src/services/fileTranscription.ts");
+
   window.electronAPI.transcribeAudioFile = async () => ({
     success: true,
     text: "Plain transcript",
   });
+
   return { window, ...mod };
 }
 
 test("keeps the transcript and warns when local speaker identification fails", async (t: import("node:test").TestContext) => {
   const { window, transcribeFileWithSpeakers } = await loadFileTranscription(t);
-  window.electronAPI.diarizeAudioFile = async (): Promise<{ success: boolean; error?: string; segments?: unknown[] }> => ({
+  window.electronAPI.diarizeAudioFile = async (): Promise<{
+    success: boolean;
+    error?: string;
+    segments?: unknown[];
+  }> => ({
     success: false,
     error: "Speaker identification failed",
   });
@@ -66,7 +87,11 @@ test("keeps the transcript and warns when local speaker identification fails", a
 
 test("keeps the transcript and warns when speaker labels cannot be merged", async (t: import("node:test").TestContext) => {
   const { window, transcribeFileWithSpeakers } = await loadFileTranscription(t);
-  window.electronAPI.diarizeAudioFile = async (): Promise<{ success: boolean; error?: string; segments?: unknown[] }> => ({
+  window.electronAPI.diarizeAudioFile = async (): Promise<{
+    success: boolean;
+    error?: string;
+    segments?: unknown[];
+  }> => ({
     success: true,
     segments: [{ speaker: "speaker_00", start: 0, end: 2 }],
   });
@@ -88,7 +113,11 @@ test("keeps the transcript and warns when speaker labels cannot be merged", asyn
 
 test("does not warn when speaker labels are merged", async (t: import("node:test").TestContext) => {
   const { window, transcribeFileWithSpeakers } = await loadFileTranscription(t);
-  window.electronAPI.diarizeAudioFile = async (): Promise<{ success: boolean; error?: string; segments?: unknown[] }> => ({
+  window.electronAPI.diarizeAudioFile = async (): Promise<{
+    success: boolean;
+    error?: string;
+    segments?: unknown[];
+  }> => ({
     success: true,
     segments: [{ speaker: "speaker_00", start: 0, end: 2 }],
   });
@@ -110,8 +139,13 @@ test("does not warn when speaker labels are merged", async (t: import("node:test
 test("does not warn when speaker detection is off", async (t: import("node:test").TestContext) => {
   const { window, transcribeFileWithSpeakers } = await loadFileTranscription(t);
   let diarizeCalls = 0;
-  window.electronAPI.diarizeAudioFile = async (): Promise<{ success: boolean; error?: string; segments?: unknown[] }> => {
+  window.electronAPI.diarizeAudioFile = async (): Promise<{
+    success: boolean;
+    error?: string;
+    segments?: unknown[];
+  }> => {
     diarizeCalls += 1;
+
     return { success: false };
   };
 
@@ -144,7 +178,11 @@ test("does not warn when the provider applied its own speaker labels", async (t:
 
 test("keeps the transcript and warns when the merge throws", async (t: import("node:test").TestContext) => {
   const { window, transcribeFileWithSpeakers } = await loadFileTranscription(t);
-  window.electronAPI.diarizeAudioFile = async (): Promise<{ success: boolean; error?: string; segments?: unknown[] }> => ({
+  window.electronAPI.diarizeAudioFile = async (): Promise<{
+    success: boolean;
+    error?: string;
+    segments?: unknown[];
+  }> => ({
     success: true,
     segments: [{ speaker: "speaker_00", start: 0, end: 2 }],
   });
@@ -173,6 +211,7 @@ test("fetches the local speaker models before a run that needs them", async (t: 
     config: localConfig(),
     ensureModels: async () => {
       ensureCalls += 1;
+
       return true;
     },
   });
@@ -193,11 +232,14 @@ test("does not fetch local models when file providers diarize server-side", asyn
       config: { ...localConfig(), useLocalWhisper: false, cloudTranscriptionProvider: provider },
       ensureModels: async () => {
         ensureCalls += 1;
+
         return true;
       },
     });
+
     assert.deepEqual(settings, { enabled: true, localModelsReady: false, numSpeakers: 2 });
   }
+
   assert.equal(ensureCalls, 0);
 });
 
@@ -212,6 +254,7 @@ test("does not fetch local models when speaker detection is off", async (t: impo
     config: localConfig(),
     ensureModels: async () => {
       ensureCalls += 1;
+
       return true;
     },
   });

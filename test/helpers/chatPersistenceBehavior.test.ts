@@ -1,8 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
 // Characterization for the thirteen agent-conversation persistence channels.
@@ -11,15 +16,23 @@ const Module = require("node:module");
 // cutover: defaults, filters, null results, metadata serialization and
 // cascades must survive the move unchanged.
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-persist-"));
+
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
-    return { app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false } };
+    return {
+      app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
+    };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 process.env.NODE_ENV = "test";
+
 const DatabaseManager = require("../../src/helpers/database.ts");
+
 import type { AgentConversationRow, ConversationPreviewRow } from "../../src/helpers/database.ts";
 
 test.after(() => {
@@ -28,6 +41,7 @@ test.after(() => {
 
 function isNativeBindingUnavailable(error: unknown) {
   const message = String((error as { message?: unknown })?.message || error);
+
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -36,19 +50,23 @@ function isNativeBindingUnavailable(error: unknown) {
 
 function createDb(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-persist-"));
+
   try {
     return new DatabaseManager();
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return null;
     }
+
     throw error;
   }
 }
 
 test("create defaults: title omitted becomes Untitled and scopes stay null", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const conv = db.createAgentConversation();
   assert.equal(conv.title, "Untitled");
@@ -68,6 +86,7 @@ test("create defaults: title omitted becomes Untitled and scopes stay null", (t:
 
 test("getAgentConversation returns the row plus messages, null when missing", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const conv = db.createAgentConversation("Chat", null, null, null);
   db.addAgentMessage(conv.id, "user", "hello", { toolCalls: [{ id: "t1" }] });
@@ -86,9 +105,13 @@ test("getAgentConversation returns the row plus messages, null when missing", (t
 
 test("BB thread bindings survive database reopen, add to existing chats and cascade with deletion", (t: import("node:test").TestContext) => {
   let db = createDb(t);
+
   if (!db) return;
   const directory = userDataDir;
-  t.after(() => { db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  t.after(() => {
+    db.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
   const conversation = db.createAgentConversation("Existing chat");
   db.addAgentMessage(conversation.id, "user", "Saved history", null);
   db.db.exec("DROP TABLE agent_bb_threads");
@@ -103,7 +126,10 @@ test("BB thread bindings survive database reopen, add to existing chats and casc
   assert.throws(() => db.saveAgentBbThread(987654, "thr_unknown", "codex"), /FOREIGN KEY/);
   db.close();
   db = new DatabaseManager();
-  assert.deepEqual(db.getAgentBbThread(conversation.id), { thread_id: "thr_original", provider: "codex" });
+  assert.deepEqual(db.getAgentBbThread(conversation.id), {
+    thread_id: "thr_original",
+    provider: "codex",
+  });
   assert.equal(db.getAgentMessages(conversation.id)[0].content, "Saved history");
   db.deleteAgentConversation(conversation.id);
   assert.equal(db.getAgentBbThread(conversation.id), null);
@@ -112,13 +138,18 @@ test("BB thread bindings survive database reopen, add to existing chats and casc
 
 test("getAgentConversations defaults to 50 and excludes archived", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
+
   for (let i = 0; i < 3; i++) db.createAgentConversation(`c${i}`);
   const archived = db.createAgentConversation("archived");
   db.archiveAgentConversation(archived.id);
   const list = db.getAgentConversations();
   assert.equal(list.length, 3);
-  assert.equal(list.some((c: AgentConversationRow) => c.id === archived.id), false);
+  assert.equal(
+    list.some((c: AgentConversationRow) => c.id === archived.id),
+    false
+  );
   // Rows are plain SELECT *: no message_count, no preview.
   assert.equal("message_count" in list[0], false);
   assert.equal("preview" in list[0], false);
@@ -128,8 +159,19 @@ test("getAgentConversations defaults to 50 and excludes archived", (t: import("n
 
 test("getConversationsForNote defaults to 20 and includes archived rows", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
-  const note = db.saveNote("Note", "body", "personal", null, null, null, db.getPrivateSpaceId()).note;
+
+  const note = db.saveNote(
+    "Note",
+    "body",
+    "personal",
+    null,
+    null,
+    null,
+    db.getPrivateSpaceId()
+  ).note;
+
   const a = db.createAgentConversation("a", note.id);
   const b = db.createAgentConversation("b", note.id);
   db.archiveAgentConversation(b.id);
@@ -143,6 +185,7 @@ test("getConversationsForNote defaults to 20 and includes archived rows", (t: im
 
 test("getConversationsForContainer: null folder picks the space root only", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
   const folder = db.createFolder("F", spaceId).folder;
@@ -151,21 +194,31 @@ test("getConversationsForContainer: null folder picks the space root only", (t: 
   const other = db.createAgentConversation("note-attached", null, null, null);
 
   const rootList = db.getConversationsForContainer(spaceId, null);
-  assert.deepEqual(rootList.map((c: AgentConversationRow) => c.id), [root.id]);
+  assert.deepEqual(
+    rootList.map((c: AgentConversationRow) => c.id),
+    [root.id]
+  );
   // Container list adds message_count on top of the row.
   assert.equal(rootList[0].message_count, 0);
   db.addAgentMessage(root.id, "user", "hi");
   assert.equal(db.getConversationsForContainer(spaceId, null)[0].message_count, 1);
 
   const folderList = db.getConversationsForContainer(spaceId, folder.id);
-  assert.deepEqual(folderList.map((c: AgentConversationRow) => c.id), [inner.id]);
+  assert.deepEqual(
+    folderList.map((c: AgentConversationRow) => c.id),
+    [inner.id]
+  );
   // Note-attached (space_id null) never leaks into the container list.
-  assert.equal(rootList.some((c: AgentConversationRow) => c.id === other.id), false);
+  assert.equal(
+    rootList.some((c: AgentConversationRow) => c.id === other.id),
+    false
+  );
   db.close();
 });
 
 test("addAgentMessage bumps the conversation, null for a missing one", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const conv = db.createAgentConversation("chat");
   assert.equal(db.addAgentMessage(987654, "user", "x"), null);
@@ -186,6 +239,7 @@ test("addAgentMessage bumps the conversation, null for a missing one", (t: impor
 
 test("getAgentMessages returns conversation rows in creation order", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const conv = db.createAgentConversation("chat");
   db.addAgentMessage(conv.id, "user", "one");
@@ -204,6 +258,7 @@ test("getAgentMessages returns conversation rows in creation order", (t: import(
 
 test("preview pagination skips rows and preview falls back to null", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const empty = db.createAgentConversation("empty");
   const first = db.createAgentConversation("first");
@@ -229,22 +284,39 @@ test("preview pagination skips rows and preview falls back to null", async (t: i
 
   // Page 2 holds the older remainder.
   const offsetPage = db.getAgentConversationsWithPreview(2, 2, false);
-  assert.deepEqual(offsetPage.map((c: ConversationPreviewRow) => c.id), [empty.id]);
+  assert.deepEqual(
+    offsetPage.map((c: ConversationPreviewRow) => c.id),
+    [empty.id]
+  );
 
   // Archived rows are hidden until includeArchived.
   db.archiveAgentConversation(second.id);
-  assert.equal(db.getAgentConversationsWithPreview(50, 0, false).some((c: ConversationPreviewRow) => c.id === second.id), false);
-  assert.equal(db.getAgentConversationsWithPreview(50, 0, true).some((c: ConversationPreviewRow) => c.id === second.id), true);
+  assert.equal(
+    db
+      .getAgentConversationsWithPreview(50, 0, false)
+      .some((c: ConversationPreviewRow) => c.id === second.id),
+    false
+  );
+  assert.equal(
+    db
+      .getAgentConversationsWithPreview(50, 0, true)
+      .some((c: ConversationPreviewRow) => c.id === second.id),
+    true
+  );
   db.close();
 });
 
 test("searchAgentConversations is a plain title LIKE with the empty-match-all", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const hit = db.createAgentConversation("Growth plan");
   db.createAgentConversation("Other");
   const found = db.searchAgentConversations("growth");
-  assert.deepEqual(found.map((c: AgentConversationRow) => c.id), [hit.id]);
+  assert.deepEqual(
+    found.map((c: AgentConversationRow) => c.id),
+    [hit.id]
+  );
   assert.equal("preview" in found[0], false);
   // Empty query degenerates to LIKE %% — every conversation matches.
   assert.equal(db.searchAgentConversations("").length, 2);
@@ -255,6 +327,7 @@ test("searchAgentConversations is a plain title LIKE with the empty-match-all", 
 
 test("title updates report success and archive/unarchive flip the flag", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const conv = db.createAgentConversation("before");
   assert.deepEqual(db.updateAgentConversationTitle(conv.id, "after"), { success: true });
@@ -262,7 +335,10 @@ test("title updates report success and archive/unarchive flip the flag", (t: imp
   assert.deepEqual(db.updateAgentConversationTitle(987654, "x"), { success: false });
   assert.deepEqual(db.archiveAgentConversation(conv.id), { success: true });
   assert.notEqual(db.getAgentConversation(conv.id).archived_at, null);
-  assert.deepEqual(db.getAgentConversations().map((c: AgentConversationRow) => c.id), []);
+  assert.deepEqual(
+    db.getAgentConversations().map((c: AgentConversationRow) => c.id),
+    []
+  );
   assert.deepEqual(db.unarchiveAgentConversation(conv.id), { success: true });
   assert.equal(db.getAgentConversation(conv.id).archived_at, null);
   assert.deepEqual(db.archiveAgentConversation(987654), { success: false });
@@ -272,6 +348,7 @@ test("title updates report success and archive/unarchive flip the flag", (t: imp
 
 test("delete removes the conversation and cascades its messages", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const conv = db.createAgentConversation("doomed");
   db.addAgentMessage(conv.id, "user", "one");
@@ -284,6 +361,7 @@ test("delete removes the conversation and cascades its messages", (t: import("no
 
 test("deleting the note cascades the chat; deleting the folder clears folder_id", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
   const folder = db.createFolder("F", spaceId).folder;
@@ -303,19 +381,25 @@ test("deleting the note cascades the chat; deleting the folder clears folder_id"
 test("reopening the database restores conversations, messages and metadata", (t: import("node:test").TestContext) => {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-persist-"));
   let db;
+
   try {
     db = new DatabaseManager();
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return;
     }
+
     throw error;
   }
+
   const spaceId = db.getPrivateSpaceId();
   const conv = db.createAgentConversation("durable", null, spaceId, null);
-  db.addAgentMessage(conv.id, "user", "question", { toolCalls: [{ id: "t1", name: "search_notes" }] });
-  db.addAgentMessage(conv.id, "assistant", "answer with \"quotes\" and\nnewlines");
+  db.addAgentMessage(conv.id, "user", "question", {
+    toolCalls: [{ id: "t1", name: "search_notes" }],
+  });
+  db.addAgentMessage(conv.id, "assistant", 'answer with "quotes" and\nnewlines');
   db.close();
 
   db = new DatabaseManager();

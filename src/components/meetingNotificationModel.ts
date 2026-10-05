@@ -1,4 +1,7 @@
-import type { MeetingAutoEndReason, MeetingNotificationData } from "../contracts/meetingCoordinator";
+import type {
+  MeetingAutoEndReason,
+  MeetingNotificationData,
+} from "../contracts/meetingCoordinator";
 
 type AutoEndBodyKey =
   | "meetingNotification.autoEnd.body.micReleased"
@@ -44,7 +47,11 @@ interface MeetContextPresentation {
   dismissible: true;
   allowTitleWrap: true;
 }
-export type MeetingNotificationPresentation = AutoEndPresentation | DetectionPresentation | MeetContextPresentation;
+
+export type MeetingNotificationPresentation =
+  | AutoEndPresentation
+  | DetectionPresentation
+  | MeetContextPresentation;
 
 const MEETING_NOTIFICATION_SWIPE_DISTANCE_PX = 80;
 
@@ -59,7 +66,16 @@ export function getMeetingNotificationPresentation(
   data: MeetingNotificationData | null,
   secondsRemaining: number
 ): MeetingNotificationPresentation {
-  if (data?.kind === "meet-context-lost") return { titleKey: "meetIntegration.title", bodyKey: "meetIntegration.contextLost", actionKey: "notes.editor.stop", action: "stop", dismissible: true, allowTitleWrap: true };
+  if (data?.kind === "meet-context-lost")
+    return {
+      titleKey: "meetIntegration.title",
+      bodyKey: "meetIntegration.contextLost",
+      actionKey: "notes.editor.stop",
+      action: "stop",
+      dismissible: true,
+      allowTitleWrap: true,
+    };
+
   if (data?.kind === "auto-end") {
     return {
       titleKey: "meetingNotification.autoEnd.title",
@@ -75,6 +91,7 @@ export function getMeetingNotificationPresentation(
 
   const variant = data?.variant ?? "detected";
   const eventTitle = variant !== "detected" ? data?.event?.summary : null;
+
   return {
     ...(eventTitle ? { title: eventTitle } : { titleKey: "meetingNotification.title" }),
     bodyKey: `meetingNotification.body.${variant}`,
@@ -114,6 +131,7 @@ export function initializeMeetingNotificationOverlay({
     onData(data);
     revealTimer = schedule(() => {
       revealTimer = null;
+
       if (!active) return;
       onVisible();
       onReady();
@@ -130,6 +148,7 @@ export function initializeMeetingNotificationOverlay({
   return () => {
     active = false;
     unsubscribe?.();
+
     if (revealTimer !== null) {
       cancel(revealTimer);
       revealTimer = null;
@@ -171,5 +190,6 @@ export function subscribeMeetingAutoEndCountdown(
 
   update();
   const timer = clock.setInterval(update, 250);
+
   return () => clock.clearInterval(timer);
 }

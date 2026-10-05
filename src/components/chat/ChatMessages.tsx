@@ -13,6 +13,7 @@ interface ChatMessagesProps {
 
 export function ChatMessages({ messages, emptyState, onOpenNote, onRetrySave }: ChatMessagesProps) {
   const { t } = useTranslation();
+
   // Follow the stream only while the user is at the bottom; scrolling up to
   // re-read must not be yanked back down by the next token.
   const {

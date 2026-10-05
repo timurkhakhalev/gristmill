@@ -1,18 +1,27 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const { ESLint }: typeof import("eslint") = require("eslint");
+
 const tseslint: typeof import("typescript-eslint") = require("typescript-eslint");
+
 const esbuild: typeof import("esbuild") = require("esbuild");
 
 const root = path.resolve(__dirname, "../../../..");
+
 const renderer = path.join(root, "src");
+
 const config = import(path.join(renderer, "eslint.config.js")) as Promise<{
   default: import("eslint").Linter.Config[];
   rendererBoundaryRules: import("eslint").Linter.RulesRecord;
   rendererSharedPolicyRoots: string[];
 }>;
+
 // Pass the actual config array explicitly: tsx's CJS interop for .js configs
 // differs from the normal Node ESLint CLI loader in Electron Node mode.
 const lint = config.then(
@@ -27,6 +36,7 @@ async function messages(source: string, filePath = "components/RendererBoundaryP
     false,
     JSON.stringify(result.messages)
   );
+
   return result.messages.filter((message) => message.severity === 2);
 }
 
@@ -89,6 +99,7 @@ test("static imports, re-exports and aliases cannot reach Node or main implement
       );
     }
   }
+
   assert.deepEqual(
     (await messages('import type { Stats } from "node:fs"; export type FileStats = Stats;')).map(
       (error) => error.ruleId
@@ -96,6 +107,7 @@ test("static imports, re-exports and aliases cannot reach Node or main implement
     ["no-restricted-imports"]
   );
   assert.deepEqual(await messages('export { resolveChatRoute } from "@/helpers/chatRouting";'), []);
+
   for (const specifier of [
     "./localReasoningBridge",
     "./localReasoningBridge.js",
@@ -132,10 +144,12 @@ test("literal dynamic imports and Node globals cannot bypass the renderer bounda
       specifier
     );
   }
+
   assert.deepEqual(
     await messages('export const load = () => import("@/helpers/chatRouting");'),
     []
   );
+
   for (const source of [
     "process.cwd()",
     'Buffer.from("text")',
@@ -157,6 +171,7 @@ test("main-only service keeps its Node runtime requirements", async () => {
   const rules = await (
     await lint
   ).calculateConfigForFile(path.join(renderer, "services/localReasoningBridge.ts"));
+
   assert.equal(rules?.rules?.["no-restricted-imports"], undefined);
   assert.deepEqual(
     await messages(
@@ -172,6 +187,7 @@ test("main-only service keeps its Node runtime requirements", async () => {
 // code, not third-party package internals or arbitrary computed imports.
 async function sharedGraphErrors(patch?: { file: string; source: string }) {
   const { rendererSharedPolicyRoots, rendererBoundaryRules } = await config;
+
   const graphLint = new ESLint({
     cwd: root,
     overrideConfigFile: true,
@@ -183,6 +199,7 @@ async function sharedGraphErrors(patch?: { file: string; source: string }) {
       },
     ],
   });
+
   const graph = await esbuild.build({
     absWorkingDir: root,
     entryPoints: rendererSharedPolicyRoots,
@@ -200,6 +217,7 @@ async function sharedGraphErrors(patch?: { file: string; source: string }) {
             setup(build) {
               build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, (args) => {
                 if (args.path !== path.join(root, patch.file)) return;
+
                 return { contents: patch.source, loader: "ts" };
               });
             },
@@ -207,9 +225,11 @@ async function sharedGraphErrors(patch?: { file: string; source: string }) {
         ]
       : [],
   });
+
   const files = Object.keys(graph.metafile!.inputs).filter(
     (file) => file.startsWith("src/") && /\.[cm]?[jt]sx?$/.test(file)
   );
+
   for (const entry of rendererSharedPolicyRoots)
     assert.ok(files.includes(entry), `missing graph root ${entry}`);
   assert.ok(
@@ -218,9 +238,11 @@ async function sharedGraphErrors(patch?: { file: string; source: string }) {
   );
   assert.ok(files.includes("src/utils/urlUtils.ts"), "transitive URL utility must be covered");
   const errors: Array<{ file: string; ruleId: string | null }> = [];
+
   for (const file of files) {
     const source =
       patch?.file === file ? patch.source : fs.readFileSync(path.join(root, file), "utf8");
+
     const [result] = await graphLint.lintText(source, { filePath: path.join(root, file) });
     errors.push(
       ...result.messages
@@ -228,6 +250,7 @@ async function sharedGraphErrors(patch?: { file: string; source: string }) {
         .map((message) => ({ file, ruleId: message.ruleId }))
     );
   }
+
   return errors;
 }
 
@@ -246,9 +269,11 @@ test("a Node re-export in a transitive policy dependency is rejected", async () 
 
 test("a Node global in a transitive policy dependency is rejected", async () => {
   const file = "src/helpers/selfHostedTranscription.ts";
+
   const source =
     fs.readFileSync(path.join(root, file), "utf8") +
     "\nexport const nodeEnvironment = process.env.NODE_ENV;\n";
+
   assert.deepEqual(await sharedGraphErrors({ file, source }), [
     { file, ruleId: "no-restricted-globals" },
   ]);

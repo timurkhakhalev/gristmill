@@ -4,6 +4,7 @@ const catalog = modelData.parakeetModels as Record<
   string,
   { organization?: { id: string }; modelType?: string; recommended?: boolean }
 >;
+
 // Oruk leads: it is the recommended local route, so it is the first tab everywhere.
 export const LOCAL_ASR_ORGANIZATIONS = [
   { id: "oruk", name: "Oruk" },

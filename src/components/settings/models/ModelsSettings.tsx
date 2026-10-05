@@ -8,11 +8,36 @@ import { TaskModelControl } from "./TaskModelPicker";
 import { type ModelTask } from "./taskModels";
 import { useTranscriptionPolicies } from "./transcriptionPolicies";
 
-const TASK_ROWS: Array<{ task: ModelTask; anchor: string; labelKey: string; descriptionKey: string }> = [
-  { task: "meeting", anchor: "meeting", labelKey: "modelsSettings.tasks.meeting", descriptionKey: "modelsSettings.tasks.meetingDescription" },
-  { task: "upload", anchor: "upload", labelKey: "modelsSettings.tasks.upload", descriptionKey: "modelsSettings.tasks.uploadDescription" },
-  { task: "noteFormatting", anchor: "summary", labelKey: "modelsSettings.tasks.summary", descriptionKey: "modelsSettings.tasks.summaryDescription" },
-  { task: "chatIntelligence", anchor: "chat", labelKey: "modelsSettings.tasks.chat", descriptionKey: "modelsSettings.tasks.chatDescription" },
+const TASK_ROWS: Array<{
+  task: ModelTask;
+  anchor: string;
+  labelKey: string;
+  descriptionKey: string;
+}> = [
+  {
+    task: "meeting",
+    anchor: "meeting",
+    labelKey: "modelsSettings.tasks.meeting",
+    descriptionKey: "modelsSettings.tasks.meetingDescription",
+  },
+  {
+    task: "upload",
+    anchor: "upload",
+    labelKey: "modelsSettings.tasks.upload",
+    descriptionKey: "modelsSettings.tasks.uploadDescription",
+  },
+  {
+    task: "noteFormatting",
+    anchor: "summary",
+    labelKey: "modelsSettings.tasks.summary",
+    descriptionKey: "modelsSettings.tasks.summaryDescription",
+  },
+  {
+    task: "chatIntelligence",
+    anchor: "chat",
+    labelKey: "modelsSettings.tasks.chat",
+    descriptionKey: "modelsSettings.tasks.chatDescription",
+  },
 ];
 
 function ModelsContent({ focus }: { focus?: string }) {
@@ -44,7 +69,9 @@ function ModelsContent({ focus }: { focus?: string }) {
 
       <SettingsCard title={t("modelsSettings.chatPrompt")}>
         <div className="space-y-2 px-4 py-3">
-          <p className="text-xs text-muted-foreground">{t("agentMode.settings.systemPromptDescription")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("agentMode.settings.systemPromptDescription")}
+          </p>
           <textarea
             dir="auto"
             value={chatPrompt}

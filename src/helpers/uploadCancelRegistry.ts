@@ -25,17 +25,22 @@ export function createUploadCancelRegistry(): UploadCancelRegistry {
       if (typeof requestId !== "string" || !requestId) {
         return { signal: undefined, release: () => {} };
       }
+
       let set = controllers.get(requestId);
+
       if (!set) {
         set = new Set();
         controllers.set(requestId, set);
       }
+
       const controller = new AbortController();
       set.add(controller);
+
       return {
         signal: controller.signal,
         release: () => {
           set.delete(controller);
+
           // Guard against deleting a successor set registered after a cancel.
           if (set.size === 0 && controllers.get(requestId) === set) {
             controllers.delete(requestId);
@@ -49,9 +54,12 @@ export function createUploadCancelRegistry(): UploadCancelRegistry {
     // fires a cancel for every provider, including ones that never register.
     cancel(requestId: unknown): number {
       const set = controllers.get(requestId as string);
+
       if (!set) return 0;
       controllers.delete(requestId as string);
+
       for (const controller of set) controller.abort();
+
       return set.size;
     },
   };

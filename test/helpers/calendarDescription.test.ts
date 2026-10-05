@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { calendarDescriptionText } = require("../../src/helpers/calendarDescription");
 
 test("Google's HTML description becomes readable plain text", () => {
@@ -13,7 +15,9 @@ test("Google's HTML description becomes readable plain text", () => {
 
 test("a link whose text is its address is kept once", () => {
   assert.equal(
-    calendarDescriptionText('<a href="https://meet.google.com/abc">https://meet.google.com/abc</a>'),
+    calendarDescriptionText(
+      '<a href="https://meet.google.com/abc">https://meet.google.com/abc</a>'
+    ),
     "https://meet.google.com/abc"
   );
 });

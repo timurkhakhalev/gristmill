@@ -1,17 +1,25 @@
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const { execFileSync }: typeof import("node:child_process") = require("node:child_process");
+
 const root = path.resolve(__dirname, "..");
+
 const identities: typeof import("../extension/identity.json") = require("../extension/identity.json");
+
 const version = "0.3.0";
+
 execFileSync(path.join(root, "node_modules", ".bin", "tsc"), ["-p", "extension/tsconfig.json"], {
   cwd: root,
   stdio: "inherit",
 });
+
 for (const [channel, identity] of Object.entries(identities)) {
   const dev = channel === "development";
   const output = path.join(root, "build", dev ? "companion-dev" : "companion");
   fs.mkdirSync(output, { recursive: true });
+
   for (const entry of ["worker", "popup", "content"]) {
     execFileSync(
       path.join(root, "node_modules", ".bin", "esbuild"),
@@ -30,6 +38,7 @@ for (const [channel, identity] of Object.entries(identities)) {
       { cwd: root, stdio: "inherit" }
     );
   }
+
   const html = fs.readFileSync(path.join(root, "extension", "popup.html"), "utf8");
   fs.writeFileSync(
     path.join(output, "popup.html"),

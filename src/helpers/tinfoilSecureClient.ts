@@ -20,6 +20,7 @@ function getSecureClient(): Promise<SecureClientLike> {
       clientPromise = null;
     });
   }
+
   return clientPromise;
 }
 
@@ -32,6 +33,7 @@ export async function createTinfoilRealtimeSocket({
 }): Promise<unknown> {
   const client = await getSecureClient();
   const path = `/v1/realtime?model=${encodeURIComponent(model)}&intent=transcription`;
+
   return client.createWebSocket(path, {
     wsOptions: { headers: { Authorization: `Bearer ${apiKey}` } },
   });
@@ -43,5 +45,6 @@ export async function tinfoilSecureFetch(
   init?: Record<string, unknown>
 ): Promise<Response> {
   const client = await getSecureClient();
+
   return client.fetch(path, init);
 }

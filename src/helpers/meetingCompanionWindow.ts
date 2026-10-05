@@ -45,10 +45,13 @@ export class MeetingCompanionWindow {
 
   update(state: MeetingCompanionState): void {
     this.state = state;
+
     if (!state.active) {
       this.destroy();
+
       return;
     }
+
     this.send(meetingCompanionEventChannels.state, state);
     this.reconcile();
   }
@@ -65,10 +68,12 @@ export class MeetingCompanionWindow {
 
   dragMove(pointer: Point): void {
     if (!this.win || this.win.isDestroyed() || !this.dragOrigin) return;
+
     const next = {
       x: this.dragOrigin.window.x + pointer.x - this.dragOrigin.pointer.x,
       y: this.dragOrigin.window.y + pointer.y - this.dragOrigin.pointer.y,
     };
+
     const { workArea } = screen.getDisplayNearestPoint(pointer);
     this.position = clampToWorkArea(next, workArea, MEETING_COMPANION_SIZE);
     this.win.setPosition(this.position.x, this.position.y);
@@ -77,6 +82,7 @@ export class MeetingCompanionWindow {
   open(): void {
     this.dragOrigin = null;
     const { noteId, folderId } = this.state;
+
     if (noteId == null) return;
     void this.deps.openNote({ noteId, folderId });
   }
@@ -84,6 +90,7 @@ export class MeetingCompanionWindow {
   /** Relays the bubble's mute button to the control panel, which owns the recording. */
   requestMicToggle(): void {
     const panel = this.deps.getControlPanelWindow();
+
     if (panel && !panel.isDestroyed()) {
       panel.webContents.send(meetingCompanionEventChannels.toggleMic);
     }
@@ -105,21 +112,27 @@ export class MeetingCompanionWindow {
     this.win = null;
     this.loaded = false;
     this.dragOrigin = null;
+
     if (win && !win.isDestroyed()) win.destroy();
   }
 
   private isControlPanelFocused(): boolean {
     const panel = this.deps.getControlPanelWindow();
+
     return Boolean(panel && !panel.isDestroyed() && panel.isVisible() && panel.isFocused());
   }
 
   private reconcile(): void {
     if (!shouldShowMeetingCompanion(this.state.active, this.isControlPanelFocused())) {
       this.dragOrigin = null;
+
       if (this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.hide();
+
       return;
     }
+
     const win = this.ensureWindow();
+
     if (this.loaded && !win.isVisible()) win.showInactive();
   }
 
@@ -129,11 +142,13 @@ export class MeetingCompanionWindow {
     const display = this.position
       ? screen.getDisplayNearestPoint(this.position)
       : screen.getPrimaryDisplay();
+
     const position = clampToWorkArea(
       this.position ?? defaultCompanionPosition(display.workArea, MEETING_COMPANION_SIZE),
       display.workArea,
       MEETING_COMPANION_SIZE
     );
+
     this.position = position;
 
     const win = new BrowserWindow({
@@ -142,6 +157,7 @@ export class MeetingCompanionWindow {
       height: MEETING_COMPANION_SIZE.height,
       ...position,
     });
+
     this.win = win;
     this.loaded = false;
     win.setContentProtection(true);
@@ -156,28 +172,35 @@ export class MeetingCompanionWindow {
     const load = async () => {
       if (process.env.NODE_ENV === "development") {
         await DevServerManager.waitForDevServer();
+
         if (this.win !== win) return;
         await win.loadURL(`${DevServerManager.DEV_SERVER_URL}?meeting-companion=true`);
+
         return;
       }
+
       const fileInfo = DevServerManager.getAppFilePath(false)!;
       await win.loadFile(fileInfo.path, {
         query: { ...fileInfo.query, "meeting-companion": "true" },
       });
     };
+
     load().catch((error: unknown) => {
       debugLogger.warn(
         "Meeting companion failed to load",
         { error: (error as Error).message },
         "meeting"
       );
+
       if (this.win === win) this.destroy();
     });
+
     return win;
   }
 
   private send(channel: string, payload: unknown): void {
     const win = this.win;
+
     if (!win || win.isDestroyed() || !this.loaded) return;
     win.webContents.send(channel, payload);
   }
@@ -193,21 +216,27 @@ export function registerMeetingCompanionHandlers(
 ): void {
   ipcMain.on(meetingCompanionChannels.update, (_event, raw) => {
     const parsed = meetingCompanionStateSchema.safeParse(raw);
+
     if (parsed.success) companion.update(parsed.data);
   });
   ipcMain.on(meetingCompanionChannels.level, (_event, raw) => {
     const parsed = meetingCompanionLevelSchema.safeParse(raw);
+
     if (parsed.success) companion.setLevel(parsed.data);
   });
+
   const fromCompanion = (event: unknown) =>
     companion.ownsSender((event as { sender?: unknown } | null)?.sender);
+
   ipcMain.on(meetingCompanionChannels.dragStart, (event, ...args) => {
     const parsed = meetingCompanionPointSchema.safeParse(args);
+
     if (parsed.success && fromCompanion(event))
       companion.dragStart({ x: parsed.data[0], y: parsed.data[1] });
   });
   ipcMain.on(meetingCompanionChannels.dragMove, (event, ...args) => {
     const parsed = meetingCompanionPointSchema.safeParse(args);
+
     if (parsed.success && fromCompanion(event))
       companion.dragMove({ x: parsed.data[0], y: parsed.data[1] });
   });

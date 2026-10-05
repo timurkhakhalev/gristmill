@@ -15,33 +15,132 @@ import type { NotesDebugScenario } from "./NotesDebugControls";
 import { MOCK_GATE_SECONDS, type MockPipeline } from "./meetingMock";
 
 const NOW = "2026-09-25T12:00:00.000Z";
+
 const SECOND_RECORDING_ID = "00000000-0000-4000-8000-000000000101";
+
 const RECORDING_ID = "00000000-0000-4000-8000-000000000001";
+
 const RUN_ID = "00000000-0000-4000-8000-000000000002";
+
 const transcriptSegments = [
-  { id: "s1", speaker: "speaker-1", text: "Привет, давай начнём с плана релиза на следующую неделю.", timestamp: 0, endTimestamp: 6 },
-  { id: "s2", speaker: "speaker-2", text: "Да, у нас готова фича для биллинга, осталось закрыть регрессию.", timestamp: 6, endTimestamp: 13 },
-  { id: "s3", speaker: "speaker-1", text: "Кто возьмёт регрессию по Stripe?", timestamp: 14, endTimestamp: 17 },
-  { id: "s4", speaker: "speaker-2", text: "Я могу, но нужно согласовать сроки с Лерой.", timestamp: 17, endTimestamp: 22 },
-  { id: "s5", speaker: "speaker-1", text: "Хорошо, договорись до завтра. Что ещё блокирует релиз?", timestamp: 23, endTimestamp: 28 },
-  { id: "s6", speaker: "speaker-2", text: "Метрики на дашборде всё ещё падают — есть подозрение на утечку в meeting processing.", timestamp: 29, endTimestamp: 38 },
-  { id: "s7", speaker: "speaker-1", text: "Окей, посмотрим логи сегодня вечером.", timestamp: 39, endTimestamp: 43 },
-  { id: "s8", speaker: "speaker-2", text: "И ещё: деплой в пятницу или понедельник?", timestamp: 44, endTimestamp: 48 },
-  { id: "s9", speaker: "speaker-1", text: "Перенесём на понедельник, чтобы не рисковать перед выходными.", timestamp: 49, endTimestamp: 56 },
-  { id: "s10", speaker: "speaker-2", text: "Принято, тогда фикс дашборда дебажим в субботу.", timestamp: 57, endTimestamp: 63 },
-  { id: "s11", speaker: "speaker-1", text: "Хорошо, спасибо. Давай синхронизируемся завтра в 11.", timestamp: 64, endTimestamp: 70 },
+  {
+    id: "s1",
+    speaker: "speaker-1",
+    text: "Привет, давай начнём с плана релиза на следующую неделю.",
+    timestamp: 0,
+    endTimestamp: 6,
+  },
+  {
+    id: "s2",
+    speaker: "speaker-2",
+    text: "Да, у нас готова фича для биллинга, осталось закрыть регрессию.",
+    timestamp: 6,
+    endTimestamp: 13,
+  },
+  {
+    id: "s3",
+    speaker: "speaker-1",
+    text: "Кто возьмёт регрессию по Stripe?",
+    timestamp: 14,
+    endTimestamp: 17,
+  },
+  {
+    id: "s4",
+    speaker: "speaker-2",
+    text: "Я могу, но нужно согласовать сроки с Лерой.",
+    timestamp: 17,
+    endTimestamp: 22,
+  },
+  {
+    id: "s5",
+    speaker: "speaker-1",
+    text: "Хорошо, договорись до завтра. Что ещё блокирует релиз?",
+    timestamp: 23,
+    endTimestamp: 28,
+  },
+  {
+    id: "s6",
+    speaker: "speaker-2",
+    text: "Метрики на дашборде всё ещё падают — есть подозрение на утечку в meeting processing.",
+    timestamp: 29,
+    endTimestamp: 38,
+  },
+  {
+    id: "s7",
+    speaker: "speaker-1",
+    text: "Окей, посмотрим логи сегодня вечером.",
+    timestamp: 39,
+    endTimestamp: 43,
+  },
+  {
+    id: "s8",
+    speaker: "speaker-2",
+    text: "И ещё: деплой в пятницу или понедельник?",
+    timestamp: 44,
+    endTimestamp: 48,
+  },
+  {
+    id: "s9",
+    speaker: "speaker-1",
+    text: "Перенесём на понедельник, чтобы не рисковать перед выходными.",
+    timestamp: 49,
+    endTimestamp: 56,
+  },
+  {
+    id: "s10",
+    speaker: "speaker-2",
+    text: "Принято, тогда фикс дашборда дебажим в субботу.",
+    timestamp: 57,
+    endTimestamp: 63,
+  },
+  {
+    id: "s11",
+    speaker: "speaker-1",
+    text: "Хорошо, спасибо. Давай синхронизируемся завтра в 11.",
+    timestamp: 64,
+    endTimestamp: 70,
+  },
 ];
+
 const part2Segments = [
-  { id: "p1", speaker: "speaker-2", text: "Привет, Лера подтвердила — берёт регрессию по Stripe до среды.", timestamp: 1820, endTimestamp: 1827 },
-  { id: "p2", speaker: "speaker-1", text: "Отлично, тогда оставляем пятницу для смок-тестов.", timestamp: 1828, endTimestamp: 1834 },
-  { id: "p3", speaker: "speaker-2", text: "По дашборду я нашёл утечку — это был неиспользуемый MediaRecorder.", timestamp: 1835, endTimestamp: 1843 },
+  {
+    id: "p1",
+    speaker: "speaker-2",
+    text: "Привет, Лера подтвердила — берёт регрессию по Stripe до среды.",
+    timestamp: 1820,
+    endTimestamp: 1827,
+  },
+  {
+    id: "p2",
+    speaker: "speaker-1",
+    text: "Отлично, тогда оставляем пятницу для смок-тестов.",
+    timestamp: 1828,
+    endTimestamp: 1834,
+  },
+  {
+    id: "p3",
+    speaker: "speaker-2",
+    text: "По дашборду я нашёл утечку — это был неиспользуемый MediaRecorder.",
+    timestamp: 1835,
+    endTimestamp: 1843,
+  },
   { id: "p4", speaker: "speaker-1", text: "Фикс уже в репо?", timestamp: 1844, endTimestamp: 1846 },
-  { id: "p5", speaker: "speaker-2", text: "Да, PR готов, ревью нужно от тебя.", timestamp: 1847, endTimestamp: 1851 },
+  {
+    id: "p5",
+    speaker: "speaker-2",
+    text: "Да, PR готов, ревью нужно от тебя.",
+    timestamp: 1847,
+    endTimestamp: 1851,
+  },
 ];
+
 const fullSegments = [...transcriptSegments, ...part2Segments];
+
 const transcript = serializeTranscriptSegments(fullSegments);
+
 const summary =
   "## TLDR\nКоманда обсудила готовность релиза: главный блокер — регрессия по Stripe, деплой перенесён на понедельник. Договорились проверить логи meeting processing и синхронизироваться завтра.\n\n## Готовность релиза\n**Speaker 2** сообщил, что фича для биллинга готова, но регрессию по Stripe нужно закрыть. Регрессию берёт Лера, срок согласуется.\n\n## Дашборд и утечка\n**Speaker 2** заметил падение метрик и заподозрил утечку в meeting processing; **Speaker 1** предложил посмотреть логи вечером. Позже утечку нашли: неиспользуемый MediaRecorder.";
+
 const config: MeetingProcessingConfig = {
   transcription: { mode: "providers", provider: "deepgram", model: "nova-3", language: "ru" },
   summary: {
@@ -53,48 +152,83 @@ const config: MeetingProcessingConfig = {
 };
 
 const TASK2_SUMMARY_SCENARIOS: NotesDebugScenario[] = [
-  "summary-tasks-loading", "summary-tasks-ok", "summary-tasks-zero", "summary-tasks-error",
-  "summary-tasks-format", "summary-tasks-conflict", "summary-recap-running", "summary-recap",
+  "summary-tasks-loading",
+  "summary-tasks-ok",
+  "summary-tasks-zero",
+  "summary-tasks-error",
+  "summary-tasks-format",
+  "summary-tasks-conflict",
+  "summary-recap-running",
+  "summary-recap",
 ];
+
 const TASK2_TRANSCRIPT_SCENARIOS: NotesDebugScenario[] = [
-  ...TASK2_SUMMARY_SCENARIOS, "naming", "audio-playing", "audio-paused", "short-meeting", "speakers-auto", "chat-follow-up",
+  ...TASK2_SUMMARY_SCENARIOS,
+  "naming",
+  "audio-playing",
+  "audio-paused",
+  "short-meeting",
+  "speakers-auto",
+  "chat-follow-up",
 ];
 
 function makeMockPipeline(scenario: NotesDebugScenario): MockPipeline | undefined {
   switch (scenario) {
-    case "gate-waiting": return { waitingSeconds: MOCK_GATE_SECONDS };
-    case "naming": return { namingRunning: true };
-    case "audio-playing": return { audioPlayback: { currentTime: 312, playing: true } };
-    case "audio-paused": return { audioPlayback: { currentTime: 312, playing: false } };
-    case "short-meeting": return { autoSummarySkipped: { seconds: 130, chars: 1340 } };
-    case "speakers-auto": return { modelSpeakerIds: ["speaker-2"], tasks: "ok", recap: "none" };
-    case "summary-tasks-loading": return { tasks: "loading", recap: "none" };
-    case "summary-tasks-ok": return { tasks: "ok", recap: "none" };
-    case "summary-tasks-zero": return { tasks: "zero", recap: "none" };
-    case "summary-tasks-error": return { tasks: "error", recap: "none" };
-    case "summary-tasks-format": return { tasks: "format", recap: "none" };
-    case "summary-tasks-conflict": return { tasks: "conflict", recap: "none" };
-    case "summary-recap-running": return { tasks: "ok", recap: "running" };
-    case "summary-recap": return { tasks: "ok", recap: "ok" };
-    case "chat-follow-up": return {};
-    default: return undefined;
+    case "gate-waiting":
+      return { waitingSeconds: MOCK_GATE_SECONDS };
+    case "naming":
+      return { namingRunning: true };
+    case "audio-playing":
+      return { audioPlayback: { currentTime: 312, playing: true } };
+    case "audio-paused":
+      return { audioPlayback: { currentTime: 312, playing: false } };
+    case "short-meeting":
+      return { autoSummarySkipped: { seconds: 130, chars: 1340 } };
+    case "speakers-auto":
+      return { modelSpeakerIds: ["speaker-2"], tasks: "ok", recap: "none" };
+    case "summary-tasks-loading":
+      return { tasks: "loading", recap: "none" };
+    case "summary-tasks-ok":
+      return { tasks: "ok", recap: "none" };
+    case "summary-tasks-zero":
+      return { tasks: "zero", recap: "none" };
+    case "summary-tasks-error":
+      return { tasks: "error", recap: "none" };
+    case "summary-tasks-format":
+      return { tasks: "format", recap: "none" };
+    case "summary-tasks-conflict":
+      return { tasks: "conflict", recap: "none" };
+    case "summary-recap-running":
+      return { tasks: "ok", recap: "running" };
+    case "summary-recap":
+      return { tasks: "ok", recap: "ok" };
+    case "chat-follow-up":
+      return {};
+    default:
+      return undefined;
   }
 }
 
 function makePreview(scenario: NotesDebugScenario) {
-  const hasTranscript = TASK2_TRANSCRIPT_SCENARIOS.includes(scenario) || [
-    "transcript",
-    "ready",
-    "audio-deleted",
-    "enhanced-stale",
-    "summary-failed",
-    "summary-generating",
-  ].includes(scenario);
+  const hasTranscript =
+    TASK2_TRANSCRIPT_SCENARIOS.includes(scenario) ||
+    [
+      "transcript",
+      "ready",
+      "audio-deleted",
+      "enhanced-stale",
+      "summary-failed",
+      "summary-generating",
+    ].includes(scenario);
+
   const hasSummary =
-    TASK2_SUMMARY_SCENARIOS.includes(scenario) || scenario === "speakers-auto" ||
+    TASK2_SUMMARY_SCENARIOS.includes(scenario) ||
+    scenario === "speakers-auto" ||
     ["ready", "audio-deleted", "enhanced-stale"].includes(scenario);
+
   const isRecording =
     scenario === "recording" || scenario === "reconnecting" || scenario === "system-unavailable";
+
   const note: NoteItem = {
     id: 0,
     title: scenario === "blank" ? "" : "Тестовая встреча",
@@ -132,13 +266,16 @@ function makePreview(scenario: NotesDebugScenario) {
           : scenario === "failed" || scenario === "summary-failed"
             ? "failed"
             : "complete";
+
   const isElapsedShort = scenario === "processing-elapsed-short";
   const isElapsedLong = scenario === "processing-elapsed-long";
+
   const runCreatedAt = isElapsedShort
     ? new Date(Date.now() - 12_000).toISOString()
     : isElapsedLong
       ? new Date(Date.now() - 125_000).toISOString()
       : NOW;
+
   const run: MeetingProcessingRunDto = {
     id: RUN_ID,
     recordingId: RECORDING_ID,
@@ -174,23 +311,34 @@ function makePreview(scenario: NotesDebugScenario) {
     createdAt: runCreatedAt,
     updatedAt: runCreatedAt,
   };
-  const hasRecording = scenario === "gate-waiting" || TASK2_TRANSCRIPT_SCENARIOS.includes(scenario) || [
-    "queued",
-    "processing",
-    "processing-elapsed-short",
-    "processing-elapsed-long",
-    "blocked",
-    "failed",
-    "summary-failed",
-    "summary-generating",
-    "incomplete",
-    "transcript",
-    "ready",
-    "audio-deleted",
-    "enhanced-stale",
-  ].includes(scenario);
+
+  const hasRecording =
+    scenario === "gate-waiting" ||
+    TASK2_TRANSCRIPT_SCENARIOS.includes(scenario) ||
+    [
+      "queued",
+      "processing",
+      "processing-elapsed-short",
+      "processing-elapsed-long",
+      "blocked",
+      "failed",
+      "summary-failed",
+      "summary-generating",
+      "incomplete",
+      "transcript",
+      "ready",
+      "audio-deleted",
+      "enhanced-stale",
+    ].includes(scenario);
+
   const isMultiPartTranscript =
-    scenario === "transcript" || scenario === "ready" || scenario === "audio-deleted" || scenario === "enhanced-stale" || scenario === "summary-failed" || scenario === "summary-generating";
+    scenario === "transcript" ||
+    scenario === "ready" ||
+    scenario === "audio-deleted" ||
+    scenario === "enhanced-stale" ||
+    scenario === "summary-failed" ||
+    scenario === "summary-generating";
+
   const recordings: MeetingProcessingRecordingResult[] = hasRecording
     ? [
         {
@@ -264,6 +412,7 @@ export default function NotesDebugPreview({
 }) {
   const [preview, setPreview] = useState(() => makePreview(scenario));
   const [isRecording, setIsRecording] = useState(preview.isRecording);
+
   const [capturePhase, setCapturePhase] = useState<
     "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed"
   >(
@@ -271,21 +420,23 @@ export default function NotesDebugPreview({
       ? "recording"
       : scenario === "paused"
         ? "paused"
-      : scenario === "incomplete"
-        ? "incomplete"
-        : scenario === "capture-preparing"
-          ? "preparing"
-          : scenario === "capture-saving"
-            ? "saving"
-            : scenario === "capture-failed"
-              ? "failed"
-              : "idle"
+        : scenario === "incomplete"
+          ? "incomplete"
+          : scenario === "capture-preparing"
+            ? "preparing"
+            : scenario === "capture-saving"
+              ? "saving"
+              : scenario === "capture-failed"
+                ? "failed"
+                : "idle"
   );
+
   const [captureStartedAt, setCaptureStartedAt] = useState<number | undefined>(
     preview.isRecording || scenario === "capture-saving" || scenario === "paused"
       ? Date.now() - 75_000
       : undefined
   );
+
   const [systemStatus, setSystemStatus] = useState<
     "inactive" | "active" | "reconnecting" | "unavailable"
   >(
@@ -304,14 +455,17 @@ export default function NotesDebugPreview({
     setIsRecording(true);
     setSystemStatus("active");
   };
+
   const pauseRecording = () => {
     setCapturePhase("paused");
     setIsRecording(false);
   };
+
   const resumeRecording = () => {
     setCapturePhase("recording");
     setIsRecording(true);
   };
+
   const stopRecording = () => {
     setCapturePhase("saved");
     setIsRecording(false);
@@ -320,6 +474,7 @@ export default function NotesDebugPreview({
 
   const { note, recordings } = preview;
   const mockPipeline = useMemo(() => makeMockPipeline(scenario), [scenario]);
+
   return (
     <div className="flex h-full flex-col" data-notes-debug-scenario={scenario}>
       <div className="shrink-0 border-b border-orange-500/20 bg-orange-500/10 px-4 py-2 text-xs leading-snug text-orange-700 dark:text-orange-300">
@@ -394,7 +549,10 @@ export default function NotesDebugPreview({
               micStatus: isRecording ? "active" : "inactive",
               systemStatus,
               viewMode:
-                scenario === "ready" || scenario === "enhanced-stale" || scenario === "summary-generating" || scenario === "short-meeting" ||
+                scenario === "ready" ||
+                scenario === "enhanced-stale" ||
+                scenario === "summary-generating" ||
+                scenario === "short-meeting" ||
                 TASK2_SUMMARY_SCENARIOS.includes(scenario)
                   ? "enhanced"
                   : "raw",

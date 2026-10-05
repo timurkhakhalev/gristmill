@@ -49,6 +49,7 @@ export function applyChatCompletionsParams(
     // A known endpoint host knows its own request shape better than the model id does.
     const apiConfig = detectEndpointDialect(endpoint) ?? getOpenAiApiConfig(model, providerKey);
     requestBody[apiConfig.tokenParam] = maxTokens;
+
     if (apiConfig.supportsTemperature) {
       requestBody.temperature = config.temperature ?? defaultTemperature;
     }
@@ -58,6 +59,7 @@ export function applyChatCompletionsParams(
   // preferred effort — see modelFamilyConstraints for the gpt-oss rationale.
   // applyThinkingSuppression still wins when thinking is disabled by the user.
   const familyEffort = getModelFamilyConstraints(model)?.reasoningEffort;
+
   if (familyEffort?.cleanupValue && (!config.systemPrompt || config.requireCompleteOutput)) {
     requestBody.reasoning_effort = familyEffort.cleanupValue;
   }
@@ -98,6 +100,7 @@ export async function fetchWithParamFallback(
   logRejection: (details: { status: number; stripped: string[] }) => void
 ): Promise<Response> {
   let res = await doFetch();
+
   if (res.ok || (res.status !== 400 && res.status !== 422)) return res;
 
   if (requestBody.reasoning) {
@@ -105,6 +108,7 @@ export async function fetchWithParamFallback(
     delete requestBody.reasoning;
     void res.body?.cancel();
     res = await doFetch();
+
     if (res.ok || (res.status !== 400 && res.status !== 422)) return res;
   }
 
@@ -112,12 +116,16 @@ export async function fetchWithParamFallback(
     .clone()
     .text()
     .catch(() => "");
+
   const named = STRIPPABLE_SHAPED_PARAMS.filter((p) => p in requestBody && errorText.includes(p));
+
   if (named.length > 0) {
     logRejection({ status: res.status, stripped: named });
+
     for (const param of named) delete requestBody[param];
     void res.body?.cancel();
     res = await doFetch();
   }
+
   return res;
 }

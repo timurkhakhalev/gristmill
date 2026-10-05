@@ -58,12 +58,16 @@ export function createUpdateDictionaryTool(actions: DictionaryActions): ToolDefi
       // would both pass isAddNew and both persist (the UNIQUE index is
       // case-sensitive).
       const addedSeen = new Set<string>();
+
       const add = requestedAdd.filter((word) => {
         const lower = word.toLowerCase();
+
         if (!isAddNew(word) || addedSeen.has(lower)) return false;
         addedSeen.add(lower);
+
         return true;
       });
+
       const alreadyPresent = requestedAdd.filter((word) => !isAddNew(word));
       const remove = requestedRemove.filter(has);
       const notFound = requestedRemove.filter((word) => !has(word));
@@ -73,6 +77,7 @@ export function createUpdateDictionaryTool(actions: DictionaryActions): ToolDefi
           notFound.length ? `Not in the dictionary: ${quoteList(notFound)}` : "",
           alreadyPresent.length ? `Already in the dictionary: ${quoteList(alreadyPresent)}` : "",
         ].filter(Boolean);
+
         return {
           success: false,
           data: null,
@@ -81,10 +86,12 @@ export function createUpdateDictionaryTool(actions: DictionaryActions): ToolDefi
       }
 
       actions.updateDictionary({ add, remove });
+
       const summary = [
         add.length ? `Added ${quoteList(add)}` : "",
         remove.length ? `Removed ${quoteList(remove)}` : "",
       ].filter(Boolean);
+
       return {
         success: true,
         data: { added: add, removed: remove, alreadyPresent, notFound },

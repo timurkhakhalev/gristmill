@@ -1,10 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/meetingTranscriptPersistence.ts");
+
 type TranscriptSegment = import("../../src/stores/meetingRecordingStore.ts").TranscriptSegment;
 
 const segment = (id: string, text: string): TranscriptSegment => ({ id, text, source: "system" });
+
 const serialize = (segments: TranscriptSegment[]) => segments.map((s) => s.text).join("|");
 
 // The note editor swaps from live segments to the stored transcript the moment
@@ -23,6 +26,7 @@ test("captured segments are written before the stop is awaited", async () => {
     },
     stop: async () => {
       events.push("stop");
+
       return { diarizationSessionId: "diar-1" };
     },
     fallbackTranscript: () => {
@@ -50,6 +54,7 @@ test("a segment-less recording writes main's final transcript after the stop", a
     stop: async () => {
       stopped = true;
       events.push("stop");
+
       return null;
     },
     // Only available once main has flushed its final text.
@@ -79,9 +84,11 @@ test("nothing is written when there are neither segments nor a fallback transcri
 test("the stop result is only returned once the early write has settled", async () => {
   const { persistFinalTranscriptAroundStop } = await load();
   let releaseWrite!: () => void;
+
   const write = new Promise<void>((resolve) => {
     releaseWrite = resolve;
   });
+
   let settled = false;
 
   const pending = persistFinalTranscriptAroundStop({
@@ -92,6 +99,7 @@ test("the stop result is only returned once the early write has settled", async 
     fallbackTranscript: () => "",
   }).then((value) => {
     settled = true;
+
     return value;
   });
 

@@ -25,6 +25,7 @@ export function buildUploadTranscript(
   anchorMs: number = Date.now()
 ): string | undefined {
   if (!segments?.length) return undefined;
+
   const stored = segments
     .filter((seg) => seg.text?.trim() && Number.isFinite(seg.start))
     .map((seg) => ({
@@ -32,6 +33,7 @@ export function buildUploadTranscript(
       timestamp: anchorMs + seg.start * 1000,
       ...(seg.speaker ? { speakerName: seg.speaker } : {}),
     }));
+
   return stored.length ? JSON.stringify(stored) : undefined;
 }
 
@@ -51,6 +53,7 @@ export function buildUploadNoteMetadata(
   anchorMs?: number
 ) {
   const transcript = buildUploadTranscript(segments, anchorMs);
+
   const noteUpdates: NoteUpdate | null =
     diarization.enabled || transcript
       ? {
@@ -63,6 +66,7 @@ export function buildUploadNoteMetadata(
           ...(transcript ? { transcript } : {}),
         }
       : null;
+
   return {
     audioDurationSeconds:
       typeof durationSeconds === "number" && Number.isFinite(durationSeconds) && durationSeconds > 0
@@ -101,7 +105,9 @@ export async function saveUploadNote({
     durationSeconds,
     segments
   );
+
   const transcript = noteUpdates?.transcript ?? buildUploadTranscript([{ text, start: 0 }]);
+
   const res = await window.electronAPI.saveNote(
     title,
     text,
@@ -110,6 +116,7 @@ export async function saveUploadNote({
     audioDurationSeconds,
     folderId
   );
+
   if (res.success && res.note && (noteUpdates || transcript)) {
     // Keep the original text in Notes if the transcript write fails.
     const updated = await window.electronAPI
@@ -118,8 +125,10 @@ export async function saveUploadNote({
         ...(transcript ? { transcript, content: "" } : {}),
       })
       .catch(() => null);
+
     if (updated?.success) return updated;
   }
+
   return res;
 }
 
@@ -127,5 +136,6 @@ export async function saveUploadNote({
 export function uploadTitleFallback(text: string, fileName: string): string {
   const words = text.trim().split(/\s+/);
   const preview = words.slice(0, 6).join(" ") + (words.length > 6 ? "..." : "");
+
   return preview || fileName.replace(/\.[^.]+$/, "");
 }

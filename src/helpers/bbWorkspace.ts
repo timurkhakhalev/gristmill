@@ -38,13 +38,20 @@ export function ensureBbWorkspace(userData: string): string {
   const directory = bbWorkspacePath(userData);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const instructions = path.join(directory, "AGENTS.md");
-  if (fs.existsSync(instructions) && fs.readFileSync(instructions, "utf8").startsWith("# Gristmill agent\n")) {
+
+  if (
+    fs.existsSync(instructions) &&
+    fs.readFileSync(instructions, "utf8").startsWith("# Gristmill agent\n")
+  ) {
     fs.rmSync(instructions);
   }
+
   const target = path.join(directory, "gristmill-tools.mjs");
+
   if (!fs.existsSync(target) || fs.readFileSync(target, "utf8") !== TOOL_SCRIPT) {
     fs.writeFileSync(target, TOOL_SCRIPT, { mode: 0o600 });
   }
+
   return directory;
 }
 

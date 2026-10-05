@@ -1,7 +1,14 @@
 import type { TranscriptSegment } from "../stores/meetingRecordingStore";
 
 export type TranscriptSpeakerStatus = "provisional" | "confirmed" | "suggested" | "locked";
-export type TranscriptSpeakerLockSource = "user" | "diarization" | "suggestion" | "voice" | "platform" | "model";
+
+export type TranscriptSpeakerLockSource =
+  | "user"
+  | "diarization"
+  | "suggestion"
+  | "voice"
+  | "platform"
+  | "model";
 
 const SPEAKER_STATE_FIELDS = [
   "speaker",
@@ -54,10 +61,15 @@ const pickSpeakerStatus = (segment: TranscriptSegment): TranscriptSpeakerStatus 
     segment.speakerLocked,
     segment.speakerLockSource
   );
+
   if (normalizedStatus) return normalizedStatus;
+
   if (segment.suggestedName && !segment.speakerName) return "suggested";
+
   if (segment.source === "system" && segment.speakerIsPlaceholder) return "provisional";
+
   if (segment.speaker && segment.speaker !== "you") return "confirmed";
+
   return undefined;
 };
 
@@ -68,8 +80,10 @@ export const isTranscriptSpeakerLocked = (segment: TranscriptSegment) =>
 
 export const normalizeTranscriptSegment = (segment: TranscriptSegment): TranscriptSegment => {
   const speakerStatus = pickSpeakerStatus(segment);
+
   const speakerLocked =
     !!segment.speakerLocked || segment.speakerLockSource === "user" || speakerStatus === "locked";
+
   return {
     ...segment,
     speakerStatus,
@@ -117,6 +131,7 @@ const mergeSpeakerFields = (existing: TranscriptSegment, incoming: TranscriptSeg
     // locked label can't freeze a bucket diarization splits into multiple speakers.
     for (const field of SPEAKER_STATE_FIELDS) {
       if (field === "speaker" || field === "speakerIsPlaceholder") continue;
+
       if (existingFields[field] !== undefined) {
         mergedFields[field] = existingFields[field];
       }
@@ -133,6 +148,7 @@ export const mergeTranscriptSegments = (
   if (incomingSegments.length === 0) {
     return normalizeTranscriptSegments(existingSegments);
   }
+
   if (existingSegments.length === 0) {
     return incomingSegments.map((segment, index) =>
       normalizeTranscriptSegment({ ...segment, id: segment.id || `merged-${index}` })
@@ -146,6 +162,7 @@ export const mergeTranscriptSegments = (
     if (segment.id) existingById.set(segment.id, index);
     const key = getSegmentMatchKey(segment);
     const bucket = existingByKey.get(key);
+
     if (bucket) bucket.push(index);
     else existingByKey.set(key, [index]);
   });
@@ -159,6 +176,7 @@ export const mergeTranscriptSegments = (
       candidates?.find((candidateIndex) => !usedIndexes.has(candidateIndex));
 
     let matchIndex = segment.id ? existingById.get(segment.id) : undefined;
+
     if (matchIndex !== undefined && usedIndexes.has(matchIndex)) matchIndex = undefined;
 
     if (matchIndex === undefined) {
@@ -172,6 +190,7 @@ export const mergeTranscriptSegments = (
           candidate.source === segment.source &&
           candidate.text === segment.text
       );
+
       if (fallbackIndex >= 0) matchIndex = fallbackIndex;
     }
 
@@ -221,5 +240,6 @@ export const resolveSegmentSpeakerName = (
 ): string | undefined => {
   if (segment.speakerName && isTranscriptSpeakerLocked(segment)) return segment.speakerName;
   const mapped = segment.speaker ? speakerMappings?.[segment.speaker] : undefined;
+
   return mapped || segment.speakerName;
 };

@@ -2,6 +2,7 @@
 // hides after one minute. Calendar reminders fire 60s before the meeting
 // (MEETING_REMINDER_LEAD_MS), so they stay up until it starts.
 const MEETING_PROMPT_TIMEOUT_MS = 60 * 1000;
+
 // A resumed countdown keeps at least this much runway so the card cannot
 // vanish right as the pointer leaves it — or mid-click, while the renderer's
 // 200ms dismiss animation delays the response IPC.
@@ -45,6 +46,7 @@ export class NotificationDismissTimer {
     if (this._timer) {
       clearTimeout(this._timer);
     }
+
     this._timer = null;
     this._deadline = null;
     this._pausedRemainingMs = null;

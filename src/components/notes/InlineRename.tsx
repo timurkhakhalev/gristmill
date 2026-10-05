@@ -28,12 +28,14 @@ export function InlineRename({
       inputRef.current?.select();
       armed.current = true;
     }, 80);
+
     return () => clearTimeout(timer);
   }, []);
 
   const finish = (commit: boolean) => {
     if (done.current) return;
     done.current = true;
+
     if (commit) onCommit(value);
     else onCancel();
   };
@@ -47,7 +49,9 @@ export function InlineRename({
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
+
         if (e.key === "Enter") finish(true);
+
         if (e.key === "Escape") finish(false);
       }}
       onBlur={() => armed.current && finish(true)}

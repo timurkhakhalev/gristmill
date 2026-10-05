@@ -43,25 +43,31 @@ export function normalizeUiLanguage(language: string | null | undefined): string
 
   // Check full language-region code first (e.g. "zh-CN", "zh-TW")
   const normalized = candidate.replace(/_/g, "-");
+
   const fullMatch = SUPPORTED_UI_LANGUAGES.find(
     (lang) => lang.toLowerCase() === normalized.toLowerCase()
   );
+
   if (fullMatch) return fullMatch;
 
   // Chinese is the only UI language that is not the primary subtag. OS/browser
   // tags are zh-Hans-CN, zh-Hant-TW, zh-HK, zh_Hant_TW, or bare zh — none of
   // those equal zh-CN/zh-TW, and falling through to "zh" is not in the list.
   const lower = normalized.toLowerCase();
+
   if (lower === "zh" || lower.startsWith("zh-")) {
     const parts = lower.split("-");
+
     if (parts.some((part) => part === "hant" || part === "tw" || part === "hk" || part === "mo")) {
       return "zh-TW";
     }
+
     return "zh-CN";
   }
 
   // Fall back to base language code (e.g. "en" from "en-US")
   const base = lower.split("-")[0];
+
   return SUPPORTED_UI_LANGUAGES.includes(base) ? base : "en";
 }
 

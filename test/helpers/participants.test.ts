@@ -1,24 +1,33 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const ts = require("typescript");
 
 let loaded: any;
+
 const load = () => {
   if (!loaded) {
     const filename = path.join(__dirname, "../../src/utils/participants.ts");
     const source = fs.readFileSync(filename, "utf8");
+
     const output = ts.transpileModule(source, {
       compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     }).outputText;
+
     loaded = import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
   }
+
   return loaded;
 };
 
 test("participant rosters derive total speakers from non-self attendees plus the recorder", async () => {
   const { resolveParticipantExpectedSpeakerCount } = await load();
+
   const participants = [
     { email: "recorder@example.com", self: true },
     { email: "one@example.com", self: false },
@@ -50,6 +59,7 @@ test("active participant changes synchronize the session count before a manual o
 
 test("participant changes do not override another recording, a manual count, or an unchanged count", async () => {
   const { resolveParticipantSpeakerCountSync } = await load();
+
   const participants = [
     { email: "one@example.com", self: false },
     { email: "two@example.com", self: false },

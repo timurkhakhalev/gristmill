@@ -74,16 +74,23 @@ export const usePermissions = (
   { macAccessibilityChecksEnabled = true }: UsePermissionsOptions = {}
 ): UsePermissionsReturn => {
   const { t } = useTranslation();
+
   const [micPermissionGranted, setMicPermissionGranted] = useLocalStorage(
     "micPermissionGranted",
     false
   );
+
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
-  const micCaptureActive = useMeetingRecordingStore((state) => state.isRecording && state.micCaptureStatus === "active");
+
+  const micCaptureActive = useMeetingRecordingStore(
+    (state) => state.isRecording && state.micCaptureStatus === "active"
+  );
+
   const [accessibilityPermissionGranted, setAccessibilityPermissionGranted] = useLocalStorage(
     "accessibilityPermissionGranted",
     false
   );
+
   const [accessibilityTroubleshooting, setAccessibilityTroubleshooting] = useState(false);
   const accessibilityPollCount = useRef(0);
   const [accessibilityPromptRequested, setAccessibilityPromptRequested] = useState(false);
@@ -98,13 +105,16 @@ export const usePermissions = (
         sound: t("hooks.permissions.settingsTitles.sound"),
         accessibility: t("hooks.permissions.settingsTitles.accessibility"),
       };
+
       const unableToOpenDescriptions = {
         microphone: t("hooks.permissions.settingsErrors.unableToOpenMicrophone"),
         sound: t("hooks.permissions.settingsErrors.unableToOpenSound"),
         accessibility: t("hooks.permissions.settingsErrors.unableToOpenAccessibility"),
       };
+
       try {
         const result = await apiMethod?.();
+
         if (result && !result.success && result.error) {
           showAlertDialog?.({ title: titles[settingType], description: result.error });
         }
@@ -133,12 +143,14 @@ export const usePermissions = (
     if (!navigator?.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
       const message = t("hooks.permissions.micUnavailable");
       setMicPermissionError(message);
+
       if (showAlertDialog) {
         showAlertDialog({
           title: t("hooks.permissions.titles.microphoneUnavailable"),
           description: message,
         });
       }
+
       return;
     }
 
@@ -146,11 +158,15 @@ export const usePermissions = (
 
     try {
       const currentAccess = await window.electronAPI?.checkMicrophoneAccess?.();
+
       if (currentAccess?.status === "denied" || currentAccess?.status === "restricted") {
-        setMicPermissionError(t("hooks.permissions.micErrors.permissionDenied", {
-          privacyPath: t("hooks.permissions.paths.defaultPrivacy"),
-        }));
+        setMicPermissionError(
+          t("hooks.permissions.micErrors.permissionDenied", {
+            privacyPath: t("hooks.permissions.paths.defaultPrivacy"),
+          })
+        );
         await openMicPrivacySettings();
+
         return;
       }
 
@@ -171,6 +187,7 @@ export const usePermissions = (
       logger.error("Microphone permission denied:", err);
       const message = describeMicError(err, t);
       setMicPermissionError(message);
+
       if (showAlertDialog) {
         showAlertDialog({
           title: t("hooks.permissions.titles.microphonePermissionRequired"),
@@ -182,15 +199,18 @@ export const usePermissions = (
 
   const requestAccessibilityPermission = useCallback(async () => {
     const alreadyGranted = await window.electronAPI?.checkAccessibilityPermission?.(true);
+
     if (alreadyGranted) {
       setAccessibilityPermissionGranted(true);
       setAccessibilityTroubleshooting(false);
+
       return;
     }
 
     if (accessibilityPromptRequested) {
       setAccessibilityTroubleshooting(true);
       await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
+
       return;
     }
 
@@ -198,10 +218,13 @@ export const usePermissions = (
     setAccessibilityPromptRequested(true);
     // macOS may suppress a repeated prompt after an unsigned app update.
     const granted = await window.electronAPI?.promptAccessibilityPermission?.();
+
     if (granted) {
       setAccessibilityPermissionGranted(true);
+
       return;
     }
+
     setAccessibilityTroubleshooting(true);
     await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
   }, [accessibilityPromptRequested, openSystemSettings, setAccessibilityPermissionGranted]);
@@ -209,12 +232,17 @@ export const usePermissions = (
   // On macOS, re-validate microphone permission on mount to override stale
   // localStorage values (e.g. after TCC reset or app update).
   useEffect(() => {
-    const refresh = () => window.electronAPI?.checkMicrophoneAccess?.().then((result) => {
-      const capture = useMeetingRecordingStore.getState();
-      if (result && !(capture.isRecording && capture.micCaptureStatus === "active")) setMicPermissionGranted(result.granted);
-    });
+    const refresh = () =>
+      window.electronAPI?.checkMicrophoneAccess?.().then((result) => {
+        const capture = useMeetingRecordingStore.getState();
+
+        if (result && !(capture.isRecording && capture.micCaptureStatus === "active"))
+          setMicPermissionGranted(result.granted);
+      });
+
     void refresh();
     window.addEventListener("focus", refresh);
+
     return () => window.removeEventListener("focus", refresh);
   }, [setMicPermissionGranted]);
   useEffect(() => {
@@ -242,16 +270,20 @@ export const usePermissions = (
         setAccessibilityPermissionGranted(granted);
       });
     };
+
     window.addEventListener("focus", refresh);
+
     return () => window.removeEventListener("focus", refresh);
   }, [setAccessibilityPermissionGranted]);
 
   // Poll for accessibility permission changes on macOS (e.g. user grants in System Settings)
   useEffect(() => {
     if (!macAccessibilityChecksEnabled) return;
+
     if (accessibilityPermissionGranted) {
       setAccessibilityTroubleshooting(false);
       accessibilityPollCount.current = 0;
+
       return;
     }
 
@@ -263,6 +295,7 @@ export const usePermissions = (
           accessibilityPollCount.current = 0;
         } else {
           accessibilityPollCount.current += 1;
+
           // After ~10s of failed polls, show troubleshooting tips
           if (accessibilityPollCount.current >= 5) {
             setAccessibilityTroubleshooting(true);

@@ -1,10 +1,18 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/utils/transcriptSpeakerState.js");
-type TranscriptSegment = import("../../src/contracts/meetingCoordinator.js").MeetingTranscriptSegment;
 
-const seg = (segment: Omit<TranscriptSegment, "id" | "text" | "source">): TranscriptSegment => ({ id: "seg", text: "hi", source: "system", ...segment });
+type TranscriptSegment =
+  import("../../src/contracts/meetingCoordinator.js").MeetingTranscriptSegment;
+
+const seg = (segment: Omit<TranscriptSegment, "id" | "text" | "source">): TranscriptSegment => ({
+  id: "seg",
+  text: "hi",
+  source: "system",
+  ...segment,
+});
 
 const userAssigned = (speaker: string, speakerName: string) =>
   seg({
@@ -36,6 +44,7 @@ test("the cluster mapping still names segments the user has not touched", async 
 
 test("an auto-assigned name does not outrank the mapping", async () => {
   const { resolveSegmentSpeakerName } = await load();
+
   // Diarization sets confirmed, not locked; only a user edit should win.
   const segment = seg({
     source: "system",

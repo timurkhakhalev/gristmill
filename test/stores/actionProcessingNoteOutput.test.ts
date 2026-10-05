@@ -1,6 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
@@ -10,6 +15,7 @@ type TestContext = import("node:test").TestContext;
 // UI to say the notes were incomplete (#2142).
 
 const ACTION = { id: 1, name: "Generate Notes", prompt: "Summarize the meeting." };
+
 const LABELS = { noModel: "no model", noEndpoint: "no endpoint", actionFailed: "failed" };
 
 interface ProcessTextCall {
@@ -30,6 +36,7 @@ async function loadStore(t: TestContext, modelOutput = "# Notes\n- decided thing
       electronAPI: {
         updateNote: async (noteId: number, payload: Record<string, unknown>) => {
           updates.push({ noteId, payload });
+
           return { success: true };
         },
       },
@@ -37,6 +44,7 @@ async function loadStore(t: TestContext, modelOutput = "# Notes\n- decided thing
   });
 
   const calls: ProcessTextCall[] = [];
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-action-output-test-",
     mockModules: {
@@ -51,6 +59,7 @@ async function loadStore(t: TestContext, modelOutput = "# Notes\n- decided thing
       "/utils/generateTitle": `export const generateNoteTitle = async () => undefined;`,
     },
   });
+
   (globalThis as Record<string, unknown>).__processTextCalls = calls;
   (globalThis as Record<string, unknown>).__modelOutput = modelOutput;
   t.after(() => {
@@ -64,6 +73,7 @@ async function loadStore(t: TestContext, modelOutput = "# Notes\n- decided thing
     store.cancelAction(7);
     store.cancelAction(8);
   });
+
   return { store, calls, updates };
 }
 
@@ -72,6 +82,7 @@ async function waitFor(predicate: () => boolean, label: string) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
   throw new Error(`timed out waiting for ${label}`);
 }
 

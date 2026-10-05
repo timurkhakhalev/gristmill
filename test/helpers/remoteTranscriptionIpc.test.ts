@@ -4,16 +4,24 @@
 // work, the auth/route dialects, provider size caps, the diarization
 // projection, malformed provider responses and the hard-cancel contract.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 import type { RemoteTranscriptionDeps } from "../../src/helpers/remoteTranscriptionIpcHandler.ts";
 import type { RemoteTranscriptionResult } from "../../src/contracts/uploadTranscription.ts";
+
 type Segment = NonNullable<RemoteTranscriptionResult["segments"]>[number];
 
 let registerRemoteTranscriptionHandler: typeof import("../../src/helpers/remoteTranscriptionIpcHandler.ts").registerRemoteTranscriptionHandler;
+
 let transcribeAudioFileByok: typeof import("../../src/helpers/remoteTranscriptionIpcHandler.ts").transcribeAudioFileByok;
+
 let createUploadCancelRegistry: typeof import("../../src/helpers/uploadCancelRegistry.ts").createUploadCancelRegistry;
 
 test.before(async () => {
@@ -23,31 +31,57 @@ test.before(async () => {
 });
 
 const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-byok-typed-")));
+
 const audioFile = path.join(tmpRoot, "audio.wav");
+
 fs.writeFileSync(audioFile, Buffer.alloc(2048));
 
-function makeTransport({ statusCode = 200, data = { text: "transcribed" } }: { statusCode?: number; data?: unknown } = {}) {
+function makeTransport({
+  statusCode = 200,
+  data = { text: "transcribed" },
+}: { statusCode?: number; data?: unknown } = {}) {
   const calls: any[] = [];
+
   return {
     calls,
-    postMultipart: async (url: URL, body: Buffer, boundary: string, headers?: Record<string, string>, options?: { signal?: AbortSignal }) => {
+    postMultipart: async (
+      url: URL,
+      body: Buffer,
+      boundary: string,
+      headers?: Record<string, string>,
+      options?: { signal?: AbortSignal }
+    ) => {
       calls.push({ url: String(url), body, boundary, headers, options });
+
       return { statusCode, data };
     },
-    postRawAudioFile: async (url: URL, filePath: string, contentType: string, apiKey: string, options?: { signal?: AbortSignal; multipart?: { fileName: string; fields: Record<string, string> } }) => {
+    postRawAudioFile: async (
+      url: URL,
+      filePath: string,
+      contentType: string,
+      apiKey: string,
+      options?: {
+        signal?: AbortSignal;
+        multipart?: { fileName: string; fields: Record<string, string> };
+      }
+    ) => {
       calls.push({ url: String(url), filePath, contentType, apiKey, options });
+
       return { statusCode, data };
     },
   };
 }
 
-function baseDeps(overrides: {
-  transport?: ReturnType<typeof makeTransport>;
-  uploadCancelRegistry?: ReturnType<typeof createUploadCancelRegistry>;
-  deps?: Partial<RemoteTranscriptionDeps>;
-} = {}) {
+function baseDeps(
+  overrides: {
+    transport?: ReturnType<typeof makeTransport>;
+    uploadCancelRegistry?: ReturnType<typeof createUploadCancelRegistry>;
+    deps?: Partial<RemoteTranscriptionDeps>;
+  } = {}
+) {
   const transport = overrides.transport || makeTransport();
   const registry = overrides.uploadCancelRegistry || createUploadCancelRegistry();
+
   const calls: {
     reads: string[];
     corti: Parameters<RemoteTranscriptionDeps["transcribeWithCorti"]>[0][];
@@ -63,10 +97,12 @@ function baseDeps(overrides: {
     warns: [],
     errors: [],
   };
+
   const deps = {
     resolveAllowedAudioPath: (filePath: string) => {
       try {
         const real = fs.realpathSync(path.resolve(filePath));
+
         return real.startsWith(tmpRoot + path.sep) ? real : null;
       } catch {
         return null;
@@ -74,22 +110,32 @@ function baseDeps(overrides: {
     },
     readFile: (filePath: string) => {
       calls.reads.push(filePath);
+
       return fs.readFileSync(filePath);
     },
     fileSize: (filePath: string) => fs.statSync(filePath).size,
     providerBaseUrls: () => [],
     postMultipart: transport.postMultipart,
     postRawAudioFile: transport.postRawAudioFile,
-    transcribeWithTinfoil: async (args: Parameters<RemoteTranscriptionDeps["transcribeWithTinfoil"]>[0]) => {
+    transcribeWithTinfoil: async (
+      args: Parameters<RemoteTranscriptionDeps["transcribeWithTinfoil"]>[0]
+    ) => {
       calls.tinfoil.push(args);
+
       return { text: "tinfoil text" };
     },
-    transcribeGeminiFile: async (args: Parameters<RemoteTranscriptionDeps["transcribeGeminiFile"]>[0]) => {
+    transcribeGeminiFile: async (
+      args: Parameters<RemoteTranscriptionDeps["transcribeGeminiFile"]>[0]
+    ) => {
       calls.gemini.push(args);
+
       return { success: true, text: "gemini text" };
     },
-    transcribeWithCorti: async (args: Parameters<RemoteTranscriptionDeps["transcribeWithCorti"]>[0]) => {
+    transcribeWithCorti: async (
+      args: Parameters<RemoteTranscriptionDeps["transcribeWithCorti"]>[0]
+    ) => {
       calls.corti.push(args);
+
       return { text: "corti text" };
     },
     getCortiClientId: () => "corti-id",
@@ -102,6 +148,7 @@ function baseDeps(overrides: {
     logError: (message: string, data: unknown) => calls.errors.push({ message, data }),
     ...overrides.deps,
   };
+
   return { deps, calls, transport, registry };
 }
 
@@ -117,7 +164,9 @@ test("Deepgram sends the complete file with its own auth and maps timed speakers
       },
     },
   });
+
   const { call, calls } = setup({ transport });
+
   const result = await call({
     filePath: audioFile,
     apiKey: "dg-secret",
@@ -127,6 +176,7 @@ test("Deepgram sends the complete file with its own auth and maps timed speakers
     language: "ru",
     requestId: "deepgram-1",
   });
+
   assert.equal(result.success, true);
   assert.equal(result.diarized, true);
   assert.deepEqual(
@@ -152,13 +202,16 @@ test("Deepgram fails closed when speaker data is missing, key is absent, or size
   const transport = makeTransport({
     data: { results: { channels: [{ alternatives: [{ transcript: "Hello" }] }] } },
   });
+
   const { call } = setup({ transport });
   const input = { filePath: audioFile, provider: "deepgram", apiKey: "dg-secret", diarize: true };
   assert.equal((await call(input)).code, "DEEPGRAM_DIARIZATION_MISSING");
   assert.equal((await call({ ...input, apiKey: "" })).success, false);
+
   const { call: limited, transport: limitedTransport } = setup({
     deps: { fileSize: () => 2 * 1024 * 1024 * 1024 + 1 },
   });
+
   assert.match((await limited(input)).error, /2048 MB/);
   assert.equal(limitedTransport.calls.length, 0);
 });
@@ -169,6 +222,7 @@ test("Deepgram handles plain transcripts and provider errors without losing the 
       data: { results: { channels: [{ alternatives: [{ transcript: "Plain text" }] }] } },
     }),
   });
+
   const input = { filePath: audioFile, provider: "deepgram", apiKey: "dg-secret" };
   assert.deepEqual(await plain.call(input), { success: true, text: "Plain text" });
   assert.equal(new URL(plain.transport.calls[0].url).searchParams.get("detect_language"), "true");
@@ -199,7 +253,9 @@ test("ElevenLabs streams multipart Scribe audio and groups timed speaker words",
       ],
     },
   });
+
   const { call, calls } = setup({ transport });
+
   const result = await call({
     filePath: audioFile,
     apiKey: "el-secret",
@@ -209,6 +265,7 @@ test("ElevenLabs streams multipart Scribe audio and groups timed speaker words",
     diarize: true,
     requestId: "elevenlabs-1",
   });
+
   assert.equal(result.success, true);
   assert.equal(result.diarized, true);
   assert.deepEqual(
@@ -238,14 +295,13 @@ test("ElevenLabs preserves word timestamps without diarization", async () => {
       ],
     },
   });
+
   const { call } = setup({ transport });
   const result = await call({ filePath: audioFile, provider: "elevenlabs", apiKey: "el-secret" });
   assert.equal(result.success, true);
   assert.equal(result.text, "Hello there.");
   assert.equal(result.diarized, false);
-  assert.deepEqual(result.segments, [
-    { text: "Hello there.", start: 0, end: 0.9 },
-  ]);
+  assert.deepEqual(result.segments, [{ text: "Hello there.", start: 0, end: 0.9 }]);
   assert.equal(transport.calls[0].options.multipart.fields.diarize, "false");
   assert.equal(transport.calls[0].options.multipart.fields.timestamps_granularity, "word");
 });
@@ -254,11 +310,13 @@ test("ElevenLabs keeps plain text when timestamps are absent and rejects invalid
   const input = { filePath: audioFile, provider: "elevenlabs", apiKey: "el-secret" };
   const missing = setup({ transport: makeTransport({ data: { text: "Hello" } }) });
   assert.deepEqual(await missing.call(input), { success: true, text: "Hello" });
+
   const invalid = setup({
     transport: makeTransport({
       data: { text: "Hello", words: [{ text: "Hello", type: "word", start: 1, end: 0 }] },
     }),
   });
+
   assert.equal((await invalid.call(input)).code, "ELEVENLABS_INVALID_RESPONSE");
 });
 
@@ -266,6 +324,7 @@ test("ElevenLabs fails closed on missing speakers, invalid words and oversized f
   const input = { filePath: audioFile, provider: "elevenlabs", apiKey: "el-secret", diarize: true };
   const missing = setup({ transport: makeTransport({ data: { text: "Hello", words: [] } }) });
   assert.equal((await missing.call(input)).code, "ELEVENLABS_DIARIZATION_MISSING");
+
   const invalid = setup({
     transport: makeTransport({
       data: {
@@ -274,6 +333,7 @@ test("ElevenLabs fails closed on missing speakers, invalid words and oversized f
       },
     }),
   });
+
   assert.equal((await invalid.call(input)).code, "ELEVENLABS_INVALID_RESPONSE");
   const limited = setup({ deps: { fileSize: () => 3 * 1024 * 1024 * 1024 + 1 } });
   assert.match((await limited.call(input)).error, /3072 MB/);
@@ -286,8 +346,12 @@ test("ElevenLabs fails closed on missing speakers, invalid words and oversized f
 function setup(overrides = {}) {
   const { deps, calls, transport, registry } = baseDeps(overrides);
   const handlers = new Map();
-  registerRemoteTranscriptionHandler({ handle: (channel: string, fn: unknown) => handlers.set(channel, fn) }, deps);
+  registerRemoteTranscriptionHandler(
+    { handle: (channel: string, fn: unknown) => handlers.set(channel, fn) },
+    deps
+  );
   const call = (payload: unknown) => handlers.get("transcribe-audio-file-byok")(null, payload);
+
   return { call, calls, transport, registry, handlers, deps };
 }
 
@@ -295,7 +359,9 @@ test("meeting raw-response sink is awaited before Deepgram parsing", async () =>
   const { deps } = setup({
     transport: makeTransport({ data: { results: {} } }),
   });
+
   const saved: unknown[] = [];
+
   const result = await transcribeAudioFileByok(
     deps,
     {
@@ -324,8 +390,10 @@ test("meeting raw-response sink is awaited before ElevenLabs parsing", async () 
     text: "Hello.",
     words: [{ type: "word", text: "Hello.", start: 0, end: 0.5, speaker_id: "speaker_0" }],
   };
+
   const { deps } = setup({ transport: makeTransport({ data: raw }) });
   let saved;
+
   const result = await transcribeAudioFileByok(
     deps,
     {
@@ -355,8 +423,10 @@ test("meeting raw-response sink is awaited before OpenAI parsing", async () => {
     text: "Hello.",
     segments: [{ speaker: "A", text: "Hello.", start: 0, end: 0.5 }],
   };
+
   const { deps } = setup({ transport: makeTransport({ data: raw }) });
   let saved;
+
   const result = await transcribeAudioFileByok(
     deps,
     {
@@ -383,6 +453,7 @@ test("meeting raw-response sink is awaited before OpenAI parsing", async () => {
 
 test("happy path: Bearer auth, model field, signal handed to the transport", async () => {
   const { call, calls, transport } = setup();
+
   const result = await call({
     filePath: audioFile,
     apiKey: "sk-openai",
@@ -392,6 +463,7 @@ test("happy path: Bearer auth, model field, signal handed to the transport", asy
     transcriptionMode: "providers",
     requestId: "req-1",
   });
+
   assert.equal(result.success, true);
   assert.equal(result.text, "transcribed");
   assert.match(transport.calls[0].url, /api\.openai\.com/);
@@ -435,6 +507,7 @@ test("mistral sends x-api-key; azure custom sends api-key; neither leaks Bearer"
 
 test("a misconfigured custom endpoint fails closed before any read or request", async () => {
   const { call, calls, transport } = setup();
+
   const result = await call({
     filePath: audioFile,
     apiKey: "ck",
@@ -443,6 +516,7 @@ test("a misconfigured custom endpoint fails closed before any read or request", 
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(result.success, false);
   assert.equal(result.code, "CUSTOM_ENDPOINT_INVALID");
   assert.equal(calls.reads.length, 0);
@@ -451,6 +525,7 @@ test("a misconfigured custom endpoint fails closed before any read or request", 
 
 test("self-hosted is exempt from the third-party size cap; byok caps report the applied limit", async () => {
   const selfHosted = setup({ deps: { fileSize: () => 26 * 1024 * 1024 } });
+
   const ok = await selfHosted.call({
     filePath: audioFile,
     provider: "custom",
@@ -459,10 +534,12 @@ test("self-hosted is exempt from the third-party size cap; byok caps report the 
     remoteTranscriptionModel: "whisper-1",
     language: "",
   });
+
   assert.equal(ok.success, true);
   assert.deepEqual(selfHosted.transport.calls[0].headers, {}, "auth scheme none");
 
   const byok = setup({ deps: { fileSize: () => 26 * 1024 * 1024 } });
+
   const capped = await byok.call({
     filePath: audioFile,
     apiKey: "sk",
@@ -470,6 +547,7 @@ test("self-hosted is exempt from the third-party size cap; byok caps report the 
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(capped.success, false);
   assert.match(capped.error, /25 MB/);
   assert.equal(byok.transport.calls.length, 0);
@@ -478,6 +556,7 @@ test("self-hosted is exempt from the third-party size cap; byok caps report the 
   const geminiCapped = setup({
     deps: { fileSize: () => 2 * 1024 * 1024 * 1024 + 1 },
   });
+
   const gemini = await geminiCapped.call({
     filePath: audioFile,
     apiKey: "gk",
@@ -485,6 +564,7 @@ test("self-hosted is exempt from the third-party size cap; byok caps report the 
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(gemini.success, false);
   assert.match(gemini.error, /2048 MB/);
   assert.equal(geminiCapped.calls.gemini.length, 0);
@@ -547,6 +627,7 @@ test("openai diarization rides the route and projects diarized_json speaker segm
       },
     }),
   });
+
   const result = await call({
     filePath: audioFile,
     apiKey: "sk",
@@ -555,6 +636,7 @@ test("openai diarization rides the route and projects diarized_json speaker segm
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(result.success, true);
   assert.equal(result.diarized, true);
   assert.deepEqual(result.segments, [
@@ -579,6 +661,7 @@ test("mistral speakers payload projects ids with a fallback label", async () => 
       },
     }),
   });
+
   const result = await call({
     filePath: audioFile,
     apiKey: "mk",
@@ -587,6 +670,7 @@ test("mistral speakers payload projects ids with a fallback label", async () => 
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.deepEqual(
     result.segments.map((s: Segment) => s.speaker),
     ["S1", "Speaker 2"]
@@ -599,6 +683,7 @@ test("timestamps request fields and verbose segment mapping stay per provider", 
       data: { text: "t", segments: [{ text: " hello ", start: -1, end: 4 }] },
     }),
   });
+
   const result = await whisper1.call({
     filePath: audioFile,
     apiKey: "sk",
@@ -608,6 +693,7 @@ test("timestamps request fields and verbose segment mapping stay per provider", 
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.match(whisper1.transport.calls[0].body.toString(), /verbose_json/);
   assert.deepEqual(result.segments, [{ text: "hello", start: 0, end: 4 }]);
 
@@ -653,6 +739,7 @@ test("HTTP failure dialects: 401, 429, embedded provider error, non-JSON server 
   const providerError = setup({
     transport: makeTransport({ statusCode: 500, data: { error: { message: "boom" } } }),
   });
+
   assert.deepEqual(
     await providerError.call({
       filePath: audioFile,
@@ -667,6 +754,7 @@ test("HTTP failure dialects: 401, 429, embedded provider error, non-JSON server 
   const selfHostedError = setup({
     transport: makeTransport({ statusCode: 502, data: { error: "gateway down" } }),
   });
+
   const r = await selfHostedError.call({
     filePath: audioFile,
     provider: "custom",
@@ -675,11 +763,13 @@ test("HTTP failure dialects: 401, 429, embedded provider error, non-JSON server 
     remoteTranscriptionModel: "m",
     language: "",
   });
+
   assert.deepEqual(r, { success: false, error: "gateway down" });
 });
 
 test("a malformed provider text never crosses the wire as junk", async () => {
   const junk = setup({ transport: makeTransport({ data: { text: 42 } }) });
+
   const result = await junk.call({
     filePath: audioFile,
     apiKey: "sk",
@@ -687,6 +777,7 @@ test("a malformed provider text never crosses the wire as junk", async () => {
     language: "",
     transcriptionMode: "providers",
   });
+
   // The projection drops a non-string text instead of forwarding it, so the
   // renderer's !res.text guard reports a failed upload rather than saving 42.
   assert.equal(result.success, true);
@@ -716,7 +807,13 @@ test("invalid payloads are rejected before path resolution, read or network", as
 test("hard cancel aborts the in-flight transport and reports UPLOAD_CANCELLED", async () => {
   const { call, registry } = setup({
     transport: {
-      postMultipart: (url: string, body: unknown, boundary: unknown, headers: unknown, options: { signal: AbortSignal }) =>
+      postMultipart: (
+        url: string,
+        body: unknown,
+        boundary: unknown,
+        headers: unknown,
+        options: { signal: AbortSignal }
+      ) =>
         new Promise((_resolve, reject) => {
           options.signal.addEventListener("abort", () => {
             const error = new Error("The operation was aborted");
@@ -726,6 +823,7 @@ test("hard cancel aborts the in-flight transport and reports UPLOAD_CANCELLED", 
         }),
     },
   });
+
   const pending = call({
     filePath: audioFile,
     apiKey: "sk",
@@ -734,6 +832,7 @@ test("hard cancel aborts the in-flight transport and reports UPLOAD_CANCELLED", 
     transcriptionMode: "providers",
     requestId: "cancel-me",
   });
+
   await new Promise((resolve) => setImmediate(resolve));
   const aborted = registry.cancel("cancel-me");
   assert.equal(aborted, 1);
@@ -755,19 +854,36 @@ test("a transport without a requestId registers nothing and stays cancellable-fr
 });
 
 test("Deepgram multichannel reaches the HTTP request and rejects lost channel attribution", async () => {
-  const data = { results: {
-    channels: [{ alternatives: [{ transcript: "Me" }] }, { alternatives: [{ transcript: "Them" }] }],
-    utterances: [
-      { channel: 1, speaker: 0, transcript: "Them", start: 0.2, end: 0.8 },
-      { channel: 0, speaker: 0, transcript: "Me", start: 0.1, end: 0.7 },
-    ],
-  } };
+  const data = {
+    results: {
+      channels: [
+        { alternatives: [{ transcript: "Me" }] },
+        { alternatives: [{ transcript: "Them" }] },
+      ],
+      utterances: [
+        { channel: 1, speaker: 0, transcript: "Them", start: 0.2, end: 0.8 },
+        { channel: 0, speaker: 0, transcript: "Me", start: 0.1, end: 0.7 },
+      ],
+    },
+  };
+
   const transport = makeTransport({ data });
   const { call } = setup({ transport });
-  const request = { filePath: audioFile, provider: "deepgram", apiKey: "test", diarize: true, multichannel: true };
+
+  const request = {
+    filePath: audioFile,
+    provider: "deepgram",
+    apiKey: "test",
+    diarize: true,
+    multichannel: true,
+  };
+
   const result = await call(request);
   assert.equal(result.success, true);
-  assert.deepEqual(result.segments.map((s: Segment) => s.speaker), ["mic", "system:Speaker 1"]);
+  assert.deepEqual(
+    result.segments.map((s: Segment) => s.speaker),
+    ["mic", "system:Speaker 1"]
+  );
   const url = new URL(transport.calls[0].url);
   assert.equal(url.searchParams.get("multichannel"), "true");
   assert.equal(url.searchParams.get("diarize_model"), "latest");

@@ -1,15 +1,27 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { once }: typeof import("node:events") = require("node:events");
 
 const { WebSocketServer }: typeof import("ws") = require("ws");
 
 const ParakeetWsServer = require("../../src/helpers/parakeetWsServer");
-const { pcm16ToFloat32 }: typeof import("../../src/utils/audioUtils.ts") = require("../../src/utils/audioUtils.ts");
+
+const {
+  pcm16ToFloat32,
+}: typeof import("../../src/utils/audioUtils.ts") = require("../../src/utils/audioUtils.ts");
 
 // Mock sherpa online WS protocol: float32 binary frames in, JSON results out, "Done"/"Done!" handshake.
-async function startMockOnlineServer({ onBinary, finalSegment = 0 }: {
-  onBinary?: (socket: { send(data: string): void; close(): void }, data: unknown, frameCount: number) => void;
+async function startMockOnlineServer({
+  onBinary,
+  finalSegment = 0,
+}: {
+  onBinary?: (
+    socket: { send(data: string): void; close(): void },
+    data: unknown,
+    frameCount: number
+  ) => void;
   finalSegment?: number;
 } = {}) {
   const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
@@ -22,8 +34,10 @@ async function startMockOnlineServer({ onBinary, finalSegment = 0 }: {
       if (isBinary) {
         binaryFrames += 1;
         onBinary?.(socket, data, binaryFrames);
+
         return;
       }
+
       if (data.toString() === "Done" && !ignoringDone) {
         socket.send(
           JSON.stringify({
@@ -39,6 +53,7 @@ async function startMockOnlineServer({ onBinary, finalSegment = 0 }: {
 
   const address = wss.address();
   assert.ok(address && typeof address !== "string");
+
   return {
     port: address.port,
     ignoreDone: () => {
@@ -54,6 +69,7 @@ function onlineWsServerAt(port: number) {
   server.process = { pid: 1 };
   server.port = port;
   server.modelRuntime = "online";
+
   return server;
 }
 
@@ -66,6 +82,7 @@ test("online stream emits live updates and finish resolves with the final text",
 
   try {
     const updates: unknown[] = [];
+
     const stream = onlineWsServerAt(mock.port).createOnlineStream({
       onUpdate: (text: string) => updates.push(text),
     });
@@ -86,6 +103,7 @@ test("online stream emits live updates and finish resolves with the final text",
 
 test("finalized segments accumulate across endpoints in live updates", async () => {
   let segment = 0;
+
   const mock = await startMockOnlineServer({
     finalSegment: 2,
     onBinary: (socket, _data: unknown, frameCount: number) => {
@@ -98,6 +116,7 @@ test("finalized segments accumulate across endpoints in live updates", async () 
 
   try {
     let lastUpdate = "";
+
     const stream = onlineWsServerAt(mock.port).createOnlineStream({
       onUpdate: (text: string) => {
         lastUpdate = text;
@@ -128,6 +147,7 @@ test("createOnlineStream rejects offline-runtime sessions and dead servers", () 
 
 test("abort closes the stream without waiting for the server", async () => {
   const mock = await startMockOnlineServer({});
+
   try {
     const stream = onlineWsServerAt(mock.port).createOnlineStream({});
     stream.sendPcm16(Buffer.alloc(3200));
@@ -147,6 +167,7 @@ test("finish flags truncation when the server never acknowledges Done", async ()
       socket.send(JSON.stringify({ text: "partial", segment: 0, is_final: false }));
     },
   });
+
   mock.ignoreDone();
 
   try {
@@ -170,9 +191,14 @@ test("unexpected close before Done! reports an error and truncation", async () =
 
   try {
     const errors: Error[] = [];
+
     const stream = onlineWsServerAt(mock.port).createOnlineStream({
-      onError: (err: unknown) => { assert.ok(err instanceof Error); errors.push(err); },
+      onError: (err: unknown) => {
+        assert.ok(err instanceof Error);
+        errors.push(err);
+      },
     });
+
     stream.sendPcm16(Buffer.alloc(3200));
     const { text, truncated } = await stream.finish({ idleTimeoutMs: 1000 });
     assert.equal(text, "cut off");
@@ -186,6 +212,7 @@ test("unexpected close before Done! reports an error and truncation", async () =
 
 test("a clean finish reports no truncation", async () => {
   const mock = await startMockOnlineServer({});
+
   try {
     const stream = onlineWsServerAt(mock.port).createOnlineStream({});
     stream.sendPcm16(Buffer.alloc(3200));
@@ -205,10 +232,13 @@ test("a send error during the queued flush flags truncation", async () => {
   WebSocket.prototype.send = function (data: unknown, cb: unknown) {
     if (typeof data !== "string") {
       if (typeof cb === "function") cb(new Error("forced send failure"));
+
       return;
     }
+
     return realSend.call(this, data, cb);
   };
+
   try {
     const stream = onlineWsServerAt(mock.port).createOnlineStream({});
     stream.sendPcm16(Buffer.alloc(3200));
@@ -222,6 +252,7 @@ test("a send error during the queued flush flags truncation", async () => {
 
 test("a chunk arriving after finish flags truncation", async () => {
   const mock = await startMockOnlineServer({});
+
   try {
     const stream = onlineWsServerAt(mock.port).createOnlineStream({});
     stream.sendPcm16(Buffer.alloc(3200));
@@ -237,6 +268,7 @@ test("a chunk arriving after finish flags truncation", async () => {
 
 test("finish is idempotent and returns the same result", async () => {
   const mock = await startMockOnlineServer({});
+
   try {
     const stream = onlineWsServerAt(mock.port).createOnlineStream({});
     stream.sendPcm16(Buffer.alloc(3200));
@@ -263,6 +295,7 @@ test("offline transcription rejects with AbortError when cancelled mid-flight", 
       () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
       (err: Error) => {
         assert.equal(err.name, "AbortError");
+
         return true;
       }
     );
@@ -281,6 +314,7 @@ test("offline transcription rejects immediately on a pre-aborted signal", async 
     () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
     (err: Error) => {
       assert.equal(err.name, "AbortError");
+
       return true;
     }
   );
@@ -299,6 +333,7 @@ test("online transcription rejects with AbortError when cancelled mid-flight", a
       () => server.transcribe(Buffer.alloc(3200), 16000, { signal: controller.signal }),
       (err: Error) => {
         assert.equal(err.name, "AbortError");
+
         return true;
       }
     );

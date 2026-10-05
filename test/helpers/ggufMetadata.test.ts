@@ -1,10 +1,18 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const { readGgufMetadata } = require("../../src/helpers/ggufMetadata.ts");
-const { TYPE, buildGguf, bufferReader, LLAMA_3_2_3B_ENTRIES }: typeof import("./harness/ggufFixtures") = require("./harness/ggufFixtures");
 
-const read = (entries: unknown, options?: Record<string, unknown>) => readGgufMetadata(bufferReader(buildGguf(entries as never, options as never)));
+const {
+  TYPE,
+  buildGguf,
+  bufferReader,
+  LLAMA_3_2_3B_ENTRIES,
+}: typeof import("./harness/ggufFixtures") = require("./harness/ggufFixtures");
+
+const read = (entries: unknown, options?: Record<string, unknown>) =>
+  readGgufMetadata(bufferReader(buildGguf(entries as never, options as never)));
 
 test("reads the architecture fields that determine KV cost", async () => {
   const metadata = await read(LLAMA_3_2_3B_ENTRIES);
@@ -93,6 +101,7 @@ test("skips the tokenizer arrays that dominate a real header", async () => {
   // nearly all of a real 10 MiB metadata section. It must be stepped over, not
   // materialised.
   const tokens = Array.from({ length: 5000 }, (_, index) => `token_${index}`);
+
   const metadata = await read([
     { key: "general.architecture", type: TYPE.STRING, value: "llama" },
     { key: "tokenizer.ggml.tokens", type: TYPE.ARRAY, elementType: TYPE.STRING, values: tokens },

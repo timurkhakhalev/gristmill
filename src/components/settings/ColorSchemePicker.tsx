@@ -16,6 +16,7 @@ interface ColorSchemePickerProps {
 /** Scheme dropdown; each option shows its swatch (accent over the scheme's background). */
 export function ColorSchemePicker({ value, onChange, label }: ColorSchemePickerProps) {
   const { t } = useTranslation();
+
   return (
     <SelectField
       value={value}
@@ -31,7 +32,10 @@ export function ColorSchemePicker({ value, onChange, label }: ColorSchemePickerP
             className="flex size-4 shrink-0 items-center justify-center rounded border border-black/10 dark:border-white/10"
             style={{ background: COLOR_SCHEME_SWATCHES[id].background }}
           >
-            <span className="size-2 rounded-full" style={{ background: COLOR_SCHEME_SWATCHES[id].accent }} />
+            <span
+              className="size-2 rounded-full"
+              style={{ background: COLOR_SCHEME_SWATCHES[id].accent }}
+            />
           </span>
         ),
       }))}

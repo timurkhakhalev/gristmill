@@ -5,11 +5,21 @@
 // (R156-1). Both the in-store and not-yet-cached paths are driven, asserting
 // the persisted updateNote payload (R156-2).
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const path = require("node:path");
+
 const React = require("react") as typeof import("react");
+
 const { createRoot } = require("react-dom/client");
-const { createRendererServer, installBrowserGlobals, installHookDom }: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  installHookDom,
+}: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
+
 import type { NoteItem } from "../../../../src/contracts/notes";
 import type { EventDraftHandoff } from "../../../../src/lib/noteEditorPendingSave";
 
@@ -17,12 +27,25 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function noteFixture(id: number, title: string, content: string): NoteItem {
   return {
-    id, title, content, note_type: "meeting", space_id: 1,
-    folder_id: null, folder_ids: [], source_file: null,
-    audio_duration_seconds: null, created_at: "2026-10-02", updated_at: "2026-10-02",
-    enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null,
-    transcript: null, calendar_event_id: "evt-1", participants: null,
-    diarization_enabled: null, expected_speaker_count: null,
+    id,
+    title,
+    content,
+    note_type: "meeting",
+    space_id: 1,
+    folder_id: null,
+    folder_ids: [],
+    source_file: null,
+    audio_duration_seconds: null,
+    created_at: "2026-10-02",
+    updated_at: "2026-10-02",
+    enhanced_content: null,
+    enhancement_prompt: null,
+    enhanced_at_content_hash: null,
+    transcript: null,
+    calendar_event_id: "evt-1",
+    participants: null,
+    diarization_enabled: null,
+    expected_speaker_count: null,
   };
 }
 
@@ -47,35 +70,49 @@ async function mountNotesView(
   save?: (id: number, updates: Record<string, unknown>) => Promise<unknown>
 ): Promise<Harness> {
   let root: ReturnType<typeof createRoot> | null = null;
-  t.after(async () => { if (root) await React.act(async () => root.unmount()); });
-  installBrowserGlobals(t, { initialStorage: { notesOnboardingComplete: "true" }, window: {
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    electronAPI: {
-      getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
-      getFolders: async () => [],
-      getFolderNoteCounts: async () => [],
-      getNotes: async () => rows,
-      getNote: (id: number) => getNote(id),
-      updateNote: async (id: number, updates: Record<string, unknown>) => {
-        updateCalls.push({ id, updates });
-        if (save) return await save(id, updates);
-        return { success: true, note: noteFixture(id, String(updates.title ?? ""), String(updates.content ?? "")) };
+  t.after(async () => {
+    if (root) await React.act(async () => root.unmount());
+  });
+  installBrowserGlobals(t, {
+    initialStorage: { notesOnboardingComplete: "true" },
+    window: {
+      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      electronAPI: {
+        getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
+        getFolders: async () => [],
+        getFolderNoteCounts: async () => [],
+        getNotes: async () => rows,
+        getNote: (id: number) => getNote(id),
+        updateNote: async (id: number, updates: Record<string, unknown>) => {
+          updateCalls.push({ id, updates });
+
+          if (save) return await save(id, updates);
+
+          return {
+            success: true,
+            note: noteFixture(id, String(updates.title ?? ""), String(updates.content ?? "")),
+          };
+        },
+        gcalGetEvent: async () => null,
+        onNoteAdded: () => () => {},
+        onNoteUpdated: (listener: (note: NoteItem) => void) => {
+          noteUpdatedListener = listener;
+
+          return () => {
+            noteUpdatedListener = undefined;
+          };
+        },
+        onNoteDeleted: () => () => {},
+        onFolderDeleted: () => () => {},
       },
-      gcalGetEvent: async () => null,
-      onNoteAdded: () => () => {},
-      onNoteUpdated: (listener: (note: NoteItem) => void) => {
-        noteUpdatedListener = listener;
-        return () => { noteUpdatedListener = undefined; };
-      },
-      onNoteDeleted: () => () => {},
-      onFolderDeleted: () => () => {},
     },
-  } });
+  });
   const container = installHookDom(t);
   let noteUpdatedListener: ((note: NoteItem) => void) | undefined;
   const updateCalls: Array<{ id: number; updates: Record<string, unknown> }> = [];
+
   const mockModules: Record<string, string> = {
     "react-i18next": `
       const t = (key) => key;
@@ -107,72 +144,115 @@ async function mountNotesView(
     "/ui/useToast": `export function useToast() { return { toast() {} }; }`,
     "/stores/actionStore": `export async function initializeActions() {}`,
   };
+
   const vite = await createRendererServer(t, {
     mockModules,
     noExternal: ["react-i18next"],
     resolveAlias: { "@": path.resolve(__dirname, "../../../src") },
   });
-  const { default: PersonalNotesView } = await vite.ssrLoadModule("/components/notes/PersonalNotesView.tsx");
-  const noteEditorModule = await vite.ssrLoadModule("./NoteEditor") as {
-    props: {
-      note: { id: number; title: string; content: string; enhanced_content: string | null };
-      onContentChange: (id: number, value: string) => void;
-      onTitleChange: (id: number, value: string) => void;
-      enhancement?: { onChange: (id: number, value: string) => void };
-    } | undefined;
+
+  const { default: PersonalNotesView } = await vite.ssrLoadModule(
+    "/components/notes/PersonalNotesView.tsx"
+  );
+
+  const noteEditorModule = (await vite.ssrLoadModule("./NoteEditor")) as {
+    props:
+      | {
+          note: { id: number; title: string; content: string; enhanced_content: string | null };
+          onContentChange: (id: number, value: string) => void;
+          onTitleChange: (id: number, value: string) => void;
+          enhancement?: { onChange: (id: number, value: string) => void };
+        }
+      | undefined;
   };
-  const store = await vite.ssrLoadModule("/stores/noteStore.ts") as typeof import("../../../../src/stores/noteStore");
-  await React.act(async () => { await store.initializeNotesTree(); });
+
+  const store = (await vite.ssrLoadModule(
+    "/stores/noteStore.ts"
+  )) as typeof import("../../../../src/stores/noteStore");
+
+  await React.act(async () => {
+    await store.initializeNotesTree();
+  });
 
   let handoffRef: { current: EventDraftHandoff | null } | undefined;
   root = createRoot(container as unknown as Element);
   await React.act(async () => {
     handoffRef = { current: pendingHandoff };
-    root!.render(React.createElement(PersonalNotesView, {
-      onOpenSettings: () => {},
-      chromeProvidesBack: false,
-      eventDraftHandoff: handoffRef,
-    }));
+    root!.render(
+      React.createElement(PersonalNotesView, {
+        onOpenSettings: () => {},
+        chromeProvidesBack: false,
+        eventDraftHandoff: handoffRef,
+      })
+    );
   });
 
   let openedNoteId: number | null = null;
+
   return {
     openNote: async (id: number) => {
       openedNoteId = id;
-      await React.act(async () => { store.setActiveNoteId(id); });
+      await React.act(async () => {
+        store.setActiveNoteId(id);
+      });
     },
     /** Drives the mounted editor's real onContentChange for the open note. */
     typeContent: async (value: string) => {
       const id = openedNoteId;
       assert.ok(id, "typeContent requires an open note");
-      await React.act(async () => { noteEditorModule.props?.onContentChange(id, value); });
+      await React.act(async () => {
+        noteEditorModule.props?.onContentChange(id, value);
+      });
     },
     typeTitle: async (value: string) => {
-      await React.act(async () => { noteEditorModule.props?.onTitleChange(openedNoteId!, value); });
+      await React.act(async () => {
+        noteEditorModule.props?.onTitleChange(openedNoteId!, value);
+      });
     },
     typeEnhanced: async (value: string) => {
-      await React.act(async () => { noteEditorModule.props?.enhancement?.onChange(openedNoteId!, value); });
+      await React.act(async () => {
+        noteEditorModule.props?.enhancement?.onChange(openedNoteId!, value);
+      });
     },
     remount: async () => {
-      await React.act(async () => { root!.unmount(); });
+      await React.act(async () => {
+        root!.unmount();
+      });
       root = createRoot(container as unknown as Element);
-      await React.act(async () => { root!.render(React.createElement(PersonalNotesView)); });
+      await React.act(async () => {
+        root!.render(React.createElement(PersonalNotesView));
+      });
     },
     errorVisible: () => container.textContent?.includes("notes.editor.saveFailed") ?? false,
     retry: async () => {
-      const find = (node: any): any => node.tagName === "BUTTON" && node.textContent === "common.retry"
-        ? node : node.childNodes?.map(find).find(Boolean);
+      const find = (node: any): any =>
+        node.tagName === "BUTTON" && node.textContent === "common.retry"
+          ? node
+          : node.childNodes?.map(find).find(Boolean);
+
       const button = find(container);
       assert.ok(button, "visible Retry control");
-      const props = button[Object.keys(button).find(key => key.startsWith("__reactProps$"))!];
-      await React.act(async () => { props.onClick(); });
+      const props = button[Object.keys(button).find((key) => key.startsWith("__reactProps$"))!];
+      await React.act(async () => {
+        props.onClick();
+      });
     },
     fireExternalUpdate: async (note: NoteItem) => {
-      await React.act(async () => { noteUpdatedListener?.(note); });
+      await React.act(async () => {
+        noteUpdatedListener?.(note);
+      });
     },
     editorState: () => {
       const props = noteEditorModule.props;
-      return props ? { id: props.note.id, title: props.note.title, content: props.note.content, enhanced: props.note.enhanced_content } : null;
+
+      return props
+        ? {
+            id: props.note.id,
+            title: props.note.title,
+            content: props.note.content,
+            enhanced: props.note.enhanced_content,
+          }
+        : null;
     },
     updateNoteCalls: () => updateCalls,
   };
@@ -181,15 +261,18 @@ async function mountNotesView(
 test("a handoff for a not-yet-cached note keeps the stored title and appends without clobbering", async (t) => {
   const stored = noteFixture(7, "Processing title", "Manual content");
   const rows: NoteItem[] = [];
-  const harness = await mountNotesView(
-    t,
-    rows,
-    async (id) => (id === 7 ? stored : null),
-    { noteId: 7, note: stored, mode: "append", draft: { content: "typed during materialization" } }
-  );
+
+  const harness = await mountNotesView(t, rows, async (id) => (id === 7 ? stored : null), {
+    noteId: 7,
+    note: stored,
+    mode: "append",
+    draft: { content: "typed during materialization" },
+  });
 
   await harness.openNote(7);
-  await React.act(async () => { await wait(1100); });
+  await React.act(async () => {
+    await wait(1100);
+  });
 
   const calls = harness.updateNoteCalls();
   assert.equal(calls.length, 1, "the handoff is persisted through the debounced save");
@@ -199,20 +282,27 @@ test("a handoff for a not-yet-cached note keeps the stored title and appends wit
     undefined,
     "the title was never dirty: the write must not touch it at all"
   );
-  assert.equal(calls[0].updates.content, "Manual content\n\ntyped during materialization", "manual text survives the append");
+  assert.equal(
+    calls[0].updates.content,
+    "Manual content\n\ntyped during materialization",
+    "manual text survives the append"
+  );
 });
 
 test("a handoff for a fresh note replaces the snapshot fields", async (t) => {
   const stored = noteFixture(8, "Design review", "early snapshot");
-  const harness = await mountNotesView(
-    t,
-    [stored],
-    async (id) => (id === 8 ? stored : null),
-    { noteId: 8, note: stored, mode: "replace", draft: { title: "Typed title", content: "early snapshot plus ABC" } }
-  );
+
+  const harness = await mountNotesView(t, [stored], async (id) => (id === 8 ? stored : null), {
+    noteId: 8,
+    note: stored,
+    mode: "replace",
+    draft: { title: "Typed title", content: "early snapshot plus ABC" },
+  });
 
   await harness.openNote(8);
-  await React.act(async () => { await wait(1100); });
+  await React.act(async () => {
+    await wait(1100);
+  });
 
   const calls = harness.updateNoteCalls();
   assert.equal(calls.length, 1);
@@ -230,17 +320,29 @@ test("a content-only edit's debounced write does not republish the title over an
   // While the debounce runs, processing publishes a new title.
   stored.title = "Generated title";
   await harness.fireExternalUpdate(stored);
-  await React.act(async () => { await wait(1100); });
+  await React.act(async () => {
+    await wait(1100);
+  });
 
   const calls = harness.updateNoteCalls();
   assert.equal(calls.length, 1, "the debounce fires once");
-  assert.equal(calls[0].updates.title, undefined, "the externally-generated title is not overwritten");
+  assert.equal(
+    calls[0].updates.title,
+    undefined,
+    "the externally-generated title is not overwritten"
+  );
   assert.equal(calls[0].updates.content, "Typed body");
 });
 
 test("an external update lands even while a save is queued", async (t) => {
   const stored = noteFixture(10, "Original title", "Original body");
-  const harness = await mountNotesView(t, [stored], async (id) => (id === 10 ? stored : null), null);
+
+  const harness = await mountNotesView(
+    t,
+    [stored],
+    async (id) => (id === 10 ? stored : null),
+    null
+  );
 
   await harness.openNote(10);
   await harness.typeContent("Typed body");
@@ -263,36 +365,62 @@ test("an external update lands even while a save is queued", async (t) => {
   });
 
   const calls = harness.updateNoteCalls();
-  await React.act(async () => { await wait(1100); });
+  await React.act(async () => {
+    await wait(1100);
+  });
   assert.equal(calls.length, 1, "only the dirty field is written");
-  assert.equal(calls[0].updates.title, undefined, "the externally-generated title is not overwritten");
+  assert.equal(
+    calls[0].updates.title,
+    undefined,
+    "the externally-generated title is not overwritten"
+  );
   assert.equal(calls[0].updates.content, "Typed body");
 });
 
 for (const field of ["content", "title"] as const) {
-  test(`an old ${field} ACK preserves a newer edit when the other field changes`, async t => {
+  test(`an old ${field} ACK preserves a newer edit when the other field changes`, async (t) => {
     const stored = noteFixture(11, "T0", "C0");
     const other = noteFixture(12, "Other", "Other body");
     let resolveFirst!: () => void;
-    const first = new Promise<void>(resolve => { resolveFirst = resolve; });
-    let count = 0;
-    const h = await mountNotesView(t, [stored, other], async id => id === 11 ? stored : other, null, async (_id, updates) => {
-      if (++count === 1) await first;
-      Object.assign(stored, updates);
-      return { success: true, note: { ...stored } };
+
+    const first = new Promise<void>((resolve) => {
+      resolveFirst = resolve;
     });
+
+    let count = 0;
+
+    const h = await mountNotesView(
+      t,
+      [stored, other],
+      async (id) => (id === 11 ? stored : other),
+      null,
+      async (_id, updates) => {
+        if (++count === 1) await first;
+        Object.assign(stored, updates);
+
+        return { success: true, note: { ...stored } };
+      }
+    );
+
     t.after(resolveFirst);
     await h.openNote(11);
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const type = field === "content" ? h.typeContent : h.typeTitle;
     const typeOther = field === "content" ? h.typeTitle : h.typeContent;
     await type("first");
-    await React.act(async () => { t.mock.timers.tick(1000); });
+    await React.act(async () => {
+      t.mock.timers.tick(1000);
+    });
     assert.equal(count, 1);
     await type("latest");
-    await React.act(async () => { resolveFirst(); await first; });
+    await React.act(async () => {
+      resolveFirst();
+      await first;
+    });
     await typeOther("other edit");
-    await React.act(async () => { t.mock.timers.tick(1000); });
+    await React.act(async () => {
+      t.mock.timers.tick(1000);
+    });
     assert.equal(stored[field], "latest");
     assert.equal(stored[field === "content" ? "title" : "content"], "other edit");
     await h.openNote(12);
@@ -303,24 +431,45 @@ for (const field of ["content", "title"] as const) {
 
 for (const failure of ["reject", "structured"] as const) {
   for (const field of ["content", "title", "enhanced_content"] as const) {
-    test(`${failure} ${field} save retains input across switch and remount until Retry`, async t => {
-      const stored = { ...noteFixture(21, "Old title", "Old content"), enhanced_content: "Old summary" };
+    test(`${failure} ${field} save retains input across switch and remount until Retry`, async (t) => {
+      const stored = {
+        ...noteFixture(21, "Old title", "Old content"),
+        enhanced_content: "Old summary",
+      };
+
       const other = noteFixture(22, "B", "B body");
       let failing = true;
-      const h = await mountNotesView(t, [stored, other], async id => id === 21 ? stored : other, null, async (id, updates) => {
-        assert.equal(id, 21);
-        if (failing) {
-          if (failure === "reject") throw new Error("storage unavailable");
-          return { success: false, error: "storage unavailable" };
+
+      const h = await mountNotesView(
+        t,
+        [stored, other],
+        async (id) => (id === 21 ? stored : other),
+        null,
+        async (id, updates) => {
+          assert.equal(id, 21);
+
+          if (failing) {
+            if (failure === "reject") throw new Error("storage unavailable");
+
+            return { success: false, error: "storage unavailable" };
+          }
+
+          Object.assign(stored, updates);
+
+          return { success: true, note: { ...stored } };
         }
-        Object.assign(stored, updates);
-        return { success: true, note: { ...stored } };
-      });
+      );
+
       await h.openNote(21);
       t.mock.timers.enable({ apis: ["setTimeout"] });
-      const type = field === "content" ? h.typeContent : field === "title" ? h.typeTitle : h.typeEnhanced;
+
+      const type =
+        field === "content" ? h.typeContent : field === "title" ? h.typeTitle : h.typeEnhanced;
+
       await type("unsaved input");
-      await React.act(async () => { t.mock.timers.tick(1000); });
+      await React.act(async () => {
+        t.mock.timers.tick(1000);
+      });
       assert.ok(h.errorVisible());
       await h.openNote(22);
       await h.openNote(21);
@@ -339,67 +488,105 @@ for (const failure of ["reject", "structured"] as const) {
   }
 }
 
-test("an old rejection retains the superseding edit and queued transition write", async t => {
+test("an old rejection retains the superseding edit and queued transition write", async (t) => {
   const stored = noteFixture(31, "T", "C");
   const other = noteFixture(32, "B", "B body");
   let reject!: (error: Error) => void;
-  const pending = new Promise<void>((_resolve, fail) => { reject = fail; });
-  let count = 0;
-  const h = await mountNotesView(t, [stored, other], async id => id === 31 ? stored : other, null, async (_id, updates) => {
-    if (++count === 1) await pending;
-    Object.assign(stored, updates);
-    return { success: true, note: { ...stored } };
+
+  const pending = new Promise<void>((_resolve, fail) => {
+    reject = fail;
   });
+
+  let count = 0;
+
+  const h = await mountNotesView(
+    t,
+    [stored, other],
+    async (id) => (id === 31 ? stored : other),
+    null,
+    async (_id, updates) => {
+      if (++count === 1) await pending;
+      Object.assign(stored, updates);
+
+      return { success: true, note: { ...stored } };
+    }
+  );
+
   await h.openNote(31);
   t.mock.timers.enable({ apis: ["setTimeout"] });
   await h.typeContent("first");
-  await React.act(async () => { t.mock.timers.tick(1000); });
+  await React.act(async () => {
+    t.mock.timers.tick(1000);
+  });
   await h.typeContent("latest");
   await h.openNote(32);
-  await React.act(async () => { reject(new Error("unavailable")); });
+  await React.act(async () => {
+    reject(new Error("unavailable"));
+  });
   await h.openNote(31);
   assert.equal(h.editorState()?.content, "latest");
   await h.retry();
   assert.equal(stored.content, "latest");
 });
 
-test("an external Summary is adopted on create, replace and clear without remount", async t => {
+test("an external Summary is adopted on create, replace and clear without remount", async (t) => {
   const stored = noteFixture(41, "T", "C");
   const h = await mountNotesView(t, [stored], async () => stored, null);
   await h.openNote(41);
+
   for (const summary of ["Generated", "Replaced", null]) {
     await h.fireExternalUpdate({ ...stored, enhanced_content: summary });
     assert.equal(h.editorState()?.enhanced, summary);
   }
+
   assert.deepEqual(h.updateNoteCalls(), [], "external output is not republished");
 });
 
-test("local pending and in-flight Summary edits survive external output", async t => {
+test("local pending and in-flight Summary edits survive external output", async (t) => {
   const stored = { ...noteFixture(42, "T", "C"), enhanced_content: "Old" };
   let resolve!: () => void;
-  const pending = new Promise<void>(done => { resolve = done; });
-  const h = await mountNotesView(t, [stored], async () => stored, null, async (_id, updates) => {
-    await pending;
-    Object.assign(stored, updates);
-    return { success: true, note: { ...stored } };
+
+  const pending = new Promise<void>((done) => {
+    resolve = done;
   });
+
+  const h = await mountNotesView(
+    t,
+    [stored],
+    async () => stored,
+    null,
+    async (_id, updates) => {
+      await pending;
+      Object.assign(stored, updates);
+
+      return { success: true, note: { ...stored } };
+    }
+  );
+
   t.after(resolve);
   await h.openNote(42);
   t.mock.timers.enable({ apis: ["setTimeout"] });
   await h.typeEnhanced("Local");
   await h.fireExternalUpdate({ ...stored, enhanced_content: "External queued" });
   assert.equal(h.editorState()?.enhanced, "Local");
-  await React.act(async () => { t.mock.timers.tick(1000); });
+  await React.act(async () => {
+    t.mock.timers.tick(1000);
+  });
   await h.typeEnhanced("Latest local");
   await h.fireExternalUpdate({ ...stored, enhanced_content: "External in-flight" });
   assert.equal(h.editorState()?.enhanced, "Latest local");
-  await React.act(async () => { resolve(); await pending; });
+  await React.act(async () => {
+    resolve();
+    await pending;
+  });
   assert.equal(stored.enhanced_content, "Latest local");
   stored.enhanced_content = "New output";
   await h.fireExternalUpdate({ ...stored });
   assert.equal(h.editorState()?.enhanced, "New output");
   await h.typeTitle("New title");
-  await React.act(async () => { t.mock.timers.tick(1000); });
+  await React.act(async () => {
+    t.mock.timers.tick(1000);
+  });
   assert.deepEqual(h.updateNoteCalls().at(-1)?.updates, { title: "New title" });
   assert.equal(h.editorState()?.enhanced, "New output");
 });

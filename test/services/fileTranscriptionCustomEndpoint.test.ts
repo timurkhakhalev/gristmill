@@ -1,6 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type RendererWindow = { electronAPI: Record<string, unknown> };
 
@@ -22,17 +27,20 @@ function customConfig(baseUrl: string) {
 
 test("file transcription enforces Custom endpoint security before IPC", async (t: import("node:test").TestContext) => {
   const { window } = installBrowserGlobals(t) as { window: RendererWindow };
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-file-custom-endpoint-test-",
     mockModules: {
       "/lib/auth": "export const withSessionRefresh = (fn) => fn();",
     },
   });
+
   const { transcribeFile } = await vite.ssrLoadModule("/services/fileTranscription.ts");
 
   let ipcCalls = 0;
   window.electronAPI.transcribeAudioFileByok = async () => {
     ipcCalls += 1;
+
     return { success: true, text: "must not run" };
   };
 
@@ -55,6 +63,7 @@ test("file transcription enforces Custom endpoint security before IPC", async (t
     customConfig("https://inference.tinfoil.sh/v1"),
     false
   );
+
   assert.equal(tinfoilResult.success, false);
   assert.match(tinfoilResult.error, /attested main-process proxy/);
   assert.equal(ipcCalls, 0);
@@ -62,13 +71,16 @@ test("file transcription enforces Custom endpoint security before IPC", async (t
   // Built-in providers ignore the stored custom URL entirely.
   window.electronAPI.transcribeAudioFileByok = async () => {
     ipcCalls += 1;
+
     return { success: true, text: "groq ok" };
   };
+
   const groqResult = await transcribeFile(
     "/tmp/audio.webm",
     { ...customConfig("ftp://garbage"), cloudTranscriptionProvider: "groq" },
     false
   );
+
   assert.equal(groqResult.success, true);
   assert.equal(ipcCalls, 1);
   ipcCalls = 0;
@@ -76,6 +88,7 @@ test("file transcription enforces Custom endpoint security before IPC", async (t
   let receivedOptions: Record<string, unknown> | null = null;
   window.electronAPI.transcribeAudioFileByok = async (options: Record<string, unknown>) => {
     receivedOptions = options;
+
     return { success: true, text: "local gateway" };
   };
 
@@ -91,17 +104,20 @@ test("file transcription enforces Custom endpoint security before IPC", async (t
 
 test("self-hosted file transcription bypasses stale Custom endpoint validation", async (t: import("node:test").TestContext) => {
   const { window } = installBrowserGlobals(t) as { window: RendererWindow };
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-file-self-hosted-endpoint-test-",
     mockModules: {
       "/lib/auth": "export const withSessionRefresh = (fn) => fn();",
     },
   });
+
   const { transcribeFile } = await vite.ssrLoadModule("/services/fileTranscription.ts");
 
   let receivedOptions: Record<string, unknown> | null = null;
   window.electronAPI.transcribeAudioFileByok = async (options: Record<string, unknown>) => {
     receivedOptions = options;
+
     return { success: true, text: "self-hosted" };
   };
 

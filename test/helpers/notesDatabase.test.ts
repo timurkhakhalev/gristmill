@@ -1,20 +1,33 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
+
 type NoteItem = import("../../src/contracts/notes.ts").NoteItem;
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-db-"));
+
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
-    return { app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false } };
+    return {
+      app: { getPath: () => userDataDir, getAppPath: () => process.cwd(), isReady: () => false },
+    };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 process.env.NODE_ENV = "test";
+
 const DatabaseManager = require("../../src/helpers/database.ts");
 
 test.after(() => {
@@ -23,20 +36,28 @@ test.after(() => {
 
 function createDb(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-db-"));
+
   try {
     return new DatabaseManager();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("NODE_MODULE_VERSION") || message.includes("Could not locate the bindings file")) {
+
+    if (
+      message.includes("NODE_MODULE_VERSION") ||
+      message.includes("Could not locate the bindings file")
+    ) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return null;
     }
+
     throw error;
   }
 }
 
 test("save returns the inserted note with nullable fields intact", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const result = db.saveNote("Title", "Body", "personal", "/tmp/src.mp3", 12.5);
   assert.equal(result.success, true);
@@ -62,6 +83,7 @@ test("save returns the inserted note with nullable fields intact", (t: import("n
 
 test("save keeps blank title and content", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const result = db.saveNote("", "");
   assert.equal(result.success, true);
@@ -72,6 +94,7 @@ test("save keeps blank title and content", (t: import("node:test").TestContext) 
 
 test("getNote returns null for a missing id", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   assert.equal(db.getNote(424242), null);
   db.close();
@@ -79,6 +102,7 @@ test("getNote returns null for a missing id", (t: import("node:test").TestContex
 
 test("update on a missing note reports failure without creating one", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const result = db.updateNote(424242, { title: "x" });
   assert.deepEqual(result, { success: false, error: "Note not found" });
@@ -88,6 +112,7 @@ test("update on a missing note reports failure without creating one", (t: import
 
 test("empty update and unknown-only update report failure without touching the note", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const note = db.saveNote("T", "C").note;
   const before = db.getNote(note.id);
@@ -102,23 +127,23 @@ test("empty update and unknown-only update report failure without touching the n
 
 test("update changes only whitelisted fields and accepts nullable columns", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const note = db.saveNote("T", "C", "personal", "/tmp/a.mp3", 5).note;
 
-  const updated = db
-    .updateNote(note.id, {
-      title: "T2",
-      transcript: '[{"text":"hi"}]',
-      participants: '["a@b.c"]',
-      diarization_enabled: 1,
-      expected_speaker_count: 2,
-      calendar_event_id: "evt-1",
-      enhanced_content: "Better",
-      enhancement_prompt: "prompt",
-      enhanced_at_content_hash: "hash",
-      client_note_id: "ignored",
-    })
-    .note;
+  const updated = db.updateNote(note.id, {
+    title: "T2",
+    transcript: '[{"text":"hi"}]',
+    participants: '["a@b.c"]',
+    diarization_enabled: 1,
+    expected_speaker_count: 2,
+    calendar_event_id: "evt-1",
+    enhanced_content: "Better",
+    enhancement_prompt: "prompt",
+    enhanced_at_content_hash: "hash",
+    client_note_id: "ignored",
+  }).note;
+
   assert.equal(updated.title, "T2");
   assert.equal(updated.transcript, '[{"text":"hi"}]');
   assert.equal(updated.participants, '["a@b.c"]');
@@ -130,17 +155,16 @@ test("update changes only whitelisted fields and accepts nullable columns", (t: 
   assert.equal(updated.audio_duration_seconds, 5);
 
   // Nullable columns can be cleared.
-  const cleared = db
-    .updateNote(note.id, {
-      transcript: null,
-      participants: null,
-      diarization_enabled: null,
-      expected_speaker_count: null,
-      calendar_event_id: null,
-      source_file: null,
-      audio_duration_seconds: null,
-    })
-    .note;
+  const cleared = db.updateNote(note.id, {
+    transcript: null,
+    participants: null,
+    diarization_enabled: null,
+    expected_speaker_count: null,
+    calendar_event_id: null,
+    source_file: null,
+    audio_duration_seconds: null,
+  }).note;
+
   assert.equal(cleared.transcript, null);
   assert.equal(cleared.participants, null);
   assert.equal(cleared.diarization_enabled, null);
@@ -153,6 +177,7 @@ test("update changes only whitelisted fields and accepts nullable columns", (t: 
 
 test("update can change note_type and keeps previously stored values", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const note = db.saveNote("T", "C").note;
   const updated = db.updateNote(note.id, { note_type: "meeting" }).note;
@@ -165,6 +190,7 @@ test("update can change note_type and keeps previously stored values", (t: impor
 
 test("getNotes with a space filters to root notes; getNotesForSpace includes foldered notes", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
   const folderId = db.createFolder("Meetings", spaceId).folder.id;
@@ -185,6 +211,7 @@ test("getNotes with a space filters to root notes; getNotesForSpace includes fol
 
 test("save keeps notes at the space root unless a folder is passed", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
   db.createFolder("Meetings", spaceId);
@@ -204,6 +231,7 @@ test("save keeps notes at the space root unless a folder is passed", (t: import(
 
 test("folder-only update derives the space; explicit space_id wins; missing folder fails cleanly", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
   db.createFolder("Meetings", spaceId);
@@ -228,6 +256,7 @@ test("folder-only update derives the space; explicit space_id wins; missing fold
 
 test("a note can sit in several folders: listed, counted and searched in each", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
   db.createFolder("Meetings", spaceId);
@@ -240,10 +269,19 @@ test("a note can sit in several folders: listed, counted and searched in each", 
   assert.equal(linked.folder_id, folders.Meetings, "the current primary stays primary");
   assert.deepEqual(linked.folder_ids, [folders.Meetings, extra]);
 
-  assert.deepEqual(db.getNotes(null, 50, extra).map((n: NoteItem) => n.id), [note.id]);
-  assert.deepEqual(db.getNotes(null, 50, folders.Meetings).map((n: NoteItem) => n.id), [note.id]);
+  assert.deepEqual(
+    db.getNotes(null, 50, extra).map((n: NoteItem) => n.id),
+    [note.id]
+  );
+  assert.deepEqual(
+    db.getNotes(null, 50, folders.Meetings).map((n: NoteItem) => n.id),
+    [note.id]
+  );
   assert.deepEqual(db.getNoteIdsInFolder(extra), [note.id]);
-  assert.deepEqual(db.searchNotes("Kickoff", 50, null, extra).map((n: NoteItem) => n.id), [note.id]);
+  assert.deepEqual(
+    db.searchNotes("Kickoff", 50, null, extra).map((n: NoteItem) => n.id),
+    [note.id]
+  );
   const counts = db.getFolderNoteCounts();
   const countFor = (id: number) => counts.find((c: any) => c.folder_id === id)?.count;
   assert.equal(countFor(extra), 1);
@@ -257,12 +295,16 @@ test("a note can sit in several folders: listed, counted and searched in each", 
   assert.equal(none.folder_id, null);
   assert.deepEqual(none.folder_ids, []);
 
-  assert.deepEqual(db.updateNote(note.id, { folder_ids: [987654] }), { success: false, error: "Folder not found" });
+  assert.deepEqual(db.updateNote(note.id, { folder_ids: [987654] }), {
+    success: false,
+    error: "Folder not found",
+  });
   db.close();
 });
 
 test("deleting a note's primary folder promotes one of its other folders", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
   const first = db.createFolder("First", spaceId).folder.id;
@@ -279,6 +321,7 @@ test("deleting a note's primary folder promotes one of its other folders", (t: i
 
 test("moving the primary folder onto an extra folder does not list the note twice", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const spaceId = db.getPrivateSpaceId();
   db.createFolder("Meetings", spaceId);
@@ -290,8 +333,9 @@ test("moving the primary folder onto an extra folder does not list the note twic
   db.close();
 });
 
-test("delete reports success once and the note disappears",(t: import("node:test").TestContext) => {
+test("delete reports success once and the note disappears", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const note = db.saveNote("D", "").note;
   assert.deepEqual(db.deleteNote(note.id), { success: true });
@@ -302,6 +346,7 @@ test("delete reports success once and the note disappears",(t: import("node:test
 
 test("searchNotes returns [] for an empty query and keeps space/folder filters", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   assert.deepEqual(db.searchNotes(""), []);
   assert.deepEqual(db.searchNotes("   "), []);
@@ -309,7 +354,16 @@ test("searchNotes returns [] for an empty query and keeps space/folder filters",
   const spaceId = db.getPrivateSpaceId();
   db.createFolder("Meetings", spaceId);
   const folders = Object.fromEntries(db.getFolders(spaceId).map((f: any) => [f.name, f.id]));
-  const hit = db.saveNote("Quarterly Roadmap", "unique_zebra_content", "personal", null, null, folders.Personal).note;
+
+  const hit = db.saveNote(
+    "Quarterly Roadmap",
+    "unique_zebra_content",
+    "personal",
+    null,
+    null,
+    folders.Personal
+  ).note;
+
   db.saveNote("Unrelated", "nothing to see");
 
   assert.ok(db.searchNotes("zebra").some((n: NoteItem) => n.id === hit.id));

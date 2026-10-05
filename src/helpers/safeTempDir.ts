@@ -1,5 +1,7 @@
 const os = require("os");
+
 const fs = require("fs");
+
 const path = require("path");
 
 let cachedSafeTempDir: string | null = null;
@@ -15,8 +17,10 @@ export function getSafeTempDir(): string {
   // On non-Windows platforms, use system temp directly
   // On Windows, check for problematic characters: non-ASCII or spaces
   const hasProblematicChars = !/^[\x21-\x7E]*$/.test(systemTemp);
+
   if (process.platform !== "win32" || !hasProblematicChars) {
     cachedSafeTempDir = systemTemp;
+
     return systemTemp;
   }
 
@@ -26,15 +30,19 @@ export function getSafeTempDir(): string {
   try {
     fs.mkdirSync(fallback, { recursive: true });
     cachedSafeTempDir = fallback;
+
     return fallback;
   } catch {
     const rootFallback: string = path.join(process.env.SystemDrive || "C:", "Gristmill", "temp");
+
     try {
       fs.mkdirSync(rootFallback, { recursive: true });
       cachedSafeTempDir = rootFallback;
+
       return rootFallback;
     } catch {
       cachedSafeTempDir = systemTemp;
+
       return systemTemp;
     }
   }

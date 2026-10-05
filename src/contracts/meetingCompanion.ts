@@ -34,9 +34,11 @@ export const meetingCompanionStateSchema = z.object({
   folderId: z.number().int().nullable(),
   title: z.string(),
 });
+
 export type MeetingCompanionState = z.infer<typeof meetingCompanionStateSchema>;
 
 export const meetingCompanionLevelSchema = z.number().min(0).max(1);
+
 export const meetingCompanionPointSchema = z.tuple([z.number(), z.number()]);
 
 export const INACTIVE_MEETING_COMPANION_STATE: MeetingCompanionState = {

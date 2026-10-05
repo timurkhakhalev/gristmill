@@ -197,10 +197,12 @@ for (const [name, options] of [
 // handoff, and captures Proceed/save calls for the assertions.
 async function setupRealPair(
   t: import("node:test").TestContext,
-  { testResult, captured = false, saveFailsAfter: _saveFailsAfter }: {
+  { testResult, captured = false, saveFailsAfter: _saveFailsAfter, saveResult, selfHosted = true }: {
     testResult: Record<string, unknown> | undefined;
     captured?: boolean;
     saveFailsAfter?: number;
+    saveResult?: Promise<{ success: boolean }>;
+    selfHosted?: boolean;
   }
 ) {
   // A fresh server: the earlier tests' cached one maps /ProviderConnectionTest
@@ -256,15 +258,18 @@ async function setupRealPair(
     setCustomTranscriptionApiKey: async (key: string) => {
       savedKeys.push("custom");
       void key;
+      if (saveResult) return await saveResult;
       if (_saveFailsAfter != null && savedKeys.length > _saveFailsAfter) {
         return { success: false };
       }
       return { success: true };
     },
-    setCloudTranscriptionBaseUrl: () => {},
-    setCloudTranscriptionModel: () => {},
-    setCloudTranscriptionProvider: () => {},
-    setCloudTranscriptionMode: () => {},
+    setOpenaiApiKey: async () => { savedKeys.push("openai"); return saveResult ? await saveResult : { success: true }; },
+    cloudTranscriptionProvider: "openai",
+    setCloudTranscriptionBaseUrl: (value: unknown) => { routeChanges.push(value); },
+    setCloudTranscriptionModel: (value: unknown) => { routeChanges.push(value); },
+    setCloudTranscriptionProvider: (value: unknown) => { routeChanges.push(value); },
+    setCloudTranscriptionMode: (value: unknown) => { routeChanges.push(value); },
   });
   const { default: RealConnectionTest } = await vite.ssrLoadModule(
     "/components/onboarding/ProviderConnectionTest.tsx"
@@ -276,6 +281,7 @@ async function setupRealPair(
 
   let releaseTest: ((value: Record<string, unknown>) => void) | undefined;
   let pendingTest: Promise<Record<string, unknown>> | null = null;
+  const routeChanges: unknown[] = [];
   const proceeds: string[] = [];
   const savedKeys: unknown[] = [];
   let footerCommit: (() => Promise<void>) | null = null;
@@ -315,7 +321,8 @@ async function setupRealPair(
       // The tree is built against a re-mapped module graph: ProviderConnectionTest
       // resolves to the capture wrapper (below), not the plain import.
       capturedTree.tree = ByokProviderStep({
-        selfHostedRequested: true,
+        selfHostedRequested: selfHosted,
+        resumeState: selfHosted ? { selectedProvider: "", selectedModel: "", baseUrl: "https://example.invalid", customModel: "model" } : { selectedProvider: "openai", selectedModel: "whisper-1", baseUrl: "", customModel: "" },
         onSelfHostedChange() {},
         onConnectionChange: onConnectionChange,
         onProceed() { proceeds.push("proceed"); },
@@ -389,6 +396,18 @@ async function setupRealPair(
   };
 
   return {
+    routeChanges: () => routeChanges,
+    beginSave: () => footerCommit!(),
+    changeField: async (field: "provider" | "model" | "key" | "url" | "custom-model") => {
+      const select = field === "provider" || field === "model";
+      const label = field === "provider" ? "providerLabel" : "modelLabel";
+      const candidates = findNodes(capturedTree.tree, n => typeof n.props?.onChange === "function");
+      const node = select
+        ? candidates.find(n => n.props?.ariaLabel === `onboarding.rehaul.provider.${label}`)
+        : candidates.filter(n => !("ariaLabel" in (n.props ?? {})))[field === "url" ? 0 : field === "custom-model" ? 1 : selfHosted ? 2 : 0];
+      assert.ok(node);
+      await React.act(async () => { (node!.props!.onChange as (value: unknown) => void)(select ? field === "provider" ? "deepgram" : "different-model" : { target: { value: "changed" } }); });
+    },
     connected: () => state.connected,
     status: statusFromDom,
     proceeds: () => proceeds,
@@ -485,4 +504,36 @@ test("connection success survives parent re-renders; config change and failed sa
   } finally {
     await ui.unmount();
   }
+});
+
+for (const field of ["provider", "model", "key", "url", "custom-model"] as const) {
+  test(`late secure save after ${field} change cannot apply the old transcription route`, async t => {
+    let resolve!: (value: { success: boolean }) => void;
+    const saveResult = new Promise<{ success: boolean }>(done => { resolve = done; });
+    const ui = await setupRealPair(t, { testResult: { success: true }, saveResult, selfHosted: field === "url" || field === "custom-model" });
+    try {
+      await ui.runTest();
+      assert.equal(ui.connected(), true);
+      let saving!: Promise<void>;
+      await React.act(async () => { saving = ui.beginSave(); });
+      await ui.changeField(field);
+      await React.act(async () => { resolve({ success: true }); await saving; });
+      assert.deepEqual(ui.routeChanges(), []);
+      assert.deepEqual(ui.proceeds(), []);
+    } finally { await ui.unmount(); }
+  });
+}
+
+test("late secure save after leaving the provider step cannot apply route or proceed", async t => {
+  let resolve!: (value: { success: boolean }) => void;
+  const saveResult = new Promise<{ success: boolean }>(done => { resolve = done; });
+  const ui = await setupRealPair(t, { testResult: { success: true }, saveResult });
+  await ui.runTest();
+  assert.equal(ui.connected(), true);
+  let saving!: Promise<void>;
+  await React.act(async () => { saving = ui.beginSave(); });
+  await ui.unmount();
+  await React.act(async () => { resolve({ success: true }); await saving; });
+  assert.deepEqual(ui.routeChanges(), []);
+  assert.deepEqual(ui.proceeds(), []);
 });

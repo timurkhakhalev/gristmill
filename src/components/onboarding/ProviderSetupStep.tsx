@@ -92,6 +92,16 @@ export function ByokProviderStep({
   const [saveError, setSaveError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const latestDraft = useRef<OnboardingByokDraft | null>(null);
+  const saveGeneration = useRef(0);
+  const mounted = useRef(true);
+  const invalidateSave = useCallback(() => {
+    saveGeneration.current++;
+    setIsSaving(false);
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   // Stable identity: ProviderConnectionTest resets on onSuccessChange identity,
   // so a fresh inline callback per render cancelled the success it reported
   // (issue #180).
@@ -133,6 +143,7 @@ export function ByokProviderStep({
 
   const chooseProvider = useCallback(
     (providerId: string) => {
+      invalidateSave();
       setSelectedProvider(providerId);
       setSelectedModel(pickDefaultModelId(providers.find((item) => item.id === providerId)));
       setDraftApiKey(providerCredential(providerId, store).value);
@@ -140,16 +151,19 @@ export function ByokProviderStep({
       setConnected(false);
       onConnectionChange(false);
     },
-    [onConnectionChange, providers, store]
+    [invalidateSave, onConnectionChange, providers, store]
   );
 
   const commitAndProceed = async () => {
+    const generation = ++saveGeneration.current;
+    const isCurrent = () => mounted.current && saveGeneration.current === generation;
     setIsSaving(true);
     setSaveError(false);
     try {
       const result = selfHosted
         ? await store.setCustomTranscriptionApiKey(draftApiKey)
         : await providerCredential(selectedProvider, store).set(draftApiKey);
+      if (!isCurrent()) return;
       if (!result || typeof result !== "object" || !("success" in result) || result.success !== true) {
         setSaveError(true);
         return;
@@ -168,9 +182,9 @@ export function ByokProviderStep({
       }
       onProceed();
     } catch {
-      setSaveError(true);
+      if (isCurrent()) setSaveError(true);
     } finally {
-      setIsSaving(false);
+      if (isCurrent()) setIsSaving(false);
     }
   };
   // The footer's Continue runs the same confirmed transition as Proceed; a
@@ -187,6 +201,7 @@ export function ByokProviderStep({
           role="checkbox"
           aria-checked={selfHosted}
           onClick={() => {
+            invalidateSave();
             const next = !selfHosted;
             setSelfHosted(next);
             onSelfHostedChange(next);
@@ -203,9 +218,9 @@ export function ByokProviderStep({
 
         {selfHosted ? (
           <>
-            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.endpointUrl")}</FieldLabel><Input dir="ltr" value={draftBaseUrl} onChange={(event) => setDraftBaseUrl(event.target.value)} placeholder={t("onboarding.rehaul.provider.endpointPlaceholder")} /></label>
-            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.modelId")}</FieldLabel><Input dir="ltr" value={draftCustomModel} onChange={(event) => setDraftCustomModel(event.target.value)} placeholder={t("onboarding.rehaul.provider.modelIdPlaceholder")} /></label>
-            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => { setDraftApiKey(event.target.value); setSaveError(false); }} placeholder={t("onboarding.rehaul.provider.optional")} /></label>
+            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.endpointUrl")}</FieldLabel><Input dir="ltr" value={draftBaseUrl} onChange={(event) => { invalidateSave(); setDraftBaseUrl(event.target.value); }} placeholder={t("onboarding.rehaul.provider.endpointPlaceholder")} /></label>
+            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.modelId")}</FieldLabel><Input dir="ltr" value={draftCustomModel} onChange={(event) => { invalidateSave(); setDraftCustomModel(event.target.value); }} placeholder={t("onboarding.rehaul.provider.modelIdPlaceholder")} /></label>
+            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => { invalidateSave(); setDraftApiKey(event.target.value); setSaveError(false); }} placeholder={t("onboarding.rehaul.provider.optional")} /></label>
           </>
         ) : (
           <>
@@ -222,7 +237,7 @@ export function ByokProviderStep({
             <div><FieldLabel>{t("onboarding.rehaul.provider.modelLabel")}</FieldLabel>
               <SelectField
                 value={selectedModel}
-                onChange={(value) => { setSelectedModel(value); setConnected(false); onConnectionChange(false); }}
+                onChange={(value) => { invalidateSave(); setSelectedModel(value); setConnected(false); onConnectionChange(false); }}
                 isDisabled={!selectedProvider}
                 dir="ltr"
                 ariaLabel={t("onboarding.rehaul.provider.modelLabel")}
@@ -231,7 +246,7 @@ export function ByokProviderStep({
                 options={models.map((model) => ({ id: model.id, label: model.name }))}
               />
             </div>
-            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => { setDraftApiKey(event.target.value); setSaveError(false); setConnected(false); onConnectionChange(false); }} disabled={!selectedProvider} /></label>
+            <label className="block"><FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel><Input dir="ltr" type="password" value={draftApiKey} onChange={(event) => { invalidateSave(); setDraftApiKey(event.target.value); setSaveError(false); setConnected(false); onConnectionChange(false); }} disabled={!selectedProvider} /></label>
           </>
         )}
 

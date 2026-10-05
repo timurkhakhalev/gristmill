@@ -8,33 +8,14 @@ import {
   type MeetingCompanionApi,
   type MeetingCompanionState,
 } from "../contracts/meetingCompanion.js";
-
-interface IpcRendererLike {
-  send(channel: string, ...args: unknown[]): void;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-}
+import { subscribeValidated, type IpcRendererLike } from "./ipcTransport.js";
 
 export function createMeetingCompanionBridge(ipcRenderer: IpcRendererLike): MeetingCompanionApi {
   const subscribe = <T>(
     channel: string,
     parse: (raw: unknown) => T | undefined,
     callback: (value: T) => void
-  ) => {
-    if (typeof callback !== "function") return () => {};
-
-    const listener = (_event: unknown, raw: unknown) => {
-      const value = parse(raw);
-
-      if (value !== undefined) callback(value);
-    };
-
-    ipcRenderer.on(channel, listener);
-
-    return () => {
-      ipcRenderer.removeListener(channel, listener);
-    };
-  };
+  ): (() => void) => subscribeValidated(ipcRenderer, channel, parse, callback);
 
   return {
     updateMeetingCompanion: (state: MeetingCompanionState) =>

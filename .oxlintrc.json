@@ -67,6 +67,37 @@
       }
     },
     {
+      "files": ["src/preload/ipcTransport.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off",
+        "quality/no-runtime-typeof": "off"
+      }
+    },
+    {
+      "files": ["src/preload/*.ts", "preload.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off"
+      }
+    },
+    {
+      "files": ["src/contracts/onnxWorker.ts"],
+      "rules": {
+        "quality/no-runtime-typeof": "off",
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
+      "files": ["src/contracts/calendar.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-runtime-typeof": "off",
+        "quality/no-unsafe-dictionary-type": "off",
+        "quality/require-safety-comment-for-type-assertion": "off"
+      }
+    },
+    {
       "files": [
         "**/src/*.{ts,tsx,js,jsx}",
         "**/src/components/**/*.{ts,tsx,js,jsx}",

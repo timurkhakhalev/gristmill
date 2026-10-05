@@ -15,11 +15,7 @@ import {
 } from "../contracts/urlDownload.js";
 import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-}
+import { subscribeDropped, type IpcRendererLike } from "./ipcTransport.js";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -53,34 +49,20 @@ export function createUrlDownloadBridge(ipcRenderer: IpcRendererLike): UrlDownlo
         .then((raw) =>
           parseResult(deleteTempFileResultSchema, raw, urlDownloadChannels.deleteTempFile)
         ),
-    onUrlDownloadProgress: (callback: (progress: UrlDownloadProgress) => void) => {
-      if (typeof callback !== "function") {
-        return () => {};
-      }
+    onUrlDownloadProgress: (callback: (progress: UrlDownloadProgress) => void) =>
+      subscribeDropped(
+        ipcRenderer,
+        urlDownloadEventChannel,
+        (raw) => {
+          const result = urlDownloadProgressSchema.safeParse(raw);
 
-      const listener = (_event: unknown, data: unknown) => {
-        const result = urlDownloadProgressSchema.safeParse(data);
+          if (result.success) return result.data;
 
-        if (!result.success) {
           console.error(`[urlDownloadBridge] dropped malformed ${urlDownloadEventChannel} event`);
 
-          return;
-        }
-
-        callback(result.data);
-      };
-
-      ipcRenderer.on(
-        urlDownloadEventChannel,
-        listener as (event: unknown, ...args: unknown[]) => void
-      );
-
-      return () => {
-        ipcRenderer.removeListener(
-          urlDownloadEventChannel,
-          listener as (event: unknown, ...args: unknown[]) => void
-        );
-      };
-    },
+          return undefined;
+        },
+        callback
+      ),
   };
 }

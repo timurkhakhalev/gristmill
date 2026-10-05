@@ -665,7 +665,7 @@ export interface MeetingCoordinatorApi {
   ): Promise<CalendarEventNoteResult>;
   getMeetingNotificationData?(): Promise<MeetingNotificationData | null>;
   getPendingMeetingNoteNavigation?(): Promise<PendingMeetingNoteNavigation | null>;
-  meetingNotificationReady?(): Promise<unknown>;
+  meetingNotificationReady?(): Promise<void>;
   registerMeetingHotkey?(hotkey: string): Promise<RegisterMeetingHotkeyResult>;
   onMeetingTranscriptionSegment?(callback: (data: MeetingSegmentEvent) => void): () => void;
   onMeetingTranscriptionStopRequested?(

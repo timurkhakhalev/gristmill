@@ -35,74 +35,84 @@ export type DiarizationDownloadProgressEvent = z.infer<
   typeof diarizationDownloadProgressEventSchema
 >;
 
-/** The best-known name and photo for an email (locally linked name first, then Google People and calendar names). */
-export interface ContactProfile {
-  email: string;
-  display_name: string | null;
-  photo_url: string | null;
-}
+// Wire rows are schema-derived so every producer/consumer drift fails
+// compilation or the parse, not review. The DB embedding Buffer never crosses
+// this boundary; contacts/profiles carry only the projected columns.
+export const speakerContactSchema = z.object({
+  email: z.string(),
+  display_name: z.string().nullable(),
+});
 
-export interface SpeakerContact {
-  email: string;
-  display_name: string | null;
-  [key: string]: unknown;
-}
+export type SpeakerContact = z.infer<typeof speakerContactSchema>;
 
-// Public profile DTO: the internal DB Buffer never crosses this boundary.
-export interface PublicSpeakerProfile {
-  id: number;
-  display_name: string;
-  email: string | null;
-  sample_count: number;
-  created_at?: string;
-  updated_at?: string;
-  [key: string]: unknown;
-}
+export const contactProfileSchema = z.object({
+  email: z.string(),
+  display_name: z.string().nullable(),
+  photo_url: z.string().nullable(),
+});
 
-export interface SpeakerMappingEntry {
-  note_id: number;
-  speaker_id: string;
-  profile_id: number | null;
-  display_name: string;
-  [key: string]: unknown;
-}
+export type ContactProfile = z.infer<typeof contactProfileSchema>;
 
-export interface AttachSpeakerEmailResult {
-  success: boolean;
-  error?: string;
-  profile?: {
-    id: number;
-    display_name: string;
-    email: string | null;
-    sample_count: number;
-  };
-  [key: string]: unknown;
-}
+export const publicSpeakerProfileSchema = z.object({
+  id: z.number(),
+  display_name: z.string(),
+  email: z.string().nullable(),
+  sample_count: z.number(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+});
 
-export interface SetSpeakerMappingResult {
-  success: boolean;
-  profileId: number | null;
-  [key: string]: unknown;
-}
+export type PublicSpeakerProfile = z.infer<typeof publicSpeakerProfileSchema>;
 
-export interface DiarizationModelActionResult {
-  success: boolean;
-  error?: string;
-  code?: string;
-  path?: string;
-  [key: string]: unknown;
-}
+export const speakerMappingEntrySchema = z.object({
+  note_id: z.number(),
+  speaker_id: z.string(),
+  profile_id: z.number().nullable(),
+  display_name: z.string(),
+});
 
-export interface DiarizationModelStatus {
-  available: boolean;
-  modelsDownloaded: boolean;
-}
+export type SpeakerMappingEntry = z.infer<typeof speakerMappingEntrySchema>;
 
-export interface CancelDiarizationResult {
-  success: boolean;
-  message?: string;
-  error?: string;
-}
+export const attachSpeakerEmailResultSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  profile: publicSpeakerProfileSchema
+    .pick({ id: true, display_name: true, email: true, sample_count: true })
+    .optional(),
+});
+
+export type AttachSpeakerEmailResult = z.infer<typeof attachSpeakerEmailResultSchema>;
+
+export const setSpeakerMappingResultSchema = z.object({
+  success: z.boolean(),
+  profileId: z.number().nullable(),
+});
+
+export type SetSpeakerMappingResult = z.infer<typeof setSpeakerMappingResultSchema>;
+
+export const diarizationModelActionResultSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  code: z.string().optional(),
+  path: z.string().optional(),
+});
+
+export type DiarizationModelActionResult = z.infer<typeof diarizationModelActionResultSchema>;
+
+export const diarizationModelStatusSchema = z.object({
+  available: z.boolean(),
+  modelsDownloaded: z.boolean(),
+});
+
+export type DiarizationModelStatus = z.infer<typeof diarizationModelStatusSchema>;
+
+export const cancelDiarizationResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export type CancelDiarizationResult = z.infer<typeof cancelDiarizationResultSchema>;
 
 export interface SpeakerApi {
   searchContacts(query: string): Promise<{ success: boolean; contacts: SpeakerContact[] }>;

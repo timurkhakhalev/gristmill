@@ -11,19 +11,16 @@
 import { z } from "zod";
 import type { LocalTranscriptionProvider } from "./inferenceSettings.js";
 
-const nonNegativeInt = z.number().int();
-
 // Options cross the boundary as a plain object spread. provider/model/
-// language/requestId are the documented fields; unknown extension fields
-// must survive to the managers (they read e.g. skipDecoderThresholds).
-export const transcriptionOptionsSchema = z
-  .object({
-    provider: z.string().optional(),
-    model: z.string().optional(),
-    language: z.string().optional(),
-    requestId: z.string().optional(),
-  })
-  .passthrough();
+// language/requestId are the documented fields; skipDecoderThresholds is the
+// one whisper-server extension field the executors read.
+export const transcriptionOptionsSchema = z.object({
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  language: z.string().optional(),
+  requestId: z.string().optional(),
+  skipDecoderThresholds: z.boolean().optional(),
+});
 
 export type TranscriptionOptions = z.infer<typeof transcriptionOptionsSchema>;
 
@@ -51,7 +48,7 @@ export interface LocalFileTranscriptionApi {
       model?: string;
       language?: string;
       requestId?: string;
-      [key: string]: unknown;
+      skipDecoderThresholds?: boolean;
     }
   ): Promise<TranscriptionResponse>;
 }

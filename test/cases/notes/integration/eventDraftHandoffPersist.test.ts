@@ -185,7 +185,7 @@ test("a handoff for a not-yet-cached note keeps the stored title and appends wit
     t,
     rows,
     async (id) => (id === 7 ? stored : null),
-    { noteId: 7, mode: "append", draft: { content: "typed during materialization" } }
+    { noteId: 7, note: stored, mode: "append", draft: { content: "typed during materialization" } }
   );
 
   await harness.openNote(7);
@@ -208,7 +208,7 @@ test("a handoff for a fresh note replaces the snapshot fields", async (t) => {
     t,
     [stored],
     async (id) => (id === 8 ? stored : null),
-    { noteId: 8, mode: "replace", draft: { title: "Typed title", content: "early snapshot plus ABC" } }
+    { noteId: 8, note: stored, mode: "replace", draft: { title: "Typed title", content: "early snapshot plus ABC" } }
   );
 
   await harness.openNote(8);

@@ -215,6 +215,8 @@ export default function PersonalNotesView({
     // pending save (#157).
     const retained = getNoteEditorUpdates(activeNote.id);
     const { draft: merged } = acceptExternalNoteUpdate({ ...currentDraft,
+      title: retained.title ?? currentDraft.title,
+      content: retained.content ?? currentDraft.content,
       dirtyTitle: retained.title !== undefined,
       dirtyContent: retained.content !== undefined,
     }, {
@@ -313,34 +315,40 @@ export default function PersonalNotesView({
     [commitDraft, scheduleEnhancedSave]
   );
 
-  // A calendar-event draft becomes this note: fold its full latest draft into
-  // the editor draft and persist it through the regular debounced save. The
-  // handoff carries everything typed up to this moment, so nothing is lost to
-  // the create round-trip; an already-written note keeps its manual text. The
-  // merge base is the note's current stored row (async-fetched when it is not
-  // in the container cache yet) — never a fabricated empty draft, which would
-  // wipe a processing-generated title and the note's manual text.
-  const handleEventDraftHandoff = useCallback(
-    (handoff: EventDraftHandoff) => {
-      void (async () => {
-        const stored =
-          getNoteFromStore(handoff.noteId) ?? (await window.electronAPI.getNote(handoff.noteId));
-        const current =
-          draftRef.current?.noteId === handoff.noteId
-            ? draftRef.current
-            : {
-                noteId: handoff.noteId,
-                title: stored?.title ?? "",
-                content: stored?.content ?? "",
-                enhancedContent: stored?.enhanced_content ?? null,
-              };
-        const merged = applyEventDraftHandoff(current, handoff);
+  // Materialization carries its saved row through lazy mount. If navigation
+  // already selected another Note, persist the handoff under its own owner
+  // without replacing that editor or cancelling its pending timer.
+  const handleEventDraftHandoff = useCallback((handoff: EventDraftHandoff) => {
+    void (async () => {
+      const cached = getNoteFromStore(handoff.noteId);
+      const fetched = !cached && handoff.mode === "append"
+        ? await window.electronAPI.getNote(handoff.noteId)
+        : handoff.note;
+      if (!fetched) return; // A deleted Note must not be recreated.
+      const stored = getNoteFromStore(handoff.noteId) ?? fetched;
+      const retained = getNoteEditorUpdates(handoff.noteId);
+      const current = draftRef.current?.noteId === handoff.noteId
+        ? draftRef.current
+        : { noteId: handoff.noteId, title: retained.title ?? stored.title,
+            content: retained.content ?? stored.content, enhancedContent: stored.enhanced_content ?? null };
+      const merged = applyEventDraftHandoff(current, handoff);
+      if (!merged.dirtyTitle && !merged.dirtyContent) return;
+      if (draftRef.current?.noteId === handoff.noteId) {
         commitDraft(merged);
         scheduleDocumentSave(merged);
-      })();
-    },
-    [commitDraft, scheduleDocumentSave]
-  );
+      } else {
+        retainNoteEditorUpdates(handoff.noteId, {
+          ...(merged.dirtyTitle ? { title: merged.title } : {}),
+          ...(merged.dirtyContent ? { content: merged.content } : {}),
+        });
+        void flushNoteEditorWrites(handoff.noteId);
+      }
+    })().catch(error => {
+      // Keep the handoff for the next editor mount if its merge-base read fails.
+      if (eventDraftHandoff && !eventDraftHandoff.current) eventDraftHandoff.current = handoff;
+      logger.warn("Failed to prepare event draft handoff", { error: (error as Error).message }, "notes");
+    });
+  }, [commitDraft, eventDraftHandoff, scheduleDocumentSave]);
   // The pending handoff arrives before this view mounts (ControlPanel holds
   // it in a ref while the note is created): drain it once on mount. One-shot
   // by design — only the mount-time handoff exists.
@@ -353,7 +361,7 @@ export default function PersonalNotesView({
   }, []);
 
   useEffect(() => {
-    return () => flushPendingSaves("unmount");
+    return () => { draftRef.current = null; flushPendingSaves("unmount"); };
   }, [flushPendingSaves]);
 
   // Boolean flag so actions enable during recording without re-rendering on every transcript update.

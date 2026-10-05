@@ -160,6 +160,7 @@ export type EventDraftHandoffMode = "replace" | "append";
 // content the note picked up elsewhere.
 export interface EventDraftHandoff {
   noteId: number;
+  note: NoteDraftSource;
   mode: EventDraftHandoffMode;
   draft: { title?: string; content?: string };
 }

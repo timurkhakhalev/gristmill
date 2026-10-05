@@ -317,24 +317,36 @@ export default function PersonalNotesView({
   // already selected another Note, persist the handoff under its own owner
   // without replacing that editor or cancelling its pending timer.
   const handleEventDraftHandoff = useCallback((handoff: EventDraftHandoff) => {
-    const stored = getNoteFromStore(handoff.noteId) ?? handoff.note;
-    const current = draftRef.current?.noteId === handoff.noteId
-      ? draftRef.current
-      : { noteId: handoff.noteId, title: stored.title, content: stored.content,
-          enhancedContent: stored.enhanced_content ?? null };
-    const merged = applyEventDraftHandoff(current, handoff);
-    if (!merged.dirtyTitle && !merged.dirtyContent) return;
-    if (draftRef.current?.noteId === handoff.noteId) {
-      commitDraft(merged);
-      scheduleDocumentSave(merged);
-    } else {
-      retainNoteEditorUpdates(handoff.noteId, {
-        ...(merged.dirtyTitle ? { title: merged.title } : {}),
-        ...(merged.dirtyContent ? { content: merged.content } : {}),
-      });
-      void flushNoteEditorWrites(handoff.noteId);
-    }
-  }, [commitDraft, scheduleDocumentSave]);
+    void (async () => {
+      const cached = getNoteFromStore(handoff.noteId);
+      const fetched = !cached && handoff.mode === "append"
+        ? await window.electronAPI.getNote(handoff.noteId)
+        : handoff.note;
+      if (!fetched) return; // A deleted Note must not be recreated.
+      const stored = getNoteFromStore(handoff.noteId) ?? fetched;
+      const retained = getNoteEditorUpdates(handoff.noteId);
+      const current = draftRef.current?.noteId === handoff.noteId
+        ? draftRef.current
+        : { noteId: handoff.noteId, title: retained.title ?? stored.title,
+            content: retained.content ?? stored.content, enhancedContent: stored.enhanced_content ?? null };
+      const merged = applyEventDraftHandoff(current, handoff);
+      if (!merged.dirtyTitle && !merged.dirtyContent) return;
+      if (draftRef.current?.noteId === handoff.noteId) {
+        commitDraft(merged);
+        scheduleDocumentSave(merged);
+      } else {
+        retainNoteEditorUpdates(handoff.noteId, {
+          ...(merged.dirtyTitle ? { title: merged.title } : {}),
+          ...(merged.dirtyContent ? { content: merged.content } : {}),
+        });
+        void flushNoteEditorWrites(handoff.noteId);
+      }
+    })().catch(error => {
+      // Keep the handoff for the next editor mount if its merge-base read fails.
+      if (eventDraftHandoff && !eventDraftHandoff.current) eventDraftHandoff.current = handoff;
+      logger.warn("Failed to prepare event draft handoff", { error: (error as Error).message }, "notes");
+    });
+  }, [commitDraft, eventDraftHandoff, scheduleDocumentSave]);
   // The pending handoff arrives before this view mounts (ControlPanel holds
   // it in a ref while the note is created): drain it once on mount. One-shot
   // by design — only the mount-time handoff exists.
@@ -347,7 +359,7 @@ export default function PersonalNotesView({
   }, []);
 
   useEffect(() => {
-    return () => flushPendingSaves("unmount");
+    return () => { draftRef.current = null; flushPendingSaves("unmount"); };
   }, [flushPendingSaves]);
 
   // Boolean flag so actions enable during recording without re-rendering on every transcript update.

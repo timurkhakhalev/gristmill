@@ -12,7 +12,7 @@ Changing participants does not assign speaker names, create voice profiles or re
 
 The editor writes only fields the user edited. A save acknowledgment clears a field's dirty state only when its current value matches the saved snapshot. Later edits remain pending. The renderer Note store keeps unsaved fields across editor navigation and unmount. One writer per Note drains those fields after a confirmed save. Rejected and unsuccessful writes keep the latest fields and show an error with Retry when that Note is open. An open editor adopts external Summary output when no local Summary field remains pending or in flight. This draft retention lasts for the current renderer session; it does not survive an application restart.
 
-Calendar draft materialization carries its saved Note row with the typed handoff across lazy editor mount. If another Note was selected meanwhile, the handoff saves under its original Note owner and leaves the current editor and timer intact. It does not start another uncached row request.
+Calendar draft materialization carries its saved Note row with the typed handoff across lazy editor mount. If another Note was selected meanwhile, the handoff saves under its original Note owner and leaves the current editor and timer intact. An uncached append reads the current saved row before merging. Its completion still belongs to the original Note. Replace handoffs use the carried row without another read.
 
 ## Separate write policies
 

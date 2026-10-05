@@ -12,11 +12,13 @@ const note = (id: number, content: string): NoteItem => ({ id, title: `Note ${id
   transcript: null, calendar_event_id: null, participants: null, diarization_enabled: null, expected_speaker_count: null });
 const tick = () => new Promise<void>(done => setImmediate(done));
 
-test("real event materialization survives cache eviction and B selection before lazy editor mount", async t => {
+for (const append of [false, true]) {
+test(`real ${append ? "append" : "replace"} materialization survives cache eviction and B selection before lazy mount`, async t => {
   let root: ReturnType<typeof createRoot> | undefined;
   t.after(async () => { if (root) await React.act(async () => root!.unmount()); });
   const a = note(1, "A"), b = note(2, "B");
   let added: (row: NoteItem) => void = () => {};
+  let updated: (row: NoteItem) => void = () => {};
   let releaseCreate!: () => void, releaseView!: () => void, releaseLateRead!: (row: NoteItem) => void;
   const creating = new Promise<void>(done => { releaseCreate = done; });
   const loading = new Promise<void>(done => { releaseView = done; });
@@ -28,13 +30,13 @@ test("real event materialization survives cache eviction and B selection before 
       getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
       getFolders: async () => [], getFolderNoteCounts: async () => [], getNotes: async () => [b],
       findCalendarEventNote: async () => null,
-      createCalendarEventNote: async () => { await creating; added(a); return { noteId: a.id, folderId: null, existing: false }; },
-      getNote: async (id: number) => id === a.id ? ++readsA === 1 ? a : lateRead : b,
+      createCalendarEventNote: async () => { await creating; added({ ...a }); return { noteId: a.id, folderId: null, existing: append }; },
+      getNote: async (id: number) => id === a.id ? ++readsA === 1 ? { ...a } : lateRead : { ...b },
       updateNote: async (id: number, updates: object) => {
         const row = id === a.id ? a : b; Object.assign(row, updates); return { success: true, note: { ...row } };
       },
       onNoteAdded: (listener: typeof added) => { added = listener; return () => {}; },
-      onNoteUpdated: () => () => {}, onNoteDeleted: () => () => {}, onFolderDeleted: () => () => {},
+      onNoteUpdated: (listener: typeof updated) => { updated = listener; return () => {}; }, onNoteDeleted: () => () => {}, onFolderDeleted: () => () => {},
       gcalGetEvent: async () => null,
     },
   } });
@@ -91,16 +93,23 @@ test("real event materialization survives cache eviction and B selection before 
     // from the newest-50 container cache while its selected row remains held.
     for (let id = 100; id < 151; id++) added(note(id, "imported"));
     await store.openNoteRow(b);
+    if (append) {
+      a.content = "External A update";
+      updated({ ...a });
+      for (let id = 200; id < 251; id++) added(note(id, "imported"));
+    }
   });
   assert.equal(store.getNoteFromStore(a.id), null, "A is genuinely uncached after B navigation");
   await React.act(async () => { ui.ready = true; releaseView(); await tick(); });
   await ready(() => !!ui.editor);
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  await React.act(async () => { ui.editor.onContentChange(b.id, "B latest"); releaseLateRead(a); await tick(); });
+  await React.act(async () => { ui.editor.onContentChange(b.id, "B latest"); releaseLateRead({ ...a }); await tick(); });
   await React.act(async () => { t.mock.timers.tick(1000); });
   assert.equal(ui.editor.note.id, b.id);
   assert.equal(ui.editor.note.content, "B latest");
-  assert.equal(a.content, "A latest");
+  assert.equal(a.content, append ? "External A update\n\nA latest" : "A latest");
   assert.equal(b.content, "B latest");
-  assert.equal(readsA, 1, "handoff never starts another uncached getNote");
+  assert.equal(readsA, append ? 2 : 1, "only uncached append needs a fresh merge-base read");
 });
+
+}

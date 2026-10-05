@@ -362,3 +362,44 @@ test("an old rejection retains the superseding edit and queued transition write"
   await h.retry();
   assert.equal(stored.content, "latest");
 });
+
+test("an external Summary is adopted on create, replace and clear without remount", async t => {
+  const stored = noteFixture(41, "T", "C");
+  const h = await mountNotesView(t, [stored], async () => stored, null);
+  await h.openNote(41);
+  for (const summary of ["Generated", "Replaced", null]) {
+    await h.fireExternalUpdate({ ...stored, enhanced_content: summary });
+    assert.equal(h.editorState()?.enhanced, summary);
+  }
+  assert.deepEqual(h.updateNoteCalls(), [], "external output is not republished");
+});
+
+test("local pending and in-flight Summary edits survive external output", async t => {
+  const stored = { ...noteFixture(42, "T", "C"), enhanced_content: "Old" };
+  let resolve!: () => void;
+  const pending = new Promise<void>(done => { resolve = done; });
+  const h = await mountNotesView(t, [stored], async () => stored, null, async (_id, updates) => {
+    await pending;
+    Object.assign(stored, updates);
+    return { success: true, note: { ...stored } };
+  });
+  t.after(resolve);
+  await h.openNote(42);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  await h.typeEnhanced("Local");
+  await h.fireExternalUpdate({ ...stored, enhanced_content: "External queued" });
+  assert.equal(h.editorState()?.enhanced, "Local");
+  await React.act(async () => { t.mock.timers.tick(1000); });
+  await h.typeEnhanced("Latest local");
+  await h.fireExternalUpdate({ ...stored, enhanced_content: "External in-flight" });
+  assert.equal(h.editorState()?.enhanced, "Latest local");
+  await React.act(async () => { resolve(); await pending; });
+  assert.equal(stored.enhanced_content, "Latest local");
+  stored.enhanced_content = "New output";
+  await h.fireExternalUpdate({ ...stored });
+  assert.equal(h.editorState()?.enhanced, "New output");
+  await h.typeTitle("New title");
+  await React.act(async () => { t.mock.timers.tick(1000); });
+  assert.deepEqual(h.updateNoteCalls().at(-1)?.updates, { title: "New title" });
+  assert.equal(h.editorState()?.enhanced, "New output");
+});

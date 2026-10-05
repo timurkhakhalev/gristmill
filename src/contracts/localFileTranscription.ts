@@ -20,6 +20,19 @@ export const transcriptionOptionsSchema = z.object({
   language: z.string().optional(),
   requestId: z.string().optional(),
   skipDecoderThresholds: z.boolean().optional(),
+  skipVad: z.boolean().optional(),
+  // VAD resolution for the whisper path: vadEnabled plus the sanitized
+  // numeric config keys are merged onto the manager options record.
+  vadEnabled: z.boolean().optional(),
+  threshold: z.number().optional(),
+  minSpeechDurationMs: z.number().optional(),
+  minSilenceDurationMs: z.number().optional(),
+  maxSpeechDurationS: z.number().optional(),
+  speechPadMs: z.number().optional(),
+  samplesOverlap: z.number().optional(),
+  // Main-side cancellation for uploads; the handler attaches the registry
+  // signal after the schema parse, managers read it off the options record.
+  signal: z.custom<AbortSignal>((value) => value instanceof AbortSignal).optional(),
 });
 
 export type TranscriptionOptions = z.infer<typeof transcriptionOptionsSchema>;

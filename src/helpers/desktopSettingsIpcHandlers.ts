@@ -158,12 +158,12 @@ export interface DesktopSettingsDeps {
   // Device cleanup seams — every manager-owned step stays behind a callback.
   cleanup: {
     stopParakeetServer: () => Promise<void>;
-    stopWhisperServer: () => void;
+    stopWhisperServer: () => Promise<void> | void;
     stopGoogleCalendar: () => void;
     stopMicrosoftCalendar: () => void;
     stopAppleCalendar: () => void;
-    shutdownDiarization: () => Promise<void>;
-    revokeGoogleTokens: () => Promise<void>;
+    shutdownDiarization: () => Promise<void> | void;
+    revokeGoogleTokens: () => Promise<void> | void;
     closeDatabase: () => void;
     deleteAllAudio: () => Promise<{ deleted: number; failed: number }>;
     deleteWhisperModels: () => void;

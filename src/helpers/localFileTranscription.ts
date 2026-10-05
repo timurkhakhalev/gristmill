@@ -6,15 +6,23 @@
 import type { ZodType } from "zod";
 import {
   transcriptionResponseSchema,
+  type TranscriptionOptions,
   type TranscriptionResponse,
 } from "../contracts/localFileTranscription.js";
 
 export interface LocalTranscriptionDeps {
   readFile: (filePath: string) => Buffer;
   isSherpaLocalProvider: (provider: unknown) => boolean;
-  transcribeLocalWhisper: (audioBuffer: Buffer, options: unknown) => unknown;
-  transcribeLocalParakeet: (audioBuffer: Buffer, options: unknown) => unknown;
-  resolveWhisperVadOptions: (context: string) => unknown;
+  transcribeLocalWhisper: (audioBuffer: Buffer, options: TranscriptionOptions) => unknown;
+  // The sherpa manager reads the cancel signal off the options record.
+  transcribeLocalParakeet: (
+    audioBuffer: Buffer,
+    options: TranscriptionOptions & { signal?: AbortSignal }
+  ) => unknown;
+  resolveWhisperVadOptions: (context: string) => {
+    vadEnabled: boolean;
+    vadConfig: Record<string, number>;
+  };
 }
 
 export type { TranscriptionResponse };
@@ -35,21 +43,30 @@ function parseResponse<T>(schema: ZodType<T>, raw: unknown): T {
 export async function transcribeLocalFile(
   deps: LocalTranscriptionDeps,
   filePath: string,
-  options: Record<string, unknown> = {}
+  options: TranscriptionOptions = {},
+  // Main-side cancellation attached by the handler; never a renderer option.
+  signal?: AbortSignal
 ): Promise<TranscriptionResponse> {
   const audioBuffer = deps.readFile(filePath);
 
   if (deps.isSherpaLocalProvider(options.provider)) {
     return parseResponse(
       transcriptionResponseSchema,
-      await deps.transcribeLocalParakeet(audioBuffer, options)
+      await deps.transcribeLocalParakeet(audioBuffer, { ...options, signal })
     );
   }
 
-  const vad = deps.resolveWhisperVadOptions("noteRecording") as Record<string, unknown>;
+  const { vadEnabled, vadConfig } = deps.resolveWhisperVadOptions("noteRecording");
 
   return parseResponse(
     transcriptionResponseSchema,
-    await deps.transcribeLocalWhisper(audioBuffer, { ...options, ...vad })
+    await deps.transcribeLocalWhisper(audioBuffer, {
+      ...options,
+      signal,
+      // The whisper-server VAD resolver reads vadEnabled plus its numeric
+      // config keys off this record (pre-cutover wire shape).
+      vadEnabled,
+      ...vadConfig,
+    })
   );
 }

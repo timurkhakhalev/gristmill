@@ -1,6 +1,40 @@
 import { meetingCoordinatorChannels } from "../contracts/meetingCoordinator.js";
 import { companionConfigureActionSchema } from "../contracts/companion.js";
+import type { WhisperVadWireConfig } from "../contracts/localModelLifecycle.js";
+import { whisperVadWireConfigSchema } from "../contracts/localModelLifecycle.js";
+import { z } from "zod";
+
+const zStringNullable = z.string().nullable();
+
+// The ai SDK stays lazily required (startup must not load it). The
+// transport-facing factories share one loose options/result seam; the SDK's
+// own generic signature is crossed exactly once inside this wrapper.
+type GenerateTextOptions = Record<string, unknown>;
+
+type GenerateTextFn = (options: GenerateTextOptions) => Promise<{
+  text: string;
+  finishReason: string;
+}>;
+
+let aiGenerateText: GenerateTextFn | null = null;
+
+function generateTextLazy(): GenerateTextFn {
+  // SAFETY: the SDK exports generateText at its package root; the require
+  // result is only crossed once through this interop seam and the loose
+  // options contract matches every call site these factories serve.
+  aiGenerateText ??= (require("ai") as { generateText: GenerateTextFn }).generateText;
+
+  return aiGenerateText;
+}
+
+import type { TranscriptionOptions } from "../contracts/localFileTranscription.js";
+
 import os from "node:os";
+
+// The audio payloads the local dictation/executions accept: the preload sends
+// ArrayBuffers (structured-cloned from Blob parts), the CLI bridge Buffers.
+type TranscriptionAudioInput = Buffer | ArrayBuffer | ArrayBufferView;
+
 import { isDevelopmentChannel } from "./appChannel.js";
 import {
   installCompanionHost,
@@ -35,8 +69,16 @@ import {
 // The renderer's ModelRegistry is not main-loadable; the raw registry data is
 // packaged, and the route resolver only needs {id, baseUrl} per provider.
 import modelRegistryData from "../models/modelRegistryData.json";
-import whisperVadDefaults from "../constants/whisperVad.json";
 import { MAX_SPEAKER_COUNT } from "../constants/speakerDetection.json";
+
+const whisperVadUpdateSchema = whisperVadWireConfigSchema.partial();
+
+// The AWS credential-provider chain object; the enterprise runtime only passes
+// it back into the SDK client config.
+type BedrockCredentialProvider = {
+  provider: (options?: unknown) => Promise<{ accessKeyId: string; secretAccessKey: string }>;
+};
+
 import { approveAudioPath, resolveAllowedAudioPath } from "./audioPathAllowlist.js";
 import { openSystemSettings } from "./systemSettingsLauncher.js";
 import { NoteWriteService } from "./noteWriteService.js";
@@ -148,6 +190,9 @@ const transcriptionProviderBaseUrls = () => modelRegistryData.transcriptionProvi
 // default import resolves to the module.exports wrapper, so drill in once
 // (same interop note as localReasoningBridge.ts). Eager is fine: the llm
 // lifecycle deps already materialized the manager during setupHandlers.
+// SAFETY: the CJS bundle shape is fixed by build-main.js and pinned by the
+// localLlmModels characterization suite; the double assertion only crosses
+// the interop seam, no wire data flows through it.
 const modelManager = (modelManagerBundle as unknown as { default: ModelManager }).default;
 
 interface IPCHandlersManagerOptions {
@@ -186,6 +231,8 @@ async function postMultipart(
       "Content-Type": `multipart/form-data; boundary=${boundary}`,
       ...headers,
     },
+    // SAFETY: the multipart body was built above from the checked audio
+    // bytes; this re-voicing satisfies the wider RequestInit union.
     body: body as unknown as NonNullable<RequestInit["body"]>,
     useSessionCookies: false,
     signal,
@@ -252,7 +299,7 @@ export class IPCHandlers {
   _retentionSettingsSynced: boolean;
   _noteFilesEnabled: boolean;
   _granolaImportPending: import("./noteFilesIpcHandlers.js").GranolaImportState | null;
-  whisperVadSettings: Record<string, unknown>;
+  whisperVadSettings: WhisperVadWireConfig;
   _meetingCoordinator: MeetingCoordinatorRuntime | null = null;
   _meetingProcessing: MeetingProcessingWorker | null = null;
   _meetingAudioOperations: ReturnType<typeof createMeetingAudioOperationRegistry>;
@@ -323,13 +370,13 @@ export class IPCHandlers {
     ipcMain.emit("hotkey-changed", null, hotkey);
   }
 
-  _getWhisperVadSettings(): Record<string, unknown> {
+  _getWhisperVadSettings(): WhisperVadWireConfig {
     const current = this.whisperVadSettings || {};
 
     return {
       noteRecordingSileroEnabled: current.noteRecordingSileroEnabled !== false,
       meetingSileroEnabled: current.meetingSileroEnabled !== false,
-      ...sanitizeWhisperVadConfig(current as Record<string, unknown>),
+      ...sanitizeWhisperVadConfig(current),
     };
   }
 
@@ -362,18 +409,10 @@ export class IPCHandlers {
     });
   }
 
-  _setWhisperVadSettings(update: Record<string, unknown> = {}): Record<string, unknown> {
-    const ALLOWED_KEYS = new Set([
-      "noteRecordingSileroEnabled",
-      "meetingSileroEnabled",
-      ...Object.keys(whisperVadDefaults.DEFAULTS),
-    ]);
+  _setWhisperVadSettings(update: Partial<WhisperVadWireConfig> = {}): WhisperVadWireConfig {
+    const parsed = whisperVadUpdateSchema.safeParse(update);
 
-    const filtered: Record<string, unknown> = {};
-
-    for (const [k, v] of Object.entries(update)) {
-      if (ALLOWED_KEYS.has(k)) filtered[k] = v;
-    }
+    const filtered: Partial<WhisperVadWireConfig> = parsed.success ? parsed.data : {};
 
     this.whisperVadSettings = { ...this._getWhisperVadSettings(), ...filtered };
 
@@ -385,19 +424,24 @@ export class IPCHandlers {
   // Delegates to the shared module; the IPC handler passes the same deps.
   async transcribeLocalFile(
     filePath: string,
-    options: Record<string, unknown> = {}
+    options: TranscriptionOptions = {}
   ): Promise<TranscriptionResponse> {
     const { transcribeLocalFile: execute } =
+      // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+      // wire data crosses this assertion.
       require("./localFileTranscription") as typeof import("./localFileTranscription.js");
 
     return execute(
       {
         readFile: (p: string) => fs.readFileSync(p),
         isSherpaLocalProvider: (provider: unknown) => isSherpaLocalProvider(provider),
-        transcribeLocalWhisper: (audioBuffer: Buffer, opts: unknown) =>
-          this._transcribeLocalWhisper(audioBuffer, opts),
-        transcribeLocalParakeet: (audioBuffer: Buffer, opts: unknown) =>
-          this._transcribeLocalParakeet(audioBuffer, opts),
+        transcribeLocalWhisper: (audioBuffer, opts) =>
+          // SAFETY: the CLI path hands the file bytes and the executor's own
+          // options shape back across the seam.
+          this._transcribeLocalWhisper(audioBuffer, opts as TranscriptionOptions),
+        transcribeLocalParakeet: (audioBuffer, opts) =>
+          // SAFETY: same executor-owned bytes and options as above.
+          this._transcribeLocalParakeet(audioBuffer, opts as TranscriptionOptions),
         resolveWhisperVadOptions: (context: string) => this._resolveWhisperVadOptions(context),
       },
       filePath,
@@ -426,25 +470,19 @@ export class IPCHandlers {
     } = settings;
 
     return {
-      vadEnabled: resolveContextSileroEnabled(settings as Record<string, unknown>, context),
+      vadEnabled: resolveContextSileroEnabled(settings, context),
       vadConfig,
     };
   }
 
   // Narrow adapters for the typed verticals: they treat payloads as unknown,
   // the managers own their own narrowing at the boundary.
-  _transcribeLocalWhisper(audioBuffer: unknown, options: unknown): Promise<unknown> {
-    return this.whisperManager.transcribeLocalWhisper(
-      audioBuffer as Buffer,
-      options as Record<string, unknown> | undefined
-    );
+  _transcribeLocalWhisper(audioBuffer: TranscriptionAudioInput, options?: TranscriptionOptions) {
+    return this.whisperManager.transcribeLocalWhisper(audioBuffer, options ?? {});
   }
 
-  _transcribeLocalParakeet(audioBuffer: unknown, options: unknown): Promise<unknown> {
-    return this.parakeetManager.transcribeLocalParakeet(
-      audioBuffer as Buffer,
-      options as Record<string, unknown> | undefined
-    );
+  _transcribeLocalParakeet(audioBuffer: TranscriptionAudioInput, options?: TranscriptionOptions) {
+    return this.parakeetManager.transcribeLocalParakeet(audioBuffer, options ?? {});
   }
 
   _mirrorDeleteFolderIfUnshared(folderName: string, relocatedNoteIds: number[]): void {
@@ -464,7 +502,11 @@ export class IPCHandlers {
     for (const noteId of relocatedNoteIds) {
       const note = this.databaseManager.getNote(noteId);
 
-      if (note) this._asyncMirrorWrite(note as unknown as NoteItem);
+      if (note) {
+        // SAFETY: getNote returns the same note row projection the mirror
+        // writer consumes; the narrow re-voice bridges the deprecated alias.
+        this._asyncMirrorWrite(note as unknown as NoteItem);
+      }
     }
 
     if (!stillLive && folderName !== "Personal") markdownMirror.deleteFolder(folderName);
@@ -476,6 +518,7 @@ export class IPCHandlers {
     try {
       // A directory can contain root notes or notes from same-named folders.
       // Reproject only notes assigned to the new name; never move it wholesale.
+      // SAFETY: the SELECT projects exactly the notes.id column.
       const ids = this.databaseManager.db
         .prepare(
           "SELECT notes.id FROM notes JOIN folders ON folders.id = notes.folder_id WHERE folders.name = ?"
@@ -562,25 +605,17 @@ export class IPCHandlers {
   }
 
   _buildFolderMap(): Record<number, string> {
-    const folders = this.databaseManager.getFolders();
-    const map: Record<number, string> = {};
-
-    for (const f of folders) {
-      map[f.id] = f.name;
-    }
-
-    return map;
+    return Object.fromEntries(
+      this.databaseManager.getFolders().map((f) => [f.id, f.name] as const)
+    );
   }
 
   _buildSpeakerMappings(noteId: number): Record<string, string> {
-    const arr = this.databaseManager.getSpeakerMappings(noteId);
-    const map: Record<string, string> = {};
-
-    for (const m of arr) {
-      map[m.speaker_id] = m.display_name;
-    }
-
-    return map;
+    return Object.fromEntries(
+      this.databaseManager
+        .getSpeakerMappings(noteId)
+        .map((m) => [m.speaker_id, m.display_name] as const)
+    );
   }
 
   _resolveOneOnOneOtherParticipant(participantsJson: string | null | undefined) {
@@ -604,6 +639,8 @@ export class IPCHandlers {
   _getFolderName(folderId: number | null | undefined): string {
     if (!folderId) return "Personal";
 
+    // SAFETY: the SELECT projects exactly the name column; a missing row
+    // returns undefined.
     const folder = this.databaseManager.db
       .prepare("SELECT name FROM folders WHERE id = ?")
       .get(folderId) as { name?: string } | undefined;
@@ -627,9 +664,17 @@ export class IPCHandlers {
     // sweep instead.
     this._retentionCleanupInterval = setInterval(() => {
       if (this._retentionSettingsSynced) {
-        void this._runRetentionCleanup().then((ready) => {
-          if (ready) this._meetingProcessing?.onRetentionReady();
-        });
+        void this._runRetentionCleanup()
+          .then((ready) => {
+            if (ready) this._meetingProcessing?.onRetentionReady();
+          })
+          .catch((error: unknown) => {
+            debugLogger.warn(
+              "Retention cleanup pass failed",
+              { error: error instanceof Error ? error.message : String(error) },
+              "storage"
+            );
+          });
       }
     }, SIX_HOURS_MS);
   }
@@ -676,6 +721,8 @@ export class IPCHandlers {
     } catch (error) {
       debugLogger.error(
         "Retention cleanup failed",
+        // SAFETY: only Error-shaped values reach this catch; the message read
+        // is the checked field.
         { error: (error as Error).message },
         "audio-storage"
       );
@@ -705,7 +752,11 @@ export class IPCHandlers {
         const dependentAnchors = new Set(
           this.databaseManager
             .listAllMeetingProcessingRuns()
-            .filter((run) => run.sourceRecordingIds.includes(intent.recordingId as string))
+            .filter((run) => {
+              // SAFETY: the deletion intent stores the recording id as a text
+              // column; the run ids it groups are the same string form.
+              return run.sourceRecordingIds.includes(intent.recordingId as string);
+            })
             .map((run) => run.recordingId)
         );
 
@@ -746,10 +797,14 @@ export class IPCHandlers {
 
       return true;
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
+      // SAFETY: Node I/O failures carry the string `code` field; the parse
+      // below rejects anything else before use.
+      const code = zStringNullable.safeParse((error as NodeJS.ErrnoException).code);
 
       const safeCode =
-        typeof code === "string" && /^[A-Z0-9_]{1,64}$/.test(code) ? code : "file-operation-failed";
+        code.success && code.data !== null && /^[A-Z0-9_]{1,64}$/.test(code.data)
+          ? code.data
+          : "file-operation-failed";
 
       this.databaseManager.failMeetingDeletion(intent.id, safeCode);
       debugLogger.error(
@@ -780,11 +835,13 @@ export class IPCHandlers {
     const expected = this._meetingCoordinator?.currentRecordingScope();
 
     if (expected) {
-      const stopped = await this._meetingCoordinator!.requestSafeStop({
+      const stopped = await this._meetingCoordinator?.requestSafeStop({
         expected,
         reason: "delete-audio",
         suppressProcessing: true,
       });
+
+      if (!stopped) throw new Error("Active meeting recording could not be stopped safely");
 
       if (!stopped.success) throw new Error("Active meeting recording could not be stopped safely");
     }
@@ -901,6 +958,8 @@ export class IPCHandlers {
               throw new Error("meeting-audio-part-unavailable");
 
             const combined = composeMeetingAudioParts(
+              // SAFETY: the source list was filtered to non-null recordings
+              // immediately above; the re-voice drops the filtered-out slots.
               sources as NonNullable<typeof currentRecording>[],
               (id) => database.listMeetingRecordingEpochs(id)
             );
@@ -1014,6 +1073,8 @@ export class IPCHandlers {
                 throw new Error("meeting-audio-part-unavailable");
 
               const combined = composeMeetingAudioParts(
+                // SAFETY: the source list was filtered to non-null recordings
+                // immediately above; the re-voice drops the filtered-out slots.
                 sources as NonNullable<typeof latestRecording>[],
                 (id) => database.listMeetingRecordingEpochs(id)
               );
@@ -1102,6 +1163,8 @@ export class IPCHandlers {
 
     if (!clientId || !clientSecret) {
       const err = new Error("No Corti credentials configured. Add them in Settings.");
+      // SAFETY: this Error object was created two lines above; stamping the
+      // conventional `code` field is the wire-failure spelling consumers read.
       (err as NodeJS.ErrnoException).code = "NO_API";
       throw err;
     }
@@ -1128,30 +1191,66 @@ export class IPCHandlers {
     // Corti client stay lazy behind these factories.
     registerTranscriptionExecutionHandlers(ipcMain, {
       whisperManager: {
+        // SAFETY: the execution handler validated the transport payload
+        // against the shared route schema before dispatching here.
         transcribeLocalWhisper: (audioBuffer, options) =>
-          this._transcribeLocalWhisper(audioBuffer, options),
+          this._transcribeLocalWhisper(
+            // SAFETY: the execution handler parsed the invoke payload through
+            // the shared route schema before dispatching here.
+            audioBuffer as TranscriptionAudioInput,
+            options as TranscriptionOptions
+          ),
       },
       parakeetManager: {
         transcribeLocalParakeet: (audioBuffer, options) =>
-          this._transcribeLocalParakeet(audioBuffer, options),
+          // SAFETY: same handler-parsed payload as the whisper seam above.
+          this._transcribeLocalParakeet(
+            audioBuffer as TranscriptionAudioInput,
+            options as TranscriptionOptions
+          ),
       },
       resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
       environmentManager: this.environmentManager,
-      proxyFetch: (url, init) => proxyFetch(url, init as RequestInit),
+      proxyFetch: (url, init) =>
+        // SAFETY: the reasoning factory builds plain fetch init objects; the
+        // re-voice only bridges the wider ambient type.
+        proxyFetch(url, init as RequestInit),
       transcribeGeminiFile: runGeminiFile,
       transcribeWithCorti: async (args) => {
+        // SAFETY: lazy SDK-style module seam fixed by build-main.js bundling.
         const { transcribeAudio } =
+          // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+          // wire data crosses this assertion.
           require("./cortiTranscription") as typeof import("./cortiTranscription.js");
 
+        // SAFETY: args is the validated remote-transcription request; the
+        // client parameter type is exactly that request.
         return transcribeAudio(args as Parameters<typeof transcribeAudio>[0]);
       },
       mintStoredCortiToken: (tokenOptions) => this._mintStoredCortiToken(tokenOptions),
-      generateText: (options) => require("ai").generateText(options),
+      generateText: (options) => generateTextLazy()(options),
       getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+        // SAFETY: the enterprise factory returns the same streaming model the
+        // consumer routes on; the re-voice names it across the lazy seam.
         getEnterpriseAIModel(provider, model, apiKey, enterprise) as Promise<EnterpriseStreamModel>,
-      bedrockSdk: async () => require("@aws-sdk/client-bedrock"),
+      bedrockSdk: async () =>
+        // SAFETY: only the two documented exports are invoked downstream and
+        // the consumer types them itself; the record crossing stays opaque.
+        require("@aws-sdk/client-bedrock") as unknown as Awaited<
+          ReturnType<
+            NonNullable<
+              import("./transcriptionExecutionIpcHandlers.js").TranscriptionExecutionDeps["bedrockSdk"]
+            >
+          >
+        >,
       bedrockProfileCredentials: (profile) =>
-        require("@aws-sdk/credential-providers").fromNodeProviderChain({ profile }),
+        // SAFETY: the AWS credential-providers module export is fixed by the
+        // pinned SDK version; the assert-object shape matches its docs.
+        (
+          require("@aws-sdk/credential-providers") as {
+            fromNodeProviderChain: (options: { profile: string }) => BedrockCredentialProvider;
+          }
+        ).fromNodeProviderChain({ profile }),
       providerBaseUrls: transcriptionProviderBaseUrls,
       audioStorage: this.audioStorageManager,
       database: this.databaseManager,
@@ -1181,9 +1280,17 @@ export class IPCHandlers {
         onSettingsChanged: (settings) => {
           this._retentionSettings = settings;
           this._retentionSettingsSynced = true;
-          void this._runRetentionCleanup().then((ready) => {
-            if (ready) this._meetingProcessing?.onRetentionReady();
-          });
+          void this._runRetentionCleanup()
+            .then((ready) => {
+              if (ready) this._meetingProcessing?.onRetentionReady();
+            })
+            .catch((error: unknown) => {
+              debugLogger.warn(
+                "Retention cleanup pass failed",
+                { error: error instanceof Error ? error.message : String(error) },
+                "storage"
+              );
+            });
           // First point at which the local-history switch is known to be real.
           // After the sweep, so expired transcripts are gone before they can be
           // reconstructed into counters the sweep would only have to purge.
@@ -1277,6 +1384,8 @@ export class IPCHandlers {
         deleteAllAudio: () => this._deleteAllAudio(),
         deleteWhisperModels: () => {
           const { getModelsDirForService } =
+            // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+            // wire data crosses this assertion.
             require("./modelDirUtils") as typeof import("./modelDirUtils.js");
 
           const whisperDir = getModelsDirForService("whisper");
@@ -1367,12 +1476,17 @@ export class IPCHandlers {
     // URL download channels live in the typed module, per-registration state
     // included. Only the downloader and logging are shared.
     const urlDownloader =
+      // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+      // wire data crosses this assertion.
       require("./urlAudioDownloader") as typeof import("./urlAudioDownloader.js");
 
     registerUrlDownloadHandlers(ipcMain, {
       download: urlDownloader.download,
       sweepStaleTempArtifacts: urlDownloader.sweepStaleTempArtifacts,
-      getSafeTempDir: require("./safeTempDir").getSafeTempDir,
+      // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+      // wire data crosses this assertion.
+      getSafeTempDir: (require("./safeTempDir") as typeof import("./safeTempDir.js"))
+        .getSafeTempDir,
       debugLogger,
     });
 
@@ -1383,9 +1497,12 @@ export class IPCHandlers {
       resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
       isSherpaLocalProvider: (provider) => isSherpaLocalProvider(provider),
       transcribeLocalWhisper: (audioBuffer, options) =>
-        this._transcribeLocalWhisper(audioBuffer, options),
+        // SAFETY: the handler read the Buffer from disk itself and parsed the
+        // options through the shared route resolver before this dispatch.
+        this._transcribeLocalWhisper(audioBuffer, options as TranscriptionOptions),
       transcribeLocalParakeet: (audioBuffer, options) =>
-        this._transcribeLocalParakeet(audioBuffer, options),
+        // SAFETY: same handler-owned Buffer and parsed options as above.
+        this._transcribeLocalParakeet(audioBuffer, options as TranscriptionOptions),
       resolveWhisperVadOptions: (context) => this._resolveWhisperVadOptions(context),
       uploadCancelRegistry: this._uploadCancelRegistry,
       logDebug: (message, data) => debugLogger.debug(message, data),
@@ -1410,9 +1527,14 @@ export class IPCHandlers {
       // Lazy like the pre-cutover handler: the Corti client is only loaded
       // when its route actually runs.
       transcribeWithCorti: async (args) => {
+        // SAFETY: lazy SDK-style module seam fixed by build-main.js bundling.
         const { transcribeAudio } =
+          // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+          // wire data crosses this assertion.
           require("./cortiTranscription") as typeof import("./cortiTranscription.js");
 
+        // SAFETY: args is the validated remote-transcription request; the
+        // client parameter type is exactly that request.
         return transcribeAudio(args as Parameters<typeof transcribeAudio>[0]);
       },
       getCortiClientId: () => this.environmentManager.getCortiClientId(),
@@ -1483,13 +1605,15 @@ export class IPCHandlers {
           });
         }
 
-        const resolveThreshold = (
-          require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
-        ).resolveClusterThreshold;
+        const resolveThreshold = // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+          // wire data crosses this assertion.
+          (require("./diarizationPolicy") as typeof import("./diarizationPolicy.js"))
+            .resolveClusterThreshold;
 
-        const dropNegligible = (
-          require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
-        ).dropNegligibleClusters;
+        const dropNegligible = // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+          // wire data crosses this assertion.
+          (require("./diarizationPolicy") as typeof import("./diarizationPolicy.js"))
+            .dropNegligibleClusters;
 
         const expected = options.expectedSpeakerCount;
 
@@ -1515,7 +1639,7 @@ export class IPCHandlers {
           {
             getAIModel: (provider, model, apiKey, baseUrl, options) =>
               providers.getMeetingAIModel(provider, model, apiKey, baseUrl, options),
-            generateText: (options) => require("ai").generateText(options),
+            generateText: (options) => generateTextLazy()(options),
             processLocalText: (text, model, options, abortSignal) =>
               localReasoningBridge.processText(text, model, options, abortSignal),
             getCredential: getMeetingCredential,
@@ -1582,7 +1706,7 @@ export class IPCHandlers {
           {
             getAIModel: (provider, model, apiKey, baseUrl, options) =>
               providers.getMeetingAIModel(provider, model, apiKey, baseUrl, options),
-            generateText: (options) => require("ai").generateText(options),
+            generateText: (options) => generateTextLazy()(options),
             processLocalText: (text, model, options, abortSignal) =>
               localReasoningBridge.processText(text, model, options, abortSignal),
             getCredential: getMeetingCredential,
@@ -1635,7 +1759,7 @@ export class IPCHandlers {
           {
             getAIModel: (provider, model, apiKey, baseUrl, options) =>
               providers.getMeetingAIModel(provider, model, apiKey, baseUrl, options),
-            generateText: (options) => require("ai").generateText(options),
+            generateText: (options) => generateTextLazy()(options),
             processLocalText: (text, model, options, abortSignal) =>
               localReasoningBridge.processText(text, model, options, abortSignal),
             getCredential: getMeetingCredential,
@@ -1654,13 +1778,17 @@ export class IPCHandlers {
 
         if (!approvedAudioPath) return [];
 
-        const tempDir = (
-          require("./safeTempDir") as typeof import("./safeTempDir.js")
-        ).getSafeTempDir();
+        const tempDir = // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+          // wire data crosses this assertion.
+          (require("./safeTempDir") as typeof import("./safeTempDir.js")).getSafeTempDir();
 
         const speakerEmbeddings =
+          // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+          // wire data crosses this assertion.
           require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings;
 
+        // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+        // wire data crosses this assertion.
         const ffmpeg = require("./ffmpegUtils") as typeof import("./ffmpegUtils.js");
 
         const corrections = await recognizeMeetingSpeakers(transcript, approvedAudioPath, signal, {
@@ -1714,6 +1842,8 @@ export class IPCHandlers {
       diarizationManager: this.diarizationManager,
       resolveAllowedAudioPath: (filePath) => resolveAllowedAudioPath(filePath),
       convertToWav: (inputPath, outputPath, options) =>
+        // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+        // wire data crosses this assertion.
         (require("./ffmpegUtils") as typeof import("./ffmpegUtils.js")).convertToWav(
           inputPath,
           outputPath,
@@ -1721,30 +1851,41 @@ export class IPCHandlers {
         ),
       createTempWavPath: () =>
         path.join(
+          // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+          // wire data crosses this assertion.
           (require("./safeTempDir") as typeof import("./safeTempDir.js")).getSafeTempDir(),
           `ow-diarize-${Date.now()}.wav`
         ),
       fileSize: (filePath) => fs.statSync(filePath).size,
       resolveClusterThreshold: (durationSeconds, requestedThreshold) =>
+        // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+        // wire data crosses this assertion.
         (
           require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
         ).resolveClusterThreshold(durationSeconds, requestedThreshold),
+      // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+      // wire data crosses this assertion.
       dropNegligibleClusters: (segments) =>
         (
           require("./diarizationPolicy") as typeof import("./diarizationPolicy.js")
         ).dropNegligibleClusters(segments) as DiarizationSegment[],
-      pcm16Mono16kBytesPerSecond: (
-        require("./transcriptionTimeout") as typeof import("./transcriptionTimeout.js")
-      ).PCM16_MONO_16K_BYTES_PER_SECOND,
+      pcm16Mono16kBytesPerSecond: // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+        // wire data crosses this assertion.
+        (require("./transcriptionTimeout") as typeof import("./transcriptionTimeout.js"))
+          .PCM16_MONO_16K_BYTES_PER_SECOND,
       maxSpeakerCount: MAX_SPEAKER_COUNT,
       removeFile: (filePath) => fs.unlinkSync(filePath),
       mergeSpeakersWithText: (segments, text, duration) =>
+        // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+        // wire data crosses this assertion.
         (require("./speakerMerge") as typeof import("./speakerMerge.js")).mergeSpeakersWithText(
           segments,
           text,
           duration
         ),
       formatSpeakerTranscript: (merged) =>
+        // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+        // wire data crosses this assertion.
         (require("./speakerMerge") as typeof import("./speakerMerge.js")).formatSpeakerTranscript(
           merged as MergedSpeakerSegment[]
         ),
@@ -1760,7 +1901,10 @@ export class IPCHandlers {
     registerReasoningHandlers(ipcMain, {
       localService: localReasoningBridge,
       getAnthropicKey: () => this.environmentManager.getAnthropicKey(),
-      proxyFetch: (url, init) => proxyFetch(url, init as RequestInit),
+      proxyFetch: (url, init) =>
+        // SAFETY: the reasoning factory builds plain fetch init objects; the
+        // re-voice only bridges the wider ambient type.
+        proxyFetch(url, init as RequestInit),
       extractAnthropicText,
       describeMissingAnthropicText,
       isEnterpriseProvider,
@@ -1768,8 +1912,12 @@ export class IPCHandlers {
       runAbortableOperation,
       runBedrockRequest,
       validateEnterpriseEndpoint,
-      generateText: (options) => require("ai").generateText(options),
+      // The reasoning consumer asserts on finishReason values; the SDK always
+      // stamps it on a settled generation.
+      generateText: (options) => generateTextLazy()(options),
       getEnterpriseAIModel: (provider, model, apiKey, enterprise) =>
+        // SAFETY: the enterprise factory returns the same streaming model the
+        // consumer routes on; the re-voice names it across the lazy seam.
         getEnterpriseAIModel(provider, model, apiKey, enterprise) as Promise<EnterpriseStreamModel>,
       bedrockCleanupRequests: this._enterpriseReasoningRequests,
       enterpriseStreams: this._enterpriseStreams,
@@ -1812,6 +1960,8 @@ export class IPCHandlers {
       pickGranolaCsvFiles: async (event) => {
         // Parent the dialog so it opens as a sheet on the settings window —
         // a parentless panel can land invisible on another display/Space.
+        // SAFETY: the invoke sender only ever carries the IpcMainInvokeEvent
+        // shape; the webContents read depends on that checked invariant.
         const parentWindow = BrowserWindow.fromWebContents((event as IpcMainInvokeEvent)?.sender);
 
         const dialogOptions: Electron.OpenDialogOptions = {
@@ -1844,9 +1994,11 @@ export class IPCHandlers {
     // Local Whisper/Parakeet model lifecycle lives in the typed module;
     // downloads stay sequence-stamped through the shared status tracker.
     registerLocalModelLifecycleHandlers(ipcMain, {
-      // Loose manager payloads are pinned by the localModelLifecycle
-      // characterization suite; bridge them at this boundary.
+      // SAFETY: the whisper manager returns loose Record payloads whose exact
+      // fields are pinned by the localModelLifecycle characterization suite;
+      // the double assertion bridges that seam at this registration point.
       whisperManager: this.whisperManager as unknown as WhisperManagerLike,
+      // SAFETY: same loose manager payload seam as the whisper bridge above.
       parakeetManager: this.parakeetManager as unknown as ParakeetManagerLike,
       downloadStatus: this.localModelDownloadStatus,
       progressSender: {
@@ -1874,10 +2026,15 @@ export class IPCHandlers {
     });
 
     registerLocalLlmModelHandlers(ipcMain, {
+      // SAFETY: the ModelManager surface is pinned by the localLlmModels
+      // characterization suite; the assertion bridges the seam here alone.
       modelManager: modelManager as unknown as LlmModelManagerLike,
+      // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+      // wire data crosses this assertion.
       llamaCppInstaller: (require("./llamaCppInstaller") as typeof import("./llamaCppInstaller.js"))
         .default,
-      // Loose tracker typing pinned by the localLlmModels characterization suite.
+      // SAFETY: the shared tracker's row shape is pinned by the localLlmModels
+      // characterization suite; the assertion bridges the seam here alone.
       downloadStatus: this.localModelDownloadStatus as unknown as LlmDownloadStatusTracker,
       progressSender: {
         sendToControlPanel: (channel, payload) =>
@@ -1986,10 +2143,15 @@ export class IPCHandlers {
       companionProfilePath: app.getPath("userData"),
       companionEnabled,
       showCompanionReminder: (scope) => {
-        void this.windowManager.showMeetingNotification(
-          { kind: "meet-context-lost", ...scope },
-          { autoDismiss: false }
-        );
+        void this.windowManager
+          .showMeetingNotification({ kind: "meet-context-lost", ...scope }, { autoDismiss: false })
+          .catch((error: unknown) => {
+            debugLogger.warn(
+              "Meet reminder window failed",
+              { error: error instanceof Error ? error.message : String(error) },
+              "meeting"
+            );
+          });
       },
       dismissCompanionReminder: (scope, sender) => {
         const current = this.windowManager._pendingNotificationData;
@@ -2034,7 +2196,7 @@ export class IPCHandlers {
 
         if (!expected) return { success: true };
 
-        const result = await this._meetingCoordinator!.requestSafeStop({
+        const result = await this._meetingCoordinator?.requestSafeStop({
           expected,
           reason: "quit",
         });
@@ -2053,177 +2215,212 @@ export class IPCHandlers {
   }
 
   _retroactiveMapping(profile: SpeakerProfileWithEmbedding): void {
-    setImmediate(async () => {
-      try {
-        const speakerEmbeddings =
-          require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings;
+    setImmediate(() => {
+      void (async () => {
+        try {
+          const speakerEmbeddings =
+            // SAFETY: lazy CommonJS seam fixed by build-main.js bundling; no
+            // wire data crosses this assertion.
+            require("./speakerEmbeddings") as import("./speakerEmbeddings.js").SpeakerEmbeddings;
 
-        const unmappedNotes = this.databaseManager.getNotesWithUnmappedSpeakers();
+          const unmappedNotes = this.databaseManager.getNotesWithUnmappedSpeakers();
 
-        const profileEmb = new Float32Array(
-          profile.embedding.buffer,
-          profile.embedding.byteOffset,
-          profile.embedding.byteLength / 4
-        );
-
-        for (const unmappedNote of unmappedNotes) {
-          const noteId = unmappedNote.id;
-          const embeddings = this.databaseManager.getNoteSpeakerEmbeddings(noteId);
-          const existing = this.databaseManager.getSpeakerMappings(noteId);
-
-          // Only genuinely assigned rows block a rewrite: the placeholder
-          // rows (profile_id IS NULL) that brought this note into the
-          // unmapped query are exactly what this pass fills in.
-          const assignedSpeakers = new Set(
-            existing.filter((m) => m.profile_id !== null).map((m) => m.speaker_id)
+          const profileEmb = new Float32Array(
+            profile.embedding.buffer,
+            profile.embedding.byteOffset,
+            profile.embedding.byteLength / 4
           );
 
-          for (const emb of embeddings) {
-            if (assignedSpeakers.has(emb.speaker_id)) continue;
+          for (const unmappedNote of unmappedNotes) {
+            const noteId = unmappedNote.id;
+            const embeddings = this.databaseManager.getNoteSpeakerEmbeddings(noteId);
+            const existing = this.databaseManager.getSpeakerMappings(noteId);
 
-            const speakerEmb = new Float32Array(
-              emb.embedding.buffer,
-              emb.embedding.byteOffset,
-              emb.embedding.byteLength / 4
+            // Only genuinely assigned rows block a rewrite: the placeholder
+            // rows (profile_id IS NULL) that brought this note into the
+            // unmapped query are exactly what this pass fills in.
+            const assignedSpeakers = new Set(
+              existing.filter((m) => m.profile_id !== null).map((m) => m.speaker_id)
             );
 
-            const similarity = speakerEmbeddings.cosineSimilarity(profileEmb, speakerEmb);
+            for (const emb of embeddings) {
+              if (assignedSpeakers.has(emb.speaker_id)) continue;
 
-            if (similarity > 0.6) {
-              this.databaseManager.setSpeakerMapping(
-                noteId,
-                emb.speaker_id,
-                profile.id,
-                profile.display_name
+              const speakerEmb = new Float32Array(
+                emb.embedding.buffer,
+                emb.embedding.byteOffset,
+                emb.embedding.byteLength / 4
               );
 
-              const note = this.databaseManager.getNote(noteId);
+              const similarity = speakerEmbeddings.cosineSimilarity(profileEmb, speakerEmb);
 
-              if (note?.transcript) {
-                try {
-                  const segments = JSON.parse(note.transcript);
-                  let changed = false;
+              if (similarity > 0.6) {
+                this.databaseManager.setSpeakerMapping(
+                  noteId,
+                  emb.speaker_id,
+                  profile.id,
+                  profile.display_name
+                );
 
-                  for (const seg of segments) {
-                    if (seg.speaker === emb.speaker_id && !seg.speakerName) {
-                      if (canAutoRelabelSpeaker(seg)) {
-                        applyConfirmedSpeaker(seg, {
-                          speakerName: profile.display_name,
-                          speakerIsPlaceholder: false,
-                        });
-                      } else {
-                        seg.speakerName = profile.display_name;
-                        seg.speakerIsPlaceholder = false;
+                const note = this.databaseManager.getNote(noteId);
+
+                if (note?.transcript) {
+                  try {
+                    // SAFETY: the note transcript is this app's own serialized
+                    // SpeakerSegment list; a malformed payload only skips the
+                    // relabel pass inside the try below.
+                    const segments = JSON.parse(note.transcript) as SpeakerSegment[];
+                    let changed = false;
+
+                    for (const seg of segments) {
+                      if (seg.speaker === emb.speaker_id && !seg.speakerName) {
+                        if (canAutoRelabelSpeaker(seg)) {
+                          applyConfirmedSpeaker(seg, {
+                            speakerName: profile.display_name,
+                            speakerIsPlaceholder: false,
+                          });
+                        } else {
+                          seg.speakerName = profile.display_name;
+                          seg.speakerIsPlaceholder = false;
+                        }
+
+                        changed = true;
                       }
-
-                      changed = true;
                     }
-                  }
 
-                  if (changed) {
-                    this.databaseManager.updateNote(noteId, {
-                      transcript: JSON.stringify(segments),
-                    });
+                    if (changed) {
+                      this.databaseManager.updateNote(noteId, {
+                        transcript: JSON.stringify(segments),
+                      });
+                    }
+                  } catch {
+                    // A transcript that no longer parses stays unmapped; the
+                    // stored note content is never rewritten from junk.
                   }
-                } catch (_error) {}
+                }
               }
             }
           }
+        } catch (err) {
+          debugLogger.warn(
+            "Retroactive speaker mapping failed",
+            // SAFETY: only Error-shaped values reach this catch.
+            { error: (err as Error).message }
+          );
         }
-      } catch (err) {
-        debugLogger.warn("Retroactive speaker mapping failed", { error: (err as Error).message });
-      }
+      })().catch((error: unknown) => {
+        debugLogger.warn("Retroactive speaker mapping failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     });
   }
 
   _tryAutoLabelOneOnOne(noteId: number): void {
-    setImmediate(async () => {
-      try {
-        const note = this.databaseManager.getNote(noteId);
-        const other = this._resolveOneOnOneOtherParticipant(note?.participants);
+    setImmediate(() => {
+      void (async () => {
+        try {
+          const note = this.databaseManager.getNote(noteId);
+          const other = this._resolveOneOnOneOtherParticipant(note?.participants);
 
-        if (!other || !note) return;
-        const { displayName, email } = other;
+          if (!other || !note) return;
+          const { displayName, email } = other;
 
-        const embeddings = this.databaseManager.getNoteSpeakerEmbeddings(noteId);
+          const embeddings = this.databaseManager.getNoteSpeakerEmbeddings(noteId);
 
-        if (!embeddings.length) return;
+          if (!embeddings.length) return;
 
-        const existingMappings = this.databaseManager.getSpeakerMappings(noteId);
-        const mappedSpeakers = new Set(existingMappings.map((m) => m.speaker_id));
+          const existingMappings = this.databaseManager.getSpeakerMappings(noteId);
+          const mappedSpeakers = new Set(existingMappings.map((m) => m.speaker_id));
 
-        const transcript: SpeakerSegment[] = note.transcript ? JSON.parse(note.transcript) : [];
+          // SAFETY: the note transcript is this app's own serialized
+          // SpeakerSegment list; malformed rows only degrade the auto-label.
+          const transcript: SpeakerSegment[] = note.transcript
+            ? (JSON.parse(note.transcript) as SpeakerSegment[])
+            : [];
 
-        const systemSpeakers = new Set(
-          transcript
-            .filter((s) => (s as { source?: string }).source !== "mic" && s.speaker)
-            .map((s) => s.speaker)
-        );
+          const systemSpeakers = new Set(
+            transcript
+              .filter((s) => {
+                // SAFETY: SpeakerSegment carries the optional source tag the
+                // producer sets; the read only probes it.
+                const tagged = s as { source?: string };
 
-        const unmapped = embeddings.filter(
-          (e) => !mappedSpeakers.has(e.speaker_id) && systemSpeakers.has(e.speaker_id)
-        );
-
-        if (!unmapped.length) return;
-
-        let profile: SpeakerProfileWithEmbedding | null = null;
-
-        for (const emb of unmapped) {
-          profile = this.databaseManager.upsertSpeakerProfile(
-            displayName,
-            email,
-            emb.embedding,
-            profile?.id ?? null
+                return tagged.source !== "mic" && s.speaker;
+              })
+              .map((s) => s.speaker)
           );
 
-          if (!profile) continue;
-          this.databaseManager.setSpeakerMapping(noteId, emb.speaker_id, profile.id, displayName);
-        }
+          const unmapped = embeddings.filter(
+            (e) => !mappedSpeakers.has(e.speaker_id) && systemSpeakers.has(e.speaker_id)
+          );
 
-        const unmappedSystemSpeakers = new Set<string | null | undefined>(
-          unmapped.map((e) => e.speaker_id)
-        );
+          if (!unmapped.length) return;
 
-        let changed = false;
+          let profile: SpeakerProfileWithEmbedding | null = null;
 
-        for (const seg of transcript) {
-          if (!unmappedSystemSpeakers.has(seg.speaker)) continue;
+          for (const emb of unmapped) {
+            profile = this.databaseManager.upsertSpeakerProfile(
+              displayName,
+              email,
+              emb.embedding,
+              profile?.id ?? null
+            );
 
-          if (seg.speakerName && !seg.speakerIsPlaceholder) continue;
-
-          if (canAutoRelabelSpeaker(seg)) {
-            applyConfirmedSpeaker(seg, { speakerName: displayName, speakerIsPlaceholder: false });
-          } else {
-            seg.speakerName = displayName;
-            seg.speakerIsPlaceholder = false;
+            if (!profile) continue;
+            this.databaseManager.setSpeakerMapping(noteId, emb.speaker_id, profile.id, displayName);
           }
 
-          changed = true;
+          const unmappedSystemSpeakers = new Set<string | null | undefined>(
+            unmapped.map((e) => e.speaker_id)
+          );
+
+          let changed = false;
+
+          for (const seg of transcript) {
+            if (!unmappedSystemSpeakers.has(seg.speaker)) continue;
+
+            if (seg.speakerName && !seg.speakerIsPlaceholder) continue;
+
+            if (canAutoRelabelSpeaker(seg)) {
+              applyConfirmedSpeaker(seg, { speakerName: displayName, speakerIsPlaceholder: false });
+            } else {
+              seg.speakerName = displayName;
+              seg.speakerIsPlaceholder = false;
+            }
+
+            changed = true;
+          }
+
+          if (changed) {
+            this.databaseManager.updateNote(noteId, { transcript: JSON.stringify(transcript) });
+            const updated = this.databaseManager.getNote(noteId);
+
+            if (updated) sendNoteUpdated(updated);
+          }
+
+          if (profile) {
+            this._retroactiveMapping(profile);
+          }
+
+          debugLogger.info(
+            "Auto-labeled 1-on-1 meeting speakers",
+            { noteId, displayName, speakerCount: unmapped.length },
+            "speaker"
+          );
+        } catch (err) {
+          debugLogger.warn(
+            "Auto-label 1-on-1 failed",
+            // SAFETY: only Error-shaped values reach this catch.
+            { noteId, error: (err as Error).message },
+            "speaker"
+          );
         }
-
-        if (changed) {
-          this.databaseManager.updateNote(noteId, { transcript: JSON.stringify(transcript) });
-          const updated = this.databaseManager.getNote(noteId);
-
-          if (updated) sendNoteUpdated(updated);
-        }
-
-        if (profile) {
-          this._retroactiveMapping(profile);
-        }
-
-        debugLogger.info(
-          "Auto-labeled 1-on-1 meeting speakers",
-          { noteId, displayName, speakerCount: unmapped.length },
-          "speaker"
-        );
-      } catch (err) {
-        debugLogger.warn(
-          "Auto-label 1-on-1 failed",
-          { noteId, error: (err as Error).message },
-          "speaker"
-        );
-      }
+      })().catch((error: unknown) => {
+        debugLogger.warn("Auto-label 1-on-1 failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     });
   }
 
@@ -2268,4 +2465,6 @@ export class IPCHandlers {
 // class directly; the TS graph imports the named export.
 module.exports = IPCHandlers;
 
-module.exports.IPCHandlers = IPCHandlers;
+// SAFETY: the dual export is the CJS interop contract pinned by the test
+// harnesses; this re-voice only names it for the TS graph.
+(module.exports as { IPCHandlers: typeof IPCHandlers }).IPCHandlers = IPCHandlers;

@@ -6,6 +6,8 @@ test("sanitizeWhisperVadConfig applies defaults and clamps invalid values", asyn
   const { DEFAULT_WHISPER_VAD_CONFIG, sanitizeWhisperVadConfig } =
     await import("../../src/helpers/whisperVadConfig.ts");
 
+  // Unknown-typed entries exercise the clamp/parse path; the wire schema
+  // rejects them before this owner runs in production.
   const cfg = sanitizeWhisperVadConfig({
     threshold: 99,
     minSpeechDurationMs: -20,
@@ -13,7 +15,7 @@ test("sanitizeWhisperVadConfig applies defaults and clamps invalid values", asyn
     maxSpeechDurationS: 0,
     speechPadMs: null,
     samplesOverlap: -1,
-  });
+  } as unknown as Parameters<typeof sanitizeWhisperVadConfig>[0]);
 
   assert.deepEqual(cfg, {
     threshold: 0.95,

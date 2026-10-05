@@ -1,5 +1,5 @@
 // @probe-name "an incomplete dependency set fails compilation"
-// @probe-codes [2345]
+// @probe-codes [2739]
 // @probe-origin test/scripts/localFileTranscriptionTypeProbe.test.js
 import { registerLocalFileTranscriptionHandler } from "./src/helpers/localFileTranscriptionIpcHandler.js";
 

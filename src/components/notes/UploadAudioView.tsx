@@ -684,7 +684,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           title = aiTitle || uploadTitleFallback(res.text, currentFile.name);
         }
 
-        const noteRes = await saveUploadNote({
+        const pendingSave = {
           title,
           text: res.text,
           sourceName: currentFile.name,
@@ -692,7 +692,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           diarization,
           durationSeconds: res.durationSeconds,
           segments: res.segments,
-        });
+        };
+        pendingSaveRef.current = pendingSave;
+        const noteRes = await saveUploadNote(pendingSave);
         if (runId !== runIdRef.current) {
           releaseExecutionTemp(executionTemp);
           return;
@@ -707,15 +709,6 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           // result so Retry re-saves it without re-transcribing. The temp is
           // kept for Retry exactly like a transcription failure; Start Over
           // clears the pending re-save.
-          pendingSaveRef.current = {
-            title,
-            text: res.text,
-            sourceName: currentFile.name,
-            folderId: selectedFolderId ? Number(selectedFolderId) : null,
-            diarization,
-            durationSeconds: res.durationSeconds,
-            segments: res.segments,
-          };
           keepExecutionTempForRetry(executionTemp);
           setProgress(0);
           setError(t("notes.upload.noteSaveFailed"));
@@ -747,7 +740,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       progressCleanupRef.current = null;
       setProgress(0);
       const errorKey = transcriptionErrorKey(err);
-      if (errorKey) {
+      if (pendingSaveRef.current) {
+        setError(t("notes.upload.noteSaveFailed"));
+      } else if (errorKey) {
         setError(t(`notes.upload.${errorKey}`));
       } else {
         setError(err instanceof Error ? err.message : t("notes.upload.errorOccurred"));

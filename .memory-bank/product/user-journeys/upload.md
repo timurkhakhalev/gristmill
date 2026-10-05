@@ -19,6 +19,7 @@ As a Gristmill user, I want to turn saved audio into a note.
 - The queue runs sequentially and accepts new items while running. Settings are captured when the batch starts. The queue does not survive an application restart.
 - Folder choices come from the private space. Personal is initially selected when available. No folder saves the note at the space root.
 - Speaker detection is optional and defaults to off. Depending on the route, it uses provider diarization or downloaded local models.
+- A single upload keeps its completed transcript before the first Note save. If that save rejects or returns an unsuccessful result, Retry saves the retained result without another ASR request. Start Over clears it.
 - Each successful item creates an upload Note with saved transcript data. [Provider limits](providers.md) also apply.
 - Granola CSV parsing, preview and import exist in main/preload, but no renderer action calls them. Granola import is not an available UI journey.
 

@@ -8,21 +8,21 @@ test("each offered onboarding model saves its key and resolves the selected file
   let root: ReturnType<typeof createRoot> | undefined;
   t.after(async () => { if (root) await React.act(async () => root!.unmount()); });
   const writes: Array<{ method: string; key: string }> = [];
-  const methods = ["saveOpenAIKey", "saveGeminiKey", "saveGroqKey", "saveXaiKey", "saveMistralKey", "saveTinfoilKey", "saveDeepgramKey", "saveElevenLabsKey"];
+  const methods = ["saveOpenAIKey", "saveGeminiKey", "saveGroqKey", "saveXaiKey", "saveMistralKey", "saveTinfoilKey", "saveDeepgramKey", "saveElevenLabsKey", "saveCustomTranscriptionKey"];
   installBrowserGlobals(t, { initialStorage: { cloudTranscriptionMode: "byok" }, window: {
     dispatchEvent: () => true,
     electronAPI: Object.fromEntries(methods.map(method => [method, async (key: string) => {
       writes.push({ method, key }); return { success: true };
     }])),
   } });
-  const ui: { selects: Record<string, any>; key?: any; connection?: any } = { selects: {} };
+  const ui: { selects: Record<string, any>; inputs: Record<string, any>; key?: any; connection?: any } = { selects: {}, inputs: {} };
   const globals = globalThis as Record<string, unknown>;
   globals.__onboardingRouteUi = ui;
   t.after(() => { delete globals.__onboardingRouteUi; });
   const vite = await createRendererServer(t, { noExternal: ["react-i18next"], mockModules: {
     "react-i18next": 'export const initReactI18next={type:"3rdParty",init(){}};export function useTranslation(){return {t:key=>key};}',
     "/ui/SelectField": 'export function SelectField(props){globalThis.__onboardingRouteUi.selects[props.ariaLabel]=props;return null;}',
-    "/ui/input": 'export function Input(props){globalThis.__onboardingRouteUi.key=props;return null;}',
+    "/ui/input": 'export function Input(props){globalThis.__onboardingRouteUi.key=props;globalThis.__onboardingRouteUi.inputs[props.placeholder||props.type]=props;return null;}',
     "/ui/ProviderIcon": 'export function ProviderIcon(){return null;}',
     "./ProviderConnectionTest": 'export default function Test(props){globalThis.__onboardingRouteUi.connection=props;return null;}',
   } });
@@ -30,10 +30,11 @@ test("each offered onboarding model saves its key and resolves the selected file
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
   useSettingsStore.setState({ uploadCloudTranscriptionProvider: "openai", uploadCloudTranscriptionModel: "gpt-4o-mini-transcribe" });
   const { resolveTranscriptionRoute } = await vite.ssrLoadModule("/helpers/transcriptionRoute.ts");
-  const { selectResolvedUploadTranscription } = await vite.ssrLoadModule("/config/settingsSelectors.ts");
+  const { selectResolvedUploadTranscription, selectResolvedMeetingTranscription } = await vite.ssrLoadModule("/config/settingsSelectors.ts");
   let commit!: () => Promise<void>;
   let proceeds = 0;
-  root = createRoot(installHookDom(t) as unknown as Element);
+  const container = installHookDom(t);
+  root = createRoot(container as unknown as Element);
   await React.act(async () => root!.render(React.createElement(ByokProviderStep, {
     onConnectionChange() {}, onProceed() { proceeds++; },
     onFooterContinue(next: typeof commit) { commit = next; },
@@ -68,4 +69,28 @@ test("each offered onboarding model saves its key and resolves the selected file
     }
   }
   assert.equal(proceeds, combinations);
+  await React.act(async () => useSettingsStore.setState({ remoteTranscriptionUrl: "https://old.example.invalid/v1",
+    meetingRemoteTranscriptionUrl: "https://old-meeting.example.invalid/v1",
+    uploadCloudTranscriptionBaseUrl: "https://old-upload.example.invalid/v1",
+    meetingCloudTranscriptionBaseUrl: "https://old-custom.example.invalid/v1" }));
+  const findToggle = (node: any): any => node.attributes?.get("role") === "checkbox"
+    ? node : node.childNodes?.map(findToggle).find(Boolean);
+  const toggle = findToggle(container);
+  assert.ok(toggle);
+  const props = toggle[Object.keys(toggle).find(key => key.startsWith("__reactProps$"))!];
+  await React.act(async () => props.onClick());
+  const endpoint = "https://new.example.invalid/v1";
+  await React.act(async () => {
+    ui.inputs["onboarding.rehaul.provider.endpointPlaceholder"].onChange({ target: { value: endpoint } });
+    ui.inputs["onboarding.rehaul.provider.modelIdPlaceholder"].onChange({ target: { value: "chosen-model" } });
+  });
+  await React.act(async () => ui.connection.onSuccessChange(true));
+  await React.act(async () => { await commit(); });
+  assert.equal(proceeds, combinations + 1);
+  for (const select of [selectResolvedUploadTranscription, selectResolvedMeetingTranscription]) {
+    const route = resolveTranscriptionRoute({ settings: select(useSettingsStore.getState()) });
+    assert.equal(route.transport, "http-batch");
+    assert.equal(route.endpoint, endpoint + "/audio/transcriptions");
+    assert.equal(route.model, "chosen-model");
+  }
 });

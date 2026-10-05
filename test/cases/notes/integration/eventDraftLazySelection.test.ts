@@ -12,8 +12,10 @@ const note = (id: number, content: string): NoteItem => ({ id, title: `Note ${id
   transcript: null, calendar_event_id: null, participants: null, diarization_enabled: null, expected_speaker_count: null });
 const tick = () => new Promise<void>(done => setImmediate(done));
 
-for (const append of [false, true]) {
-test(`real ${append ? "append" : "replace"} materialization survives cache eviction and B selection before lazy mount`, async t => {
+for (const scenario of ["replace", "append", "append-remount"] as const) {
+const append = scenario !== "replace";
+const remount = scenario === "append-remount";
+test(`real ${scenario} materialization survives cache eviction and B selection before lazy mount`, async t => {
   let root: ReturnType<typeof createRoot> | undefined;
   t.after(async () => { if (root) await React.act(async () => root!.unmount()); });
   const a = note(1, "A"), b = note(2, "B");
@@ -24,6 +26,7 @@ test(`real ${append ? "append" : "replace"} materialization survives cache evict
   const loading = new Promise<void>(done => { releaseView = done; });
   const lateRead = new Promise<NoteItem>(done => { releaseLateRead = done; });
   let readsA = 0;
+  let failA = remount;
   installBrowserGlobals(t, { initialStorage: { notesOnboardingComplete: "true" }, window: {
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
     electronAPI: {
@@ -33,6 +36,7 @@ test(`real ${append ? "append" : "replace"} materialization survives cache evict
       createCalendarEventNote: async () => { await creating; added({ ...a }); return { noteId: a.id, folderId: null, existing: append }; },
       getNote: async (id: number) => id === a.id ? ++readsA === 1 ? { ...a } : lateRead : { ...b },
       updateNote: async (id: number, updates: object) => {
+        if (id === a.id && failA) throw new Error("temporary storage failure");
         const row = id === a.id ? a : b; Object.assign(row, updates); return { success: true, note: { ...row } };
       },
       onNoteAdded: (listener: typeof added) => { added = listener; return () => {}; },
@@ -70,6 +74,7 @@ test(`real ${append ? "append" : "replace"} materialization survives cache evict
   mocks["./AddNotesToFolderDialog"] = empty;
   mocks["./NotesOnboarding"] = empty;
   mocks["./NoteSkeleton"] = empty;
+  mocks["/ControlPanelSidebar"] = "export default function Sidebar(props){globalThis.__lazyDraftUi.sidebar=props;return null;}";
   const vite = await createRendererServer(t, { mockModules: mocks, noExternal: ["react-i18next"] });
   ui.Real = (await vite.ssrLoadModule("/components/notes/PersonalNotesView.tsx")).default;
   const ControlPanel = (await vite.ssrLoadModule("/components/ControlPanel.tsx")).default;
@@ -103,10 +108,21 @@ test(`real ${append ? "append" : "replace"} materialization survives cache evict
   await React.act(async () => { ui.ready = true; releaseView(); await tick(); });
   await ready(() => !!ui.editor);
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  await React.act(async () => { ui.editor.onContentChange(b.id, "B latest"); releaseLateRead({ ...a }); await tick(); });
+  await React.act(async () => { ui.editor.onContentChange(b.id, "B latest"); });
+  if (remount) {
+    await React.act(async () => { ui.sidebar.onViewChange("home"); await tick(); });
+    await React.act(async () => { ui.home.onOpenNote({ ...a }); await tick(); });
+    await ready(() => ui.editor.note.id === a.id);
+  }
+  await React.act(async () => { releaseLateRead({ ...a }); await tick(); });
+  if (remount) {
+    assert.equal(ui.editor.note.content, "External A update\n\nA latest", "new owner displays retained append after rejected save");
+    failA = false;
+    await React.act(async () => { ui.editor.onTitleChange(a.id, "New A title"); });
+  }
   await React.act(async () => { t.mock.timers.tick(1000); });
-  assert.equal(ui.editor.note.id, b.id);
-  assert.equal(ui.editor.note.content, "B latest");
+  assert.equal(ui.editor.note.id, remount ? a.id : b.id);
+  assert.equal(ui.editor.note.content, remount ? "External A update\n\nA latest" : "B latest");
   assert.equal(a.content, append ? "External A update\n\nA latest" : "A latest");
   assert.equal(b.content, "B latest");
   assert.equal(readsA, append ? 2 : 1, "only uncached append needs a fresh merge-base read");

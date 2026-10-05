@@ -14,7 +14,7 @@ As a Gristmill user, I want to set up recording and optional integrations.
 
 - The main ControlPanel stays unavailable until onboarding completes. Completion is stored in localStorage.
 - Microphone access is required to continue. System audio and Accessibility are optional in this flow.
-- The provider step configures transcription, not Chat or Summary. A pending secure save may finish, but its result changes routing and advances the step only while the same configuration and mounted step still own that operation.
+- The provider step configures transcription, not Chat or Summary. Continue and Proceed share one in-flight secure save. The footer is disabled during that save, and a failed save permits Retry. A pending secure save may finish, but its result changes routing and advances the step only while the same configuration and mounted step still own that operation.
 - An empty language selection does not block Continue. Calendar connection is optional.
 - A restart begins the flow again if it is incomplete; the current step is not persisted.
 - Normal Finish opens the main view. The flow does not request automatic Settings opening.

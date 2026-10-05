@@ -93,10 +93,10 @@ export function ByokProviderStep({
   const [isSaving, setIsSaving] = useState(false);
   const latestDraft = useRef<OnboardingByokDraft | null>(null);
   const saveGeneration = useRef(0);
+  const saveInFlight = useRef(false);
   const mounted = useRef(true);
   const invalidateSave = useCallback(() => {
     saveGeneration.current++;
-    setIsSaving(false);
   }, []);
   useEffect(() => {
     mounted.current = true;
@@ -154,7 +154,9 @@ export function ByokProviderStep({
     [invalidateSave, onConnectionChange, providers, store]
   );
 
-  const commitAndProceed = async () => {
+  const commitAndProceed = useCallback(async () => {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
     const generation = ++saveGeneration.current;
     const isCurrent = () => mounted.current && saveGeneration.current === generation;
     setIsSaving(true);
@@ -184,13 +186,12 @@ export function ByokProviderStep({
     } catch {
       if (isCurrent()) setSaveError(true);
     } finally {
-      if (isCurrent()) setIsSaving(false);
+      saveInFlight.current = false;
+      if (mounted.current) setIsSaving(false);
     }
-  };
-  // The footer's Continue runs the same confirmed transition as Proceed; a
-  // failed secure save stays on the step. Assigned during render so the
-  // parent's footer always holds the current commit (TopBar-props pattern).
-  onFooterContinue?.(commitAndProceed, isSaving);
+  }, [draftApiKey, draftBaseUrl, draftCustomModel, onProceed, selectedModel, selectedProvider, selfHosted, store]);
+  // Publish footer state after render; duplicate clicks are guarded synchronously.
+  useEffect(() => { onFooterContinue?.(commitAndProceed, isSaving); }, [commitAndProceed, isSaving, onFooterContinue]);
 
   return (
     <section className="mx-auto mt-5 w-full max-w-[30rem] rounded-[1.125rem] border border-[var(--onboarding-control-border)] bg-[var(--onboarding-surface)] px-3 py-4">

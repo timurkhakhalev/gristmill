@@ -39,6 +39,10 @@ export type MessageRole = z.infer<typeof messageRoleSchema>;
 // renderer sends the structured payload and the DB layer serializes it
 // (`metadata ? JSON.stringify(metadata) : null`). Main and preload never
 // parse or re-wrap it — the renderer owns the toolCalls interpretation.
+// The wire payload carries the agent toolCalls the chat UI writes and reads;
+// anything else is dropped by the parse instead of crossing as unknown.
+// Tool metadata is the note-tool payload (id/title) or the search_notes hit
+// list — both are read defensively by the renderer's card extraction.
 export const messageRowSchema = z.object({
   id: nonNegativeInt,
   conversation_id: nonNegativeInt,
@@ -155,7 +159,16 @@ export interface ChatPersistenceApi {
     conversationId: number,
     role: MessageRole,
     content: string,
-    metadata?: Record<string, unknown>
+    metadata?: {
+      toolCalls?: Array<{
+        id: string;
+        name: string;
+        arguments: string;
+        status: "executing" | "completed" | "error";
+        result?: string;
+        metadata?: { id?: unknown; title?: unknown } | Array<{ id?: unknown; title?: unknown }>;
+      }>;
+    }
   ): Promise<MessageRow | null>;
   getAgentMessages(conversationId: number): Promise<MessageRow[]>;
   getAgentConversationsWithPreview(

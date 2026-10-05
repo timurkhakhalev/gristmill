@@ -43,14 +43,9 @@ import {
   type MeetingNotificationData,
 } from "../contracts/meetingCoordinator.js";
 import type { ZodType } from "zod";
-import { z } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  send(channel: string, ...args: unknown[]): void;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
+import { z } from "zod";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -72,6 +67,8 @@ function subscribe<T>(
 ): () => void {
   const listener = (_event: unknown, payload: unknown) => {
     if (schema === null) {
+      // SAFETY: the schema-less subscription is only used for void pings;
+      // undefined is the declared deliverable for those channels.
       deliver(undefined as T);
 
       return;
@@ -272,9 +269,8 @@ export function createMeetingCoordinatorBridge(
         initial
       ),
     getMeetingNotificationData: () =>
-      // Validated shape boundary-cast to the shared discriminated DTO: the
-      // renderer compiles this file with strictNullChecks off, where the
-      // null-union keys of the parsed output no longer line up textually.
+      // SAFETY: the schema already validated the discriminated DTO; the cast
+      // bridges the renderer's strictNullChecks-off view of the null union.
       invokeParse(
         meetingNotificationDataSchema.nullable(),
         meetingCoordinatorChannels.getMeetingNotificationData
@@ -285,7 +281,7 @@ export function createMeetingCoordinatorBridge(
         meetingCoordinatorChannels.getPendingMeetingNoteNavigation
       ),
     meetingNotificationReady: () =>
-      ipcRenderer.invoke(meetingCoordinatorChannels.meetingNotificationReady),
+      ipcRenderer.invoke(meetingCoordinatorChannels.meetingNotificationReady).then(() => undefined),
     registerMeetingHotkey: (hotkey) =>
       invokeParse(
         registerMeetingHotkeyResultSchema,

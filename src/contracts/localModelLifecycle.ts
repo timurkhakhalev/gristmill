@@ -49,9 +49,41 @@ export const downloadProgressEventSchema = z.object({
 
 export type DownloadProgressEvent = z.infer<typeof downloadProgressEventSchema>;
 
-// Manager result shapes as they cross the wire. The index signature keeps the
-// renderer's non-strict consumers working while pinning the fields every
-// consumer reads.
+// The VAD wire config: the settings owner sanitizes to these numeric keys and
+// both get/set return the sanitized merged view.
+export const whisperVadConfigSchema = z.object({
+  threshold: z.number(),
+  minSpeechDurationMs: z.number(),
+  minSilenceDurationMs: z.number(),
+  maxSpeechDurationS: z.number(),
+  speechPadMs: z.number(),
+  samplesOverlap: z.number(),
+});
+
+export type WhisperVadConfig = z.infer<typeof whisperVadConfigSchema>;
+
+export const whisperVadWireConfigSchema = whisperVadConfigSchema.extend({
+  noteRecordingSileroEnabled: z.boolean(),
+  meetingSileroEnabled: z.boolean(),
+});
+
+export type WhisperVadWireConfig = z.infer<typeof whisperVadWireConfigSchema>;
+
+export const whisperVadResultSchema = z.object({
+  success: z.boolean(),
+  config: whisperVadWireConfigSchema.optional(),
+  error: z.string().optional(),
+});
+
+export type WhisperVadResult = z.infer<typeof whisperVadResultSchema>;
+
+// The renderer sends sanitized numeric fields plus the Silero toggles; the
+// settings owner filters unknown keys before the write.
+export type WhisperVadConfigUpdate = Partial<WhisperVadWireConfig>;
+
+// Loose native/manager rows as they cross the wire. The renderer only reads
+// the fields below; managers return plain objects with exactly these names
+// (whisper.ts / parakeet.ts / modelManagerBridge.ts).
 export interface LocalModelStatusRow {
   model: string;
   downloaded: boolean;
@@ -64,14 +96,14 @@ export interface LocalModelStatusRow {
   downloadProgress?: number;
   downloadedBytes?: number;
   totalBytes?: number;
-  [key: string]: unknown;
+  error?: string;
+  code?: string;
 }
 
 export interface LocalModelListResult {
   success: boolean;
   models: LocalModelStatusRow[];
   cache_dir: string;
-  [key: string]: unknown;
 }
 
 export interface LocalModelActionResult {
@@ -87,7 +119,6 @@ export interface LocalModelActionResult {
   path?: string;
   size_bytes?: number;
   size_mb?: number;
-  [key: string]: unknown;
 }
 
 export interface InstallCheckResult {
@@ -97,7 +128,6 @@ export interface InstallCheckResult {
   code?: string;
   message?: string;
   path?: string;
-  [key: string]: unknown;
 }
 
 export interface ServerLifecycleResult {
@@ -106,7 +136,6 @@ export interface ServerLifecycleResult {
   error?: string;
   port?: number;
   code?: string;
-  [key: string]: unknown;
 }
 
 export interface ServerStatusResult {
@@ -118,32 +147,32 @@ export interface ServerStatusResult {
   isRemote?: boolean;
   modelPath?: string | null;
   modelName?: string | null;
-  [key: string]: unknown;
 }
 
 export interface FfmpegAvailabilityResult {
   available: boolean;
   path?: string | null;
   error?: string | null;
-  [key: string]: unknown;
-}
-
-export interface VadConfigResult {
-  success: boolean;
-  config?: Record<string, unknown>;
-  error?: string;
-  [key: string]: unknown;
 }
 
 export interface DiagnosticsResult {
   platform?: string;
   arch?: string;
   modelsDir?: string;
-  models?: unknown[];
-  ffmpeg?: Record<string, unknown>;
-  whisperServer?: Record<string, unknown>;
-  sherpaOnnx?: Record<string, unknown>;
-  [key: string]: unknown;
+  models?: string[];
+  ffmpeg?: {
+    available: boolean;
+    path: string | null;
+    error: string | null;
+  };
+  whisperServer?: {
+    available: boolean;
+    path: string | null;
+  };
+  sherpaOnnx?: {
+    available: boolean;
+    path: string | null;
+  };
 }
 
 export interface LocalModelLifecycleApi {
@@ -160,8 +189,8 @@ export interface LocalModelLifecycleApi {
   whisperServerStatus(): Promise<ServerStatusResult>;
   checkFfmpegAvailability(): Promise<FfmpegAvailabilityResult>;
   getAudioDiagnostics(): Promise<DiagnosticsResult>;
-  getWhisperVadConfig(): Promise<VadConfigResult>;
-  setWhisperVadConfig(config: Record<string, unknown>): Promise<VadConfigResult>;
+  getWhisperVadConfig(): Promise<WhisperVadResult>;
+  setWhisperVadConfig(config: WhisperVadConfigUpdate): Promise<WhisperVadResult>;
   checkParakeetInstallation(): Promise<InstallCheckResult>;
   downloadParakeetModel(modelName: string): Promise<LocalModelActionResult>;
   onParakeetDownloadProgress(callback: (data: DownloadProgressEvent) => void): () => void;
@@ -172,7 +201,7 @@ export interface LocalModelLifecycleApi {
   cancelParakeetDownload(): Promise<ServerLifecycleResult>;
   getParakeetDiagnostics(): Promise<DiagnosticsResult>;
   parakeetServerStart(modelName: string): Promise<ServerLifecycleResult>;
-  parakeetServerStop(): Promise<unknown>;
+  parakeetServerStop(): Promise<void>;
   parakeetServerStatus(): Promise<ServerStatusResult>;
 }
 

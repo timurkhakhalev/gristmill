@@ -225,11 +225,29 @@ export const calendarSyncedEventSchema = z.object({}).strict();
 
 // --- Wire projection helpers ----------------------------------------------------
 
-function asStringOrNull(value: unknown): string | null {
+// Calendar rows arrive from SQLite through the JS database layer, so the
+// projection input is a record of unknown column values. The coercion helpers
+// below are the boundary: each field is read through one named function that
+// returns a schema-shaped value, and the schema parse has the final word.
+interface UnknownRecord {
+  [key: string]: unknown;
+}
+
+function asRecord(row: unknown): UnknownRecord | null {
+  if (typeof row !== "object" || row === null || Array.isArray(row)) return null;
+
+  return row as UnknownRecord;
+}
+
+function asStringOrNull(record: UnknownRecord, key: string): string | null {
+  const value = record[key];
+
   return typeof value === "string" ? value : null;
 }
 
-function asInt(value: unknown): number | null {
+function asIntOrNull(record: UnknownRecord, key: string): number | null {
+  const value = record[key];
+
   return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
@@ -237,27 +255,28 @@ function asInt(value: unknown): number | null {
 // that does not survive the schema is dropped (null) — a malformed successful
 // payload must never pass as a valid event.
 export function projectCalendarEvent(row: unknown): CalendarEvent | null {
-  if (typeof row !== "object" || row === null) return null;
-  const record = row as Record<string, unknown>;
+  const record = asRecord(row);
+
+  if (record === null) return null;
 
   const parsed = calendarEventSchema.safeParse({
     id: record.id,
     calendar_id: record.calendar_id,
     provider: record.provider,
-    summary: asStringOrNull(record.summary),
+    summary: asStringOrNull(record, "summary"),
     start_time: record.start_time,
     end_time: record.end_time,
-    is_all_day: asInt(record.is_all_day),
+    is_all_day: asIntOrNull(record, "is_all_day"),
     status: record.status,
     availability_status: record.availability_status,
     self_response_status: record.self_response_status,
-    hangout_link: asStringOrNull(record.hangout_link),
-    conference_data: asStringOrNull(record.conference_data),
-    event_url: asStringOrNull(record.event_url),
-    organizer_email: asStringOrNull(record.organizer_email),
-    attendees_count: asInt(record.attendees_count),
-    attendees: asStringOrNull(record.attendees),
-    description: asStringOrNull(record.description),
+    hangout_link: asStringOrNull(record, "hangout_link"),
+    conference_data: asStringOrNull(record, "conference_data"),
+    event_url: asStringOrNull(record, "event_url"),
+    organizer_email: asStringOrNull(record, "organizer_email"),
+    attendees_count: asIntOrNull(record, "attendees_count"),
+    attendees: asStringOrNull(record, "attendees"),
+    description: asStringOrNull(record, "description"),
   });
 
   return parsed.success ? parsed.data : null;
@@ -266,17 +285,18 @@ export function projectCalendarEvent(row: unknown): CalendarEvent | null {
 // The calendar list keeps the selection/description fields the settings UI
 // reads and drops the sync-token columns the manager owns.
 export function projectGoogleCalendarSummary(row: unknown): GoogleCalendarSummary | null {
-  if (typeof row !== "object" || row === null) return null;
-  const record = row as Record<string, unknown>;
+  const record = asRecord(row);
+
+  if (record === null) return null;
 
   const parsed = googleCalendarSummarySchema.safeParse({
     id: record.id,
-    account_email: asStringOrNull(record.account_email),
+    account_email: asStringOrNull(record, "account_email"),
     summary: record.summary,
-    description: asStringOrNull(record.description),
-    background_color: asStringOrNull(record.background_color),
-    is_selected: asInt(record.is_selected),
-    is_primary: asInt(record.is_primary),
+    description: asStringOrNull(record, "description"),
+    background_color: asStringOrNull(record, "background_color"),
+    is_selected: asIntOrNull(record, "is_selected"),
+    is_primary: asIntOrNull(record, "is_primary"),
   });
 
   return parsed.success ? parsed.data : null;

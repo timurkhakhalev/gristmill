@@ -16,15 +16,10 @@ import {
   bedrockModelsResultSchema,
   tinfoilChatModelsResultSchema,
   type TranscriptionExecutionApi,
-  type ProxyTranscriptionResult,
-  type RetryTranscriptionResult,
-  type TranscriptionResponse,
 } from "../contracts/transcriptionExecution.js";
 import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -51,44 +46,44 @@ export function createTranscriptionExecutionBridge(
         transcriptionExecutionChannels.transcribeLocalWhisper,
         audioBlob,
         options
-      ) as Promise<TranscriptionResponse>,
+      ),
     transcribeLocalParakeet: (audioBlob, options?) =>
       invokeParse(
         transcriptionResponseSchema,
         transcriptionExecutionChannels.transcribeLocalParakeet,
         audioBlob,
         options
-      ) as Promise<TranscriptionResponse>,
+      ),
     proxyXaiTranscription: (data) =>
       invokeParse(
         proxyTranscriptionResultSchema,
         transcriptionExecutionChannels.proxyXaiTranscription,
         data
-      ) as Promise<ProxyTranscriptionResult>,
+      ),
     proxyMistralTranscription: (data) =>
       invokeParse(
         proxyTranscriptionResultSchema,
         transcriptionExecutionChannels.proxyMistralTranscription,
         data
-      ) as Promise<ProxyTranscriptionResult>,
+      ),
     proxyCortiTranscription: (data) =>
       invokeParse(
         proxyTranscriptionResultSchema,
         transcriptionExecutionChannels.proxyCortiTranscription,
         data
-      ) as Promise<ProxyTranscriptionResult>,
+      ),
     proxyTinfoilTranscription: (data) =>
       invokeParse(
         proxyTranscriptionResultSchema,
         transcriptionExecutionChannels.proxyTinfoilTranscription,
         data
-      ) as Promise<ProxyTranscriptionResult>,
+      ),
     proxyGeminiTranscription: (data) =>
       invokeParse(
         proxyTranscriptionResultSchema,
         transcriptionExecutionChannels.proxyGeminiTranscription,
         data
-      ) as Promise<ProxyTranscriptionResult>,
+      ),
     saveTempAudio: (buffer) =>
       invokeParse(saveTempAudioResultSchema, transcriptionExecutionChannels.saveTempAudio, buffer),
     deleteTempAudio: (tempPath) =>
@@ -103,7 +98,7 @@ export function createTranscriptionExecutionBridge(
         transcriptionExecutionChannels.retryTranscription,
         id,
         settings
-      ) as Promise<RetryTranscriptionResult>,
+      ),
     testProviderConnection: (config) =>
       invokeParse(
         providerConnectionResultSchema,

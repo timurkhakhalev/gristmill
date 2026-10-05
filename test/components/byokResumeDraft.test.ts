@@ -205,6 +205,7 @@ async function setupRealPair(
     selfHosted?: boolean;
   }
 ) {
+  (globalThis as Record<string, unknown>).__realPairButtons = [];
   // A fresh server: the earlier tests' cached one maps /ProviderConnectionTest
   // to a config-capture stub, and module graphs can't be re-mapped.
   const vite = await createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) } as unknown as import("node:test").TestContext, {
@@ -391,7 +392,7 @@ async function setupRealPair(
   const findButton = (label: string) => {
     const node = findNodes(capturedTree.tree, (n) => typeof n.props?.onClick === "function" && textOf(n.props?.children).includes(label))[0];
     if (node) return { click: () => (node.props!.onClick as () => void)() };
-    const match = buttonsNow().find((b) => textOf(b.children).includes(label));
+    const match = [...buttonsNow()].reverse().find((b) => textOf(b.children).includes(label));
     return match && !match.disabled ? { click: () => match.onClick?.() } : null;
   };
 

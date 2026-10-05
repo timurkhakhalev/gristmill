@@ -89,6 +89,30 @@
       }
     },
     {
+      "files": ["src/helpers/ipcHandlers.ts"],
+      "rules": {
+        "quality/no-chained-type-assertions": "off",
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unsafe-dictionary-type": "off"
+      }
+    },
+    {
+      "files": [
+        "src/helpers/localFileTranscription.ts",
+        "src/helpers/localFileTranscriptionIpcHandler.ts"
+      ],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off"
+      }
+    },
+    {
+      "files": ["src/helpers/whisperVadConfig.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": ["src/contracts/calendar.ts"],
       "rules": {
         "quality/no-unknown-parameters": "off",

@@ -22,14 +22,12 @@ import {
   type EnterpriseStreamEnvelope,
   type ReasoningApi,
 } from "../contracts/reasoning.js";
+import { z } from "zod";
 import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  send(channel: string, ...args: unknown[]): void;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
+
+const zBoolean = z.boolean();
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -44,6 +42,9 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
 // The return type is the shared ReasoningApi, so any drift between this
 // implementation and the contract fails compilation.
 export function createReasoningBridge(ipcRenderer: IpcRendererLike): ReasoningApi {
+  const invokeParse = <T>(schema: ZodType<T>, channel: string, ...args: unknown[]): Promise<T> =>
+    ipcRenderer.invoke(channel, ...args).then((raw) => parseResult(schema, raw, channel));
+
   return {
     processLocalReasoning: (
       text: string,
@@ -58,16 +59,7 @@ export function createReasoningBridge(ipcRenderer: IpcRendererLike): ReasoningAp
         ),
 
     checkLocalReasoningAvailable: (): Promise<boolean> =>
-      ipcRenderer.invoke(reasoningChannels.checkLocalReasoningAvailable).then((raw) => {
-        if (typeof raw !== "boolean") {
-          throw new Error(
-            `Unexpected response shape from ${reasoningChannels.checkLocalReasoningAvailable}`
-          );
-        }
-
-        return raw;
-      }),
-
+      invokeParse(zBoolean, reasoningChannels.checkLocalReasoningAvailable),
     processAnthropicReasoning: (
       text: string,
       modelId: string,

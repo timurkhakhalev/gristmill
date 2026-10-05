@@ -14,13 +14,10 @@ import {
   previewConversationListResultSchema,
   successResultSchema,
   type ChatPersistenceApi,
-  type MessageRole,
 } from "../contracts/chatPersistence.js";
 import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -107,12 +104,7 @@ export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatP
             chatPersistenceChannels.updateAgentConversationTitle
           )
         ),
-    addAgentMessage: (
-      conversationId: number,
-      role: MessageRole,
-      content: string,
-      metadata?: Record<string, unknown>
-    ) =>
+    addAgentMessage: (conversationId, role, content, metadata) =>
       ipcRenderer
         .invoke(chatPersistenceChannels.addAgentMessage, conversationId, role, content, metadata)
         .then((raw) =>

@@ -4,9 +4,15 @@
 // into IPC failure shapes. The actual read+dispatch lives in the shared
 // localFileTranscription module so the CLI bridge uses the same execution
 // path.
+import { z } from "zod";
 import type { ZodType } from "zod";
+
+const zString = z.string();
+
 import {
+  transcriptionOptionsSchema,
   transcriptionResponseSchema,
+  type TranscriptionOptions,
   type TranscriptionResponse,
 } from "../contracts/localFileTranscription.js";
 import { transcribeLocalFile } from "./localFileTranscription.js";
@@ -15,9 +21,12 @@ export interface TranscriptionHandlerDeps {
   readFile: (filePath: string) => Buffer;
   resolveAllowedAudioPath: (filePath: string) => string | null;
   isSherpaLocalProvider: (provider: unknown) => boolean;
-  transcribeLocalWhisper: (audioBuffer: Buffer, options: unknown) => unknown;
-  transcribeLocalParakeet: (audioBuffer: Buffer, options: unknown) => unknown;
-  resolveWhisperVadOptions: (context: string) => unknown;
+  transcribeLocalWhisper: (audioBuffer: Buffer, options: TranscriptionOptions) => unknown;
+  transcribeLocalParakeet: (audioBuffer: Buffer, options: TranscriptionOptions) => unknown;
+  resolveWhisperVadOptions: (context: string) => {
+    vadEnabled: boolean;
+    vadConfig: Record<string, number>;
+  };
   // The shared registry instance — one per app, never per request.
   uploadCancelRegistry: {
     register: (requestId: unknown) => { signal: AbortSignal | undefined; release: () => void };
@@ -49,25 +58,41 @@ export function registerLocalFileTranscriptionHandler(
       // The old JS default (`options = {}`) applied only to undefined; an
       // explicit null reached options.requestId and threw before any read —
       // keep rejecting it instead of accepting it as an empty config.
-      const options = args[1] === undefined ? {} : (args[1] as Record<string, unknown>);
+      const optionsArg = args[1] === undefined ? {} : args[1];
+      const parsedOptions = transcriptionOptionsSchema.safeParse(optionsArg);
+
+      if (!parsedOptions.success) {
+        return {
+          success: false,
+          error: "Invalid transcription options",
+          code: "INVALID_OPTIONS",
+        };
+      }
+
+      const options: TranscriptionOptions = parsedOptions.data;
+
       // Uploads pass a requestId so cancel-upload-transcription can abort the
       // local decode; flows without one (voice drafts) register nothing.
       const { signal, release } = deps.uploadCancelRegistry.register(options.requestId);
 
       try {
-        if (typeof filePath !== "string") {
+        const parsedPath = zString.safeParse(filePath);
+
+        if (!parsedPath.success) {
           return { success: false, error: "Invalid file path" };
         }
 
-        const real = deps.resolveAllowedAudioPath(filePath);
+        const real = deps.resolveAllowedAudioPath(parsedPath.data);
 
         if (!real) return { success: false, error: "File path not allowed" };
 
         return parseResponse(
           transcriptionResponseSchema,
-          await transcribeLocalFile(deps, real, { ...options, signal })
+          await transcribeLocalFile(deps, real, options, signal)
         );
       } catch (error) {
+        // SAFETY: only Error-shaped rejections reach this catch; the optional
+        // reads just probe the conventional fields.
         const err = error as { name?: string; message?: string };
 
         if (err?.name === "AbortError" || signal?.aborted) {

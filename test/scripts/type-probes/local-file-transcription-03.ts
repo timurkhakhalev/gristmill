@@ -13,15 +13,18 @@ registerLocalFileTranscriptionHandler(ipcMain, {
   readFile: (p: string) => Buffer.from(p),
   resolveAllowedAudioPath: (p: string) => (p.endsWith(".wav") ? p : null),
   isSherpaLocalProvider: (provider: unknown) => provider === "nvidia",
-  transcribeLocalWhisper: (buffer: Buffer, options: unknown) => {
+  transcribeLocalWhisper: (buffer, options) => {
     void options;
     return { success: true, text: buffer.toString() };
   },
-  transcribeLocalParakeet: (buffer: Buffer, options: unknown) => {
+  transcribeLocalParakeet: (buffer, options) => {
     void options;
     return { success: true, text: buffer.toString(), warning: "truncated" };
   },
-  resolveWhisperVadOptions: (context: string) => ({ vadEnabled: context === "noteRecording" }),
+  resolveWhisperVadOptions: (context: string) => ({
+    vadEnabled: context === "noteRecording",
+    vadConfig: {},
+  }),
   uploadCancelRegistry: {
     register: (id: unknown) => {
       void id;
@@ -34,6 +37,9 @@ registerLocalFileTranscriptionHandler(ipcMain, {
 
 declare const ipcRendererLike: {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  send(channel: string, ...args: unknown[]): void;
+  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
+  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 };
 const bridge = createLocalFileTranscriptionBridge(ipcRendererLike);
 async function useResponse(): Promise<number> {

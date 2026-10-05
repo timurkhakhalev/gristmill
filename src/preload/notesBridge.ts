@@ -1,4 +1,6 @@
 import { noteOutputSchema } from "../contracts/noteOutput.js";
+
+import { subscribeDropped, type IpcRendererLike } from "./ipcTransport.js";
 // Renderer-facing Notes bridge. Operations and subscriptions have one typed
 // implementation backed by
 // the shared contract. The sandboxed preload can't require local modules, so
@@ -21,12 +23,6 @@ import {
 } from "../contracts/notes.js";
 import { z, type ZodType } from "zod";
 import { noteTranscriptSchema } from "../contracts/noteRead.js";
-
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-}
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -151,31 +147,26 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
 // dropped (diagnosed without note content) instead of handed to the renderer,
 // and the next valid event still gets through. The Electron event object is
 // never forwarded.
+// Delegates to the shared transport helper: the callback guard, the listener
+// cast and the unsubscribe live in src/preload/ipcTransport.ts.
 function subscribeValidated<T>(
   ipcRenderer: IpcRendererLike,
   channel: string,
   schema: ZodType<T>,
   callback: (payload: T) => void
 ): () => void {
-  if (typeof callback !== "function") {
-    return () => {};
-  }
+  return subscribeDropped(
+    ipcRenderer,
+    channel,
+    (raw) => {
+      const result = schema.safeParse(raw);
 
-  const listener = (_event: unknown, data: unknown) => {
-    const result = schema.safeParse(data);
+      if (result.success) return result.data;
 
-    if (!result.success) {
       console.error(`[notesBridge] dropped malformed ${channel} event`);
 
-      return;
-    }
-
-    callback(result.data);
-  };
-
-  ipcRenderer.on(channel, listener as (event: unknown, ...args: unknown[]) => void);
-
-  return () => {
-    ipcRenderer.removeListener(channel, listener as (event: unknown, ...args: unknown[]) => void);
-  };
+      return undefined;
+    },
+    callback
+  );
 }

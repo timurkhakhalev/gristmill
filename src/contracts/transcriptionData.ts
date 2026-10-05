@@ -225,7 +225,6 @@ export interface TranscriptionDataApi {
       errorCode?: string | null;
       clientTranscriptionId?: string;
       analyticsOccurredAt?: string;
-      [key: string]: unknown;
     }
   ): Promise<TranscriptionSaveResult>;
   getTranscriptions(

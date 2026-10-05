@@ -66,7 +66,6 @@ export interface LocalLlmModelStatus {
   downloadedSize: number;
   totalSize: number;
   path: string | null;
-  [key: string]: unknown;
 }
 
 // Wire shape of the shared native/LLM download status tracker rows.
@@ -84,8 +83,7 @@ export interface LlmActionResult {
   success: boolean;
   error?: string;
   code?: string;
-  details?: unknown;
-  [key: string]: unknown;
+  details?: string;
 }
 
 export interface LlmDownloadResult extends LlmActionResult {
@@ -96,22 +94,19 @@ export interface LlmRuntimeCheckResult {
   available: boolean;
   error?: string;
   code?: string;
-  details?: unknown;
-  [key: string]: unknown;
+  details?: string;
 }
 
 export interface LlamaCppCheckResult {
   isInstalled: boolean;
   version?: string | null;
   error?: string;
-  [key: string]: unknown;
 }
 
 export interface LlamaServerStartResult {
   success: boolean;
   port?: number;
   error?: string;
-  [key: string]: unknown;
 }
 
 export type LlamaBackend = "cpu" | "metal" | null;
@@ -123,7 +118,6 @@ export interface LlamaServerStatusRow {
   modelPath: string | null;
   modelName: string | null;
   backend: LlamaBackend;
-  [key: string]: unknown;
 }
 
 export interface LocalLlmModelsApi {

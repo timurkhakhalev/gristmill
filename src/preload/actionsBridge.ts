@@ -20,11 +20,7 @@ import {
 } from "../contracts/actions.js";
 import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-}
+import { subscribeDropped, type IpcRendererLike } from "./ipcTransport.js";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -36,33 +32,28 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   return result.data;
 }
 
+// Delegates to the shared transport helper: the callback guard, the listener
+// cast and the unsubscribe live in src/preload/ipcTransport.ts.
 function subscribeValidated<T>(
   ipcRenderer: IpcRendererLike,
   channel: string,
   schema: ZodType<T>,
   callback: (payload: T) => void
 ): () => void {
-  if (typeof callback !== "function") {
-    return () => {};
-  }
+  return subscribeDropped(
+    ipcRenderer,
+    channel,
+    (raw) => {
+      const result = schema.safeParse(raw);
 
-  const listener = (_event: unknown, data: unknown) => {
-    const result = schema.safeParse(data);
+      if (result.success) return result.data;
 
-    if (!result.success) {
       console.error(`[actionsBridge] dropped malformed ${channel} event`);
 
-      return;
-    }
-
-    callback(result.data);
-  };
-
-  ipcRenderer.on(channel, listener as (event: unknown, ...args: unknown[]) => void);
-
-  return () => {
-    ipcRenderer.removeListener(channel, listener as (event: unknown, ...args: unknown[]) => void);
-  };
+      return undefined;
+    },
+    callback
+  );
 }
 
 // The return type is the shared ActionsApi, so any drift between this

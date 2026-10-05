@@ -37,15 +37,7 @@ const registerListener = <T>(
   ) => (event: IpcRendererEvent, ...args: unknown[]) => void
 ): ((callback: (data: T) => void) => Unsubscribe) => {
   return (callback) => {
-    if (typeof callback !== "function") {
-      return () => {};
-    }
-
-    const listener =
-      typeof handlerFactory === "function"
-        ? handlerFactory(callback)
-        : (event: IpcRendererEvent, ...args: unknown[]) =>
-            (callback as (...args: unknown[]) => void)(event, ...args);
+    const listener = handlerFactory(callback);
 
     ipcRenderer.on(channel, listener);
 
@@ -118,6 +110,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   onMainWindowHorizontalDirectionChanged: registerListener<"left" | "right">(
     "main-window-horizontal-direction-changed",
+    // SAFETY: main owns the producer and stamps only the two direction values.
     (callback) => (_event, direction) => callback(direction as "left" | "right")
   ),
   onMainWindowWillResize: registerListener<{
@@ -126,6 +119,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   }>(
     "main-window-will-resize",
     (callback) => (_event, resize) =>
+      // SAFETY: main owns the producer; the payload is the declared resize
+      // envelope and the cast re-voices it for the callback parameter.
       callback(
         resize as {
           bounds: Electron.Rectangle;
@@ -219,6 +214,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("floating-icon-auto-hide-changed", enabled),
   onFloatingIconAutoHideChanged: registerListener<boolean>(
     "floating-icon-auto-hide-changed",
+    // SAFETY: main owns the producer and always sends the boolean flag.
     (callback) => (_event, enabled) => callback(enabled as boolean)
   ),
 

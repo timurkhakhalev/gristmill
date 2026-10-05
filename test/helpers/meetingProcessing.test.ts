@@ -1334,6 +1334,7 @@ test("Finish IPC owns chronology, saved config, empty sources and repeated-Finis
 
   const bridge = createMeetingProcessingBridge({
     invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args),
+    send() {},
     on() {},
     removeListener() {},
   });
@@ -1861,6 +1862,7 @@ test("preload validates blocked-run config correction before invoking main", asy
 
       return { success: false, error: "rejected" };
     },
+    send() {},
     on() {},
     removeListener() {},
   });
@@ -3916,6 +3918,7 @@ test("speaker-to-calendar linking crosses IPC, survives restart and enriches onl
 
   const bridge = createMeetingProcessingBridge({
     invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args),
+    send() {},
     on: () => {},
     removeListener: () => {},
   });
@@ -4274,6 +4277,7 @@ test("cancel IPC persists the stopped gate and preserves source audio", async (t
 
   const bridge = createMeetingProcessingBridge({
     invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args),
+    send() {},
     on: () => {},
     removeListener: () => {},
   });
@@ -5308,6 +5312,7 @@ for (const summaryOnly of [false, true]) {
 
     const bridge = createMeetingProcessingBridge({
       invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args),
+      send() {},
       on: () => {},
       removeListener: () => {},
     });

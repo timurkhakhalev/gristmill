@@ -15,21 +15,23 @@ import {
   type LocalModelStatusRow,
   type ServerLifecycleResult,
   type ServerStatusResult,
-  type VadConfigResult,
+  type WhisperVadResult,
 } from "../contracts/localModelLifecycle.js";
+import { z } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
 
 // The main-side handlers are the only producers of these channels and are
 // strict-typed against the same contract interfaces; this single narrowing at
 // the deserialization boundary therefore adds no new trust — it rejects
 // non-object junk and keeps the shared result types.
+const objectSchema = z.record(z.string(), z.unknown());
+
 function passthroughResult<T extends object>(raw: unknown, channel: string): T {
-  if (typeof raw === "object" && raw !== null) {
+  if (objectSchema.safeParse(raw).success) {
+    // SAFETY: the record parse above rejected non-object transport junk, and
+    // the main-side handlers are strict-typed against these same contract
+    // interfaces — the assertion re-voices the checked result shape.
     return raw as T;
   }
 
@@ -97,9 +99,9 @@ export function createLocalModelLifecycleBridge(
     getAudioDiagnostics: () =>
       passthroughInvoke<DiagnosticsResult>(ipcRenderer, c.getAudioDiagnostics),
     getWhisperVadConfig: () =>
-      passthroughInvoke<VadConfigResult>(ipcRenderer, c.whisperVadGetConfig),
+      passthroughInvoke<WhisperVadResult>(ipcRenderer, c.whisperVadGetConfig),
     setWhisperVadConfig: (config) =>
-      passthroughInvoke<VadConfigResult>(ipcRenderer, c.whisperVadSetConfig, config),
+      passthroughInvoke<WhisperVadResult>(ipcRenderer, c.whisperVadSetConfig, config),
     checkParakeetInstallation: () =>
       passthroughInvoke<InstallCheckResult>(ipcRenderer, c.checkParakeetInstallation),
     downloadParakeetModel: (modelName: string) =>
@@ -120,7 +122,7 @@ export function createLocalModelLifecycleBridge(
       passthroughInvoke<DiagnosticsResult>(ipcRenderer, c.getParakeetDiagnostics),
     parakeetServerStart: (modelName: string) =>
       passthroughInvoke<ServerLifecycleResult>(ipcRenderer, c.parakeetServerStart, modelName),
-    parakeetServerStop: () => ipcRenderer.invoke(c.parakeetServerStop) as Promise<unknown>,
+    parakeetServerStop: () => ipcRenderer.invoke(c.parakeetServerStop).then(() => undefined),
     parakeetServerStatus: () =>
       passthroughInvoke<ServerStatusResult>(ipcRenderer, c.parakeetServerStatus),
   };

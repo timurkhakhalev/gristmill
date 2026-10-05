@@ -25,6 +25,9 @@ registerCalendarAvailabilityHandler(ipcMain, {
 
 declare const ipcRendererLike: {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  send(channel: string, ...args: unknown[]): void;
+  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
+  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 };
 const bridge = createCalendarAvailabilityBridge(ipcRendererLike);
 async function useResponse(): Promise<string[]> {

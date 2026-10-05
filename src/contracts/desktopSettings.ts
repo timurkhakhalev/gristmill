@@ -17,6 +17,28 @@ export const saveKeyResultSchema = z
 
 export type SaveKeyWireResult = z.infer<typeof saveKeyResultSchema>;
 
+// The hotkey slot registration outcome (hotkeyManager.registerSlot) and the
+// control-panel drag operation outcome (DragManager) as they cross the wire.
+export const hotkeyRegistrationResultSchema = z.object({
+  success: z.boolean(),
+  hotkey: z.string().optional(),
+  hotkeys: z.array(z.string()).optional(),
+  failures: z.array(z.object({ hotkey: z.string(), error: z.string().optional() })).optional(),
+  error: z.string().optional(),
+  reason: z.string().optional(),
+  suggestions: z.array(z.string()).optional(),
+  conflictSlot: z.string().optional(),
+});
+
+export type HotkeyRegistrationWireResult = z.infer<typeof hotkeyRegistrationResultSchema>;
+
+export const dragOperationResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string().optional(),
+});
+
+export type DragOperationWireResult = z.infer<typeof dragOperationResultSchema>;
+
 export const simpleSuccessSchema = z.object({ success: z.boolean() });
 
 // BYOK credential surface: the getter/setter names come verbatim from the
@@ -335,13 +357,13 @@ export interface DesktopSettingsApi extends ByokKeySurface {
   saveVertexApiKey(key: string): Promise<SaveKeyWireResult>;
   setHotkeyListeningMode(enabled: boolean): Promise<HotkeyListeningWireResult>;
   getHotkeyModeInfo(hotkey?: string): Promise<HotkeyModeInfoWire>;
-  registerCancelHotkey(key: string): Promise<unknown>;
+  registerCancelHotkey(key: string): Promise<HotkeyRegistrationWireResult>;
   unregisterCancelHotkey(): Promise<SaveKeyWireResult>;
   getEffectiveDefaultHotkey(): Promise<string | null>;
   getActivationMode(): Promise<"tap" | "push">;
   saveActivationMode(mode: "tap" | "push"): Promise<SaveKeyWireResult>;
-  startControlPanelDrag(): Promise<unknown>;
-  stopControlPanelDrag(): Promise<unknown>;
+  startControlPanelDrag(): Promise<DragOperationWireResult>;
+  stopControlPanelDrag(): Promise<DragOperationWireResult>;
   openExternal(url: string): Promise<OpenExternalWireResult>;
   getAutoStartEnabled(): Promise<AutoStartStateWire>;
   setAutoStartEnabled(enabled: boolean): Promise<AutoStartSetResultWire>;

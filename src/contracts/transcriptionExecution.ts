@@ -259,25 +259,29 @@ export const transcriptionExecutionChannels = {
 
 // ---- renderer-facing surface ---------------------------------------------------
 
+// Local dictation options as the dictation/file routes actually send them;
+// the handler validates the route through the shared route resolver.
+export interface LocalTranscriptionOptions {
+  provider?: string;
+  model?: string;
+  language?: string;
+  requestId?: string;
+  skipVad?: boolean;
+}
+
+export interface LocalParakeetOptions {
+  model?: string;
+  language?: string;
+}
+
 export interface TranscriptionExecutionApi {
   transcribeLocalWhisper(
     audioBlob: ArrayBuffer,
-    options?: {
-      provider?: string;
-      model?: string;
-      language?: string;
-      requestId?: string;
-      skipVad?: boolean;
-      [key: string]: unknown;
-    }
+    options?: LocalTranscriptionOptions
   ): Promise<TranscriptionResponse>;
   transcribeLocalParakeet(
     audioBlob: ArrayBuffer,
-    options?: {
-      model?: string;
-      language?: string;
-      [key: string]: unknown;
-    }
+    options?: LocalParakeetOptions
   ): Promise<TranscriptionResponse>;
   proxyXaiTranscription?(data: {
     audioBuffer: ArrayBuffer;
@@ -343,9 +347,9 @@ export interface TranscriptionExecutionApi {
   }): Promise<ProviderConnectionResult>;
   testEnterpriseConnection?(
     provider: string,
-    config: Record<string, unknown>
+    config: { model?: string; timeoutMs?: number }
   ): Promise<EnterpriseConnectionResult>;
-  listBedrockModels?(config: Record<string, unknown>): Promise<BedrockModelsResult>;
+  listBedrockModels?(config: { model?: string; timeoutMs?: number }): Promise<BedrockModelsResult>;
   getTinfoilChatModels?(): Promise<
     Array<{ id: string; name: string; description: string; supportsThinking: boolean }>
   >;

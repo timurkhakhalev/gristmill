@@ -17,18 +17,20 @@ import {
   type SpeakerContact,
   type SpeakerMappingEntry,
 } from "../contracts/speakerProfiles.js";
+import { z } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
 
 // The main-side handlers are the only producers of these channels and are
 // strict-typed against the same contract interfaces; this single narrowing at
 // the deserialization boundary therefore adds no new trust.
+const objectSchema = z.record(z.string(), z.unknown());
+
 function passthroughResult<T extends object>(raw: unknown, channel: string): T {
-  if (typeof raw === "object" && raw !== null) {
+  if (objectSchema.safeParse(raw).success) {
+    // SAFETY: the record parse above rejected non-object transport junk, and
+    // the main-side handlers are strict-typed against these same contract
+    // interfaces — the assertion re-voices the checked result shape.
     return raw as T;
   }
 

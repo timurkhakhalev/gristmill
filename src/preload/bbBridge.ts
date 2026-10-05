@@ -9,11 +9,7 @@ import {
 } from "../contracts/bb.js";
 import { z } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  on(channel: string, listener: (event: unknown, payload: unknown) => void): void;
-  removeListener(channel: string, listener: (event: unknown, payload: unknown) => void): void;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
 
 export function createBbBridge(ipc: IpcRendererLike): BbApi {
   return {

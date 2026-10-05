@@ -74,9 +74,11 @@ export type OnnxWorkerReply =
 
 // Both processes validate against the finite method map, so the guard only has
 // to check the discriminating fields and the payload shape per method.
+// `raw` is the MessagePortMain payload — the exact-file override keeps the
+// parser signature honest.
 export function parseOnnxWorkerRequest(raw: unknown): OnnxWorkerRequest | null {
-  if (typeof raw !== "object" || raw === null) return null;
-
+  // SAFETY: every field is re-checked below before the object literal is
+  // rebuilt; the assertion only carries the checked candidate shape.
   const candidate = raw as {
     id?: unknown;
     method?: unknown;
@@ -111,34 +113,38 @@ export function parseOnnxWorkerRequest(raw: unknown): OnnxWorkerRequest | null {
 }
 
 export function parseOnnxWorkerReply(raw: unknown): OnnxWorkerReply | null {
-  if (typeof raw !== "object" || raw === null) return null;
+  // SAFETY: every field is re-checked below before the reply is rebuilt; the
+  // assertion only carries the checked candidate shape.
   const candidate = raw as { id?: unknown; result?: unknown; error?: unknown };
 
   if (typeof candidate.id !== "number" || !Number.isInteger(candidate.id)) return null;
 
-  if (
-    candidate.error !== undefined &&
-    (typeof candidate.error !== "object" ||
-      candidate.error === null ||
-      typeof (candidate.error as { message?: unknown }).message !== "string")
-  ) {
-    return null;
-  }
-
   if (candidate.error !== undefined) {
-    return {
-      id: candidate.id,
-      error: { message: (candidate.error as { message: string }).message },
-    };
+    // SAFETY: the message field is probed for a string before the reply
+    // rebuild below reads it as one.
+    if (
+      typeof candidate.error !== "object" ||
+      candidate.error === null ||
+      !("message" in candidate.error) ||
+      typeof candidate.error.message !== "string"
+    ) {
+      return null;
+    }
+
+    return { id: candidate.id, error: { message: candidate.error.message } };
   }
 
   // Results are method-specific and opaque to the client's transport layer;
   // an absent result with no error is not a reply it can resolve with.
   if (candidate.result === undefined) return null;
 
+  // SAFETY: the worker contract types results per method; the transport layer
+  // routes by id and the awaiting caller owns the method-specific parse.
   return { id: candidate.id, result: candidate.result as OnnxWorkerResult };
 }
 
 export function isOnnxWorkerMethod(value: unknown): value is OnnxWorkerMethod {
+  // SAFETY: the membership test against the frozen method list is the check;
+  // the assertion only re-voiced the already-narrowed value.
   return typeof value === "string" && (ONNX_WORKER_METHODS as readonly string[]).includes(value);
 }

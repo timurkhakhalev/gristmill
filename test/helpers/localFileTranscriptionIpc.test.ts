@@ -115,7 +115,10 @@ function setup({
           ? parakeet(audioBuffer, parsedOptions)
           : { success: true, text: "sherpa text" };
       },
-      resolveWhisperVadOptions: (context: unknown) => ({ vadEnabled: context === "noteRecording" }),
+      resolveWhisperVadOptions: (context: string) => ({
+        vadEnabled: context === "noteRecording",
+        vadConfig: {},
+      }),
       uploadCancelRegistry: registry,
       logDebug: (message, data) => {
         logs.debug.push({ message, data });
@@ -174,17 +177,16 @@ test("options omitted or undefined default to empty; explicit null rejects", asy
   // undefined reaches the manager as an empty options object.
   assert.deepEqual(await call(audioFile), { success: true, text: "whisper text" });
   assert.equal(calls.whisper[0].options.requestId, undefined);
-  // An explicit null must keep the old TypeError path: it fails before any
-  // read or manager call, never as an accepted empty config.
-  let thrown = false;
+  // An explicit null must keep the pre-cutover rejection: it fails before any
+  // read or manager call, never as an accepted empty config. The typed
+  // handler returns the invalid-options result instead of throwing.
+  const rejected = await call(audioFile, null);
 
-  try {
-    await call(audioFile, null);
-  } catch {
-    thrown = true;
-  }
-
-  assert.equal(thrown, true, "null options throw like the pre-cutover handler");
+  assert.deepEqual(rejected, {
+    success: false,
+    error: "Invalid transcription options",
+    code: "INVALID_OPTIONS",
+  });
   assert.equal(calls.reads.length, 1, "no additional read for the null call");
   assert.equal(calls.whisper.length, 1, "no manager call for the null call");
 });

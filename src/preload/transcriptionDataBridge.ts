@@ -27,14 +27,9 @@ import {
   type TranscriptionItem,
 } from "../contracts/transcriptionData.js";
 import { z } from "zod";
-import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  send(channel: string, ...args: unknown[]): void;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
+import type { ZodType } from "zod";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);

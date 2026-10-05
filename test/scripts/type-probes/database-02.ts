@@ -51,7 +51,7 @@ async function useAll(): Promise<string> {
     conversation?.id ?? 0,
     "user",
     "hi",
-    { tool: "x" }
+    { toolCalls: [{ id: "1", name: "x", arguments: "{}", status: "completed" }] }
   );
   const metadata: unknown =
     message?.metadata === null ? null : JSON.parse(message?.metadata ?? "null");

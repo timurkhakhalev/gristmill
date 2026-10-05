@@ -65,7 +65,7 @@ pnpm test --domain calendar --domain notes
 ### Renderer tests
 
 - Import pure renderer modules directly when this keeps the tested behavior.
-- Use the existing `test/lib/rendererTestHarness.ts` when you need Vite SSR, browser globals or module mocks.
+- Use the existing `test/lib/rendererTestHarness.ts` when you need Vite SSR, browser globals or module mocks. DOM constructor globals use exact descriptor snapshots and register restoration before setup mutations. Unmount React roots before restoring the globals that their cleanup uses.
 - Compatible cases in one file can share a Vite server. Restore stores, globals, mocks and singleton state between cases.
 - Keep different module-mock environments separate until their isolation is proved.
 - Do not disable test process isolation globally.

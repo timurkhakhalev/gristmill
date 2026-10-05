@@ -1481,6 +1481,7 @@
       }
     },
     "editor": {
+      "saveFailed": "No se guardó la nota. Tus cambios siguen disponibles.",
       "untitled": "Sin título",
       "noteTitle": "Título de la nota",
       "stop": "Detener",

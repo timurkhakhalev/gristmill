@@ -6,6 +6,7 @@ import {
 } from "./noteListOps";
 import { findDefaultFolder } from "../components/notes/shared";
 import type { FolderItem, FolderStyle, SpaceItem } from "../contracts/containers";
+import type { PendingNoteUpdates } from "../lib/noteEditorPendingSave";
 import type { NoteItem } from "../contracts/notes";
 
 export interface ActiveContext {
@@ -13,7 +14,14 @@ export interface ActiveContext {
   folderId: number | null;
 }
 
+interface EditorSave {
+  updates: PendingNoteUpdates;
+  saving: boolean;
+  error: string | null;
+}
+
 interface NoteState {
+  editorSaves: Record<number, EditorSave>;
   notes: NoteItem[];
   spaces: SpaceItem[];
   folders: FolderItem[];
@@ -58,6 +66,7 @@ function persistExpandedContainers(expanded: Set<string>): void {
 }
 
 const useNoteStore = create<NoteState>()(() => ({
+  editorSaves: {},
   notes: [],
   spaces: [],
   folders: [],
@@ -71,6 +80,67 @@ const useNoteStore = create<NoteState>()(() => ({
   isTreeLoading: true,
   noteEventsRevision: 0,
 }));
+
+// Keep unsaved fields outside the mounted editor. Navigation cannot discard
+// the only copy of a failed write, and each Note has one in-flight writer.
+export function retainNoteEditorUpdates(noteId: number, updates: PendingNoteUpdates): void {
+  useNoteStore.setState(state => ({ editorSaves: {
+    ...state.editorSaves,
+    [noteId]: { updates: { ...state.editorSaves[noteId]?.updates, ...updates },
+      saving: state.editorSaves[noteId]?.saving ?? false, error: state.editorSaves[noteId]?.error ?? null },
+  } }));
+}
+
+export function useNoteEditorSave(noteId: number | null): EditorSave | undefined {
+  return useNoteStore(state => noteId == null ? undefined : state.editorSaves[noteId]);
+}
+
+export function getNoteEditorUpdates(noteId: number): PendingNoteUpdates {
+  return useNoteStore.getState().editorSaves[noteId]?.updates ?? {};
+}
+
+export async function flushNoteEditorWrites(noteId: number): Promise<void> {
+  const entry = useNoteStore.getState().editorSaves[noteId];
+  if (!entry || entry.saving) return;
+  useNoteStore.setState(state => ({ editorSaves: { ...state.editorSaves,
+    [noteId]: { ...entry, saving: true, error: null },
+  } }));
+  try {
+    while (true) {
+      const current = useNoteStore.getState().editorSaves[noteId];
+      if (!current) return; // The Note was deleted.
+      const snapshot = current.updates;
+      const result = await window.electronAPI.updateNote(noteId, snapshot);
+      if (!result?.success) throw new Error(result?.error || "Note was not saved");
+      if (!result.note) throw new Error("Note was not saved");
+      const latest = useNoteStore.getState().editorSaves[noteId];
+      if (!latest) return;
+      const remaining = { ...latest.updates };
+      for (const field of Object.keys(snapshot) as Array<keyof PendingNoteUpdates>) {
+        if (remaining[field] === snapshot[field]) delete remaining[field];
+      }
+      updateNoteInStore(result.note);
+      if (Object.keys(remaining).length === 0) {
+        useNoteStore.setState(state => {
+          const editorSaves = { ...state.editorSaves };
+          delete editorSaves[noteId];
+          return { editorSaves };
+        });
+        return;
+      }
+      useNoteStore.setState(state => ({ editorSaves: { ...state.editorSaves,
+        [noteId]: { updates: remaining, saving: true, error: null },
+      } }));
+    }
+  } catch (error) {
+    useNoteStore.setState(state => {
+      const latest = state.editorSaves[noteId];
+      return latest ? { editorSaves: { ...state.editorSaves,
+        [noteId]: { ...latest, saving: false, error: error instanceof Error ? error.message : String(error) },
+      } } : {};
+    });
+  }
+}
 
 /** Signal that a confirmed Note event arrived, regardless of cache presence. */
 function bumpNoteEventsRevision(): void {
@@ -484,6 +554,11 @@ export function updateNoteInStore(note: NoteItem): void {
 }
 
 export function removeNote(id: number): void {
+  useNoteStore.setState(state => {
+    const editorSaves = { ...state.editorSaves };
+    delete editorSaves[id];
+    return { editorSaves };
+  });
   if (id == null) return;
   const state = useNoteStore.getState();
   const result = removeNoteFromLists(state, id);

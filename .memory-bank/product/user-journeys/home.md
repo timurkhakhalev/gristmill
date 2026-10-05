@@ -19,6 +19,8 @@ As a Gristmill user, I want to find upcoming meetings and return to my notes.
 - Clicking an event row does not start recording. An event draft is saved on the first title/text edit, Record or Ask.
 - Join/Take notes is a separate action: it opens the meeting link when present and starts the calendar meeting flow.
 
+Home updates its recent-note state and remount cache only from the current request. A superseded response cannot restore deleted rows on remount.
+
 ## What to check
 
 - A deleted note leaves Recent Notes after a confirmed deletion.

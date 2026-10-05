@@ -38,9 +38,8 @@ export class CalendarSyncInterval {
   private timer: NodeJS.Timeout | null = null;
   private _consecutiveFailures = 0;
   private _lastFocusSync = 0;
-  // Bumped by stop(). An interval tick captures it before syncing so a
-  // completion that races a stop is ignored, while an explicit out-of-band
-  // outcome (wake, selection, focus) still reschedules.
+  // Each owned async sync captures this before starting. Stop invalidates
+  // its completion; new explicit operations use the new generation.
   private _generation = 0;
 
   constructor(syncFn: () => Promise<CalendarSyncOutcome | void>, { intervalMs, maxIntervalMs, logScope }: CalendarSyncIntervalOptions) {
@@ -87,17 +86,21 @@ export class CalendarSyncInterval {
     const now = Date.now();
     if (now - this._lastFocusSync < FOCUS_SYNC_THROTTLE_MS) return;
     this._lastFocusSync = now;
+    const generation = this._generation;
 
     this.syncFn()
-      .then((outcome) => this.notifyOutcome(outcome))
-      .catch((err) =>
+      .then((outcome) => {
+        if (generation === this._generation) this.notifyOutcome(outcome);
+      })
+      .catch((err) => {
+        if (generation !== this._generation) return;
         this._recordFailure({
           total: 0,
           succeeded: 0,
           failed: 1,
           errors: [(err as Error).message],
-        })
-      );
+        });
+      });
   }
 
   // The single scheduling choke point: every reschedule path routes here.

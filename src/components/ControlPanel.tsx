@@ -25,6 +25,7 @@ import {
   useActiveNoteId,
   useNotes,
   useSpaces,
+  useIsTreeLoading,
 } from "../stores/noteStore";
 import { useNotesTreeActions } from "../hooks/useNotesTreeActions";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -78,6 +79,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   // A calendar event opened before it has a note (see EventNoteDraft).
   const [eventDraft, setEventDraft] = useState<CalendarEvent | null>(null);
   const spaces = useSpaces();
+  const isTreeLoading = useIsTreeLoading();
   const activeContext = useActiveContext();
   const containerNotes = useNotes();
   const [requestedView, setActiveView] = useState<ControlPanelView>("home");
@@ -205,9 +207,10 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   }, [handleNewNote]);
 
   useEffect(() => {
+    if (isTreeLoading || spaces.length === 0) return;
     const dispose = window.electronAPI?.onTrayNewNote?.(() => void createAndOpenNote());
     return () => dispose?.();
-  }, [createAndOpenNote]);
+  }, [createAndOpenNote, isTreeLoading, spaces.length]);
 
   const openNote = useCallback((note: NoteItem) => {
     if (note.folder_id != null) setActiveFolderId(note.folder_id);
@@ -231,12 +234,13 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   );
 
   useEffect(() => {
+    if (isTreeLoading || spaces.length === 0) return;
     const dispose = window.electronAPI?.onTrayOpenEvent?.((event) => {
       setActiveView("home");
       void openCalendarEvent(event);
     });
     return () => dispose?.();
-  }, [openCalendarEvent]);
+  }, [openCalendarEvent, isTreeLoading, spaces.length]);
 
   // Leaving Home or opening any note drops the draft.
   useEffect(() => {

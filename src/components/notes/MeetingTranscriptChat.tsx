@@ -53,6 +53,7 @@ const SPEAKER_BORDER_COLORS = [
 
 // One unlabelled line of transcript; measureElement corrects each row on mount.
 const ESTIMATED_ROW_PX = 56;
+
 // Renders a screenful before the scroll element has been measured, instead of
 // an empty list for one frame. Replaced by the real rect on mount.
 const INITIAL_VIEWPORT_RECT = { width: 400, height: 600 };
@@ -62,13 +63,17 @@ const getEffectiveSpeakerKey = (
   speakerMappings?: Record<string, string>
 ): string => {
   const name = resolveSegmentSpeakerName(segment, speakerMappings);
+
   if (name) return `name:${name.toLowerCase()}`;
+
   if (segment.speaker) return `id:${segment.speaker}`;
+
   return `src:${segment.source}`;
 };
 
 const getSpeakerNumber = (speakerId: string) => {
   const match = speakerId.match(/speaker_(\d+)/);
+
   return match ? Number(match[1]) + 1 : 1;
 };
 
@@ -100,6 +105,7 @@ function PartialBubble({
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const s = BUBBLE_STYLES[source];
+
   return (
     <div
       className={cn("flex", s.align)}
@@ -120,12 +126,7 @@ function PartialBubble({
           </div>
         )}
         <div
-          className={cn(
-            "px-3 py-1.5 rounded-lg",
-            s.radius,
-            s.bg,
-            "text-ui leading-relaxed italic"
-          )}
+          className={cn("px-3 py-1.5 rounded-lg", s.radius, s.bg, "text-ui leading-relaxed italic")}
         >
           <span dir="auto">{text}</span>
           <span
@@ -149,6 +150,7 @@ function AttendeeOption({
   onSelectName: (name: string, email: string) => void;
 }) {
   const name = usePersonName(attendee.email, attendee.displayName);
+
   return (
     <button
       onClick={() => onSelectName(name, attendee.email)}
@@ -202,6 +204,7 @@ function AddContactButton({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
+
         if (!next) setDraft("");
       }}
     >
@@ -278,6 +281,7 @@ function SpeakerPicker({ speakerProfiles, participants, onSelectName, t }: Speak
       (p.displayName || "").toLowerCase().includes(lower) ||
       p.email.toLowerCase().includes(lower)
   );
+
   const filteredProfiles = (speakerProfiles || []).filter(
     (p) =>
       !search ||
@@ -296,17 +300,20 @@ function SpeakerPicker({ speakerProfiles, participants, onSelectName, t }: Speak
         p.display_name.toLowerCase() === trimmedLower ||
         (p.email && p.email.toLowerCase() === trimmedLower)
     );
+
   const canCreate = !!trimmed && !hasExactMatch;
   const inputIsEmail = isLikelyEmail(trimmed);
 
   const submitCreate = () => {
     if (!canCreate) return;
+
     if (inputIsEmail) {
       const email = trimmed.toLowerCase();
       onSelectName(nameFromEmail(email), email);
     } else {
       onSelectName(trimmed, null);
     }
+
     setSearch("");
   };
 
@@ -372,9 +379,7 @@ function SpeakerPicker({ speakerProfiles, participants, onSelectName, t }: Speak
               onClick={submitCreate}
               className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-default transition-colors cursor-pointer"
             >
-              <span className="text-muted shrink-0">
-                {t("notes.speaker.createNewPrefix")}
-              </span>
+              <span className="text-muted shrink-0">{t("notes.speaker.createNewPrefix")}</span>
               {inputIsEmail ? (
                 <>
                   <span dir="auto" className="text-foreground truncate">
@@ -428,6 +433,7 @@ function SpeakerLabel({
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const [open, setOpen] = useState(false);
+
   const speakerState =
     segment.speakerLocked || isTranscriptSpeakerLocked(segment)
       ? "locked"
@@ -472,6 +478,7 @@ function SpeakerLabel({
     (isOriginallyYou
       ? t("notes.speaker.you")
       : t("notes.speaker.label", { n: getSpeakerNumber(speakerId) }));
+
   const isUnmapped = !resolvedName && !segment.speakerName;
 
   return (
@@ -551,6 +558,7 @@ export function SelectionBar({
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const [open, setOpen] = useState(false);
+
   return (
     <div
       className="flex items-center gap-3 rounded-md border border-border/70 bg-surface-2/95 backdrop-blur px-3 py-1.5 text-xs shadow-lg"
@@ -788,24 +796,33 @@ export function MeetingTranscriptChat({
   useLayoutEffect(() => {
     const scroller = scrollElementRef.current;
     const list = listRef.current;
+
     if (!scroller || !list) return;
 
     const measure = () => {
-      setScrollMargin(list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop);
+      setScrollMargin(
+        list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
+      );
     };
+
     const resizeObserver = new ResizeObserver(measure);
+
     const observeChildren = () => {
       resizeObserver.disconnect();
       resizeObserver.observe(scroller);
+
       for (const child of scroller.children) resizeObserver.observe(child);
     };
+
     const mutationObserver = new MutationObserver(() => {
       observeChildren();
       measure();
     });
+
     mutationObserver.observe(scroller, { childList: true });
     observeChildren();
     measure();
+
     return () => {
       mutationObserver.disconnect();
       resizeObserver.disconnect();
@@ -823,6 +840,7 @@ export function MeetingTranscriptChat({
     scrollMargin,
     overscan: 8,
   });
+
   const totalSize = virtualizer.getTotalSize();
 
   const systemPartialSpeakerLabel =
@@ -830,6 +848,7 @@ export function MeetingTranscriptChat({
     (systemPartialSpeakerId
       ? t("notes.speaker.label", { n: getSpeakerNumber(systemPartialSpeakerId) })
       : undefined);
+
   const systemPartialSpeakerState = systemPartialSpeakerId
     ? systemPartialSpeakerName
       ? "confirmed"
@@ -852,24 +871,29 @@ export function MeetingTranscriptChat({
     let nextIdx = 0;
     segments.forEach((segment, i) => {
       if (segment.source === "mic" && !segment.speaker) return;
+
       if (segment.speaker === "you") return;
       const key = rowMeta[i].key;
+
       if (!map.has(key)) {
         map.set(key, nextIdx % SPEAKER_COLORS.length);
         nextIdx += 1;
       }
     });
+
     return map;
   }, [segments, rowMeta]);
 
   // First profile with an id per display name — mirrors the .find() each row did.
   const profilesByName = useMemo(() => {
     const map = new Map<string, SpeakerProfileLite>();
+
     for (const profile of speakerProfiles ?? []) {
       if (profile.id != null && !map.has(profile.display_name)) {
         map.set(profile.display_name, profile);
       }
     }
+
     return map;
   }, [speakerProfiles]);
 
@@ -895,9 +919,13 @@ export function MeetingTranscriptChat({
 
   const isSelfSide = (segment: TranscriptSegment): boolean => {
     const mapped = segment.speaker ? speakerMappings?.[segment.speaker] : undefined;
+
     if (mapped) return mapped.trim().toLowerCase() === t("notes.speaker.you").toLowerCase();
+
     if (segment.speaker === "you") return true;
+
     if (segment.speakerName) return false;
+
     return segment.source === "mic";
   };
 
@@ -986,10 +1014,7 @@ export function MeetingTranscriptChat({
           )}
         </div>
       )}
-      <div
-        ref={listRef}
-        className="px-4 pt-2 pb-[var(--floating-inset,96px)]"
-      >
+      <div ref={listRef} className="px-4 pt-2 pb-[var(--floating-inset,96px)]">
         <div>
           <div style={{ height: totalSize, width: "100%", position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualItem) => {
@@ -998,6 +1023,7 @@ export function MeetingTranscriptChat({
               const selfSide = isSelfSide(segment);
               const isSystemSpeaker = !!segment.speaker && !selfSide;
               const { key, activeName } = rowMeta[i];
+
               return (
                 <div
                   key={segment.id}

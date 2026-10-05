@@ -1,7 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { speakerChannels }: typeof import("../../src/contracts/speakerProfiles.ts") = require("../../src/contracts/speakerProfiles.ts");
+const {
+  speakerChannels,
+}: typeof import("../../src/contracts/speakerProfiles.ts") = require("../../src/contracts/speakerProfiles.ts");
+
 const {
   registerSpeakerHandlers,
 }: typeof import("../../src/helpers/speakerIpcHandlers.ts") = require("../../src/helpers/speakerIpcHandlers.ts");
@@ -12,14 +16,26 @@ function embeddingBuffer(samples = 4) {
 
 function createHarness(overrides: Record<string, unknown> = {}) {
   const handlers = new Map();
-  const calls: any = { retroactive: [], autoLabel: [], upserts: [], savedEmbeddings: [], progress: [] };
+
+  const calls: any = {
+    retroactive: [],
+    autoLabel: [],
+    upserts: [],
+    savedEmbeddings: [],
+    progress: [],
+  };
 
   const database = {
     searchContacts: () => [{ email: "a@b.io", display_name: "A" }],
     upsertContacts: (contacts: unknown) => {
       calls.upserts.push(contacts);
     },
-    upsertSpeakerProfile: (displayName: unknown, email: unknown, embedding: unknown, profileId: string) => {
+    upsertSpeakerProfile: (
+      displayName: unknown,
+      email: unknown,
+      embedding: unknown,
+      profileId: string
+    ) => {
       const profile = {
         id: 11,
         display_name: displayName,
@@ -27,14 +43,16 @@ function createHarness(overrides: Record<string, unknown> = {}) {
         embedding,
         sample_count: 1,
       };
+
       calls.profiles = calls.profiles || [];
       calls.profiles.push({ displayName, email, profileId, embedding });
+
       return profile;
     },
-    getSpeakerMappings: () => [{ note_id: 1, speaker_id: "speaker_0", profile_id: null, display_name: "A" }],
-    getNoteSpeakerEmbeddings: () => [
-      { speaker_id: "speaker_0", embedding: embeddingBuffer() },
+    getSpeakerMappings: () => [
+      { note_id: 1, speaker_id: "speaker_0", profile_id: null, display_name: "A" },
     ],
+    getNoteSpeakerEmbeddings: () => [{ speaker_id: "speaker_0", embedding: embeddingBuffer() }],
     setSpeakerMapping: (...args: unknown[]) => {
       calls.setMapping = args;
     },
@@ -60,6 +78,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
   const diarization = {
     downloadModels: async (onProgress: any) => {
       onProgress({ type: "progress", stage: "embedding", percentage: 40 });
+
       return { success: true, path: "/models" };
     },
     isAvailable: () => true,
@@ -96,13 +115,23 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     },
   };
 
-  const invoke = (channel: string, ...args: unknown[]) => handlers.get(channel)({ sender }, ...args);
+  const invoke = (channel: string, ...args: unknown[]) =>
+    handlers.get(channel)({ sender }, ...args);
+
   return { handlers, invoke, calls, sender };
 }
 
 test("set-speaker-mapping promotes the note embedding into a profile", async () => {
   const h = createHarness();
-  const result = await h.invoke(speakerChannels.setSpeakerMapping, 1, "speaker_0", "Alice", null, null);
+
+  const result = await h.invoke(
+    speakerChannels.setSpeakerMapping,
+    1,
+    "speaker_0",
+    "Alice",
+    null,
+    null
+  );
 
   assert.deepEqual(result, { success: true, profileId: 11 });
   // The saved note embedding feeds profile promotion.
@@ -117,7 +146,15 @@ test("set-speaker-mapping without any embedding only writes the mapping", async 
   const h = createHarness({
     database: { getNoteSpeakerEmbeddings: () => [] },
   });
-  const result = await h.invoke(speakerChannels.setSpeakerMapping, 1, "speaker_0", "Carol", null, 7);
+
+  const result = await h.invoke(
+    speakerChannels.setSpeakerMapping,
+    1,
+    "speaker_0",
+    "Carol",
+    null,
+    7
+  );
 
   assert.deepEqual(result, { success: true, profileId: 7 });
   assert.equal(h.calls.profiles, undefined, "no embedding means no profile upsert");
@@ -143,6 +180,7 @@ test("attach-speaker-email failures keep the error shape", async () => {
       },
     },
   });
+
   const result = await h.invoke(speakerChannels.attachSpeakerEmail, 11, null);
   assert.equal(result.success, false);
   assert.equal(result.error, "db locked");
@@ -150,9 +188,11 @@ test("attach-speaker-email failures keep the error shape", async () => {
 
 test("save-note-speaker-embeddings stores float32 buffers and triggers auto-label", async () => {
   const h = createHarness();
+
   const result = await h.invoke(speakerChannels.saveNoteSpeakerEmbeddings, 9, {
     speaker_0: [0.5, 0.5],
   });
+
   assert.deepEqual(result, { success: true });
   const saved = h.calls.savedEmbeddings[0];
   assert.equal(saved.noteId, 9);
@@ -187,6 +227,7 @@ test("download failures forward the coded error to the sender", async () => {
       },
     },
   });
+
   const result = await h.invoke(speakerChannels.downloadDiarizationModels);
   assert.equal(result.success, false);
   assert.equal(result.code, "DOWNLOAD_CANCELLED");
@@ -201,6 +242,7 @@ test("diarization status combines main and vad model availability", async () => 
   const partial = createHarness({
     diarization: { isVadModelDownloaded: () => false },
   });
+
   assert.deepEqual(await partial.invoke(speakerChannels.getDiarizationModelStatus), {
     available: true,
     modelsDownloaded: false,
@@ -228,6 +270,7 @@ test("contacts pass through the database and swallow failures", async () => {
       },
     },
   });
+
   assert.deepEqual(await broken.invoke(speakerChannels.searchContacts, "x"), {
     success: false,
     contacts: [],

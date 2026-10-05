@@ -2,8 +2,10 @@ import type { CalendarAttendee, CalendarEvent } from "../contracts/calendar";
 
 export function parseAttendees(event: CalendarEvent): CalendarAttendee[] {
   if (!event.attendees) return [];
+
   try {
     const parsed = JSON.parse(event.attendees);
+
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -17,6 +19,8 @@ export function parseAttendees(event: CalendarEvent): CalendarAttendee[] {
  */
 export function hasOtherAttendees(event: CalendarEvent): boolean {
   const attendees = parseAttendees(event);
+
   if (attendees.length > 0) return attendees.some((attendee) => !attendee.self);
+
   return event.attendees_count > 1;
 }

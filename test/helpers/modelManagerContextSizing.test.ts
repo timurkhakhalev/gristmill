@@ -1,13 +1,23 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const fs: typeof import("node:fs/promises") = require("node:fs/promises");
+
 const http: typeof import("node:http") = require("node:http");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
-const { buildGguf, LLAMA_3_2_3B_ENTRIES }: typeof import("./harness/ggufFixtures") = require("./harness/ggufFixtures");
+
+const {
+  buildGguf,
+  LLAMA_3_2_3B_ENTRIES,
+}: typeof import("./harness/ggufFixtures") = require("./harness/ggufFixtures");
 
 // Drives modelManagerBridge.runInference against a stub llama-server, to pin
 // how the context window is chosen for a request (#2142). The model file on
@@ -15,11 +25,13 @@ const { buildGguf, LLAMA_3_2_3B_ENTRIES }: typeof import("./harness/ggufFixtures
 // computed through the production path rather than from a fixture object.
 
 const originalLoad = Module._load;
+
 const CHAIN_MODULES = [
   "../../src/helpers/modelManagerBridge.ts",
   "../../src/helpers/modelDirUtils.ts",
   "../../src/helpers/llamaServer.ts",
 ].map((relative) => require.resolve(relative));
+
 let electronHome = os.tmpdir();
 
 function loadModelManager() {
@@ -30,15 +42,19 @@ function loadModelManager() {
         app: {
           isReady: () => true,
           getAppPath: () => process.cwd(),
-          getPath: (name: string) => (name === "home" ? electronHome : path.join(electronHome, name)),
+          getPath: (name: string) =>
+            name === "home" ? electronHome : path.join(electronHome, name),
         },
         net: {},
       };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
+
   try {
     require("../../src/helpers/modelDirUtils.ts");
+
     return require("../../src/helpers/modelManagerBridge.ts").default;
   } finally {
     Module._load = originalLoad;
@@ -46,7 +62,9 @@ function loadModelManager() {
 }
 
 const GIB = 1024 * 1024 * 1024;
+
 const SHORT_PROMPT = "Clean up this sentence.";
+
 // ~20k estimated tokens, the size that fails on main today.
 const LONG_PROMPT = "word ".repeat(12000);
 
@@ -54,10 +72,16 @@ function hasErrorCode(error: unknown, code: string): error is Error & { code: st
   return error instanceof Error && "code" in error && error.code === code;
 }
 
-async function setup(t: import("node:test").TestContext, { tokenCount = null, totalMemoryBytes = 48 * GIB }: {
-  tokenCount?: number | null;
-  totalMemoryBytes?: number;
-} = {}) {
+async function setup(
+  t: import("node:test").TestContext,
+  {
+    tokenCount = null,
+    totalMemoryBytes = 48 * GIB,
+  }: {
+    tokenCount?: number | null;
+    totalMemoryBytes?: number;
+  } = {}
+) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "openwhispr-ctx-sizing-"));
   electronHome = home;
   t.after(() => fs.rm(home, { recursive: true, force: true }));
@@ -66,12 +90,14 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
   // The completion body is where the output allowance actually lands, so tests
   // about it have to read the wire rather than the config object.
   let completionBody: { max_tokens: number } | null = null;
+
   const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk: unknown) => (raw += chunk));
     req.on("end", () => {
       let status = 200;
       let payload;
+
       if (req.url === "/props") {
         calls.props += 1;
         payload = { default_generation_settings: { n_ctx: serverManager.contextSize } };
@@ -80,6 +106,7 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
         payload = { prompt: "RENDERED" };
       } else if (req.url === "/tokenize") {
         calls.tokenize += 1;
+
         if (tokenCount === null) {
           status = 500;
           payload = {};
@@ -89,16 +116,28 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
       } else {
         calls.completions += 1;
         const parsed: unknown = JSON.parse(raw);
-        assert.ok(parsed && typeof parsed === "object" && "max_tokens" in parsed && typeof parsed.max_tokens === "number");
+        assert.ok(
+          parsed &&
+            typeof parsed === "object" &&
+            "max_tokens" in parsed &&
+            typeof parsed.max_tokens === "number"
+        );
         completionBody = { max_tokens: parsed.max_tokens };
         payload = { choices: [{ finish_reason: "stop", message: { content: "done" } }] };
       }
+
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(payload));
     });
   });
+
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  t.after(
+    () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve()))
+      )
+  );
 
   const modelManager = loadModelManager();
   const model = modelRegistryData.localProviders[0].models[0];
@@ -133,6 +172,7 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
     serverManager.process = {};
     serverManager.port = address.port;
   };
+
   // Avoid signalling a pid that does not belong to us; stop() itself is
   // covered in llamaServerContext.test.js.
   serverManager.stop = async () => {
@@ -147,7 +187,11 @@ async function setup(t: import("node:test").TestContext, { tokenCount = null, to
     calls,
     restarts,
     serverManager,
-    completionBody: () => { assert.ok(completionBody); return completionBody; },
+    completionBody: () => {
+      assert.ok(completionBody);
+
+      return completionBody;
+    },
   };
 }
 
@@ -198,11 +242,17 @@ test("a request too large for the machine fails before it reaches the model", as
       assert.ok(hasErrorCode(error, "CONTEXT_TOO_LARGE"));
       assert.ok("details" in error);
       const details = error.details;
-      assert.ok(details && typeof details === "object" && "neededTokens" in details && typeof details.neededTokens === "number");
+      assert.ok(
+        details &&
+          typeof details === "object" &&
+          "neededTokens" in details &&
+          typeof details.neededTokens === "number"
+      );
       assert.ok("maxContextTokens" in details && typeof details.maxContextTokens === "number");
       assert.ok(details.neededTokens >= 200000);
       assert.ok(details.maxContextTokens > 0);
       assert.ok(!error.message.includes("{"), `raw JSON leaked: ${error.message}`);
+
       return true;
     }
   );
@@ -348,12 +398,14 @@ test("a grow that fails comes back at the window that was working", async (t: im
   const attempts: unknown[] = [];
   serverManager._doStart = async (modelPath: string, options: { contextSize?: number } = {}) => {
     attempts.push(options.contextSize);
+
     if ((options.contextSize ?? 0) > 16384) {
       throw new Error(
         "llama-server process died during startup (signal: SIGKILL)\n" +
           "Process output: ggml_metal: failed to allocate buffer of size 4096.00 MiB"
       );
     }
+
     serverManager.ready = true;
     serverManager.process = {};
     serverManager.port = port;
@@ -392,6 +444,7 @@ test("a server that cannot come back reports a typed failure, not llama.cpp stde
         !JSON.stringify(error.details).includes("Process output"),
         `server output leaked through details: ${JSON.stringify(error.details)}`
       );
+
       return true;
     }
   );
@@ -467,6 +520,11 @@ test("a server that already died is not restored to a window it no longer has", 
 test("Apple Silicon uses unified memory for context sizing", async (t: import("node:test").TestContext) => {
   const apple = await setup(t, { tokenCount: 40, totalMemoryBytes: 64 * GIB });
   const model = modelRegistryData.localProviders[0].models[0];
-  const result = await apple.modelManager.contextCeiling({ model }, path.join(apple.modelManager.modelsDir, model.fileName));
+
+  const result = await apple.modelManager.contextCeiling(
+    { model },
+    path.join(apple.modelManager.modelsDir, model.fileName)
+  );
+
   assert.notEqual(result.reason, "gpu-cap");
 });

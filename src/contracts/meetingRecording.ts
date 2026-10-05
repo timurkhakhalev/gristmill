@@ -2,14 +2,23 @@ import { z } from "zod";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
 
 export const meetingRecordingIdSchema = z.string().uuid();
+
 export const meetingSourceSchema = z.enum(["mic", "system"]);
+
 export type MeetingSource = z.infer<typeof meetingSourceSchema>;
+
 export const meetingCaptureStateSchema = z.enum(["recording", "finalizing", "ready", "incomplete"]);
+
 export type MeetingCaptureState = z.infer<typeof meetingCaptureStateSchema>;
+
 export const meetingAudioStateSchema = z.enum(["available", "deleting", "deleted"]);
+
 export type MeetingAudioState = z.infer<typeof meetingAudioStateSchema>;
+
 export const meetingRunStageSchema = z.enum(["prepare", "asr", "normalize", "summary"]);
+
 export type MeetingRunStage = z.infer<typeof meetingRunStageSchema>;
+
 export const meetingRunStatusSchema = z.enum([
   "pending",
   "running",
@@ -18,6 +27,7 @@ export const meetingRunStatusSchema = z.enum([
   "cancelled",
   "complete",
 ]);
+
 export type MeetingRunStatus = z.infer<typeof meetingRunStatusSchema>;
 
 const inferenceOptionsSchema = z.object({
@@ -37,101 +47,174 @@ const credentialRefs = new Set<string>([
   "AZURE_OPENAI_API_KEY",
   "VERTEX_API_KEY",
 ]);
+
 const credentialRefSchema = z.string().refine((value) => credentialRefs.has(value), {
   message: "Unknown credential slot",
 });
-const secretFreeEndpointSchema = z.string().max(2048).refine((value) => {
-  if (!value.trim()) return true;
-  try {
-    const url = new URL(value);
-    return !url.username && !url.password && ![...url.searchParams.keys()].some((key) =>
-      /^(api[-_]?key|token|secret|password)$/i.test(key)
-    );
-  } catch {
-    return false;
-  }
-});
+
+const secretFreeEndpointSchema = z
+  .string()
+  .max(2048)
+  .refine((value) => {
+    if (!value.trim()) return true;
+
+    try {
+      const url = new URL(value);
+
+      return (
+        !url.username &&
+        !url.password &&
+        ![...url.searchParams.keys()].some((key) =>
+          /^(api[-_]?key|token|secret|password)$/i.test(key)
+        )
+      );
+    } catch {
+      return false;
+    }
+  });
 
 const localTranscriptionConfigSchema = z.object({
   provider: z.enum(["whisper", "nvidia", "cohere"]),
   model: z.string().min(1).max(200),
-  options: z.object({
-    language: z.string().max(50).optional(),
-    translate: z.boolean().optional(),
-    diarize: z.boolean().optional(),
-  }).optional(),
+  options: z
+    .object({
+      language: z.string().max(50).optional(),
+      translate: z.boolean().optional(),
+      diarize: z.boolean().optional(),
+    })
+    .optional(),
 });
 
-const transcriptionConfigSchema = z.object({
-  // `providers` is the existing settings name for direct cloud/BYOK routes.
-  mode: z.enum(["providers", "local"]),
-  provider: z.string().min(1).max(100).optional(),
-  model: z.string().min(1).max(200).optional(),
-  language: z.string().min(1).max(50),
-  vocabularyHints: z.array(z.string().max(200)).max(500).optional(),
-  dictionaryHints: z.array(z.string().max(200)).max(500).optional(),
-  baseUrl: secretFreeEndpointSchema.optional(),
-  local: localTranscriptionConfigSchema.optional(),
-  credentialRef: credentialRefSchema.optional(),
-}).superRefine((config, context) => {
-  if (config.mode === "providers" && !config.provider) {
-    context.addIssue({ code: "custom", path: ["provider"], message: "Provider route is required" });
-  }
-  if (config.mode === "local" && !config.local) {
-    context.addIssue({ code: "custom", path: ["local"], message: "Local model route is required" });
-  }
-  if (config.mode === "local" && config.baseUrl) {
-    context.addIssue({ code: "custom", path: ["baseUrl"], message: "Local routes do not use a remote endpoint" });
-  }
-  if (config.baseUrl && config.provider !== "custom") {
-    context.addIssue({ code: "custom", path: ["baseUrl"], message: "Only the configured custom route accepts a base URL" });
-  }
-});
+const transcriptionConfigSchema = z
+  .object({
+    // `providers` is the existing settings name for direct cloud/BYOK routes.
+    mode: z.enum(["providers", "local"]),
+    provider: z.string().min(1).max(100).optional(),
+    model: z.string().min(1).max(200).optional(),
+    language: z.string().min(1).max(50),
+    vocabularyHints: z.array(z.string().max(200)).max(500).optional(),
+    dictionaryHints: z.array(z.string().max(200)).max(500).optional(),
+    baseUrl: secretFreeEndpointSchema.optional(),
+    local: localTranscriptionConfigSchema.optional(),
+    credentialRef: credentialRefSchema.optional(),
+  })
+  .superRefine((config, context) => {
+    if (config.mode === "providers" && !config.provider) {
+      context.addIssue({
+        code: "custom",
+        path: ["provider"],
+        message: "Provider route is required",
+      });
+    }
 
-const summaryConfigSchema = z.object({
-  actionId: z.union([z.string().min(1).max(128), z.number().int().positive()]).optional(),
-  templateId: z.union([z.string().min(1).max(128), z.number().int().positive()]).optional(),
-  instruction: z.string().max(100_000),
-  reasoningMode: z.enum(["providers", "local", "self-hosted", "enterprise", "agent"]),
-  provider: z.string().min(1).max(100).optional(),
-  model: z.string().min(1).max(200).optional(),
-  agentProvider: z.string().min(1).max(100).optional(),
-  agentReasoningLevel: z.string().min(1).max(40).optional(),
-  cloudBaseUrl: secretFreeEndpointSchema.optional(),
-  remoteUrl: secretFreeEndpointSchema.optional(),
-  options: inferenceOptionsSchema.optional(),
-  credentialRef: credentialRefSchema.optional(),
-  enterprise: z.object({
-    bedrockRegion: z.string().max(200).optional(),
-    bedrockProfile: z.string().max(200).optional(),
-    bedrockAccessKeyRef: credentialRefSchema.optional(),
-    bedrockSecretAccessKeyRef: credentialRefSchema.optional(),
-    bedrockSessionTokenRef: credentialRefSchema.optional(),
-    azureEndpoint: secretFreeEndpointSchema.optional(),
-    azureApiVersion: z.string().max(100).optional(),
-    vertexProject: z.string().max(200).optional(),
-    vertexLocation: z.string().max(200).optional(),
-  }).optional(),
-}).superRefine((config, context) => {
-  if (config.reasoningMode === "providers" && !config.provider) {
-    context.addIssue({ code: "custom", path: ["provider"], message: "Provider route is required" });
-  }
-  if (config.cloudBaseUrl && config.reasoningMode !== "providers") {
-    context.addIssue({ code: "custom", path: ["cloudBaseUrl"], message: "Cloud endpoint requires a provider route" });
-  }
-  if (config.remoteUrl && config.reasoningMode !== "self-hosted") {
-    context.addIssue({ code: "custom", path: ["remoteUrl"], message: "Remote endpoint requires a self-hosted route" });
-  }
-  if (config.reasoningMode === "enterprise" && !["bedrock", "azure", "vertex"].includes(config.provider ?? "")) {
-    context.addIssue({ code: "custom", path: ["provider"], message: "An existing enterprise reasoning provider is required" });
-  }
-  if (config.reasoningMode === "enterprise" && !config.enterprise) {
-    context.addIssue({ code: "custom", path: ["enterprise"], message: "Enterprise reasoning settings are required" });
-  }
-  if (config.reasoningMode === "agent" && (!config.agentProvider || !config.model || !config.agentReasoningLevel)) {
-    context.addIssue({ code: "custom", path: ["agentProvider"], message: "bb provider, model and reasoning level are required" });
-  }
-});
+    if (config.mode === "local" && !config.local) {
+      context.addIssue({
+        code: "custom",
+        path: ["local"],
+        message: "Local model route is required",
+      });
+    }
+
+    if (config.mode === "local" && config.baseUrl) {
+      context.addIssue({
+        code: "custom",
+        path: ["baseUrl"],
+        message: "Local routes do not use a remote endpoint",
+      });
+    }
+
+    if (config.baseUrl && config.provider !== "custom") {
+      context.addIssue({
+        code: "custom",
+        path: ["baseUrl"],
+        message: "Only the configured custom route accepts a base URL",
+      });
+    }
+  });
+
+const summaryConfigSchema = z
+  .object({
+    actionId: z.union([z.string().min(1).max(128), z.number().int().positive()]).optional(),
+    templateId: z.union([z.string().min(1).max(128), z.number().int().positive()]).optional(),
+    instruction: z.string().max(100_000),
+    reasoningMode: z.enum(["providers", "local", "self-hosted", "enterprise", "agent"]),
+    provider: z.string().min(1).max(100).optional(),
+    model: z.string().min(1).max(200).optional(),
+    agentProvider: z.string().min(1).max(100).optional(),
+    agentReasoningLevel: z.string().min(1).max(40).optional(),
+    cloudBaseUrl: secretFreeEndpointSchema.optional(),
+    remoteUrl: secretFreeEndpointSchema.optional(),
+    options: inferenceOptionsSchema.optional(),
+    credentialRef: credentialRefSchema.optional(),
+    enterprise: z
+      .object({
+        bedrockRegion: z.string().max(200).optional(),
+        bedrockProfile: z.string().max(200).optional(),
+        bedrockAccessKeyRef: credentialRefSchema.optional(),
+        bedrockSecretAccessKeyRef: credentialRefSchema.optional(),
+        bedrockSessionTokenRef: credentialRefSchema.optional(),
+        azureEndpoint: secretFreeEndpointSchema.optional(),
+        azureApiVersion: z.string().max(100).optional(),
+        vertexProject: z.string().max(200).optional(),
+        vertexLocation: z.string().max(200).optional(),
+      })
+      .optional(),
+  })
+  .superRefine((config, context) => {
+    if (config.reasoningMode === "providers" && !config.provider) {
+      context.addIssue({
+        code: "custom",
+        path: ["provider"],
+        message: "Provider route is required",
+      });
+    }
+
+    if (config.cloudBaseUrl && config.reasoningMode !== "providers") {
+      context.addIssue({
+        code: "custom",
+        path: ["cloudBaseUrl"],
+        message: "Cloud endpoint requires a provider route",
+      });
+    }
+
+    if (config.remoteUrl && config.reasoningMode !== "self-hosted") {
+      context.addIssue({
+        code: "custom",
+        path: ["remoteUrl"],
+        message: "Remote endpoint requires a self-hosted route",
+      });
+    }
+
+    if (
+      config.reasoningMode === "enterprise" &&
+      !["bedrock", "azure", "vertex"].includes(config.provider ?? "")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["provider"],
+        message: "An existing enterprise reasoning provider is required",
+      });
+    }
+
+    if (config.reasoningMode === "enterprise" && !config.enterprise) {
+      context.addIssue({
+        code: "custom",
+        path: ["enterprise"],
+        message: "Enterprise reasoning settings are required",
+      });
+    }
+
+    if (
+      config.reasoningMode === "agent" &&
+      (!config.agentProvider || !config.model || !config.agentReasoningLevel)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["agentProvider"],
+        message: "bb provider, model and reasoning level are required",
+      });
+    }
+  });
 
 // Zod objects strip unknown fields at every level. Secret values are therefore
 // never part of the persisted snapshot; credentialRef names a secure-store slot.
@@ -142,12 +225,17 @@ export const meetingProcessingConfigSchema = z.object({
   generateSummary: z.boolean().optional(),
   generateTitle: z.boolean().optional(),
 });
+
 export type MeetingProcessingConfig = z.infer<typeof meetingProcessingConfigSchema>;
 
 export const meetingProcessingConfigErrorSchema = z.object({
   code: z.string().regex(/^[A-Za-z0-9_.-]{1,128}$/),
-  messageKey: z.string().regex(/^[A-Za-z0-9_.-]{1,200}$/).optional(),
+  messageKey: z
+    .string()
+    .regex(/^[A-Za-z0-9_.-]{1,200}$/)
+    .optional(),
 });
+
 export type MeetingProcessingConfigError = z.infer<typeof meetingProcessingConfigErrorSchema>;
 
 export const meetingRecordingConfigInputSchema = z.object({
@@ -172,32 +260,42 @@ export const meetingRecordingDtoSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+
 export type MeetingRecordingDto = z.infer<typeof meetingRecordingDtoSchema>;
 
-export const meetingFrameAlignmentSegmentSchema = z.object({
-  sourceGeneration: z.number().int().positive(),
-  sourceStartFrame: z.number().int().nonnegative().safe(),
-  sourceEndFrame: z.number().int().positive().safe(),
-  timelineStartFrame: z.number().int().nonnegative().safe(),
-  rate: z.number().finite().min(0.999).max(1.001),
-  uncertaintyStartFrames: z.number().int().nonnegative().safe(),
-  uncertaintyEndFrames: z.number().int().nonnegative().safe(),
-  helperGeneration: meetingRecordingIdSchema,
-  sourceStartNs: z.string().regex(/^\d{1,20}$/),
-  sourceEndNs: z.string().regex(/^\d{1,20}$/),
-  helperStartNs: z.string().regex(/^\d{1,20}$/),
-  helperEndNs: z.string().regex(/^\d{1,20}$/),
-  sampledSourceStartNs: z.string().regex(/^\d{1,20}$/),
-  sampledSourceEndNs: z.string().regex(/^\d{1,20}$/),
-  freshnessSourceNs: z.string().regex(/^\d{1,20}$/),
-}).superRefine((segment, context) => {
-  if (segment.sourceEndFrame <= segment.sourceStartFrame ||
+export const meetingFrameAlignmentSegmentSchema = z
+  .object({
+    sourceGeneration: z.number().int().positive(),
+    sourceStartFrame: z.number().int().nonnegative().safe(),
+    sourceEndFrame: z.number().int().positive().safe(),
+    timelineStartFrame: z.number().int().nonnegative().safe(),
+    rate: z.number().finite().min(0.999).max(1.001),
+    uncertaintyStartFrames: z.number().int().nonnegative().safe(),
+    uncertaintyEndFrames: z.number().int().nonnegative().safe(),
+    helperGeneration: meetingRecordingIdSchema,
+    sourceStartNs: z.string().regex(/^\d{1,20}$/),
+    sourceEndNs: z.string().regex(/^\d{1,20}$/),
+    helperStartNs: z.string().regex(/^\d{1,20}$/),
+    helperEndNs: z.string().regex(/^\d{1,20}$/),
+    sampledSourceStartNs: z.string().regex(/^\d{1,20}$/),
+    sampledSourceEndNs: z.string().regex(/^\d{1,20}$/),
+    freshnessSourceNs: z.string().regex(/^\d{1,20}$/),
+  })
+  .superRefine((segment, context) => {
+    if (
+      segment.sourceEndFrame <= segment.sourceStartFrame ||
       BigInt(segment.sourceEndNs) < BigInt(segment.sourceStartNs) ||
       BigInt(segment.helperEndNs) < BigInt(segment.helperStartNs) ||
-      BigInt(segment.sampledSourceEndNs) < BigInt(segment.sampledSourceStartNs)) {
-    context.addIssue({ code: "custom", path: ["sourceEndFrame"], message: "Invalid audio alignment segment range" });
-  }
-});
+      BigInt(segment.sampledSourceEndNs) < BigInt(segment.sampledSourceStartNs)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceEndFrame"],
+        message: "Invalid audio alignment segment range",
+      });
+    }
+  });
+
 export type MeetingFrameAlignmentSegment = z.infer<typeof meetingFrameAlignmentSegmentSchema>;
 
 export const meetingFrameAlignmentPointSchema = z.object({
@@ -213,6 +311,7 @@ export const meetingFrameAlignmentPointSchema = z.object({
   sampledSourceEndNs: z.string().regex(/^\d{1,20}$/),
   freshnessSourceNs: z.string().regex(/^\d{1,20}$/),
 });
+
 export type MeetingFrameAlignmentPoint = z.infer<typeof meetingFrameAlignmentPointSchema>;
 
 export const meetingRecordingEpochDtoSchema = z.object({
@@ -234,28 +333,49 @@ export const meetingRecordingEpochDtoSchema = z.object({
   ignoredTrailingBytes: z.number().int().min(0),
   errorCode: z.string().nullable(),
 });
+
 export type MeetingRecordingEpochDto = z.infer<typeof meetingRecordingEpochDtoSchema>;
 
-export const meetingIntentionalIntervalSchema = z.object({
-  id: z.string().uuid(),
-  recordingId: meetingRecordingIdSchema,
-  source: meetingSourceSchema,
-  sourceGeneration: z.number().int().positive().nullable(),
-  timelineStartFrame: z.number().int().nonnegative().nullable(),
-  timelineEndFrame: z.number().int().nonnegative().nullable(),
-  sourceStartFrame: z.number().int().nonnegative().nullable(),
-  sourceEndFrame: z.number().int().nonnegative().nullable(),
-  startAlignment: meetingFrameAlignmentPointSchema.nullable(),
-  endAlignment: meetingFrameAlignmentPointSchema.nullable(),
-  reason: z.enum(["manual-muted", "platform-muted"]),
-}).superRefine((interval, context) => {
-  if (interval.sourceEndFrame !== null && interval.sourceStartFrame !== null && interval.sourceEndFrame < interval.sourceStartFrame) {
-    context.addIssue({ code: "custom", path: ["sourceEndFrame"], message: "Interval end precedes its start" });
-  }
-  if (interval.timelineEndFrame !== null && interval.timelineStartFrame !== null && interval.timelineEndFrame < interval.timelineStartFrame) {
-    context.addIssue({ code: "custom", path: ["timelineEndFrame"], message: "Aligned interval end precedes its start" });
-  }
-});
+export const meetingIntentionalIntervalSchema = z
+  .object({
+    id: z.string().uuid(),
+    recordingId: meetingRecordingIdSchema,
+    source: meetingSourceSchema,
+    sourceGeneration: z.number().int().positive().nullable(),
+    timelineStartFrame: z.number().int().nonnegative().nullable(),
+    timelineEndFrame: z.number().int().nonnegative().nullable(),
+    sourceStartFrame: z.number().int().nonnegative().nullable(),
+    sourceEndFrame: z.number().int().nonnegative().nullable(),
+    startAlignment: meetingFrameAlignmentPointSchema.nullable(),
+    endAlignment: meetingFrameAlignmentPointSchema.nullable(),
+    reason: z.enum(["manual-muted", "platform-muted"]),
+  })
+  .superRefine((interval, context) => {
+    if (
+      interval.sourceEndFrame !== null &&
+      interval.sourceStartFrame !== null &&
+      interval.sourceEndFrame < interval.sourceStartFrame
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceEndFrame"],
+        message: "Interval end precedes its start",
+      });
+    }
+
+    if (
+      interval.timelineEndFrame !== null &&
+      interval.timelineStartFrame !== null &&
+      interval.timelineEndFrame < interval.timelineStartFrame
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["timelineEndFrame"],
+        message: "Aligned interval end precedes its start",
+      });
+    }
+  });
+
 export type MeetingIntentionalInterval = z.infer<typeof meetingIntentionalIntervalSchema>;
 
 export const meetingProcessingRunDtoSchema = z.object({
@@ -281,44 +401,73 @@ export const meetingProcessingRunDtoSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+
 export type MeetingProcessingRunDto = z.infer<typeof meetingProcessingRunDtoSchema>;
 
 export const MEETING_ASR_GATE_MS = 15_000;
 
 export const meetingTranscriptArtifactSchema = z.object({
   text: z.string(),
-  segments: z.array(z.object({
-    speaker: z.string().optional(),
-    text: z.string(),
-    start: z.number().finite(),
-    end: z.number().finite(),
-  })).optional(),
+  segments: z
+    .array(
+      z.object({
+        speaker: z.string().optional(),
+        text: z.string(),
+        start: z.number().finite(),
+        end: z.number().finite(),
+      })
+    )
+    .optional(),
   diarized: z.boolean().optional(),
 });
+
 export type MeetingTranscriptArtifact = z.infer<typeof meetingTranscriptArtifactSchema>;
 
 export const meetingSummaryArtifactSchema = z.object({
   text: z.string(),
   speakerCorrectionRevision: z.number().int().nonnegative().optional(),
-  manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-  taskStatus: z.enum(["pending", "running", "complete", "zero", "provider-error", "format-error", "section-error", "conflict"]).optional(),
+  manualNoteRevision: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+  taskStatus: z
+    .enum([
+      "pending",
+      "running",
+      "complete",
+      "zero",
+      "provider-error",
+      "format-error",
+      "section-error",
+      "conflict",
+    ])
+    .optional(),
   taskErrorCode: z.string().max(128).nullable().optional(),
 });
+
 export type MeetingSummaryArtifact = z.infer<typeof meetingSummaryArtifactSchema>;
 
 export const meetingPlatformSchema = z.enum(["zoom", "google-meet", "telemost"]);
+
 export type MeetingPlatform = z.infer<typeof meetingPlatformSchema>;
 
 export const meetingSpeakerCorrectionSourceSchema = z.enum(["voice", "platform", "model", "user"]);
-export const meetingSpeakerCorrectionSchema = z.object({
-  speakerId: z.string().min(1).max(200),
-  profileId: z.number().int().positive().nullable(),
-  displayName: z.string().min(1).max(200),
-  participantEmail: z.string().email().nullable(),
-  source: meetingSpeakerCorrectionSourceSchema,
-  platform: meetingPlatformSchema.optional(),
-  revision: z.number().int().positive(),
-}).refine((value) => value.source !== "platform" || value.platform !== undefined, "Platform correction requires its source platform");
+
+export const meetingSpeakerCorrectionSchema = z
+  .object({
+    speakerId: z.string().min(1).max(200),
+    profileId: z.number().int().positive().nullable(),
+    displayName: z.string().min(1).max(200),
+    participantEmail: z.string().email().nullable(),
+    source: meetingSpeakerCorrectionSourceSchema,
+    platform: meetingPlatformSchema.optional(),
+    revision: z.number().int().positive(),
+  })
+  .refine(
+    (value) => value.source !== "platform" || value.platform !== undefined,
+    "Platform correction requires its source platform"
+  );
+
 export type MeetingSpeakerCorrection = z.infer<typeof meetingSpeakerCorrectionSchema>;
 
 export const meetingProcessingResultDtoSchema = z.object({
@@ -334,6 +483,7 @@ export const meetingProcessingResultDtoSchema = z.object({
   // is empty.
   speakerCorrectionRevision: z.number().int().nonnegative(),
 });
+
 export type MeetingProcessingResultDto = z.infer<typeof meetingProcessingResultDtoSchema>;
 
 export const meetingDeletionIntentDtoSchema = z.object({
@@ -345,97 +495,177 @@ export const meetingDeletionIntentDtoSchema = z.object({
   errorCode: z.string().nullable(),
   requestedAt: z.string(),
 });
+
 export type MeetingDeletionIntentDto = z.infer<typeof meetingDeletionIntentDtoSchema>;
 
 export const meetingRunArtifactSchema = z.enum(["provider-response", "transcript", "summary"]);
+
 export type MeetingRunArtifact = z.infer<typeof meetingRunArtifactSchema>;
 
 // Host time is decimal nanoseconds from mach_absolute_time, never delivery time.
 const validHostNs = (value: string): boolean => /^\d{1,20}$/.test(value);
+
 const hostNsSchema = z.string().regex(/^\d{1,20}$/);
-export const meetingPlatformObservationSchema = z.object({
-  platform: meetingPlatformSchema,
-  bindingId: z.string().uuid(),
-  activeParticipantIds: z.array(z.string().min(1).max(100)).max(100),
-  clockGeneration: z.string().uuid().nullable(),
-  clockUncertaintyNs: hostNsSchema,
-  id: z.string().uuid(), recordingId: meetingRecordingIdSchema,
-  sessionId: z.string().uuid(), instanceKey: z.string().min(1).max(100), nameRevision: z.number().int().positive(),
-  episodeId: z.string().uuid(), displayName: z.string().max(200),
-  windowMode: z.enum(["full", "compact", "unknown"]),
-  activity: z.enum(["explicit", "end", "clear", "candidate", "ambiguous", "unavailable"]),
-  // Explicit/end cover bounded, continued read confirmations of one episode;
-  // other states cover the actual transition read. Never hold beyond this end.
-  readStartHostNs: hostNsSchema, readEndHostNs: hostNsSchema,
-  self: z.enum(["remote", "local", "unknown"]),
-  singleSpeaker: z.boolean().nullable(),
-  provenance: z.enum(["zoom-only", "system-wide", "unknown"]),
-  reason: z.string().max(100).nullable(),
-}).refine((value) => validHostNs(value.readStartHostNs) && validHostNs(value.readEndHostNs) && BigInt(value.readEndHostNs) >= BigInt(value.readStartHostNs));
+
+export const meetingPlatformObservationSchema = z
+  .object({
+    platform: meetingPlatformSchema,
+    bindingId: z.string().uuid(),
+    activeParticipantIds: z.array(z.string().min(1).max(100)).max(100),
+    clockGeneration: z.string().uuid().nullable(),
+    clockUncertaintyNs: hostNsSchema,
+    id: z.string().uuid(),
+    recordingId: meetingRecordingIdSchema,
+    sessionId: z.string().uuid(),
+    instanceKey: z.string().min(1).max(100),
+    nameRevision: z.number().int().positive(),
+    episodeId: z.string().uuid(),
+    displayName: z.string().max(200),
+    windowMode: z.enum(["full", "compact", "unknown"]),
+    activity: z.enum(["explicit", "end", "clear", "candidate", "ambiguous", "unavailable"]),
+    // Explicit/end cover bounded, continued read confirmations of one episode;
+    // other states cover the actual transition read. Never hold beyond this end.
+    readStartHostNs: hostNsSchema,
+    readEndHostNs: hostNsSchema,
+    self: z.enum(["remote", "local", "unknown"]),
+    singleSpeaker: z.boolean().nullable(),
+    provenance: z.enum(["zoom-only", "system-wide", "unknown"]),
+    reason: z.string().max(100).nullable(),
+  })
+  .refine(
+    (value) =>
+      validHostNs(value.readStartHostNs) &&
+      validHostNs(value.readEndHostNs) &&
+      BigInt(value.readEndHostNs) >= BigInt(value.readStartHostNs)
+  );
+
 export type MeetingPlatformObservation = z.infer<typeof meetingPlatformObservationSchema>;
-export const meetingAudioClockMessageSchema = z.object({
-  type: z.literal("clock"), generation: z.string().uuid(),
-  startFrame: z.number().int().nonnegative().safe(), endFrame: z.number().int().positive().safe(),
-  hostStartNs: hostNsSchema.nullable(), hostEndNs: hostNsSchema.nullable(),
-  timebaseNumer: z.number().int().positive(), timebaseDenom: z.number().int().positive(),
-  conversion: z.literal("uncalibrated"), reason: z.string().max(100).nullable(),
-}).refine((value) => value.endFrame > value.startFrame &&
-  ((value.hostStartNs === null && value.hostEndNs === null) ||
-    value.hostStartNs !== null && value.hostEndNs !== null && validHostNs(value.hostStartNs) && validHostNs(value.hostEndNs) && BigInt(value.hostEndNs) > BigInt(value.hostStartNs)));
+
+export const meetingAudioClockMessageSchema = z
+  .object({
+    type: z.literal("clock"),
+    generation: z.string().uuid(),
+    startFrame: z.number().int().nonnegative().safe(),
+    endFrame: z.number().int().positive().safe(),
+    hostStartNs: hostNsSchema.nullable(),
+    hostEndNs: hostNsSchema.nullable(),
+    timebaseNumer: z.number().int().positive(),
+    timebaseDenom: z.number().int().positive(),
+    conversion: z.literal("uncalibrated"),
+    reason: z.string().max(100).nullable(),
+  })
+  .refine(
+    (value) =>
+      value.endFrame > value.startFrame &&
+      ((value.hostStartNs === null && value.hostEndNs === null) ||
+        (value.hostStartNs !== null &&
+          value.hostEndNs !== null &&
+          validHostNs(value.hostStartNs) &&
+          validHostNs(value.hostEndNs) &&
+          BigInt(value.hostEndNs) > BigInt(value.hostStartNs)))
+  );
+
 export type MeetingAudioClockMessage = z.infer<typeof meetingAudioClockMessageSchema>;
+
 export const meetingAudioClockAnchorSchema = z.object({
-  id: z.string().uuid(), recordingId: meetingRecordingIdSchema, epochIndex: z.number().int().nonnegative(),
-  epochStartFrame: z.number().int().nonnegative().safe(), clock: meetingAudioClockMessageSchema,
+  id: z.string().uuid(),
+  recordingId: meetingRecordingIdSchema,
+  epochIndex: z.number().int().nonnegative(),
+  epochStartFrame: z.number().int().nonnegative().safe(),
+  clock: meetingAudioClockMessageSchema,
 });
+
 export type MeetingAudioClockAnchor = z.infer<typeof meetingAudioClockAnchorSchema>;
+
 // A fixed initial heuristic, not a measured calibration or a verified identity.
-export const meetingPlatformTimingPolicySchema = z.object({
-  version: z.enum(["zoom-activity-v1", "google-meet-activity-v1", "telemost-activity-v1"]),
-  origin: z.literal("initial-lag-hypothesis"),
-  indicatorDelaySeconds: z.union([z.literal(0.5), z.literal(0.3)]),
-  boundaryGuardSeconds: z.literal(0.5),
-  clockContinuitySeconds: z.literal(0.001),
-  clockRateToleranceSeconds: z.literal(0.002),
-  minimumSpeechSeconds: z.literal(1),
-  minimumIndependentEpisodes: z.literal(3),
-}).refine((value) => value.indicatorDelaySeconds === (value.version === "zoom-activity-v1" ? 0.5 : 0.3), "Invalid platform timing policy");
+export const meetingPlatformTimingPolicySchema = z
+  .object({
+    version: z.enum(["zoom-activity-v1", "google-meet-activity-v1", "telemost-activity-v1"]),
+    origin: z.literal("initial-lag-hypothesis"),
+    indicatorDelaySeconds: z.union([z.literal(0.5), z.literal(0.3)]),
+    boundaryGuardSeconds: z.literal(0.5),
+    clockContinuitySeconds: z.literal(0.001),
+    clockRateToleranceSeconds: z.literal(0.002),
+    minimumSpeechSeconds: z.literal(1),
+    minimumIndependentEpisodes: z.literal(3),
+  })
+  .refine(
+    (value) => value.indicatorDelaySeconds === (value.version === "zoom-activity-v1" ? 0.5 : 0.3),
+    "Invalid platform timing policy"
+  );
+
 export type MeetingPlatformTimingPolicy = z.infer<typeof meetingPlatformTimingPolicySchema>;
-export const meetingPlatformDecisionSchema = z.object({
-  platform: meetingPlatformSchema,
-  speakerId: z.string().nullable(), displayName: z.string().nullable(),
-  status: z.enum(["accepted", "rejected"]), reason: z.string().min(1).max(100),
-  observationIds: z.array(z.string().uuid()), clockAnchorIds: z.array(z.string().uuid()),
-  intervals: z.array(z.object({ start: z.number().finite(), end: z.number().finite() }).refine((v) => v.end > v.start)),
-  // Null only for preserved decisions made before this policy existed.
-  timingPolicy: meetingPlatformTimingPolicySchema.nullable(),
-}).refine((value) => !value.timingPolicy || value.timingPolicy.version === `${value.platform}-activity-v1`, "Decision policy belongs to another platform");
+
+export const meetingPlatformDecisionSchema = z
+  .object({
+    platform: meetingPlatformSchema,
+    speakerId: z.string().nullable(),
+    displayName: z.string().nullable(),
+    status: z.enum(["accepted", "rejected"]),
+    reason: z.string().min(1).max(100),
+    observationIds: z.array(z.string().uuid()),
+    clockAnchorIds: z.array(z.string().uuid()),
+    intervals: z.array(
+      z
+        .object({ start: z.number().finite(), end: z.number().finite() })
+        .refine((v) => v.end > v.start)
+    ),
+    // Null only for preserved decisions made before this policy existed.
+    timingPolicy: meetingPlatformTimingPolicySchema.nullable(),
+  })
+  .refine(
+    (value) =>
+      !value.timingPolicy || value.timingPolicy.version === `${value.platform}-activity-v1`,
+    "Decision policy belongs to another platform"
+  );
+
 export type MeetingPlatformDecision = z.infer<typeof meetingPlatformDecisionSchema>;
+
 export const meetingPlatformCoverageSchema = z.object({
-  reads: z.number().int().nonnegative(), samples: z.number().int().nonnegative(),
-  state: z.enum(["collecting", "complete", "incomplete"]), reason: z.string().max(100).nullable(),
+  reads: z.number().int().nonnegative(),
+  samples: z.number().int().nonnegative(),
+  state: z.enum(["collecting", "complete", "incomplete"]),
+  reason: z.string().max(100).nullable(),
 });
+
 export type MeetingPlatformCoverage = z.infer<typeof meetingPlatformCoverageSchema>;
 
 export function meetingPlatformLabel(platform: MeetingPlatform | undefined): string {
-  return platform === "telemost" ? "Yandex Telemost" : platform === "google-meet" ? "Google Meet" : platform === "zoom" ? "Zoom" : "";
+  return platform === "telemost"
+    ? "Yandex Telemost"
+    : platform === "google-meet"
+      ? "Google Meet"
+      : platform === "zoom"
+        ? "Zoom"
+        : "";
 }
 
-export const meetingLlmSourceSnapshotSchema = z.object({
-  version: z.literal(1),
-  sourceRunId: z.string().uuid(),
-  sourceRecordingIds: z.array(z.string().uuid()).min(1),
-  meetingTitle: z.string().nullable(),
-  participants: z.array(z.object({ name: z.string().nullable(), email: z.string().nullable() }).strict()).nullable(),
-  manualNotes: z.string(),
-  manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/),
-  speakerCorrectionRevision: z.number().int().nonnegative(),
-  transcriptSegments: z.array(z.object({
-    id: z.string().min(1),
-    speakerId: z.string().nullable(),
-    speakerName: z.string().nullable(),
-    speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
-    speakerNamePlatform: meetingPlatformSchema.optional(),
-    text: z.string(),
-  }).strict()).min(1),
-  promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
-}).strict();
+export const meetingLlmSourceSnapshotSchema = z
+  .object({
+    version: z.literal(1),
+    sourceRunId: z.string().uuid(),
+    sourceRecordingIds: z.array(z.string().uuid()).min(1),
+    meetingTitle: z.string().nullable(),
+    participants: z
+      .array(z.object({ name: z.string().nullable(), email: z.string().nullable() }).strict())
+      .nullable(),
+    manualNotes: z.string(),
+    manualNoteRevision: z.string().regex(/^[a-f0-9]{64}$/),
+    speakerCorrectionRevision: z.number().int().nonnegative(),
+    transcriptSegments: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            speakerId: z.string().nullable(),
+            speakerName: z.string().nullable(),
+            speakerNameSource: z.enum(["user", "model", "voice", "platform"]).nullable().optional(),
+            speakerNamePlatform: meetingPlatformSchema.optional(),
+            text: z.string(),
+          })
+          .strict()
+      )
+      .min(1),
+    promptModel: meetingProcessingConfigSchema.shape.summary.unwrap().unwrap(),
+  })
+  .strict();

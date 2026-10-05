@@ -1,7 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { parseOfflineMessage, parseOnlineMessages }: typeof import("../../src/helpers/parakeetWsResult") = require("../../src/helpers/parakeetWsResult");
+const {
+  parseOfflineMessage,
+  parseOnlineMessages,
+}: typeof import("../../src/helpers/parakeetWsResult") = require("../../src/helpers/parakeetWsResult");
 
 test("offline sherpa message extracts JSON text", () => {
   assert.equal(parseOfflineMessage(JSON.stringify({ text: "hello world" })), "hello world");

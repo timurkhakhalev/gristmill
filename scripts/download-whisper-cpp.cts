@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 const fs: typeof import("fs") = require("fs");
+
 const path: typeof import("path") = require("path");
+
 const {
   copyLibraries,
   downloadFile,
@@ -11,6 +13,7 @@ const {
   setExecutable,
   cleanupFiles,
 }: import("./lib/download-utils.cts").API = require("./lib/download-utils.cts");
+
 const WHISPER_CPP_TAG = process.env.WHISPER_CPP_VERSION || "0.0.10";
 
 const WHISPER_CPP_REPO = "OpenWhispr/whisper.cpp";
@@ -24,6 +27,7 @@ type BinaryConfig = {
   libPattern?: string;
   requiredLibraries?: string[];
 };
+
 const BINARIES: Record<string, BinaryConfig> = {
   "darwin-arm64": {
     zipName: "whisper-server-darwin-arm64.zip",
@@ -42,6 +46,7 @@ async function getRelease() {
   if (cachedRelease) return cachedRelease;
 
   cachedRelease = await fetchLatestRelease(WHISPER_CPP_REPO, { tag: WHISPER_CPP_TAG });
+
   return cachedRelease;
 }
 
@@ -50,6 +55,7 @@ function getDownloadUrl(
   zipName: string
 ) {
   const asset = release?.assets?.find((a) => a.name === zipName);
+
   return asset?.url || null;
 }
 
@@ -60,14 +66,17 @@ function isCompleteInstall(markerPath: string, binaryPath: string, config: Binar
     const marker: { version?: string; libraries?: string[]; onnxRuntime?: string } = JSON.parse(
       fs.readFileSync(markerPath, "utf8")
     );
+
     if (marker.version !== WHISPER_CPP_TAG || !Array.isArray(marker.libraries)) return false;
 
     const binDir = path.dirname(markerPath);
+
     if (marker.libraries.some((library) => !fs.existsSync(path.join(binDir, library)))) {
       return false;
     }
 
     const installedLibraries = new Set(marker.libraries.map((library) => library.toLowerCase()));
+
     return (config.requiredLibraries || []).every((library) =>
       installedLibraries.has(library.toLowerCase())
     );
@@ -84,6 +93,7 @@ async function downloadBinary(
 ) {
   if (!config) {
     console.log(`  [server] ${platformArch}: Not supported`);
+
     return false;
   }
 
@@ -92,15 +102,20 @@ async function downloadBinary(
 
   if (!isForce && isCompleteInstall(installMarkerPath, outputPath, config)) {
     console.log(`  [server] ${platformArch}: Already exists (use --force to re-download)`);
+
     return true;
   }
+
   if (isForce && fs.existsSync(installMarkerPath)) fs.unlinkSync(installMarkerPath);
 
   const url = getDownloadUrl(release, config.zipName);
+
   if (!url) {
     console.error(`  [server] ${platformArch}: Asset ${config.zipName} not found in release`);
+
     return false;
   }
+
   console.log(`  [server] ${platformArch}: Downloading from ${url}`);
 
   const zipPath = path.join(BIN_DIR, config.zipName);
@@ -113,23 +128,28 @@ async function downloadBinary(
     await extractZip(zipPath, extractDir);
 
     const binaryPath = findBinaryInDir(extractDir, config.binaryName);
+
     if (binaryPath) {
       fs.copyFileSync(binaryPath, outputPath);
       setExecutable(outputPath);
       console.log(`  [server] ${platformArch}: Extracted to ${config.outputName}`);
 
       let copiedLibraries: string[] = [];
+
       if (config.libPattern) {
         copiedLibraries = copyLibraries(extractDir, BIN_DIR, config.libPattern);
+
         for (const libName of copiedLibraries) {
           console.log(`  [server] ${platformArch}: Copied library ${libName}`);
         }
       }
 
       const copiedLibraryNames = new Set(copiedLibraries.map((library) => library.toLowerCase()));
+
       const missingLibraries = (config.requiredLibraries || []).filter(
         (library) => !copiedLibraryNames.has(library.toLowerCase())
       );
+
       if (missingLibraries.length > 0) {
         throw new Error(`Archive missing required libraries: ${missingLibraries.join(", ")}`);
       }
@@ -142,17 +162,22 @@ async function downloadBinary(
       console.error(
         `  [server] ${platformArch}: Binary "${config.binaryName}" not found in archive`
       );
+
       return false;
     }
 
     fs.rmSync(extractDir, { recursive: true, force: true });
+
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+
     return true;
   } catch (error) {
     console.error(
       `  [server] ${platformArch}: Failed - ${error instanceof Error ? error.message : String(error)}`
     );
+
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+
     return false;
   }
 }
@@ -166,6 +191,7 @@ async function downloadAllBinaries(
 
   for (const platformArch of Object.keys(BINARIES)) {
     const succeeded = await download(platformArch, BINARIES[platformArch], release, isForce);
+
     if (!succeeded) allSucceeded = false;
   }
 
@@ -180,17 +206,20 @@ async function main() {
     if (!BINARIES[args.platformArch]) {
       console.error(`Unsupported platform/arch: ${args.platformArch}`);
       process.exitCode = 1;
+
       return;
     }
 
     // Skip before fetching release info so an installed asset costs no network.
     const config = BINARIES[args.platformArch];
     const installMarkerPath = path.join(BIN_DIR, `.whisper-cpp-${args.platformArch}.json`);
+
     if (
       !args.isForce &&
       isCompleteInstall(installMarkerPath, path.join(BIN_DIR, config.outputName), config)
     ) {
       console.log(`  [server] ${args.platformArch}: Already exists (use --force to re-download)`);
+
       return;
     }
 
@@ -201,19 +230,23 @@ async function main() {
       console.error(`[whisper-server] Could not fetch release from ${WHISPER_CPP_REPO}`);
       console.log(`\nMake sure release exists: https://github.com/${WHISPER_CPP_REPO}/releases`);
       process.exitCode = 1;
+
       return;
     }
 
     console.log(`\nDownloading whisper-server binaries (${release.tag})...`);
+
     const ok = await downloadBinary(
       args.platformArch,
       BINARIES[args.platformArch],
       release,
       args.isForce
     );
+
     if (!ok) {
       console.error(`Failed to download binaries for ${args.platformArch}`);
       process.exitCode = 1;
+
       return;
     }
 
@@ -228,17 +261,20 @@ async function main() {
       console.error(`[whisper-server] Could not fetch release from ${WHISPER_CPP_REPO}`);
       console.log(`\nMake sure release exists: https://github.com/${WHISPER_CPP_REPO}/releases`);
       process.exitCode = 1;
+
       return;
     }
 
     console.log("Downloading binaries for all platforms:");
     const allSucceeded = await downloadAllBinaries(release, args.isForce);
+
     if (!allSucceeded) process.exitCode = 1;
   }
 
   console.log("\n---");
 
   const files = fs.readdirSync(BIN_DIR).filter((f) => f.startsWith("whisper-server"));
+
   if (files.length > 0) {
     console.log("Available whisper-server binaries:\n");
     files.forEach((f) => {
@@ -261,4 +297,5 @@ if (require.main === module) {
 const api = { BINARIES, WHISPER_CPP_TAG, downloadAllBinaries, isCompleteInstall };
 
 module.exports = api;
+
 export type API = typeof api;

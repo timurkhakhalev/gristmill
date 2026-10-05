@@ -1,10 +1,12 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/reasoningRouting.js");
 
 test("fan-out routes provider, model and mode to the remaining scopes", async () => {
   const { buildReasoningScopePatches } = await load();
+
   const patches = buildReasoningScopePatches(
     {
       useCleanupModel: true,
@@ -14,13 +16,10 @@ test("fan-out routes provider, model and mode to the remaining scopes", async ()
     },
     "providers"
   );
+
   const { cleanup, noteFormatting, chatIntelligence } = patches;
 
-  assert.deepEqual(Object.keys(patches).sort(), [
-    "chatIntelligence",
-    "cleanup",
-    "noteFormatting",
-  ]);
+  assert.deepEqual(Object.keys(patches).sort(), ["chatIntelligence", "cleanup", "noteFormatting"]);
   assert.equal(cleanup.cleanupProvider, "corti");
   assert.equal(cleanup.cleanupModel, "corti-s1-instant");
   assert.equal(cleanup.cleanupMode, "providers");
@@ -38,6 +37,7 @@ test("fan-out routes provider, model and mode to the remaining scopes", async ()
 // "self-hosted" mode with no host behind it.
 test("fan-out mirrors the endpoint url and key alongside the routing", async () => {
   const { buildReasoningScopePatches } = await load();
+
   const { cleanup, noteFormatting } = buildReasoningScopePatches(
     {
       cleanupProvider: "custom",
@@ -64,14 +64,15 @@ test("fan-out mirrors the endpoint url and key alongside the routing", async () 
 
 test("fan-out with partial settings only mirrors the provided routing fields", async () => {
   const { buildReasoningScopePatches } = await load();
-  const patches = Reflect.apply(buildReasoningScopePatches, undefined, [{ useCleanupModel: true }, "providers"]);
+
+  const patches = Reflect.apply(buildReasoningScopePatches, undefined, [
+    { useCleanupModel: true },
+    "providers",
+  ]);
+
   const { cleanup, noteFormatting, chatIntelligence } = patches;
 
-  assert.deepEqual(Object.keys(patches).sort(), [
-    "chatIntelligence",
-    "cleanup",
-    "noteFormatting",
-  ]);
+  assert.deepEqual(Object.keys(patches).sort(), ["chatIntelligence", "cleanup", "noteFormatting"]);
   assert.equal(Reflect.get(cleanup, "useCleanupModel"), true);
   assert.equal(cleanup.cleanupMode, "providers");
   assert.equal("cleanupProvider" in cleanup, false);

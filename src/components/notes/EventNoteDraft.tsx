@@ -37,13 +37,22 @@ interface EventNoteDraftProps {
  * create/update round-trips are never lost — and input never has to be
  * disabled while the request runs.
  */
-export default function EventNoteDraft({ event, onBack, onMaterialized, onDraftHandoff }: EventNoteDraftProps) {
+export default function EventNoteDraft({
+  event,
+  onBack,
+  onMaterialized,
+  onDraftHandoff,
+}: EventNoteDraftProps) {
   const { t } = useTranslation();
   const locale = useUiLocale();
   const { dateFormat } = useDateTimePreferences();
   const participants = useMemo(() => parseAttendees(event), [event]);
   const startDate = parseEventDate(event.start_time);
-  const dateLabel = startDate ? formatDate(startDate, locale, { month: "short", day: "numeric" }, dateFormat) : undefined;
+
+  const dateLabel = startDate
+    ? formatDate(startDate, locale, { month: "short", day: "numeric" }, dateFormat)
+    : undefined;
+
   const eventTitle = event.summary || t("upcoming.untitledEvent");
   const titleRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<{ title?: string; content?: string }>({});
@@ -55,13 +64,15 @@ export default function EventNoteDraft({ event, onBack, onMaterialized, onDraftH
       if (creatingRef.current) return;
       creatingRef.current = true;
       setCreating(true);
+
       try {
-        const target = await window.electronAPI.createCalendarEventNote?.(
-          event.id,
-          { ...draftRef.current }
-        );
+        const target = await window.electronAPI.createCalendarEventNote?.(event.id, {
+          ...draftRef.current,
+        });
+
         if (!target) throw new Error("Calendar event note was not created");
         const note = await window.electronAPI.getNote(target.noteId);
+
         if (!note) throw new Error("Calendar event note could not be loaded");
         // Read after every await: keystrokes that landed during the whole
         // create → get round-trip are part of the handed-off draft. A reused
@@ -76,7 +87,11 @@ export default function EventNoteDraft({ event, onBack, onMaterialized, onDraftH
         setNoteHandoff({ noteId: note.id, ...handoff });
         onMaterialized(note, intent);
       } catch (error) {
-        logger.warn("Failed to create calendar event note", { error: (error as Error).message }, "notes");
+        logger.warn(
+          "Failed to create calendar event note",
+          { error: (error as Error).message },
+          "notes"
+        );
         creatingRef.current = false;
         setCreating(false);
       }

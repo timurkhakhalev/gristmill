@@ -1,20 +1,34 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { createElement } = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
+
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
 const servers = new Map();
+
 const cleanup: Array<() => void | Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
+
 function getVite(cachePrefix: string) {
   if (!servers.has(cachePrefix)) {
-    servers.set(cachePrefix, createRendererServer({ after: (close: () => void | Promise<void>) => cleanup.push(close) }, { cachePrefix }));
+    servers.set(
+      cachePrefix,
+      createRendererServer(
+        { after: (close: () => void | Promise<void>) => cleanup.push(close) },
+        { cachePrefix }
+      )
+    );
   }
+
   return servers.get(cachePrefix);
 }
 
@@ -22,7 +36,9 @@ async function loadFeedback(t: TestContext) {
   installBrowserGlobals(t);
   const vite = await getVite("openwhispr-upload-audio-feedback-test-");
   const module = await vite.moduleGraph.getModuleByUrl("/components/notes/UploadAudioFeedback.tsx");
+
   if (module) vite.moduleGraph.invalidateModule(module);
+
   return vite.ssrLoadModule("/components/notes/UploadAudioFeedback.tsx");
 }
 
@@ -30,7 +46,9 @@ async function loadBatchQueueView(t: TestContext) {
   installBrowserGlobals(t);
   const vite = await getVite("openwhispr-batch-warning-indicator-test-");
   const module = await vite.moduleGraph.getModuleByUrl("/components/notes/BatchQueueView.tsx");
+
   if (module) vite.moduleGraph.invalidateModule(module);
+
   return vite.ssrLoadModule("/components/notes/BatchQueueView.tsx");
 }
 
@@ -60,11 +78,13 @@ test("the model button opens the upload-scoped transcription settings", async (t
   const { UploadModelSettingsButton } = await loadFeedback(t);
 
   const openedSections: string[] = [];
+
   const element = UploadModelSettingsButton({
     label: "Using Whisper · base",
     actionLabel: "Open Transcription Settings",
     onOpenSettings: (section: string) => openedSections.push(section),
   });
+
   element.props.onClick();
 
   assert.deepEqual(openedSections, ["uploadTranscription"]);
@@ -142,6 +162,7 @@ test("the completed upload shows the diarization warning only when it is flagged
       t: (key: string) => key,
     })
   );
+
   assert.match(warned, /notes\.upload\.diarizationWarning/);
   assert.match(warned, /text-warning/);
   assert.doesNotMatch(warned, /amber/, "use the --color-warning token, not a hand-rolled amber");
@@ -153,6 +174,7 @@ test("the completed upload shows the diarization warning only when it is flagged
       t: (key: string) => key,
     })
   );
+
   assert.doesNotMatch(quiet, /notes\.upload\.diarizationWarning/);
 });
 

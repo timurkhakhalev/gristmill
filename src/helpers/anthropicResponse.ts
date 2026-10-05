@@ -9,6 +9,7 @@ export function extractAnthropicText(data: unknown): string | null {
   const blocks = Array.isArray((data as { content?: unknown })?.content)
     ? ((data as { content: unknown[] }).content as unknown[])
     : [];
+
   const parts = blocks
     .filter(
       (block) =>
@@ -16,15 +17,19 @@ export function extractAnthropicText(data: unknown): string | null {
         typeof (block as { text?: unknown }).text === "string"
     )
     .map((block) => (block as { text: string }).text);
+
   if (parts.length === 0) return null;
+
   return parts.join("").trim();
 }
 
 export function describeMissingAnthropicText(data: unknown): string {
   const stopReason = (data as { stop_reason?: unknown })?.stop_reason;
+
   if (stopReason === "max_tokens") {
     return "Anthropic returned no text before hitting the max_tokens limit";
   }
+
   return typeof stopReason === "string"
     ? `Anthropic response contained no text content (stop_reason: ${stopReason})`
     : "Anthropic response contained no text content";

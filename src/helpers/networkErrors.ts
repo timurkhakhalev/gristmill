@@ -29,20 +29,25 @@ export function classifyNetworkError(err: unknown): NetworkErrorClassification {
   if (!err) return { isNetworkError: false };
   const record = err as { code?: string; cause?: { code?: string }; name?: string };
   const code = record.code || record.cause?.code;
+
   if (code && CODE_TO_KEY[code]) {
     return { code, messageKey: CODE_TO_KEY[code], isNetworkError: true };
   }
+
   if (record.name && NAME_TO_KEY[record.name]) {
     return { code: record.name, messageKey: NAME_TO_KEY[record.name], isNetworkError: true };
   }
+
   return { isNetworkError: false };
 }
 
 export function classifyAndLog(err: unknown, url: string): NetworkErrorClassification {
   const classified = classifyNetworkError(err);
+
   if (!classified.isNetworkError) return classified;
   let host: string | undefined;
   let urlPath: string | undefined;
+
   try {
     const parsed = new URL(url);
     host = parsed.host;
@@ -50,6 +55,8 @@ export function classifyAndLog(err: unknown, url: string): NetworkErrorClassific
   } catch {
     // url may be missing/invalid — log without host metadata
   }
+
   debugLogger.warn("Network error", { code: classified.code, host, urlPath }, "network");
+
   return classified;
 }

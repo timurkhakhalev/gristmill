@@ -17,12 +17,15 @@ export function timestampRequestFields(
   if (provider === "openai" && model === "whisper-1") {
     return { response_format: "verbose_json" };
   }
+
   if (provider === "groq") {
     return { response_format: "verbose_json" };
   }
+
   if (provider === "mistral") {
     return { timestamp_granularities: "segment" };
   }
+
   return null;
 }
 
@@ -31,14 +34,17 @@ export function timestampRequestFields(
 // usable, so callers fall back to the plain transcript.
 export function mapVerboseSegments(responseData: unknown): VerboseTranscriptionSegment[] | null {
   const segments =
-    (typeof responseData === "object" && responseData !== null
+    typeof responseData === "object" && responseData !== null
       ? (responseData as { segments?: unknown }).segments
-      : undefined);
+      : undefined;
+
   if (!Array.isArray(segments)) return null;
 
   const mapped = [];
+
   for (const seg of segments) {
     const text = typeof seg?.text === "string" ? seg.text.trim() : "";
+
     if (!text || !Number.isFinite(seg.start)) continue;
     const start = Math.max(0, seg.start);
     const rawEnd = Number.isFinite(seg.end) ? seg.end : start;
@@ -49,5 +55,6 @@ export function mapVerboseSegments(responseData: unknown): VerboseTranscriptionS
       end,
     });
   }
+
   return mapped.length ? mapped : null;
 }

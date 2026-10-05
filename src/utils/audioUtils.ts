@@ -34,20 +34,24 @@ export function pcm16ToWav(pcmBuffer: Buffer, sampleRate = 16000, channels = 1):
   header.writeUInt16LE(16, 34);
   header.write("data", 36);
   header.writeUInt32LE(dataSize, 40);
+
   return Buffer.concat([header, pcmBuffer]);
 }
 
 export function pcm16ToFloat32(pcmBuffer: Buffer): Float32Array {
   const input = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.length / 2);
   const output = new Float32Array(input.length);
+
   for (let i = 0; i < input.length; i++) {
     output[i] = input[i] / 32768;
   }
+
   return output;
 }
 
 // Energy floors used by the meeting auto-end activity monitor.
 export const MEETING_MIC_ACTIVITY_RMS = 0.006;
+
 export const MEETING_SYSTEM_ACTIVITY_RMS = 0.004;
 
 // RMS of raw s16le PCM in [0, 1]. Tolerates the odd-length and unaligned
@@ -61,6 +65,7 @@ export function computePcm16Rms(pcmBuffer: Buffer | null | undefined): number {
 
   if ((pcmBuffer.byteOffset & 1) === 0) {
     const samples = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, sampleCount);
+
     for (let i = 0; i < sampleCount; i++) {
       const sample = samples[i] / 32768;
       sumSquares += sample * sample;
@@ -76,19 +81,27 @@ export function computePcm16Rms(pcmBuffer: Buffer | null | undefined): number {
 }
 
 // RMS and peak for the system capture level and interruption watchdog.
-export function computeChunkStats(buffer: Buffer | null | undefined): { rms: number; peak: number; sampleCount: number } {
+export function computeChunkStats(buffer: Buffer | null | undefined): {
+  rms: number;
+  peak: number;
+  sampleCount: number;
+} {
   if (!buffer || buffer.length < 2) {
     return { rms: 0, peak: 0, sampleCount: 0 };
   }
+
   const samples = new Int16Array(buffer.buffer, buffer.byteOffset, buffer.length >> 1);
   let sumSq = 0;
   let peak = 0;
+
   for (let i = 0; i < samples.length; i += 1) {
     const n = samples[i] / 0x7fff;
     sumSq += n * n;
     const abs = n < 0 ? -n : n;
+
     if (abs > peak) peak = abs;
   }
+
   return { rms: Math.sqrt(sumSq / samples.length), peak, sampleCount: samples.length };
 }
 

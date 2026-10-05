@@ -40,8 +40,16 @@ interface ProviderRowProps {
   configured?: boolean;
 }
 
-function ProviderRow({ icon, i18nKey, connected, isConnecting, onConnect, configured = true }: ProviderRowProps) {
+function ProviderRow({
+  icon,
+  i18nKey,
+  connected,
+  isConnecting,
+  onConnect,
+  configured = true,
+}: ProviderRowProps) {
   const { t } = useTranslation();
+
   return (
     <SettingsPanelRow>
       <div className="flex items-center gap-3">
@@ -98,7 +106,9 @@ function CalendarAccountRows({
   onAddAnother,
 }: CalendarAccountRowsProps) {
   const { t } = useTranslation();
+
   if (accounts.length === 0) return null;
+
   return (
     <>
       {accounts.map((account) => (
@@ -153,6 +163,7 @@ function CalendarAccountRows({
 
 export default function IntegrationsView() {
   const { t } = useTranslation();
+
   const {
     gcalAccounts,
     setGcalAccounts,
@@ -165,6 +176,7 @@ export default function IntegrationsView() {
     appleCalendarConnected,
     setAppleCalendarConnected,
   } = useSettingsStore();
+
   const [isConnecting, setIsConnecting] = useState(false);
   const [disconnectingEmail, setDisconnectingEmail] = useState<string | null>(null);
   const [confirmDisconnectEmail, setConfirmDisconnectEmail] = useState<string | null>(null);
@@ -191,8 +203,10 @@ export default function IntegrationsView() {
 
   const startOAuth = useCallback(async () => {
     setIsConnecting(true);
+
     try {
       const result = await window.electronAPI?.gcalStartOAuth?.();
+
       if (result?.success && result.email) {
         const current = useSettingsStore.getState().gcalAccounts;
         setGcalAccounts([
@@ -210,8 +224,10 @@ export default function IntegrationsView() {
 
   const startMicrosoftOAuth = useCallback(async () => {
     setIsMsConnecting(true);
+
     try {
       const result = await window.electronAPI?.mcalStartOAuth?.();
+
       if (result?.success && result.email) {
         const current = useSettingsStore.getState().mcalAccounts;
         setMcalAccounts([
@@ -228,8 +244,10 @@ export default function IntegrationsView() {
 
   const connectAppleCalendar = useCallback(async () => {
     setIsAppleConnecting(true);
+
     try {
       const result = await window.electronAPI?.acalConnect?.();
+
       if (result?.success) {
         setAppleCalendarConnected(true);
       } else {
@@ -248,11 +266,14 @@ export default function IntegrationsView() {
     async (connect: () => Promise<void>) => {
       if (needsSystemAudioGrant) {
         const granted = await requestSystemAudioAccess();
+
         if (!granted) {
           setShowPermissionDialog(true);
+
           return;
         }
       }
+
       await connect();
     },
     [needsSystemAudioGrant, requestSystemAudioAccess]
@@ -276,6 +297,7 @@ export default function IntegrationsView() {
   const handleAppleDisconnect = useCallback(async () => {
     try {
       const result = await window.electronAPI?.acalDisconnect?.();
+
       if (result?.success) {
         setAppleCalendarConnected(false);
         setAppleSourceNames([]);
@@ -290,8 +312,10 @@ export default function IntegrationsView() {
   const handleDisconnect = useCallback(
     async (email: string) => {
       setDisconnectingEmail(email);
+
       try {
         const result = await window.electronAPI?.gcalDisconnect?.(email);
+
         if (result?.success) {
           setGcalAccounts(
             useSettingsStore.getState().gcalAccounts.filter((a) => a.email !== email)
@@ -311,8 +335,10 @@ export default function IntegrationsView() {
   const handleMicrosoftDisconnect = useCallback(
     async (email: string) => {
       setMsDisconnectingEmail(email);
+
       try {
         const result = await window.electronAPI?.mcalDisconnect?.(email);
+
         if (result?.success) {
           setMcalAccounts(
             useSettingsStore.getState().mcalAccounts.filter((a) => a.email !== email)
@@ -335,16 +361,19 @@ export default function IntegrationsView() {
         setGoogleConfigured(Boolean(status.configured));
         setPeopleAccessMissing(status.peopleAccessMissing ?? []);
       });
+
     refreshGoogleStatus();
     void window.electronAPI?.mcalGetConnectionStatus().then((status) => {
       setMicrosoftConfigured(Boolean(status.configured));
     });
+
     // The typed gcal-connection-changed event always carries the full
     // account list; the legacy no-accounts payload shape no longer exists.
     const unsub = window.electronAPI?.onGcalConnectionChanged((data) => {
       setGcalAccounts(data.accounts);
       refreshGoogleStatus();
     });
+
     return () => unsub?.();
   }, [setGcalAccounts]);
 
@@ -352,6 +381,7 @@ export default function IntegrationsView() {
     const unsub = window.electronAPI?.onMcalConnectionChanged((data) => {
       setMcalAccounts(data.accounts);
     });
+
     return () => unsub?.();
   }, [setMcalAccounts]);
 
@@ -363,10 +393,12 @@ export default function IntegrationsView() {
         setAppleSourceNames(status.sourceNames);
       }
     });
+
     const unsub = window.electronAPI?.onAcalConnectionChanged((data) => {
       setAppleCalendarConnected(data.connected);
       setAppleSourceNames(data.sourceNames);
     });
+
     return () => unsub?.();
   }, [isMac, setAppleCalendarConnected]);
 
@@ -398,7 +430,9 @@ export default function IntegrationsView() {
           {peopleAccessMissing.length > 0 && (
             <div className="flex items-center gap-3 px-4 py-2.5">
               <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-                {t("integrations.googleCalendar.peopleAccessMissing", { emails: peopleAccessMissing.join(", ") })}
+                {t("integrations.googleCalendar.peopleAccessMissing", {
+                  emails: peopleAccessMissing.join(", "),
+                })}
               </p>
               <Button size="sm" variant="outline" disabled={isConnecting} onClick={handleConnect}>
                 {t("integrations.googleCalendar.reconnect")}
@@ -459,9 +493,7 @@ export default function IntegrationsView() {
         <div className="flex items-start gap-3 rounded-lg border border-border bg-subtle p-4">
           <Info size={16} className="mt-0.5 shrink-0 text-primary" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground">
-              {t("integrations.notABot.title")}
-            </p>
+            <p className="text-sm font-medium text-foreground">{t("integrations.notABot.title")}</p>
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
               {t("integrations.notABot.description")}
             </p>

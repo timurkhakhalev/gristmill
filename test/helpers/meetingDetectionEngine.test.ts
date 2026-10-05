@@ -1,12 +1,19 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const { EventEmitter } = require("node:events");
+
 import type { MeetingNotificationData } from "../../src/contracts/meetingCoordinator";
 
-const { createMeetingDetectionClock }: typeof import("../lib/meetingDetectionClock.ts") = require("../lib/meetingDetectionClock.ts");
+const {
+  createMeetingDetectionClock,
+}: typeof import("../lib/meetingDetectionClock.ts") = require("../lib/meetingDetectionClock.ts");
 
 const enginePath = require.resolve("../../src/helpers/meetingDetectionEngine");
+
 const originalLoad = Module._load;
 
 function loadEngine() {
@@ -16,17 +23,23 @@ function loadEngine() {
     if (request === "electron") {
       return { shell: { openExternal: async () => {} } };
     }
+
     if (request === "./debugLogger" || request === "./debugLogger.js") {
       return { info() {}, warn() {}, debug() {}, error() {} };
     }
+
     if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
       return { broadcastToWindows() {} };
     }
+
     // ESM module; the app loads it through a transpiling loader. The engine
     // imports it with the explicit .js extension TS emits, tests may too.
     if (request === "./meetingJoinUrl" || request === "./meetingJoinUrl.js") {
-      return { getMeetingJoinUrl: (event: { hangout_link?: string } | null) => event?.hangout_link ?? null };
+      return {
+        getMeetingJoinUrl: (event: { hangout_link?: string } | null) => event?.hangout_link ?? null,
+      };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
@@ -41,38 +54,61 @@ function createEngine() {
   const MeetingDetectionEngine = loadEngine();
   const clock = createMeetingDetectionClock();
 
-  const reminderScheduler: { getActiveMeetingState: () => {
-    activeMeeting: Record<string, unknown> | null;
-    upcomingEvents: unknown[];
-    activeEvents?: unknown[];
-  } } = {
+  const reminderScheduler: {
+    getActiveMeetingState: () => {
+      activeMeeting: Record<string, unknown> | null;
+      upcomingEvents: unknown[];
+      activeEvents?: unknown[];
+    };
+  } = {
     getActiveMeetingState: () => ({ activeMeeting: null, activeEvents: [], upcomingEvents: [] }),
   };
+
   const processDetector = new EventEmitter();
   processDetector.starts = 0;
   processDetector.stops = 0;
-  processDetector.start = () => { processDetector.starts++; };
-  processDetector.stop = () => { processDetector.stops++; };
+  processDetector.start = () => {
+    processDetector.starts++;
+  };
+
+  processDetector.stop = () => {
+    processDetector.stops++;
+  };
 
   const audioDetector = new EventEmitter();
   audioDetector.dismissals = 0;
   audioDetector.dismiss = () => audioDetector.dismissals++;
   audioDetector.resetPrompt = () => {};
+
   audioDetector.setUserRecording = () => {};
+
   audioDetector.setMicWarmHold = () => {};
+
   audioDetector.meetingAppNotifications = 0;
   audioDetector.notifyMeetingAppsChanged = () => audioDetector.meetingAppNotifications++;
   audioDetector.starts = 0;
   audioDetector.stops = 0;
-  audioDetector.start = () => { audioDetector.starts++; };
-  audioDetector.stop = () => { audioDetector.stops++; };
+  audioDetector.start = () => {
+    audioDetector.starts++;
+  };
+
+  audioDetector.stop = () => {
+    audioDetector.stops++;
+  };
+
   const callDetector = new EventEmitter();
   callDetector.starts = 0;
   callDetector.stops = 0;
-  callDetector.start = () => { callDetector.starts++; };
-  callDetector.stop = () => { callDetector.stops++; };
+  callDetector.start = () => {
+    callDetector.starts++;
+  };
+
+  callDetector.stop = () => {
+    callDetector.stops++;
+  };
 
   const shown: MeetingNotificationData[] = [];
+
   const windowManager = {
     notificationPrefs: {},
     showMeetingNotification: (data: MeetingNotificationData) => shown.push(data),
@@ -94,7 +130,9 @@ function createEngine() {
 
 function detectionAt(shown: MeetingNotificationData[], index: number) {
   const data = shown[index];
+
   if (data?.kind !== "detection") throw new Error(`Expected detection notification at ${index}`);
+
   return data;
 }
 
@@ -110,8 +148,10 @@ test("a call retries when startup prevents its notification from being shown", a
   engine.windowManager.showMeetingNotification = async (data: MeetingNotificationData) => {
     if (!ready) return false;
     shown.push(data);
+
     return true;
   };
+
   const call = { key: `meet:${"a".repeat(64)}`, service: "meet" };
   callDetector.emit("call-active", call);
   await Promise.resolve();
@@ -127,7 +167,10 @@ test("a call retries when startup prevents its notification from being shown", a
 
 test("a failed notification load releases the call for retry", async () => {
   const { engine, callDetector } = createEngine();
-  engine.windowManager.showMeetingNotification = async () => { throw new Error("load failed"); };
+  engine.windowManager.showMeetingNotification = async () => {
+    throw new Error("load failed");
+  };
+
   const call = { key: `meet:${"b".repeat(64)}`, service: "meet" };
   callDetector.emit("call-active", call);
   await new Promise(setImmediate);
@@ -170,10 +213,14 @@ test("a confirmed new call can prompt after the previous one ends", () => {
 test("calendar reminder and confirmed Meet call share one offer", () => {
   const { clock, engine, callDetector, reminderScheduler, shown } = createEngine();
   const { createHash }: typeof import("node:crypto") = require("node:crypto");
+
   const event = {
-    id: "calendar-1", start_time: new Date(clock.now() + 60_000).toISOString(),
-    hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-1",
+    id: "calendar-1",
+    start_time: new Date(clock.now() + 60_000).toISOString(),
+    hangout_link: "https://meet.google.com/abc-defg-hij",
+    calendar_id: "calendar-1",
   };
+
   reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
   const key = `meet:${createHash("sha256").update("meet.google.com/abc-defg-hij").digest("hex")}`;
   engine.handleCalendarReminder(event);
@@ -184,10 +231,14 @@ test("calendar reminder and confirmed Meet call share one offer", () => {
 test("a later call can prompt after the call tied to a calendar offer ends", () => {
   const { clock, engine, callDetector, reminderScheduler, shown } = createEngine();
   const { createHash }: typeof import("node:crypto") = require("node:crypto");
+
   const event = {
-    id: "calendar-rejoin", start_time: new Date(clock.now() + 60_000).toISOString(),
-    hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-rejoin",
+    id: "calendar-rejoin",
+    start_time: new Date(clock.now() + 60_000).toISOString(),
+    hangout_link: "https://meet.google.com/abc-defg-hij",
+    calendar_id: "calendar-rejoin",
   };
+
   reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
   const key = `meet:${createHash("sha256").update("meet.google.com/abc-defg-hij").digest("hex")}`;
 
@@ -202,10 +253,14 @@ test("a later call can prompt after the call tied to a calendar offer ends", () 
 
 test("a calendar offer without a join link does not hide an unrelated call", () => {
   const { clock, engine, callDetector, reminderScheduler, shown } = createEngine();
+
   const event = {
-    id: "calendar-unlinked", start_time: new Date(clock.now() + 60_000).toISOString(),
-    calendar_id: "calendar-unlinked", attendees: [{ email: "teammate@example.com" }],
+    id: "calendar-unlinked",
+    start_time: new Date(clock.now() + 60_000).toISOString(),
+    calendar_id: "calendar-unlinked",
+    attendees: [{ email: "teammate@example.com" }],
   };
+
   reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
 
   engine.handleCalendarReminder(event);
@@ -218,10 +273,14 @@ test("a calendar offer without a join link does not hide an unrelated call", () 
 test("a confirmed Meet call suppresses its later calendar reminder", () => {
   const { clock, engine, callDetector, reminderScheduler, shown } = createEngine();
   const { createHash }: typeof import("node:crypto") = require("node:crypto");
+
   const event = {
-    id: "calendar-2", start_time: new Date(clock.now() + 60_000).toISOString(),
-    hangout_link: "https://meet.google.com/abc-defg-hij", calendar_id: "calendar-2",
+    id: "calendar-2",
+    start_time: new Date(clock.now() + 60_000).toISOString(),
+    hangout_link: "https://meet.google.com/abc-defg-hij",
+    calendar_id: "calendar-2",
   };
+
   reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: event, upcomingEvents: [] });
   const key = `meet:${createHash("sha256").update("meet.google.com/abc-defg-hij").digest("hex")}`;
   callDetector.emit("call-active", { key, service: "meet" });
@@ -245,13 +304,23 @@ test("a meeting app appearing asks the mic detector to re-evaluate unattributed 
 
 function createEngineWithNotes(existingNote: { id: number; folder_id: number | null } | null) {
   const MeetingDetectionEngine = loadEngine();
-  const noop = Object.assign(new EventEmitter(), { start() {}, stop() {}, resetPrompt() {}, setUserRecording() {}, setMicWarmHold() {} });
+
+  const noop = Object.assign(new EventEmitter(), {
+    start() {},
+    stop() {},
+    resetPrompt() {},
+    setUserRecording() {},
+    setMicWarmHold() {},
+  });
+
   const saved: Array<[string, string]> = [];
   const updates: Array<[number, Record<string, unknown>]> = [];
   const navigations: unknown[] = [];
+
   const database = {
     saveNote: (title: string, content: string) => {
       saved.push([title, content]);
+
       return { note: { id: 42 } };
     },
     getNoteByCalendarEventId: () => existingNote,
@@ -259,18 +328,24 @@ function createEngineWithNotes(existingNote: { id: number; folder_id: number | n
       id === "evt-1" ? { id: "evt-1", summary: "Design review", attendees: "[]" } : null,
     updateNote: (id: number, update: Record<string, unknown>) => {
       updates.push([id, update]);
+
       return { success: true, note: { id } };
     },
     getActiveEvents: () => [],
   };
+
   const engine = new MeetingDetectionEngine(
     { getActiveMeetingState: () => ({ activeMeeting: null, upcomingEvents: [] }) },
     noop,
     noop,
-    { notificationPrefs: {}, queueMeetingNoteNavigation: async (payload: unknown) => navigations.push(payload) },
+    {
+      notificationPrefs: {},
+      queueMeetingNoteNavigation: async (payload: unknown) => navigations.push(payload),
+    },
     database,
     { callDetector: noop }
   );
+
   return { engine, saved, updates, navigations };
 }
 
@@ -281,7 +356,10 @@ test("an event's note is created only on request, with the user's first input", 
   assert.equal(engine.findCalendarEventNote("evt-1"), null);
   assert.deepEqual(saved, []);
 
-  assert.deepEqual(engine.createCalendarEventNote("evt-1", { content: "First line" }), { noteId: 42, folderId: null });
+  assert.deepEqual(engine.createCalendarEventNote("evt-1", { content: "First line" }), {
+    noteId: 42,
+    folderId: null,
+  });
   assert.deepEqual(saved, [["Design review", "First line"]]);
   assert.deepEqual(updates, [[42, { calendar_event_id: "evt-1", participants: "[]" }]]);
   // Recording starts only through meeting navigation; creating must not queue it.
@@ -317,8 +395,17 @@ test("an unknown calendar event gets no note", () => {
 
 test("an event's note stores attendees under their best-known names", () => {
   const MeetingDetectionEngine = loadEngine();
-  const noop = Object.assign(new EventEmitter(), { start() {}, stop() {}, resetPrompt() {}, setUserRecording() {}, setMicWarmHold() {} });
+
+  const noop = Object.assign(new EventEmitter(), {
+    start() {},
+    stop() {},
+    resetPrompt() {},
+    setUserRecording() {},
+    setMicWarmHold() {},
+  });
+
   const updates: Array<Record<string, unknown>> = [];
+
   const engine = new MeetingDetectionEngine(
     { getActiveMeetingState: () => ({ activeMeeting: null, upcomingEvents: [] }) },
     noop,
@@ -339,6 +426,7 @@ test("an event's note stores attendees under their best-known names", () => {
       getContactProfiles: () => [{ email: "eli.rum@x.com", display_name: "Eli Rum" }],
       updateNote: (_id: number, update: Record<string, unknown>) => {
         updates.push(update);
+
         return { success: true };
       },
       getActiveEvents: () => [],
@@ -358,7 +446,10 @@ test("an event's note stores attendees under their best-known names", () => {
 test("calendar matching uses the injected five-minute window and scheduled variant", () => {
   const { clock, engine, reminderScheduler, shown } = createEngine();
   const event = { id: "clock-event", start_time: new Date(clock.now() + 300_001).toISOString() };
-  reminderScheduler.getActiveMeetingState = () => ({ activeMeeting: null, upcomingEvents: [event] });
+  reminderScheduler.getActiveMeetingState = () => ({
+    activeMeeting: null,
+    upcomingEvents: [event],
+  });
   assert.equal(engine._findCalendarEvent(), null);
   clock.advance(1);
   assert.equal(engine._findCalendarEvent(), event);
@@ -383,7 +474,12 @@ test("detected and manual placeholder events use the injected timestamp", async 
   const navigations: Array<{ event: { id: string; start_time: string } }> = [];
   engine.databaseManager.getActiveEvents = () => [];
   engine.databaseManager.saveNote = () => ({ note: { id: 42, folder_id: null } });
-  engine.windowManager.queueMeetingNoteNavigation = async (data: { event: { id: string; start_time: string } }) => { navigations.push(data); };
+  engine.windowManager.queueMeetingNoteNavigation = async (data: {
+    event: { id: string; start_time: string };
+  }) => {
+    navigations.push(data);
+  };
+
   clock.advance(500);
   await engine.startManualMeeting();
   const navigation = navigations[0];
@@ -433,4 +529,3 @@ test("setPreferences re-enables detection after a disable", () => {
   assert.equal(audioDetector.starts, 1);
   engine.stop();
 });
-

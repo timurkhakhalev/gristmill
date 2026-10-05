@@ -2,14 +2,32 @@
 // @probe-codes []
 // @probe-origin test/scripts/calendarManagersTypeProbe.test.js
 import { GoogleCalendarManager } from "./src/helpers/googleCalendarManager.ts";
-import { MicrosoftCalendarManager, normalizeGraphDateTime } from "./src/helpers/microsoftCalendarManager.ts";
+import {
+  MicrosoftCalendarManager,
+  normalizeGraphDateTime,
+} from "./src/helpers/microsoftCalendarManager.ts";
 import { AppleCalendarManager } from "./src/helpers/appleCalendarManager.ts";
 import { GoogleCalendarOAuth } from "./src/helpers/googleCalendarOAuth.ts";
 import { MicrosoftCalendarOAuth } from "./src/helpers/microsoftCalendarOAuth.ts";
-import { CalendarSyncInterval, FOCUS_SYNC_THROTTLE_MS } from "./src/helpers/calendarSyncInterval.ts";
+import {
+  CalendarSyncInterval,
+  FOCUS_SYNC_THROTTLE_MS,
+} from "./src/helpers/calendarSyncInterval.ts";
 import { CalendarReminderScheduler } from "./src/helpers/calendarReminderScheduler.ts";
-import { runOAuthLoopbackFlow, OAuthFlowError, type OAuthFlowResult } from "./src/helpers/oauthLoopbackFlow.ts";
-import type { CalendarEventRow, GoogleTokenRow, MicrosoftTokenRow, AppleCalendarRow, GoogleCalendarRow, MicrosoftCalendarRow, CalendarAccountRow } from "./src/helpers/database.ts";
+import {
+  runOAuthLoopbackFlow,
+  OAuthFlowError,
+  type OAuthFlowResult,
+} from "./src/helpers/oauthLoopbackFlow.ts";
+import type {
+  CalendarEventRow,
+  GoogleTokenRow,
+  MicrosoftTokenRow,
+  AppleCalendarRow,
+  GoogleCalendarRow,
+  MicrosoftCalendarRow,
+  CalendarAccountRow,
+} from "./src/helpers/database.ts";
 
 const emptyEvents: CalendarEventRow[] = [];
 const db = {

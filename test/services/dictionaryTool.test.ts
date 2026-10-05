@@ -1,8 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("node:fs");
+
 const os = require("node:os");
+
 const path = require("node:path");
+
 const Module = require("node:module");
 
 const load = () => import("../../src/services/tools/dictionaryTool.js");
@@ -10,15 +15,23 @@ const load = () => import("../../src/services/tools/dictionaryTool.js");
 // The DB-backed persistence test loads DatabaseManager, whose init reaches
 // for Electron's app.getPath; the loader patch points it at a temp dir.
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
-    return { app: { getPath: () => fs.mkdtempSync(path.join(os.tmpdir(), "dict-persist-")), isReady: () => false } };
+    return {
+      app: {
+        getPath: () => fs.mkdtempSync(path.join(os.tmpdir(), "dict-persist-")),
+        isReady: () => false,
+      },
+    };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 function harness(words: string[]) {
   const calls: unknown[] = [];
+
   return {
     calls,
     actions: {
@@ -136,7 +149,12 @@ test("case-variant duplicates in one add list persist once", async () => {
   const result = await tool.execute({ add: ["OpenAI", "openai"], remove: [] });
 
   assert.deepEqual(calls, [{ add: ["OpenAI"], remove: [] }]);
-  assert.deepEqual(result.data, { added: ["OpenAI"], removed: [], alreadyPresent: [], notFound: [] });
+  assert.deepEqual(result.data, {
+    added: ["OpenAI"],
+    removed: [],
+    alreadyPresent: [],
+    notFound: [],
+  });
 });
 
 // Issue 175: pin the persisted half. applyDictionaryChanges removes before
@@ -146,6 +164,7 @@ test("the persisted dictionary keeps the corrected spelling after a correction",
   const { createUpdateDictionaryTool } = await load();
   const { DatabaseManager } = require("../../src/helpers/database.ts");
   const db = new DatabaseManager();
+
   const tool = createUpdateDictionaryTool({
     getDictionary: () => db.getDictionary(),
     updateDictionary: (changes: { add: string[]; remove: string[] }) => {

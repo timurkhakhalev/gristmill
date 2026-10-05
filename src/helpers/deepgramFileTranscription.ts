@@ -11,10 +11,14 @@ export function deepgramFileUrl(
   url.searchParams.set("model", model);
   url.searchParams.set("smart_format", "true");
   url.searchParams.set("utterances", "true");
+
   if (multichannel) url.searchParams.set("multichannel", "true");
+
   if (diarize) url.searchParams.set("diarize_model", "latest");
+
   if (language) url.searchParams.set("language", language);
   else url.searchParams.set("detect_language", "true");
+
   return url;
 }
 
@@ -30,17 +34,31 @@ export function parseDeepgramFileResponse(
 ): RemoteTranscriptionResult {
   const results = record(raw)?.results;
   const channels = record(results)?.channels;
+
   if (multichannel && (!Array.isArray(channels) || channels.length !== 2)) {
-    return { success: false, code: "DEEPGRAM_CHANNELS_MISSING", error: "Deepgram did not return both audio channels" };
+    return {
+      success: false,
+      code: "DEEPGRAM_CHANNELS_MISSING",
+      error: "Deepgram did not return both audio channels",
+    };
   }
+
   const channelTranscripts = (Array.isArray(channels) ? channels : []).map((channel) => {
     const alternatives = record(channel)?.alternatives;
+
     return Array.isArray(alternatives) ? record(alternatives[0])?.transcript : undefined;
   });
+
   if (multichannel && channelTranscripts.some((text) => typeof text !== "string")) {
-    return { success: false, code: "DEEPGRAM_INVALID_RESPONSE", error: "Deepgram returned an invalid channel transcript" };
+    return {
+      success: false,
+      code: "DEEPGRAM_INVALID_RESPONSE",
+      error: "Deepgram returned an invalid channel transcript",
+    };
   }
+
   const transcript = multichannel ? channelTranscripts.join("\n") : channelTranscripts[0];
+
   if (typeof transcript !== "string") {
     return {
       success: false,
@@ -50,6 +68,7 @@ export function parseDeepgramFileResponse(
   }
 
   const utterances = record(results)?.utterances;
+
   if (!Array.isArray(utterances)) {
     return diarize && transcript.trim()
       ? {
@@ -61,9 +80,11 @@ export function parseDeepgramFileResponse(
   }
 
   const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
+
   for (const value of utterances) {
     const item = record(value);
     const words = diarize && Array.isArray(item?.words) && item.words.length ? item.words : null;
+
     if (
       !item ||
       (multichannel && item.channel !== 0 && item.channel !== 1) ||
@@ -83,23 +104,47 @@ export function parseDeepgramFileResponse(
         code: "DEEPGRAM_INVALID_RESPONSE",
       };
     }
-    const speakerLabel = (speaker: number) => multichannel
-      ? item.channel === 0 ? "mic" : `system:Speaker ${speaker + 1}`
-      : `Speaker ${speaker + 1}`;
+
+    const speakerLabel = (speaker: number) =>
+      multichannel
+        ? item.channel === 0
+          ? "mic"
+          : `system:Speaker ${speaker + 1}`
+        : `Speaker ${speaker + 1}`;
+
     if (words) {
       let turn: (typeof segments)[number] | undefined;
+
       for (const value of words) {
         const word = record(value);
         const text = word?.punctuated_word ?? word?.word;
-        if (!word || typeof text !== "string" || !text.trim() ||
-          !Number.isInteger(word.speaker) || (word.speaker as number) < 0 ||
-          typeof word.start !== "number" || !Number.isFinite(word.start) || word.start < 0 ||
-          typeof word.end !== "number" || !Number.isFinite(word.end) || word.end < word.start ||
-          (audioDurationSeconds !== undefined && word.start > audioDurationSeconds)) {
-          return { success: false, code: "DEEPGRAM_INVALID_RESPONSE", error: "Deepgram returned invalid word speaker or timing data" };
+
+        if (
+          !word ||
+          typeof text !== "string" ||
+          !text.trim() ||
+          !Number.isInteger(word.speaker) ||
+          (word.speaker as number) < 0 ||
+          typeof word.start !== "number" ||
+          !Number.isFinite(word.start) ||
+          word.start < 0 ||
+          typeof word.end !== "number" ||
+          !Number.isFinite(word.end) ||
+          word.end < word.start ||
+          (audioDurationSeconds !== undefined && word.start > audioDurationSeconds)
+        ) {
+          return {
+            success: false,
+            code: "DEEPGRAM_INVALID_RESPONSE",
+            error: "Deepgram returned invalid word speaker or timing data",
+          };
         }
+
         const speaker = speakerLabel(word.speaker as number);
-        const end = audioDurationSeconds === undefined ? word.end : Math.min(word.end, audioDurationSeconds);
+
+        const end =
+          audioDurationSeconds === undefined ? word.end : Math.min(word.end, audioDurationSeconds);
+
         if (turn?.speaker === speaker) {
           turn.text += ` ${text.trim()}`;
           turn.start = Math.min(turn.start, word.start);
@@ -109,8 +154,10 @@ export function parseDeepgramFileResponse(
           segments.push(turn);
         }
       }
+
       continue;
     }
+
     segments.push({
       ...(diarize ? { speaker: speakerLabel(item.speaker as number) } : {}),
       text: item.transcript,
@@ -127,12 +174,24 @@ export function parseDeepgramFileResponse(
     };
   }
 
-  if (multichannel && channelTranscripts.some((text, channel) =>
-    typeof text === "string" && text.trim() && !utterances.some((value) => record(value)?.channel === channel)
-  )) {
-    return { success: false, code: "DEEPGRAM_DIARIZATION_MISSING", error: "Deepgram omitted utterances for a nonempty channel" };
+  if (
+    multichannel &&
+    channelTranscripts.some(
+      (text, channel) =>
+        typeof text === "string" &&
+        text.trim() &&
+        !utterances.some((value) => record(value)?.channel === channel)
+    )
+  ) {
+    return {
+      success: false,
+      code: "DEEPGRAM_DIARIZATION_MISSING",
+      error: "Deepgram omitted utterances for a nonempty channel",
+    };
   }
+
   segments.sort((a, b) => a.start - b.start);
+
   return {
     success: true,
     text: diarize

@@ -17,17 +17,22 @@ export const noteOutputRequestSchema = z.discriminatedUnion("scope", [
     })
     .strict(),
 ]);
+
 export type NoteOutputRequest = z.infer<typeof noteOutputRequestSchema>;
+
 export const outputFreshnessSchema = z.object({
   status: z.enum(["current", "stale", "unknown"]),
   reasons: z.array(z.string()),
   revision: z.string().optional(),
 });
+
 export type OutputFreshness = z.infer<typeof outputFreshnessSchema>;
+
 const provenance = z.object({
   source: z.enum(["note-manual", "note-projection", "run-artifact", "note-aggregate"]),
   runIds: z.array(z.string().uuid()),
 });
+
 const common = {
   noteId: z.number().int().positive(),
   currentRuns: z.array(
@@ -44,6 +49,7 @@ const common = {
   transcriptFreshness: outputFreshnessSchema,
   diagnostics: z.array(z.string()),
 };
+
 export const noteOutputSchema = z.discriminatedUnion("scope", [
   z.object({
     ...common,
@@ -62,4 +68,5 @@ export const noteOutputSchema = z.discriminatedUnion("scope", [
     result: meetingProcessingResultDtoSchema.nullable(),
   }),
 ]);
+
 export type NoteOutput = z.infer<typeof noteOutputSchema>;

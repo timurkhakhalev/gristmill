@@ -1,11 +1,19 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { localModelChannels }: typeof import("../../src/contracts/localModelLifecycle.ts") = require("../../src/contracts/localModelLifecycle.ts");
+const {
+  localModelChannels,
+}: typeof import("../../src/contracts/localModelLifecycle.ts") = require("../../src/contracts/localModelLifecycle.ts");
+
 const {
   registerLocalModelLifecycleHandlers,
 } = require("../../src/helpers/localModelLifecycleIpcHandlers.ts");
-const { sanitizeWhisperVadConfig }: typeof import("../../src/helpers/whisperVadConfig.ts") = require("../../src/helpers/whisperVadConfig.ts");
+
+const {
+  sanitizeWhisperVadConfig,
+}: typeof import("../../src/helpers/whisperVadConfig.ts") = require("../../src/helpers/whisperVadConfig.ts");
+
 const vadDefaults = require("../../src/constants/whisperVad.json").DEFAULTS;
 
 // Mirrors the production settings owner in ipcHandlers.js: allowed-key filter
@@ -16,7 +24,9 @@ function createVadSettingsStore() {
     "meetingSileroEnabled",
     ...Object.keys(vadDefaults),
   ]);
-  let settings : any = {};
+
+  let settings: any = {};
+
   return {
     get() {
       return {
@@ -27,24 +37,29 @@ function createVadSettingsStore() {
     },
     set(update = {}) {
       const filtered: Record<string, unknown> = {};
+
       for (const [k, v] of Object.entries(update)) {
         if (allowedKeys.has(k)) filtered[k] = v;
       }
+
       settings = { ...this.get(), ...filtered };
+
       return this.get();
     },
   };
 }
 
-function createHarness(overrides: {
-  vadStore?: ReturnType<typeof createVadSettingsStore>;
-  whisperManager?: Record<string, unknown>;
-  parakeetManager?: Record<string, unknown>;
-  deps?: Record<string, unknown>;
-} = {}) {
+function createHarness(
+  overrides: {
+    vadStore?: ReturnType<typeof createVadSettingsStore>;
+    whisperManager?: Record<string, unknown>;
+    parakeetManager?: Record<string, unknown>;
+    deps?: Record<string, unknown>;
+  } = {}
+) {
   const handlers = new Map<string, (...args: unknown[]) => any>();
   const sent: [string, any][] = [];
-  const calls : any = { persist: [], clear: 0, started: [], finished: [] };
+  const calls: any = { persist: [], clear: 0, started: [], finished: [] };
   const active = new Map();
 
   const downloadStatus: unknown = {
@@ -56,8 +71,10 @@ function createHarness(overrides: {
     finish: (modelType: string, modelId: string) => {
       const key = `${modelType}:${modelId}`;
       calls.finished.push(key);
+
       if (!active.has(key)) return null;
       active.delete(key);
+
       return { sequence: 7 };
     },
   };
@@ -66,8 +83,12 @@ function createHarness(overrides: {
 
   const deps: unknown = {
     whisperManager: {
-      downloadWhisperModel: async (modelName: string, onProgress: (event: { type: string; model: string; percentage: number }) => void) => {
+      downloadWhisperModel: async (
+        modelName: string,
+        onProgress: (event: { type: string; model: string; percentage: number }) => void
+      ) => {
         onProgress({ type: "progress", model: modelName, percentage: 10 });
+
         return { success: true, model: modelName };
       },
       ...overrides.whisperManager,
@@ -79,7 +100,9 @@ function createHarness(overrides: {
       ...overrides.parakeetManager,
     },
     downloadStatus,
-    progressSender: { sendToControlPanel: (channel: string, payload: unknown) => sent.push([channel, payload]) },
+    progressSender: {
+      sendToControlPanel: (channel: string, payload: unknown) => sent.push([channel, payload]),
+    },
     updateDownloadStatus: () => ({ sequence: 3 }),
     getWhisperVadSettings: () => vadStore.get(),
     setWhisperVadSettings: (payload: any) => vadStore.set(payload),
@@ -92,12 +115,19 @@ function createHarness(overrides: {
     ...overrides.deps,
   };
 
-  registerLocalModelLifecycleHandlers({ handle: (c: string, fn: (...args: unknown[]) => unknown) => handlers.set(c, fn) }, deps);
+  registerLocalModelLifecycleHandlers(
+    { handle: (c: string, fn: (...args: unknown[]) => unknown) => handlers.set(c, fn) },
+    deps
+  );
+
   const invoke = (channel: string, ...args: unknown[]) => {
     const handler = handlers.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
+
     return handler({}, ...args);
   };
+
   return { handlers, invoke, sent, calls };
 }
 
@@ -125,6 +155,7 @@ test("download failure emits an error event with the manager error code", async 
       },
     },
   });
+
   const result = await h.invoke(localModelChannels.downloadWhisperModel, "base.en");
 
   assert.deepEqual(result, {
@@ -163,6 +194,7 @@ test("parakeet server start persists the provider selection only on success", as
   const h = createHarness({
     parakeetManager: { startServer: async () => ({ success: false, reason: "no binary" }) },
   });
+
   const failed = await h.invoke(localModelChannels.parakeetServerStart, "parakeet-mlx");
   assert.equal(failed.success, false);
   assert.equal(h.calls.persist.length, 0);
@@ -182,6 +214,7 @@ test("invalid model names are rejected before reaching the manager", async () =>
       },
     },
   });
+
   const result = await h.invoke(localModelChannels.downloadParakeetModel, "");
   assert.equal(result.success, false);
   assert.equal(result.error, "Invalid model name");
@@ -189,6 +222,7 @@ test("invalid model names are rejected before reaching the manager", async () =>
 
 test("VAD config set never rejects: garbage is filtered/clamped into a valid config", async () => {
   const h = createHarness();
+
   const result = await h.invoke(localModelChannels.whisperVadSetConfig, {
     threshold: "not-a-number",
     unknownKey: "dropped",

@@ -43,9 +43,11 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -57,10 +59,13 @@ function subscribeValidated<T>(
 ): () => void {
   const listener = (_event: unknown, ...args: unknown[]) => {
     const parsed = schema.safeParse(args[0]);
+
     if (!parsed.success) return;
     callback(parsed.data);
   };
+
   ipcRenderer.on(channel, listener);
+
   return () => {
     ipcRenderer.removeListener(channel, listener);
   };
@@ -73,28 +78,24 @@ export function createCalendarIntegrationBridge(
 ): CalendarIntegrationApi {
   const invoke = async <T>(channel: string, schema: ZodType<T>, ...args: unknown[]): Promise<T> => {
     const raw = await ipcRenderer.invoke(channel, ...args);
+
     return parseResult(schema, raw, channel);
   };
 
   return {
     gcalStartOAuth: (): Promise<CalendarOAuthResult> =>
-      invoke(
-        calendarIntegrationChannels.gcalStartOAuth,
-        oauthResultSchema
-      ),
+      invoke(calendarIntegrationChannels.gcalStartOAuth, oauthResultSchema),
 
     gcalDisconnect: (email?: string): Promise<CalendarCommandResult> => {
       if (!disconnectArgsSchema.safeParse([email]).success) {
         return Promise.resolve({ success: false, error: "Invalid disconnect request" });
       }
+
       return invoke(calendarIntegrationChannels.gcalDisconnect, calendarCommandResultSchema, email);
     },
 
     gcalGetConnectionStatus: (): Promise<GoogleConnectionStatus> =>
-      invoke(
-        calendarIntegrationChannels.gcalGetConnectionStatus,
-        googleConnectionStatusSchema
-      ),
+      invoke(calendarIntegrationChannels.gcalGetConnectionStatus, googleConnectionStatusSchema),
 
     gcalGetCalendars: (): Promise<GoogleCalendarsResult> =>
       invoke(calendarIntegrationChannels.gcalGetCalendars, googleCalendarsResultSchema),
@@ -106,6 +107,7 @@ export function createCalendarIntegrationBridge(
       if (!calendarSelectionArgsSchema.safeParse([calendarId, isSelected]).success) {
         return Promise.resolve({ success: false, error: "Invalid calendar selection request" });
       }
+
       return invoke(
         calendarIntegrationChannels.gcalSetCalendarSelection,
         calendarCommandResultSchema,
@@ -118,7 +120,12 @@ export function createCalendarIntegrationBridge(
       if (!primaryOnlyArgsSchema.safeParse([value]).success) {
         return Promise.resolve({ success: false, error: "Invalid request" });
       }
-      return invoke(calendarIntegrationChannels.gcalSetPrimaryOnly, calendarCommandResultSchema, value);
+
+      return invoke(
+        calendarIntegrationChannels.gcalSetPrimaryOnly,
+        calendarCommandResultSchema,
+        value
+      );
     },
 
     gcalSyncEvents: (): Promise<CalendarCommandResult> =>
@@ -128,6 +135,7 @@ export function createCalendarIntegrationBridge(
       if (!upcomingEventsArgsSchema.safeParse([windowMinutes]).success) {
         return Promise.resolve({ success: false, events: [] });
       }
+
       return invoke(
         calendarIntegrationChannels.gcalGetUpcomingEvents,
         upcomingEventsResultSchema,
@@ -139,6 +147,7 @@ export function createCalendarIntegrationBridge(
       if (!calendarEventArgsSchema.safeParse([eventId]).success) {
         return Promise.resolve({ success: false, event: null });
       }
+
       return invoke(calendarIntegrationChannels.gcalGetEvent, calendarEventResultSchema, eventId);
     },
 
@@ -149,20 +158,23 @@ export function createCalendarIntegrationBridge(
       if (!disconnectArgsSchema.safeParse([email]).success) {
         return Promise.resolve({ success: false, error: "Invalid disconnect request" });
       }
+
       return invoke(calendarIntegrationChannels.mcalDisconnect, calendarCommandResultSchema, email);
     },
 
     mcalGetConnectionStatus: (): Promise<MicrosoftConnectionStatus> =>
-      invoke(
-        calendarIntegrationChannels.mcalGetConnectionStatus,
-        microsoftConnectionStatusSchema
-      ),
+      invoke(calendarIntegrationChannels.mcalGetConnectionStatus, microsoftConnectionStatusSchema),
 
     mcalSetPrimaryOnly: (value: boolean): Promise<CalendarCommandResult> => {
       if (!primaryOnlyArgsSchema.safeParse([value]).success) {
         return Promise.resolve({ success: false, error: "Invalid request" });
       }
-      return invoke(calendarIntegrationChannels.mcalSetPrimaryOnly, calendarCommandResultSchema, value);
+
+      return invoke(
+        calendarIntegrationChannels.mcalSetPrimaryOnly,
+        calendarCommandResultSchema,
+        value
+      );
     },
 
     acalConnect: (): Promise<AppleConnectResult> =>
@@ -172,17 +184,16 @@ export function createCalendarIntegrationBridge(
       invoke(calendarIntegrationChannels.acalDisconnect, calendarCommandResultSchema),
 
     acalGetConnectionStatus: (): Promise<AppleConnectionStatus> =>
-      invoke(
-        calendarIntegrationChannels.acalGetConnectionStatus,
-        appleConnectionStatusSchema
-      ),
+      invoke(calendarIntegrationChannels.acalGetConnectionStatus, appleConnectionStatusSchema),
 
     openCalendarPrivacySettings: (): Promise<{ success: boolean; error?: string }> =>
-      invoke(calendarIntegrationChannels.openCalendarPrivacySettings, calendarCommandResultSchema).then(
-        (result) =>
-          result.success === false
-            ? { success: false, ...(result.error !== undefined ? { error: result.error } : {}) }
-            : { success: true }
+      invoke(
+        calendarIntegrationChannels.openCalendarPrivacySettings,
+        calendarCommandResultSchema
+      ).then((result) =>
+        result.success === false
+          ? { success: false, ...(result.error !== undefined ? { error: result.error } : {}) }
+          : { success: true }
       ),
 
     onGcalConnectionChanged: (callback: (data: { accounts: Array<{ email: string }> }) => void) =>

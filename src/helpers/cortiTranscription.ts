@@ -1,6 +1,9 @@
 const { net } = require("electron");
+
 import crypto from "crypto";
+
 const debugLogger = require("./debugLogger");
+
 import { getCortiToken } from "./cortiAuth.js";
 
 interface CortiRequestOptions extends Record<string, unknown> {
@@ -21,10 +24,12 @@ async function request(
       ...(options.headers || {}),
     },
   } as RequestInit);
+
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
     throw new Error(`Corti API Error: ${response.status} ${errorText}`.trim());
   }
+
   return response;
 }
 
@@ -73,18 +78,23 @@ export async function transcribeAudio({
     "transcription"
   );
 
-  const { interactionId } = await requestJson<{ interactionId: string }>(token, tenant, `${base}/interactions/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      encounter: {
-        identifier: `gristmill-${crypto.randomUUID()}`,
-        status: "completed",
-        type: "consultation",
-      },
-    }),
-    signal,
-  });
+  const { interactionId } = await requestJson<{ interactionId: string }>(
+    token,
+    tenant,
+    `${base}/interactions/`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        encounter: {
+          identifier: `gristmill-${crypto.randomUUID()}`,
+          status: "completed",
+          type: "consultation",
+        },
+      }),
+      signal,
+    }
+  );
 
   try {
     const { recordingId } = await requestJson<{ recordingId: string }>(
@@ -101,17 +111,12 @@ export async function transcribeAudio({
 
     const transcript = await requestJson<{
       transcripts?: Array<{ text?: string }>;
-    }>(
-      token,
-      tenant,
-      `${base}/interactions/${interactionId}/transcripts/`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recordingId, primaryLanguage: language, isDictation: true }),
-        signal,
-      }
-    );
+    }>(token, tenant, `${base}/interactions/${interactionId}/transcripts/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recordingId, primaryLanguage: language, isDictation: true }),
+      signal,
+    });
 
     return { text: (transcript.transcripts || []).map((utterance) => utterance.text).join(" ") };
   } finally {

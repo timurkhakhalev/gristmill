@@ -1,14 +1,20 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
 
 const load = () => import("../../src/config/colorSchemes.js");
+
 const css = fs.readFileSync(path.join(__dirname, "../../src/index.css"), "utf8");
 
 const block = (selector: string): string | null => {
   const start = css.indexOf(`${selector} {`);
+
   if (start === -1) return null;
+
   return css.slice(start, css.indexOf("}", start));
 };
 
@@ -20,9 +26,11 @@ test("every non-default scheme has a light and a dark block with the full knob s
     const dark = block(`.dark[data-color-scheme="${id}"]`);
     assert.ok(light, `${id}: light block`);
     assert.ok(dark, `${id}: dark block`);
+
     for (const knob of ["--n-h", "--n-c", "--a-h", "--a-c", "--a-l", "--brand-l"]) {
       assert.match(light, new RegExp(`${knob}:`), `${id}: light ${knob}`);
     }
+
     // .dark sets these for the default scheme; a scheme that skips them in its
     // dark block would inherit its light values in dark mode.
     for (const knob of ["--a-l", "--brand-l"]) {

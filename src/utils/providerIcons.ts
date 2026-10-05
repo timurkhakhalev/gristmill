@@ -94,5 +94,6 @@ export function getRemoteProviderIcon(
   const base = prefix.startsWith("~") ? prefix.slice(1) : prefix;
   const family = modelName?.split(/[-.:@ ]/, 1)[0].toLowerCase();
   const key = family && PROVIDER_ICONS[family] ? family : (REMOTE_PROVIDER_ALIASES[base] ?? base);
+
   return { icon: PROVIDER_ICONS[key], invertInDark: isMonochromeProvider(key) };
 }

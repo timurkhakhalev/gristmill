@@ -20,15 +20,19 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
 // The return type is the shared UploadTranscriptionApi, so any drift between
 // this implementation and the contract fails compilation.
-export function createUploadTranscriptionBridge(ipcRenderer: IpcRendererLike): UploadTranscriptionApi {
+export function createUploadTranscriptionBridge(
+  ipcRenderer: IpcRendererLike
+): UploadTranscriptionApi {
   return {
     transcribeAudioFileByok: (request) =>
       ipcRenderer
@@ -44,11 +48,7 @@ export function createUploadTranscriptionBridge(ipcRenderer: IpcRendererLike): U
       ipcRenderer
         .invoke(uploadTranscriptionChannels.diarizeAudioFile, filePath, options)
         .then((raw) =>
-          parseResult(
-            diarizationResponseSchema,
-            raw,
-            uploadTranscriptionChannels.diarizeAudioFile
-          )
+          parseResult(diarizationResponseSchema, raw, uploadTranscriptionChannels.diarizeAudioFile)
         ),
     mergeSpeakerText: (segments, text, duration) =>
       ipcRenderer

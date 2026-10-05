@@ -7,6 +7,8 @@ import { MAX_SPEAKER_COUNT } from "../constants/speakerDetection.json";
 // the contract. A Symbol cannot round-trip storage and still throws.
 export function normalizeStoredSpeakerCount(value: unknown): number | null {
   const count = Number(value);
+
   if (!Number.isInteger(count) || count < 1) return null;
+
   return Math.min(count, MAX_SPEAKER_COUNT);
 }

@@ -4,13 +4,17 @@ import { Skeleton } from "../ui/Skeleton";
 // in the same place instead of pushing the page around.
 
 const EVENT_TITLE_WIDTHS = ["w-48", "w-36", "w-56"];
+
 const NOTE_TITLE_WIDTHS = ["w-40", "w-52", "w-32"];
 
 export function ComingUpSkeleton() {
   return (
     <div className="divide-y divide-dashed divide-border overflow-clip rounded-2xl border border-border bg-surface-2">
       {EVENT_TITLE_WIDTHS.map((width) => (
-        <div key={width} className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-start gap-4 px-5 py-4">
+        <div
+          key={width}
+          className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-start gap-4 px-5 py-4"
+        >
           <div className="flex items-center gap-2.5">
             <Skeleton className="h-7 w-8" />
             <div className="space-y-1.5">

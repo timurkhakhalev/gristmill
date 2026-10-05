@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/lib/noteEditorPendingSave.js");
@@ -21,6 +22,7 @@ function note(id: number, content: string, enhancedContent: string | null = null
 
 test("applies title, content, and enhanced mutations only for the draft owner", async () => {
   const { applyNoteDraftMutation } = await load();
+
   const original = {
     noteId: 1,
     title: "Original title",
@@ -62,6 +64,7 @@ test("applies title, content, and enhanced mutations only for the draft owner", 
 
 test("rejects foreign and stale source-note mutations without changing the draft", async () => {
   const { applyNoteDraftMutation } = await load();
+
   const draftA = {
     noteId: 1,
     title: "A title",
@@ -76,6 +79,7 @@ test("rejects foreign and stale source-note mutations without changing the draft
   ] as import("../../src/lib/noteEditorPendingSave.js").NoteDraftMutation[]) {
     assert.equal(applyNoteDraftMutation(draftA, mutation), null);
   }
+
   assert.equal(
     applyNoteDraftMutation(null, {
       sourceNoteId: 1,
@@ -204,11 +208,13 @@ test("edit A then immediately switch to B keeps empty, zero, and raw content own
 
   for (const content of ["", "0", "Edited raw A"]) {
     const draftA = planNoteTransition(noteA, null, null).nextDraft!;
+
     const editedA = applyNoteDraftMutation(draftA, {
       sourceNoteId: 1,
       field: "content",
       value: content,
     });
+
     assert.ok(editedA);
     const edited = editedA!;
 
@@ -217,6 +223,7 @@ test("edit A then immediately switch to B keeps empty, zero, and raw content own
       title: edited.title,
       content: edited.content,
     };
+
     assert.equal(
       applyNoteDraftMutation(edited, {
         sourceNoteId: 2,
@@ -243,11 +250,13 @@ test("an enhanced A edit flushes only to A during an immediate B transition", as
   const noteA = note(1, "A body", "Old enhanced A");
   const noteB = note(2, "B body", "Enhanced B");
   const draftA = planNoteTransition(noteA, null, null).nextDraft!;
+
   const editedA = applyNoteDraftMutation(draftA, {
     sourceNoteId: 1,
     field: "enhancedContent",
     value: "New enhanced A",
   });
+
   assert.ok(editedA);
   const edited = editedA!;
 
@@ -255,6 +264,7 @@ test("an enhanced A edit flushes only to A during an immediate B transition", as
     noteId: edited.noteId,
     enhancedContent: edited.enhancedContent,
   };
+
   assert.equal(
     applyNoteDraftMutation(edited, {
       sourceNoteId: 2,
@@ -314,7 +324,12 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
   assert.deepEqual(
     applyEventDraftHandoff(
       { noteId: 1, title: "Event title", content: "early snapshot", enhancedContent: null },
-      { noteId: 1, note: note(1, ""), mode: "replace", draft: { content: "early snapshot plus ABC" } }
+      {
+        noteId: 1,
+        note: note(1, ""),
+        mode: "replace",
+        draft: { content: "early snapshot plus ABC" },
+      }
     ),
     {
       noteId: 1,
@@ -362,7 +377,12 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
   // No change returns the same draft object.
   const draft = { noteId: 5, title: "T", content: "C", enhancedContent: null };
   assert.equal(
-    applyEventDraftHandoff(draft, { noteId: 5, note: note(5, ""), mode: "replace", draft: { title: "T", content: "C" } }),
+    applyEventDraftHandoff(draft, {
+      noteId: 5,
+      note: note(5, ""),
+      mode: "replace",
+      draft: { title: "T", content: "C" },
+    }),
     draft
   );
 });
@@ -382,10 +402,12 @@ test("external updates fill untouched fields and keep the user's dirty ones", as
     enhancedContent: null,
     dirtyContent: true,
   };
+
   const accepted = acceptExternalNoteUpdate(contentEdit, {
     title: "Generated title",
     content: "Ignored external content",
   });
+
   assert.deepEqual(accepted.draft, {
     noteId: 1,
     title: "Generated title",
@@ -404,10 +426,12 @@ test("external updates fill untouched fields and keep the user's dirty ones", as
     enhancedContent: null,
     dirtyTitle: true,
   };
+
   const acceptedTitle = acceptExternalNoteUpdate(titleEdit, {
     title: "Ignored external title",
     content: "Chat-tool content",
   });
+
   assert.deepEqual(acceptedTitle.draft, {
     noteId: 2,
     title: "Typed title",
@@ -423,6 +447,7 @@ test("external updates fill untouched fields and keep the user's dirty ones", as
     { noteId: 3, title: "T", content: "C", enhancedContent: null },
     { title: "T2", content: "C2" }
   );
+
   assert.deepEqual(clean.draft, {
     noteId: 3,
     title: "T2",
@@ -437,6 +462,7 @@ test("external updates fill untouched fields and keep the user's dirty ones", as
     { noteId: 4, title: "T", content: "Typed", enhancedContent: null, dirtyContent: true },
     { content: "" }
   );
+
   assert.deepEqual(empty.draft, {
     noteId: 4,
     title: "T",
@@ -444,10 +470,12 @@ test("external updates fill untouched fields and keep the user's dirty ones", as
     enhancedContent: null,
     dirtyContent: true,
   });
+
   const emptyClean = acceptExternalNoteUpdate(
     { noteId: 5, title: "T", content: "C", enhancedContent: null },
     { content: "" }
   );
+
   assert.equal(emptyClean.draft.content, "");
 });
 
@@ -455,22 +483,14 @@ test("dirty-trimmed snapshots write only the fields the user edited", async () =
   const { collectPendingNoteWrites } = await load();
 
   // A content-only edit writes only content: an external title survives.
-  assert.deepEqual(
-    collectPendingNoteWrites(
-      { noteId: 1, content: "Typed body" },
-      null
-    ),
-    [{ noteId: 1, updates: { content: "Typed body" } }]
-  );
+  assert.deepEqual(collectPendingNoteWrites({ noteId: 1, content: "Typed body" }, null), [
+    { noteId: 1, updates: { content: "Typed body" } },
+  ]);
 
   // A title-only edit writes only title: an external content survives.
-  assert.deepEqual(
-    collectPendingNoteWrites(
-      { noteId: 2, title: "Typed title" },
-      null
-    ),
-    [{ noteId: 2, updates: { title: "Typed title" } }]
-  );
+  assert.deepEqual(collectPendingNoteWrites({ noteId: 2, title: "Typed title" }, null), [
+    { noteId: 2, updates: { title: "Typed title" } },
+  ]);
 
   // Both fields dirty: both are written (the old full-document shape).
   assert.deepEqual(
@@ -488,10 +508,7 @@ test("dirty-trimmed snapshots write only the fields the user edited", async () =
 
   // A different-owner enhanced write stays separate (unchanged policy).
   assert.deepEqual(
-    collectPendingNoteWrites(
-      { noteId: 1, content: "C" },
-      { noteId: 2, enhancedContent: "E" }
-    ),
+    collectPendingNoteWrites({ noteId: 1, content: "C" }, { noteId: 2, enhancedContent: "E" }),
     [
       { noteId: 1, updates: { content: "C" } },
       { noteId: 2, updates: { enhanced_content: "E" } },
@@ -499,7 +516,5 @@ test("dirty-trimmed snapshots write only the fields the user edited", async () =
   );
 
   // A fully clean snapshot flushes no document write at all.
-  assert.deepEqual(collectPendingNoteWrites({ noteId: 9 }, null), [
-    { noteId: 9, updates: {} },
-  ]);
+  assert.deepEqual(collectPendingNoteWrites({ noteId: 9 }, null), [{ noteId: 9, updates: {} }]);
 });

@@ -14,8 +14,11 @@ import type { NoteItem } from "../../contracts/notes";
 import type { CalendarEvent } from "../../contracts/calendar";
 
 const RECENT_NOTES_LIMIT = 50;
+
 const EMPTY_NOTES: NoteItem[] = [];
+
 const SUGGESTION_KEYS = ["catchUp", "keyDecisions", "inFlight"] as const;
+
 // Last recent-notes list, so returning to Home paints it at once and refreshes after.
 let cachedRecentNotes: NoteItem[] | null = null;
 
@@ -54,6 +57,7 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
       .catch(() => {
         if (!stale) setNotes([]);
       });
+
     return () => {
       stale = true;
     };
@@ -61,10 +65,12 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
 
   const chat = useHomeChat(notes ?? EMPTY_NOTES);
   const [chatMode, setChatMode] = useState<ChatPanelMode>("hidden");
+
   const suggestions = useMemo(
     () => SUGGESTION_KEYS.map((key) => t(`embeddedChat.suggestions.${key}`)),
     [t]
   );
+
   const askFromBar = useCallback(
     (text: string) => {
       setChatMode("floating");
@@ -72,10 +78,11 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
     },
     [chat]
   );
+
   // Chat citations can point past the recent list, so fall back to a lookup.
   const openNoteById = async (id: number) => {
-    const note =
-      notes?.find((item) => item.id === id) ?? (await window.electronAPI.getNote(id));
+    const note = notes?.find((item) => item.id === id) ?? (await window.electronAPI.getNote(id));
+
     if (note) onOpenNote(note);
   };
 

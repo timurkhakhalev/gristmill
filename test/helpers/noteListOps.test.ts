@@ -1,10 +1,12 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 // Requires Node's native TypeScript type-stripping (Node >= 22.6 with
 // --experimental-strip-types, on by default in Node 23.6+/24). CI runs Node 24.
 
 const load = () => import("../../src/stores/noteListOps.ts");
+
 type NoteItem = import("../../src/contracts/notes.ts").NoteItem;
 
 const note = (id: number, folderId: number | null = 1, spaceId = 1): NoteItem => ({
@@ -31,6 +33,7 @@ const note = (id: number, folderId: number | null = 1, spaceId = 1): NoteItem =>
 
 test("removes the note from every container list that holds it", async () => {
   const { removeNoteFromLists } = await load();
+
   const state = {
     notesByContainer: {
       "f:1": [note(1), note(2)],
@@ -58,6 +61,7 @@ test("filters the flat notes list even when no container holds the note", async 
   // note present only in `notes` (e.g. a flat-only initializeNotes load)
   // survived deletion until an app reload (count updated, row stayed).
   const { removeNoteFromLists } = await load();
+
   const state = {
     notesByContainer: { "f:9": [note(7, 9)] },
     notes: [note(1), note(2)],
@@ -77,6 +81,7 @@ test("filters the flat notes list even when no container holds the note", async 
 
 test("reassigns activeNoteId to the visible neighbor when the deleted note was active", async () => {
   const { removeNoteFromLists } = await load();
+
   const state = {
     notesByContainer: { "f:1": [note(1), note(2), note(3)] },
     notes: [note(1), note(2), note(3)],
@@ -90,6 +95,7 @@ test("reassigns activeNoteId to the visible neighbor when the deleted note was a
 
 test("reassigns activeNoteId from the flat list when the note is in no container", async () => {
   const { removeNoteFromLists } = await load();
+
   const state = {
     notesByContainer: {},
     notes: [note(1), note(2), note(3)],
@@ -107,6 +113,7 @@ test("reassigns activeNoteId from the flat list when the note is in no container
 
 test("no-ops when the note is nowhere", async () => {
   const { removeNoteFromLists } = await load();
+
   const state = {
     notesByContainer: { "f:1": [note(1)] },
     notes: [note(1)],
@@ -121,6 +128,7 @@ test("no-ops when the note is nowhere", async () => {
 
 test("tears down multiple containers and clears an active note inside them", async () => {
   const { teardownNoteContainers } = await load();
+
   const state = {
     notesByContainer: {
       "s:1": [note(1, null, 1)],
@@ -144,6 +152,7 @@ test("tears down multiple containers and clears an active note inside them", asy
 
 test("container teardown preserves active notes outside the removed containers", async () => {
   const { teardownNoteContainers } = await load();
+
   const state = {
     notesByContainer: {
       "f:1": [note(1)],
@@ -181,6 +190,7 @@ test("account reset state contains no cached content, context, shares, or confli
 
 test("account reset invalidates every in-flight keyed load generation", async () => {
   const { invalidateKeyedLoadGenerations } = await load();
+
   const generations = new Map([
     ["s:1", 2],
     ["f:8", 7],

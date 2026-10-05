@@ -31,6 +31,7 @@ export default function OnboardingList({
   // hover highlight flat. Re-pinning keeps the last row whole.
   useLayoutEffect(() => {
     const el = scrollRef.current;
+
     if (!el) return;
 
     const atBottom = () => Math.abs(el.scrollTop + el.clientHeight - el.scrollHeight) < 2;
@@ -39,11 +40,13 @@ export default function OnboardingList({
     const onScroll = () => {
       pinned = atBottom();
     };
+
     el.addEventListener("scroll", onScroll, { passive: true });
 
     const observer = new ResizeObserver(() => {
       if (pinned) el.scrollTop = el.scrollHeight;
     });
+
     observer.observe(el);
 
     return () => {

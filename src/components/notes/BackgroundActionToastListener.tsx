@@ -15,6 +15,7 @@ export default function BackgroundActionToastListener() {
 
   useEffect(() => {
     if (errorCount === 0) return;
+
     for (const event of consumeErrorEvents()) {
       toast({
         title: t("notes.enhance.title"),

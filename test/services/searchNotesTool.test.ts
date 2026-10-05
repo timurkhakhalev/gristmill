@@ -1,7 +1,10 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const setWindow = (value: unknown) => { (globalThis as { window?: unknown }).window = value; };
+const setWindow = (value: unknown) => {
+  (globalThis as { window?: unknown }).window = value;
+};
 
 test("search_notes uses local FTS IPC and does not expose semantic search", async () => {
   const { createSearchNotesTool } = await import("../../src/services/tools/searchNotesTool.js");
@@ -12,6 +15,7 @@ test("search_notes uses local FTS IPC and does not expose semantic search", asyn
       getSpaces: async () => [{ id: 7, name: "Personal", kind: "private" }],
       searchNotes: async (...args: unknown[]) => {
         calls.push(args);
+
         return [
           {
             id: 12,

@@ -1,14 +1,20 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const ParakeetServerManager = require("../../src/helpers/parakeetServer");
 
 const SAMPLE_RATE = 16000;
+
 const SEGMENT_BYTES = 15 * SAMPLE_RATE * 4; // float32, mirrors MAX_SEGMENT_SECONDS
 
 // Minimal 16kHz mono 16-bit WAV so _ensureWav uses the buffer as-is (no FFmpeg).
 function wavFromSeconds(spans: any) {
-  const totalSamples = spans.reduce((sum: number, span: any) => sum + span.seconds * SAMPLE_RATE, 0);
+  const totalSamples = spans.reduce(
+    (sum: number, span: any) => sum + span.seconds * SAMPLE_RATE,
+    0
+  );
+
   const dataSize = totalSamples * 2;
   const buf = Buffer.alloc(44 + dataSize);
   buf.write("RIFF", 0);
@@ -25,18 +31,25 @@ function wavFromSeconds(spans: any) {
   buf.write("data", 36);
   buf.writeUInt32LE(dataSize, 40);
   let offset = 44;
+
   for (const span of spans) {
     const amplitude = span.silent ? 0 : 8000;
+
     for (let i = 0; i < span.seconds * SAMPLE_RATE; i++) {
       buf.writeInt16LE(i % 2 === 0 ? amplitude : -amplitude, offset);
       offset += 2;
     }
   }
+
   return buf;
 }
 
-function fakeWsServer(responses: { text: string; truncated?: boolean }[], { onCall }: { onCall?: (count: number) => void } = {}) {
+function fakeWsServer(
+  responses: { text: string; truncated?: boolean }[],
+  { onCall }: { onCall?: (count: number) => void } = {}
+) {
   const calls: number[] = [];
+
   return {
     calls,
     async start() {},
@@ -45,6 +58,7 @@ function fakeWsServer(responses: { text: string; truncated?: boolean }[], { onCa
       const next = responses.shift();
       assert.ok(next, "unexpected extra transcribe call");
       onCall?.(calls.length);
+
       return { elapsed: 1, ...next };
     },
   };
@@ -53,6 +67,7 @@ function fakeWsServer(responses: { text: string; truncated?: boolean }[], { onCa
 function isAbortError(err: unknown) {
   assert.ok(err instanceof Error);
   assert.equal(err.name, "AbortError");
+
   return true;
 }
 
@@ -60,6 +75,7 @@ function managerWith(fake: unknown) {
   const manager = new ParakeetServerManager();
   manager.isModelDownloaded = () => true;
   manager.wsServer = fake;
+
   return manager;
 }
 
@@ -67,9 +83,14 @@ test("starts a downloaded model before its local engine is installed", async () 
   const fake = { isAvailable: () => false, async start() {} };
   const manager = managerWith(fake);
   let started = false;
-  fake.start = async () => { started = true; };
+  fake.start = async () => {
+    started = true;
+  };
 
-  assert.deepEqual(await manager.startServer("parakeet-tdt-0.6b-v3"), { success: true, port: undefined });
+  assert.deepEqual(await manager.startServer("parakeet-tdt-0.6b-v3"), {
+    success: true,
+    port: undefined,
+  });
   assert.equal(started, true);
 });
 
@@ -111,6 +132,7 @@ test("a truncated empty first attempt does not taint a successful retry", async 
     { text: "two" },
     { text: "three" },
   ]);
+
   const manager = managerWith(fake);
 
   const result = await manager.transcribe(wavFromSeconds([{ seconds: 31 }]));
@@ -157,9 +179,11 @@ test("a pre-aborted signal rejects before any decode is issued", async () => {
 
 test("an abort during the first segment stops the segment loop", async () => {
   const controller = new AbortController();
+
   const fake = fakeWsServer([{ text: "one" }, { text: "two" }, { text: "three" }], {
     onCall: () => controller.abort(),
   });
+
   const manager = managerWith(fake);
 
   await assert.rejects(
@@ -171,9 +195,11 @@ test("an abort during the first segment stops the segment loop", async () => {
 
 test("an abort between an empty decode and its retry suppresses the retry", async () => {
   const controller = new AbortController();
+
   const fake = fakeWsServer([{ text: "" }, { text: "recovered" }], {
     onCall: () => controller.abort(),
   });
+
   const manager = managerWith(fake);
 
   await assert.rejects(
@@ -199,6 +225,7 @@ test("cohere models segment at 30s and start the server with the resolved langua
   fake.start = async (...args) => {
     startArgs.push(args);
   };
+
   const manager = managerWith(fake);
 
   const result = await manager.transcribe(wavFromSeconds([{ seconds: 31 }]), {
@@ -220,6 +247,7 @@ test("cohere models fall back to English when the app language has no match", as
   fake.start = async (...args) => {
     startArgs.push(args);
   };
+
   const manager = managerWith(fake);
 
   await manager.transcribe(wavFromSeconds([{ seconds: 5 }]), {
@@ -236,6 +264,7 @@ test("transducer models start the server without a language", async () => {
   fake.start = async (...args) => {
     startArgs.push(args);
   };
+
   const manager = managerWith(fake);
 
   await manager.transcribe(wavFromSeconds([{ seconds: 5 }]), { language: "pl" });

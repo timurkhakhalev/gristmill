@@ -61,6 +61,7 @@ export const geminiProvider: InferenceProvider = {
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
       { text: `${systemPrompt}\n\n${userContent}` },
     ];
+
     if (config.screenContext) {
       parts.push({
         inlineData: {
@@ -69,6 +70,7 @@ export const geminiProvider: InferenceProvider = {
         },
       });
     }
+
     const requestBody = {
       contents: [{ parts }],
       generationConfig,
@@ -91,6 +93,7 @@ export const geminiProvider: InferenceProvider = {
       const controller = new AbortController();
       const timeoutSeconds = getLlmRequestTimeoutSeconds();
       const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+
       try {
         const res = await fetch(`${API_ENDPOINTS.GEMINI}/models/${model}:generateContent`, {
           method: "POST",
@@ -101,9 +104,11 @@ export const geminiProvider: InferenceProvider = {
 
         if (!res.ok) {
           const errorText = await res.text();
+
           let errorData: { error?: { message?: string } | string; message?: string } = {
             error: res.statusText,
           };
+
           try {
             errorData = JSON.parse(errorText);
           } catch {
@@ -127,11 +132,13 @@ export const geminiProvider: InferenceProvider = {
           hasCandidates: !!jsonResponse?.candidates,
           candidatesLength: jsonResponse?.candidates?.length || 0,
         });
+
         return jsonResponse;
       } catch (error) {
         if ((error as Error).name === "AbortError") {
           throw new Error(`Request timed out after ${timeoutSeconds}s`);
         }
+
         throw error;
       } finally {
         clearTimeout(timeoutId);
@@ -139,28 +146,35 @@ export const geminiProvider: InferenceProvider = {
     }, createApiRetryStrategy());
 
     const candidate = response.candidates?.[0];
+
     if (config.requireCompleteOutput && candidate?.finishReason === "MAX_TOKENS") {
       throw new Error("Model output was truncated before the selection edit completed");
     }
+
     const responseText = extractGeminiText(candidate);
+
     if (!responseText) {
       logger.logReasoning("GEMINI_EMPTY_RESPONSE", {
         model,
         finishReason: candidate?.finishReason,
       });
+
       if (candidate?.finishReason === "MAX_TOKENS") {
         throw new Error(
           "Gemini reached token limit before generating response. Try a shorter input or increase max tokens."
         );
       }
+
       throw new Error("Gemini returned empty response");
     }
+
     logger.logReasoning("GEMINI_RESPONSE", {
       model,
       responseLength: responseText.length,
       tokensUsed: response.usageMetadata?.totalTokenCount || 0,
       success: true,
     });
+
     return responseText;
   },
 };

@@ -1,7 +1,11 @@
 import { spawn, type ChildProcess } from "child_process";
+
 const { app } = require("electron");
+
 const path = require("path");
+
 const fs = require("fs");
+
 const fsPromises = require("fs").promises;
 
 /**
@@ -56,6 +60,7 @@ export class LlamaCppInstaller {
 
   getInstalledBinaryPath(): string {
     this.ensureInitialized();
+
     return path.join(this.installDir as string, this.getBinaryName());
   }
 
@@ -63,8 +68,10 @@ export class LlamaCppInstaller {
     try {
       // First check for system installation
       const systemPath = await this.getSystemBinaryPath();
+
       if (systemPath) {
         this.binPath = systemPath;
+
         return true;
       }
 
@@ -72,6 +79,7 @@ export class LlamaCppInstaller {
       const binaryPath = this.getInstalledBinaryPath();
       await fsPromises.access(binaryPath, fs.constants.X_OK);
       this.binPath = binaryPath;
+
       return true;
     } catch {
       return false;
@@ -102,7 +110,9 @@ export class LlamaCppInstaller {
             found = true;
             resolve(output.trim().split(/\r?\n/)[0]);
           }
+
           remaining--;
+
           if (remaining === 0 && !found) {
             resolve(null);
           }
@@ -110,6 +120,7 @@ export class LlamaCppInstaller {
 
         proc.on("error", () => {
           remaining--;
+
           if (remaining === 0 && !found) {
             resolve(null);
           }
@@ -120,6 +131,7 @@ export class LlamaCppInstaller {
 
   async checkSystemInstallation(): Promise<boolean> {
     const systemPath = await this.getSystemBinaryPath();
+
     return systemPath !== null;
   }
 
@@ -148,6 +160,7 @@ export class LlamaCppInstaller {
       const binaryPath = this.getInstalledBinaryPath();
       await fsPromises.unlink(binaryPath);
       this.binPath = null;
+
       return { success: true };
     } catch (error) {
       return {
@@ -164,8 +177,10 @@ export class LlamaCppInstaller {
 
     // Check for system installation
     const systemPath = await this.getSystemBinaryPath();
+
     if (systemPath) {
       this.binPath = systemPath;
+
       return systemPath;
     }
 
@@ -177,5 +192,7 @@ export class LlamaCppInstaller {
 // Dual export: ipcHandlers.js requires this module as `{ default }`; the TS
 // graph imports the class by name. One instance, exactly as before.
 const llamaCppInstallerSingleton = new LlamaCppInstaller();
+
 export default llamaCppInstallerSingleton;
+
 module.exports = { default: llamaCppInstallerSingleton, LlamaCppInstaller };

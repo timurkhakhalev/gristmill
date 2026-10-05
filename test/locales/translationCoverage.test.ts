@@ -1,20 +1,31 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
 
 const modelRegistry = require("../../src/models/modelRegistryData.json");
 
 const SRC = path.join(__dirname, "../../src");
+
 const LOCALES = path.join(SRC, "locales");
+
 const NAMESPACES = ["translation", "prompts"];
+
 const PLURAL_SUFFIX = /_(zero|one|two|few|many|other)$/;
+
 const T_CALL = /\bt\(\s*(['"`])([A-Za-z0-9_.-]+)\1/g;
+
 // messageKey values are passed to t() as a variable, so the T_CALL scan
 // cannot see them and a typo would render as the raw key string.
 const MESSAGE_KEY = /\bmessageKey\s*[:=]\s*(['"`])([A-Za-z0-9_.-]+)\1/g;
+
 const INTERPOLATION = /\{\{\s*([\w.]+)/g;
+
 const ARABIC_PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
+
 const ARABIC_PLURAL_BASES = [
   "settingsPage.privacy.retentionDays",
   "settingsPage.privacy.audioStorageFiles",
@@ -24,6 +35,7 @@ const ARABIC_PLURAL_BASES = [
   "home.recent.participantsMore",
   "dictionary.wordsReady",
 ];
+
 const ARABIC_NUMBER_NEUTRAL_TEMPLATES = {
   "notes.upload.partialWarningCount":
     "عدد الأجزاء الصوتية التي تعذر تفريغها: {{failed}} من أصل {{total}}.",
@@ -44,7 +56,11 @@ const languages = fs
 const load = (lang: string, namespace: string): Record<string, unknown> =>
   JSON.parse(fs.readFileSync(path.join(LOCALES, lang, `${namespace}.json`), "utf8"));
 
-function flatten(value: unknown, prefix = "", out: Map<string, unknown> = new Map()): Map<string, unknown> {
+function flatten(
+  value: unknown,
+  prefix = "",
+  out: Map<string, unknown> = new Map()
+): Map<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     for (const [key, child] of Object.entries(value)) {
       flatten(child, prefix ? `${prefix}.${key}` : key, out);
@@ -52,18 +68,21 @@ function flatten(value: unknown, prefix = "", out: Map<string, unknown> = new Ma
   } else {
     out.set(prefix, value);
   }
+
   return out;
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true }) as import("node:fs").Dirent[]) {
     const full = path.join(dir, entry.name);
+
     if (entry.isDirectory()) {
       if (entry.name !== "locales" && entry.name !== "dist") sourceFiles(full, out);
     } else if (/\.(ts|tsx|js|jsx)$/.test(entry.name)) {
       out.push(full);
     }
   }
+
   return out;
 }
 
@@ -73,31 +92,43 @@ function registryDescriptionKeys(node: unknown, out: string[] = []): string[] {
   if (Array.isArray(node)) {
     for (const child of node) registryDescriptionKeys(child, out);
   } else if (node && typeof node === "object") {
-    if (typeof (node as { descriptionKey?: unknown }).descriptionKey === "string") out.push((node as { descriptionKey: string }).descriptionKey);
-    for (const child of Object.values(node as Record<string, unknown>)) registryDescriptionKeys(child, out);
+    if (typeof (node as { descriptionKey?: unknown }).descriptionKey === "string")
+      out.push((node as { descriptionKey: string }).descriptionKey);
+
+    for (const child of Object.values(node as Record<string, unknown>))
+      registryDescriptionKeys(child, out);
   }
+
   return out;
 }
 
 test("every t() key referenced in source resolves in en", () => {
   const keys = new Set<string>();
+
   for (const namespace of NAMESPACES) {
     for (const key of flatten(load("en", namespace)).keys()) keys.add(key);
   }
+
   // i18next also resolves a plural base and a parent path returned as an object.
   const bases = new Set([...keys].map(stripPlural));
   const parents = new Set<string>();
+
   for (const key of keys) {
     const parts = key.split(".");
+
     for (let i = 1; i < parts.length; i += 1) parents.add(parts.slice(0, i).join("."));
   }
 
   const broken = [];
+
   for (const file of sourceFiles(SRC)) {
     const source = fs.readFileSync(file, "utf8");
+
     for (const match of source.matchAll(T_CALL)) {
       const key = match[2];
+
       if (!key.includes(".")) continue;
+
       if (keys.has(key) || bases.has(key) || parents.has(key)) continue;
       broken.push(
         `${path.relative(SRC, file)}:${source.slice(0, match.index).split("\n").length} → ${key}`
@@ -123,15 +154,18 @@ test("every model registry descriptionKey resolves in en", () => {
 test("every en key is present in every other language", () => {
   for (const namespace of NAMESPACES) {
     const en = flatten(load("en", namespace));
+
     for (const lang of languages) {
       if (lang === "en") continue;
       const translated = flatten(load(lang, namespace));
       // Plural categories are language specific (ru adds _few/_many, zh only has
       // _other), so a matching plural base counts as covered.
       const bases = new Set([...translated.keys()].map(stripPlural));
+
       const gaps = [...en.keys()].filter(
         (key) => !translated.has(key) && !bases.has(stripPlural(key))
       );
+
       assert.deepEqual(gaps, [], `${lang}/${namespace} is missing:\n${gaps.join("\n")}`);
     }
   }
@@ -147,8 +181,10 @@ test("interpolation variables match en in every language", () => {
 
   for (const namespace of NAMESPACES) {
     const en = flatten(load("en", namespace));
+
     for (const lang of languages) {
       if (lang === "en") continue;
+
       for (const [key, value] of flatten(load(lang, namespace))) {
         if (!en.has(key)) continue;
         assert.deepEqual(
@@ -163,13 +199,16 @@ test("interpolation variables match en in every language", () => {
 
 test("every messageKey literal resolves in en", () => {
   const keys = new Set<string>();
+
   for (const namespace of NAMESPACES) {
     for (const key of flatten(load("en", namespace)).keys()) keys.add(key);
   }
 
   const missing = [];
+
   for (const file of sourceFiles(SRC)) {
     const source = fs.readFileSync(file, "utf8");
+
     for (const [, , key] of source.matchAll(MESSAGE_KEY)) {
       if (!keys.has(stripPlural(key))) missing.push(`${key} (${path.relative(SRC, file)})`);
     }
@@ -180,6 +219,7 @@ test("every messageKey literal resolves in en", () => {
 
 test("Arabic defines every CLDR plural category for each counted message", () => {
   const ar = flatten(load("ar", "translation"));
+
   for (const base of ARABIC_PLURAL_BASES) {
     for (const category of ARABIC_PLURAL_CATEGORIES) {
       assert.equal(
@@ -193,6 +233,7 @@ test("Arabic defines every CLDR plural category for each counted message", () =>
 
 test("Arabic non-count numeric templates remain number-neutral", () => {
   const ar = flatten(load("ar", "translation"));
+
   for (const [key, template] of Object.entries(ARABIC_NUMBER_NEUTRAL_TEMPLATES)) {
     assert.equal(ar.get(key), template, `${key} reintroduced a fixed Arabic number form`);
   }
@@ -213,6 +254,7 @@ test("Arabic plural counts resolve the exact CLDR form without English fallback"
 
   const counts = [0, 1, 2, 3, 7, 11, 100, 101];
   const pluralRules = new Intl.PluralRules("ar");
+
   for (const base of ARABIC_PLURAL_BASES) {
     for (const count of counts) {
       const details = instance.t(base, { count, returnDetails: true });

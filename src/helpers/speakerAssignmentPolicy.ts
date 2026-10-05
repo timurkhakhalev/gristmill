@@ -45,7 +45,9 @@ export function canonicalizeSpeakerStatus(
 }
 
 export function isSpeakerLocked(segment: SpeakerSegment | null | undefined): boolean {
-  return canonicalizeSpeakerStatus(segment?.speakerStatus, segment ?? null) === SPEAKER_STATUS.LOCKED;
+  return (
+    canonicalizeSpeakerStatus(segment?.speakerStatus, segment ?? null) === SPEAKER_STATUS.LOCKED
+  );
 }
 
 export function canAutoRelabelSpeaker(segment: SpeakerSegment | null | undefined): boolean {
@@ -61,12 +63,14 @@ function applySpeakerUpdate<T extends SpeakerSegment>(
     segment.speakerStatus = SPEAKER_STATUS.LOCKED;
     segment.speakerLocked = true;
     segment.speakerLockSource = segment.speakerLockSource || "user";
+
     return segment;
   }
 
   Object.assign(segment, patch);
 
   segment.speakerStatus = status;
+
   return segment;
 }
 

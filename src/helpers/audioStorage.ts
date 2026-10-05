@@ -1,10 +1,15 @@
 import type { MeetingRecordingStorage as MeetingRecordingStorageType } from "./meetingRecordingStorage.js";
 
 const fs = require("fs");
+
 const path = require("path");
+
 const { app } = require("electron");
+
 const debugLogger = require("./debugLogger");
+
 const { parseDbTimestamp } = require("./dbTimestamp");
+
 const MeetingRecordingStorage = require("./meetingRecordingStorage");
 
 export interface AudioCleanupDatabase {
@@ -38,13 +43,16 @@ export class AudioStorageManager {
       // Named in the user's own wall clock, so the stored instant has to be
       // resolved before it is read -- a bare SQLite timestamp is UTC, not local.
       const d = parseDbTimestamp(timestamp);
+
       if (d) {
         const pad = (n: number) => String(n).padStart(2, "0");
         const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
         const time = `${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+
         return `Gristmill-${date}-${time}-${transcriptionId}.webm`;
       }
     }
+
     return `Gristmill-${transcriptionId}.webm`;
   }
 
@@ -62,6 +70,7 @@ export class AudioStorageManager {
         { transcriptionId, filename, size: audioBuffer.length },
         "audio-storage"
       );
+
       return { success: true, path: filePath };
     } catch (error) {
       debugLogger.error(
@@ -69,6 +78,7 @@ export class AudioStorageManager {
         { transcriptionId, error: (error as Error).message },
         "audio-storage"
       );
+
       return { success: false };
     }
   }
@@ -76,17 +86,22 @@ export class AudioStorageManager {
   getAudioPath(transcriptionId: number): string | null {
     try {
       const files: string[] = fs.readdirSync(this.audioDir);
+
       const match = files.find(
         (f) => f.endsWith(`-${transcriptionId}.webm`) || f === `${transcriptionId}.webm`
       );
+
       if (match) return path.join(this.audioDir, match);
     } catch {}
+
     return null;
   }
 
   getAudioBuffer(transcriptionId: number): Buffer | null {
     const filePath = this.getAudioPath(transcriptionId);
+
     if (!filePath) return null;
+
     try {
       return fs.readFileSync(filePath);
     } catch (error) {
@@ -95,6 +110,7 @@ export class AudioStorageManager {
         { transcriptionId, error: (error as Error).message },
         "audio-storage"
       );
+
       return null;
     }
   }
@@ -102,10 +118,12 @@ export class AudioStorageManager {
   deleteAudio(transcriptionId: number): { success: boolean } {
     try {
       const filePath = this.getAudioPath(transcriptionId);
+
       if (filePath) {
         fs.unlinkSync(filePath);
         debugLogger.debug("Audio deleted", { transcriptionId }, "audio-storage");
       }
+
       return { success: true };
     } catch (error) {
       debugLogger.error(
@@ -113,6 +131,7 @@ export class AudioStorageManager {
         { transcriptionId, error: (error as Error).message },
         "audio-storage"
       );
+
       return { success: false };
     }
   }
@@ -129,8 +148,10 @@ export class AudioStorageManager {
 
       for (const file of files) {
         const filePath = path.join(this.audioDir, file);
+
         try {
           const stats = fs.statSync(filePath);
+
           if (stats.mtimeMs < cutoffMs) {
             fs.unlinkSync(filePath);
             // Extract ID from the app-prefixed filename or legacy "{id}.webm"
@@ -159,6 +180,7 @@ export class AudioStorageManager {
         { deleted: expiredIds.length, kept, retentionDays },
         "audio-storage"
       );
+
       return { deleted: expiredIds.length, kept };
     } catch (error) {
       debugLogger.error(
@@ -166,6 +188,7 @@ export class AudioStorageManager {
         { error: (error as Error).message },
         "audio-storage"
       );
+
       return { deleted: 0, kept: 0 };
     }
   }
@@ -175,6 +198,7 @@ export class AudioStorageManager {
       const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
       let deleted = 0;
       let failed = 0;
+
       for (const file of files) {
         try {
           fs.unlinkSync(path.join(this.audioDir, file));
@@ -188,7 +212,9 @@ export class AudioStorageManager {
           );
         }
       }
+
       debugLogger.info("All audio deletion finished", { deleted, failed }, "audio-storage");
+
       return { deleted, failed };
     } catch (error) {
       debugLogger.error(
@@ -196,6 +222,7 @@ export class AudioStorageManager {
         { error: (error as Error).message },
         "audio-storage"
       );
+
       return { deleted: 0, failed: 1 };
     }
   }
@@ -204,6 +231,7 @@ export class AudioStorageManager {
     try {
       const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
       let totalBytes = 0;
+
       for (const file of files) {
         try {
           const stats = fs.statSync(path.join(this.audioDir, file));
@@ -212,6 +240,7 @@ export class AudioStorageManager {
           // Skip files that can't be stat'd
         }
       }
+
       return { fileCount: files.length, totalBytes };
     } catch (error) {
       debugLogger.error(
@@ -219,6 +248,7 @@ export class AudioStorageManager {
         { error: (error as Error).message },
         "audio-storage"
       );
+
       return { fileCount: 0, totalBytes: 0 };
     }
   }
@@ -227,4 +257,5 @@ export class AudioStorageManager {
 // CommonJS passthrough: the original module exported the class itself and
 // every require site (ipcHandlers.js, main.js, tests) invokes it directly.
 module.exports = AudioStorageManager;
+
 module.exports.AudioStorageManager = AudioStorageManager;

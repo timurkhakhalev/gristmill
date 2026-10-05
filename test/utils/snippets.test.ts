@@ -1,7 +1,10 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { getDictionaryHintWords }: typeof import("../../src/utils/snippets.ts") = require("../../src/utils/snippets.ts");
+const {
+  getDictionaryHintWords,
+}: typeof import("../../src/utils/snippets.ts") = require("../../src/utils/snippets.ts");
 
 test("getDictionaryHintWords returns empty list on nullish, empty, or partial settings", () => {
   assert.deepEqual(getDictionaryHintWords(null), []);
@@ -29,6 +32,7 @@ test("getDictionaryHintWords extracts triggers when customDictionary is absent o
     { trigger: "my cal", replacement: "cal.com/me" },
     { trigger: "zoom link", replacement: "zoom.us/j/123" },
   ];
+
   assert.deepEqual(getDictionaryHintWords({ snippets }), ["my cal", "zoom link"]);
   assert.deepEqual(getDictionaryHintWords({ customDictionary: [], snippets }), [
     "my cal",
@@ -44,6 +48,7 @@ test("getDictionaryHintWords combines dictionary words and snippet triggers safe
       { trigger: "zoom link", replacement: "zoom.us/j/123" },
     ],
   };
+
   assert.deepEqual(getDictionaryHintWords(settings), [
     "OpenWhispr",
     "Supabase",

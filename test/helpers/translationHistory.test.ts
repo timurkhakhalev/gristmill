@@ -1,11 +1,17 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-translation-db-"));
+
 const originalLoad = Module._load;
 
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -18,16 +24,19 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 process.env.NODE_ENV = "test";
 
 const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
+
 const { skipOrFail }: typeof import("./harness/db.ts") = require("./harness/db.ts");
 
 function createDb(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-translation-db-"));
+
   try {
     const BetterSqlite = require("better-sqlite3");
     const probe = new BetterSqlite(path.join(userDataDir, "probe.db"));
@@ -35,6 +44,7 @@ function createDb(t: import("node:test").TestContext) {
     fs.rmSync(path.join(userDataDir, "probe.db"), { force: true });
   } catch (error) {
     skipOrFail(t, error);
+
     return null;
   }
 
@@ -42,6 +52,7 @@ function createDb(t: import("node:test").TestContext) {
     return new DatabaseManager();
   } catch (error) {
     skipOrFail(t, error);
+
     return null;
   }
 }
@@ -52,6 +63,7 @@ function findById(rows: import("../../src/helpers/database.ts").TranscriptionRow
 
 test("saveTranscription with routeKind translation round-trips route_kind", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
 
   const { id } = db.saveTranscription("Ciao", "Hello", { routeKind: "translation" });
@@ -63,6 +75,7 @@ test("saveTranscription with routeKind translation round-trips route_kind", (t: 
 
 test("saveTranscription without routeKind stores route_kind null", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
 
   const { id } = db.saveTranscription("plain text");
@@ -74,6 +87,7 @@ test("saveTranscription without routeKind stores route_kind null", (t: import("n
 
 test("discarded save keeps its routeKind", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
 
   const { id } = db.saveTranscription("", "Hello", {
@@ -92,6 +106,7 @@ test("discarded save keeps its routeKind", (t: import("node:test").TestContext) 
 
 test("updateTranscriptionText does not clobber route_kind", (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
 
   const { id } = db.saveTranscription("Ciao", "Hello", { routeKind: "translation" });

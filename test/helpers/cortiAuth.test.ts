@@ -1,16 +1,21 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { getCortiToken } = require("../../src/helpers/cortiAuth");
 
 function makeFetch(tokenByCall: string[]) {
   const calls: unknown[] = [];
+
   const fetchImpl = async (url: string, init: { signal?: AbortSignal; body?: string }) => {
     calls.push({ url, init });
+
     return {
       ok: true,
       json: async () => ({ access_token: tokenByCall[calls.length - 1], expires_in: 300 }),
     };
   };
+
   return { fetchImpl, calls };
 }
 
@@ -42,11 +47,15 @@ test("the raw secret never appears in a cache key or the request URL", async () 
     fetchImpl
   );
   assert.equal((calls[0] as { url: string }).url.includes("super-secret"), false);
-  assert.equal((calls[0] as { init: { body: string } }).init.body.includes("client_secret=super-secret"), true);
+  assert.equal(
+    (calls[0] as { init: { body: string } }).init.body.includes("client_secret=super-secret"),
+    true
+  );
 });
 
 test("the token request carries an abort signal and surfaces AbortError", async () => {
   let seenSignal: unknown = null;
+
   const fetchImpl = async (_url: string, init: { signal?: AbortSignal }) => {
     seenSignal = init.signal;
     const error = new Error("aborted");

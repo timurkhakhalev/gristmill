@@ -1,16 +1,28 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals, reloadSettingsStore } = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  reloadSettingsStore,
+} = require("../lib/rendererTestHarness.ts");
 
 let vitePromise;
+
 const cleanup: (() => Promise<unknown> | unknown)[] = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
+
 function getVite() {
-  return vitePromise ??= createRendererServer({ after: (close: any) => cleanup.push(close) }, {
-    cachePrefix: "openwhispr-reasoning-model-memory-test-",
-  });
+  return (vitePromise ??= createRendererServer(
+    { after: (close: any) => cleanup.push(close) },
+    {
+      cachePrefix: "openwhispr-reasoning-model-memory-test-",
+    }
+  ));
 }
 
 test("per-provider reasoning model memory", async (t: import("node:test").TestContext) => {
@@ -148,7 +160,9 @@ test("retired cloud model selections are repointed to the provider default", asy
     },
   });
   const vite = await getVite();
-  const { useSettingsStore, reconcileRetiredCloudModelSelections } = await reloadSettingsStore(vite);
+
+  const { useSettingsStore, reconcileRetiredCloudModelSelections } =
+    await reloadSettingsStore(vite);
 
   reconcileRetiredCloudModelSelections();
 

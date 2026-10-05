@@ -12,6 +12,7 @@ interface ToggleProps {
 
 export const Toggle = ({ checked, onChange, disabled = false, ariaLabel }: ToggleProps) => {
   const rowLabel = React.useContext(SettingsRowLabelContext);
+
   return (
     <Switch isSelected={checked} onChange={onChange} isDisabled={disabled}>
       <Switch.Content aria-label={ariaLabel ?? rowLabel ?? undefined}>

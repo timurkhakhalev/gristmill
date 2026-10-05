@@ -4,7 +4,9 @@ import type { GoogleTokenRow } from "./database.js";
 import { PEOPLE_SCOPES } from "./googlePeople.js";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 const CALENDAR_SCOPE = [
   "openid",
   "email",
@@ -31,7 +33,10 @@ export interface GoogleOAuthDb {
   getGoogleTokens(): GoogleTokenRow | null;
   getGoogleTokensByEmail(email: string): GoogleTokenRow | null;
   getAllGoogleTokens(): GoogleTokenRow[];
-  refreshGoogleTokens(accountId: number, tokens: Pick<GoogleTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">): { success: boolean };
+  refreshGoogleTokens(
+    accountId: number,
+    tokens: Pick<GoogleTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">
+  ): { success: boolean };
   saveGoogleTokens(tokens: {
     google_email: string;
     access_token: string;
@@ -71,6 +76,7 @@ export class GoogleCalendarOAuth {
     if (!this.isConfigured()) {
       throw isConfiguredError();
     }
+
     return runOAuthLoopbackFlow({
       buildAuthUrl: (redirectUri, state, codeChallenge) => {
         const params = new URLSearchParams({
@@ -85,6 +91,7 @@ export class GoogleCalendarOAuth {
           code_challenge: codeChallenge,
           code_challenge_method: "S256",
         });
+
         return `${GOOGLE_AUTH_URL}?${params.toString()}`;
       },
       handleCallback: async (code, redirectUri, codeVerifier) => {
@@ -98,11 +105,13 @@ export class GoogleCalendarOAuth {
         }
 
         let email: string | null = null;
+
         if (tokenData.id_token) {
           try {
             const payload = JSON.parse(
               Buffer.from(tokenData.id_token.split(".")[1] as string, "base64url").toString()
             ) as { email?: string };
+
             email = payload.email ?? null;
           } catch {
             // A malformed id_token falls through to the no_email error.
@@ -161,34 +170,46 @@ export class GoogleCalendarOAuth {
     const tokens = accountEmail
       ? this.databaseManager.getGoogleTokensByEmail(accountEmail)
       : this.databaseManager.getGoogleTokens();
+
     if (!tokens)
       throw new Error(`No Google tokens found${accountEmail ? ` for ${accountEmail}` : ""}`);
 
     const fiveMinutes = 5 * 60 * 1000;
+
     if (tokens.expires_at - fiveMinutes >= Date.now()) return tokens.access_token;
     let pending = this._refreshInFlight.get(tokens.id);
+
     if (!pending) {
-      pending = this._refreshAndSaveTokens(tokens).finally(() => this._refreshInFlight.delete(tokens.id));
+      pending = this._refreshAndSaveTokens(tokens).finally(() =>
+        this._refreshInFlight.delete(tokens.id)
+      );
       this._refreshInFlight.set(tokens.id, pending);
     }
+
     return pending;
   }
 
   private async _refreshAndSaveTokens(tokens: GoogleTokenRow): Promise<string> {
     const refreshed = await this.refreshAccessToken(tokens.refresh_token);
-    if (refreshed.error) throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
+
+    if (refreshed.error)
+      throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
+
     const result = this.databaseManager.refreshGoogleTokens(tokens.id, {
       access_token: refreshed.access_token as string,
       refresh_token: refreshed.refresh_token || tokens.refresh_token,
       expires_at: Date.now() + (refreshed.expires_in ?? 0) * 1000,
       scope: refreshed.scope || tokens.scope,
     });
+
     if (!result.success) throw new Error("Google account changed during token refresh");
+
     return refreshed.access_token as string;
   }
 
   async revokeToken(token: string): Promise<void> {
     const body = new URLSearchParams({ token }).toString();
+
     try {
       await this._httpsPost("https://oauth2.googleapis.com/revoke", body);
     } catch {
@@ -204,7 +225,9 @@ export class GoogleCalendarOAuth {
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
     } as RequestInit);
+
     const text = await response.text();
+
     try {
       return JSON.parse(text) as GoogleTokenResponse;
     } catch {
@@ -214,6 +237,7 @@ export class GoogleCalendarOAuth {
 }
 
 module.exports = GoogleCalendarOAuth;
+
 // Named export must stay reachable through the CJS surface for the
 // emitted interop requires used by the migrated managers.
 module.exports.GoogleCalendarOAuth = GoogleCalendarOAuth;

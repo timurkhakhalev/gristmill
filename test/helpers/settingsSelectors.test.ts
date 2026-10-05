@@ -1,10 +1,18 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path = require("node:path");
+
 import type {
-  BaseTranscriptionSettings, MeetingTranscriptionSettings, UploadTranscriptionSettings,
-  CleanupScopeSettings, NoteFormattingScopeSettings, ChatAgentScopeSettings,
+  BaseTranscriptionSettings,
+  MeetingTranscriptionSettings,
+  UploadTranscriptionSettings,
+  CleanupScopeSettings,
+  NoteFormattingScopeSettings,
+  ChatAgentScopeSettings,
   InferenceSettingsSnapshot,
 } from "../../src/contracts/inferenceSettings.js";
 
@@ -19,6 +27,7 @@ const ROOT = path.join(__dirname, "..", "..");
 // the cleanup key when the endpoint is inherited too.
 
 const loadSelectors = async () => import("../../src/config/settingsSelectors.ts");
+
 const loadRouting = async () => import("../../src/helpers/reasoningRouting.ts");
 
 const transcriptionDefaults = {
@@ -85,7 +94,9 @@ const llmDefaults = {
   chatAgentDisableThinking: true,
 } satisfies CleanupScopeSettings & NoteFormattingScopeSettings & ChatAgentScopeSettings;
 
-const settingsFixture = (overrides: Partial<InferenceSettingsSnapshot> = {}): InferenceSettingsSnapshot => ({
+const settingsFixture = (
+  overrides: Partial<InferenceSettingsSnapshot> = {}
+): InferenceSettingsSnapshot => ({
   ...transcriptionDefaults,
   ...llmDefaults,
   ...overrides,
@@ -93,6 +104,7 @@ const settingsFixture = (overrides: Partial<InferenceSettingsSnapshot> = {}): In
 
 test("meeting overrides win; empty routing fields inherit the base scope", async () => {
   const { selectResolvedMeetingTranscription } = await loadSelectors();
+
   const resolved = selectResolvedMeetingTranscription(
     settingsFixture({
       meetingUseLocalWhisper: true,
@@ -109,6 +121,7 @@ test("meeting overrides win; empty routing fields inherit the base scope", async
       meetingRemoteTranscriptionUrl: "https://meeting-remote.example/v1",
     })
   );
+
   assert.deepEqual(resolved, {
     useLocalWhisper: true,
     whisperModel: "meeting-large",
@@ -143,6 +156,7 @@ test("meeting empty strings inherit base fields through ||", async () => {
 
 test("upload overrides win and empty fields inherit the base scope", async () => {
   const { selectResolvedUploadTranscription } = await loadSelectors();
+
   const resolved = selectResolvedUploadTranscription(
     settingsFixture({
       uploadUseLocalWhisper: true,
@@ -157,6 +171,7 @@ test("upload overrides win and empty fields inherit the base scope", async () =>
       uploadCloudTranscriptionMode: "managed",
     })
   );
+
   assert.deepEqual(resolved, {
     useLocalWhisper: true,
     whisperModel: "upload-large",
@@ -173,6 +188,7 @@ test("upload overrides win and empty fields inherit the base scope", async () =>
 
 test("streaming-only base provider is not inherited by upload", async () => {
   const { selectResolvedUploadTranscription } = await loadSelectors();
+
   for (const provider of ["assemblyai"]) {
     const resolved = selectResolvedUploadTranscription(
       settingsFixture({
@@ -182,9 +198,11 @@ test("streaming-only base provider is not inherited by upload", async () => {
         uploadCloudTranscriptionModel: "",
       })
     );
+
     assert.equal(resolved.cloudTranscriptionProvider, "openai", provider);
     assert.equal(resolved.cloudTranscriptionModel, "", `${provider}'s model must not follow`);
   }
+
   // The streaming-only exception does not extend to base URL or cloud mode.
   const stillInheritsOther = selectResolvedUploadTranscription(
     settingsFixture({
@@ -193,6 +211,7 @@ test("streaming-only base provider is not inherited by upload", async () => {
       cloudTranscriptionMode: "byok",
     })
   );
+
   assert.equal(stillInheritsOther.cloudTranscriptionBaseUrl, "https://deepgram.example/v1");
   assert.equal(stillInheritsOther.cloudTranscriptionMode, "byok");
 
@@ -204,6 +223,7 @@ test("streaming-only base provider is not inherited by upload", async () => {
       uploadCloudTranscriptionModel: "",
     })
   );
+
   assert.equal(deepgram.cloudTranscriptionProvider, "deepgram");
   assert.equal(deepgram.cloudTranscriptionModel, "nova-3");
 
@@ -213,12 +233,14 @@ test("streaming-only base provider is not inherited by upload", async () => {
       cloudTranscriptionModel: "whisper-large-v3-turbo",
     })
   );
+
   assert.equal(groq.cloudTranscriptionProvider, "groq");
   assert.equal(groq.cloudTranscriptionModel, "whisper-large-v3-turbo");
 });
 
 test("an explicit streaming-only upload provider is kept for the route guard", async () => {
   const { selectResolvedUploadTranscription } = await loadSelectors();
+
   const resolved = selectResolvedUploadTranscription(
     settingsFixture({
       cloudTranscriptionProvider: "deepgram",
@@ -226,6 +248,7 @@ test("an explicit streaming-only upload provider is kept for the route guard", a
       uploadCloudTranscriptionModel: "universal",
     })
   );
+
   assert.equal(resolved.cloudTranscriptionProvider, "assemblyai");
   assert.equal(resolved.cloudTranscriptionModel, "universal");
 
@@ -236,69 +259,127 @@ test("an explicit streaming-only upload provider is kept for the route guard", a
       uploadCloudTranscriptionModel: "whisper-large-v3",
     })
   );
+
   assert.equal(groq.cloudTranscriptionProvider, "groq");
   assert.equal(groq.cloudTranscriptionModel, "whisper-large-v3");
 });
 
 test("cleanup and chatIntelligence do not gain a fallback scope", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
+
   const cleanup = selectResolvedLLMConfig(
     settingsFixture({ cleanupProvider: "", cleanupModel: "" }),
     "cleanup"
   );
+
   assert.equal(cleanup.provider, "");
   assert.equal(cleanup.model, "");
+
   const chat = selectResolvedLLMConfig(
     settingsFixture({ chatAgentProvider: "", chatAgentModel: "" }),
     "chatIntelligence"
   );
+
   assert.equal(chat.provider, "");
   assert.equal(chat.model, "");
 });
 
 test("bb scopes follow the default harness model, keep overrides and never swap a disabled harness", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
+
   const bbAgentPreferences = {
     order: ["codex", "claude-code"],
     disabled: [],
     defaultProvider: "codex",
-    defaults: { codex: { model: "gpt-6", reasoningLevel: "high" }, "claude-code": { model: "opus", reasoningLevel: "low" } },
+    defaults: {
+      codex: { model: "gpt-6", reasoningLevel: "high" },
+      "claude-code": { model: "opus", reasoningLevel: "low" },
+    },
   };
-  const chat = (overrides: Partial<InferenceSettingsSnapshot>) => selectResolvedLLMConfig(
-    settingsFixture({ chatAgentMode: "agent", chatAgentBbProvider: "", chatAgentBbModel: "", chatAgentBbReasoningLevel: "", bbAgentPreferences, ...overrides }),
-    "chatIntelligence"
-  );
+
+  const chat = (overrides: Partial<InferenceSettingsSnapshot>) =>
+    selectResolvedLLMConfig(
+      settingsFixture({
+        chatAgentMode: "agent",
+        chatAgentBbProvider: "",
+        chatAgentBbModel: "",
+        chatAgentBbReasoningLevel: "",
+        bbAgentPreferences,
+        ...overrides,
+      }),
+      "chatIntelligence"
+    );
 
   const followsDefault = chat({});
   assert.deepEqual(
-    [followsDefault.agentProvider, followsDefault.agentModel, followsDefault.agentReasoningLevel, followsDefault.agentUsesDefault],
+    [
+      followsDefault.agentProvider,
+      followsDefault.agentModel,
+      followsDefault.agentReasoningLevel,
+      followsDefault.agentUsesDefault,
+    ],
     ["codex", "gpt-6", "high", true]
   );
 
-  const pinned = chat({ chatAgentBbProvider: "claude-code", chatAgentBbModel: "sonnet", chatAgentBbReasoningLevel: "medium" });
-  assert.deepEqual([pinned.agentProvider, pinned.agentModel, pinned.agentReasoningLevel, pinned.agentUsesDefault], ["claude-code", "sonnet", "medium", false]);
+  const pinned = chat({
+    chatAgentBbProvider: "claude-code",
+    chatAgentBbModel: "sonnet",
+    chatAgentBbReasoningLevel: "medium",
+  });
+
+  assert.deepEqual(
+    [pinned.agentProvider, pinned.agentModel, pinned.agentReasoningLevel, pinned.agentUsesDefault],
+    ["claude-code", "sonnet", "medium", false]
+  );
 
   const harnessOnly = chat({ chatAgentBbProvider: "claude-code" });
-  assert.deepEqual([harnessOnly.agentModel, harnessOnly.agentReasoningLevel], ["opus", "low"], "a pinned harness without a model uses its default model");
+  assert.deepEqual(
+    [harnessOnly.agentModel, harnessOnly.agentReasoningLevel],
+    ["opus", "low"],
+    "a pinned harness without a model uses its default model"
+  );
 
   const disabled = chat({
-    chatAgentBbProvider: "claude-code", chatAgentBbModel: "sonnet", chatAgentBbReasoningLevel: "medium",
+    chatAgentBbProvider: "claude-code",
+    chatAgentBbModel: "sonnet",
+    chatAgentBbReasoningLevel: "medium",
     bbAgentPreferences: { ...bbAgentPreferences, disabled: ["claude-code"] },
   });
-  assert.deepEqual([disabled.agentProvider, disabled.agentModel], ["", ""], "a disabled harness is reported, not replaced by the default");
+
+  assert.deepEqual(
+    [disabled.agentProvider, disabled.agentModel],
+    ["", ""],
+    "a disabled harness is reported, not replaced by the default"
+  );
 
   const unseeded = chat({ bbAgentPreferences: null });
   assert.equal(unseeded.agentProvider, "");
 });
 
 test("bb harness order keeps saved positions and appends new harnesses in bb order", async () => {
-  const { orderBbHarnesses, moveBbHarness, parseBbAgentPreferences } = await import("../../src/config/bbAgentPreferences.ts");
+  const { orderBbHarnesses, moveBbHarness, parseBbAgentPreferences } =
+    await import("../../src/config/bbAgentPreferences.ts");
+
   const items = ["codex", "pi", "claude-code", "acp-cursor"].map((id) => ({ id }));
-  const ordered = orderBbHarnesses(items, { order: ["claude-code", "codex"], disabled: [], defaultProvider: "codex", defaults: {} });
-  assert.deepEqual(ordered.map((item) => item.id), ["claude-code", "codex", "pi", "acp-cursor"]);
+
+  const ordered = orderBbHarnesses(items, {
+    order: ["claude-code", "codex"],
+    disabled: [],
+    defaultProvider: "codex",
+    defaults: {},
+  });
+
+  assert.deepEqual(
+    ordered.map((item) => item.id),
+    ["claude-code", "codex", "pi", "acp-cursor"]
+  );
   assert.deepEqual(moveBbHarness(["a", "b", "c"], "c", 0), ["c", "a", "b"]);
   assert.deepEqual(moveBbHarness(["a", "b", "c"], "a", 9), ["b", "c", "a"]);
-  assert.equal(parseBbAgentPreferences("{\"order\":\"codex\"}"), null, "malformed preferences are treated as unseeded");
+  assert.equal(
+    parseBbAgentPreferences('{"order":"codex"}'),
+    null,
+    "malformed preferences are treated as unseeded"
+  );
   assert.equal(parseBbAgentPreferences("not json"), null);
 });
 
@@ -320,10 +401,12 @@ test("empty noteFormatting fields inherit cleanup; mode does not", async () => {
 
 test("noteFormatting keeps its own mode while inheriting cleanup routing", async () => {
   const { selectResolvedLLMConfig } = await loadSelectors();
+
   const cfg = selectResolvedLLMConfig(
     settingsFixture({ noteFormattingMode: "local" }),
     "noteFormatting"
   );
+
   assert.equal(cfg.mode, "local");
   assert.equal(cfg.provider, "openai");
 });
@@ -332,10 +415,12 @@ test("disableThinking=false survives as false and true stays true", async () => 
   const { selectResolvedLLMConfig } = await loadSelectors();
   const cleanup = selectResolvedLLMConfig(settingsFixture(), "cleanup");
   assert.equal(cleanup.disableThinking, false);
+
   const withoutKey = selectResolvedLLMConfig(
     settingsFixture({ chatAgentDisableThinking: false, chatAgentCustomApiKey: "" }),
     "chatIntelligence"
   );
+
   assert.equal(withoutKey.disableThinking, false);
 });
 
@@ -343,10 +428,12 @@ test("selectResolvedLLMConfig customApiKey is scope-owned, never borrowed", asyn
   const { selectResolvedLLMConfig } = await loadSelectors();
   const cfg = selectResolvedLLMConfig(settingsFixture(), "noteFormatting");
   assert.equal(cfg.customApiKey, undefined);
+
   const own = selectResolvedLLMConfig(
     settingsFixture({ noteFormattingCustomApiKey: "sk-own" }),
     "noteFormatting"
   );
+
   assert.equal(own.customApiKey, "sk-own");
 });
 
@@ -355,29 +442,37 @@ test("selectResolvedNoteFormatting: own key wins, inherited endpoint borrows the
   const borrowed = selectResolvedNoteFormatting(settingsFixture());
   assert.equal(borrowed.customApiKey, "sk-cleanup");
 
-  const own = selectResolvedNoteFormatting(settingsFixture({ noteFormattingCustomApiKey: "sk-own" }));
+  const own = selectResolvedNoteFormatting(
+    settingsFixture({ noteFormattingCustomApiKey: "sk-own" })
+  );
+
   assert.equal(own.customApiKey, "sk-own");
 
   // Own endpoint (cloudBaseUrl or remoteUrl set): no borrowed key.
   const ownUrl = selectResolvedNoteFormatting(
     settingsFixture({ noteFormattingCloudBaseUrl: "https://nf.example/v1" })
   );
+
   assert.equal(ownUrl.customApiKey, "");
+
   const ownRemote = selectResolvedNoteFormatting(
     settingsFixture({ noteFormattingRemoteUrl: "http://host:11434/v1" })
   );
+
   assert.equal(ownRemote.customApiKey, "");
 
   // Different mode with empty endpoints: still no borrowed key.
   const otherMode = selectResolvedNoteFormatting(
     settingsFixture({ noteFormattingMode: "local", cleanupMode: "providers" })
   );
+
   assert.equal(otherMode.customApiKey, "");
 
   // A textually identical URL is still an own endpoint.
   const sameTextUrl = selectResolvedNoteFormatting(
     settingsFixture({ noteFormattingCloudBaseUrl: "https://api.openai.com/v1" })
   );
+
   assert.equal(sameTextUrl.customApiKey, "");
 });
 
@@ -393,6 +488,7 @@ test("selectResolvedNoteFormatting falls back to empty strings, keeps undefined 
     remoteUrl: "",
     customApiKey: "sk-cleanup",
   });
+
   const empty = selectResolvedNoteFormatting(
     settingsFixture({
       cleanupProvider: "",
@@ -402,6 +498,7 @@ test("selectResolvedNoteFormatting falls back to empty strings, keeps undefined 
       cleanupCustomApiKey: "",
     })
   );
+
   assert.equal(empty.provider, "");
   assert.equal(empty.model, "");
   assert.equal(empty.cloudMode, "");
@@ -419,10 +516,12 @@ test("reasoningRouting keeps mirroring undefined routing fields and endpoint rul
   );
   assert.equal(inheritsFallbackEndpoint({ mode: "providers" }, "local"), false);
   assert.equal(inheritsFallbackEndpoint({ mode: "local" }, undefined), false);
+
   const { noteFormatting } = buildReasoningScopePatches(
     { cleanupProvider: "openai", cleanupCloudMode: undefined },
     "self-hosted"
   );
+
   assert.deepEqual(noteFormatting, { mode: "self-hosted", provider: "openai" });
 });
 
@@ -441,6 +540,7 @@ test("selectors import and run without window, with a throwing localStorage", as
   t.after(() => {
     if (originalWindow === undefined) Reflect.deleteProperty(globalThis, "window");
     else globalThis.window = originalWindow;
+
     if (originalLocalStorage === undefined) Reflect.deleteProperty(globalThis, "localStorage");
     else
       Object.defineProperty(globalThis, "localStorage", {
@@ -454,7 +554,10 @@ test("selectors import and run without window, with a throwing localStorage", as
   assert.equal(resolved.transcriptionMode, "providers");
   const cfg = selectors.selectResolvedLLMConfig(settingsFixture(), "noteFormatting");
   assert.equal(cfg.provider, "openai");
-  assert.equal(selectors.selectResolvedNoteFormatting(settingsFixture()).customApiKey, "sk-cleanup");
+  assert.equal(
+    selectors.selectResolvedNoteFormatting(settingsFixture()).customApiKey,
+    "sk-cleanup"
+  );
 });
 
 test("selectors never mutate the snapshot they read", async () => {
@@ -464,6 +567,7 @@ test("selectors never mutate the snapshot they read", async () => {
     selectResolvedLLMConfig,
     selectResolvedNoteFormatting,
   } = await loadSelectors();
+
   const snapshot = Object.freeze({ ...settingsFixture(), ...settingsFixture() });
   assert.doesNotThrow(() => selectResolvedMeetingTranscription(snapshot));
   assert.doesNotThrow(() => selectResolvedUploadTranscription(snapshot));
@@ -480,21 +584,27 @@ test("selectors graph imports nothing from the store or electron", async () => {
     "src/helpers/reasoningRouting.ts",
     "src/contracts/inferenceSettings.ts",
   ];
+
   const seen = new Set();
   const banned = new RegExp("stores/settingsStore|types/electron|zustand|electron", "i");
   const queue = [...graphRoots];
+
   while (queue.length > 0) {
     const file = queue.pop();
+
     if (seen.has(file)) continue;
     seen.add(file);
     const source = fs.readFileSync(path.join(ROOT, file), "utf8");
     const imports = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
+
     for (const spec of imports) {
       assert.equal(banned.test(spec), false, `${file} imports ${spec}`);
+
       if (spec.startsWith(".")) {
         const resolved = path
           .relative(ROOT, path.resolve(path.dirname(path.join(ROOT, file)), spec))
           .replace(/\.js$/, ".ts");
+
         if (fs.existsSync(path.join(ROOT, resolved))) queue.push(resolved);
       }
     }

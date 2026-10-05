@@ -30,9 +30,11 @@ export async function completeMeetingAutoEndSession(
   if (!isValidSessionId(sessionId)) {
     return { success: false, reason: "invalid-session" };
   }
+
   if ((await engine?.completeAutoEndSession(sessionId, sender)) !== true) {
     return { success: false, reason: "stale-session" };
   }
+
   return { success: true };
 }
 
@@ -45,12 +47,15 @@ export function respondToMeetingAutoEndNotification(
   if (!isValidSessionId(sessionId)) {
     return { success: false, reason: "invalid-session" };
   }
+
   if (action !== "restart" && action !== "dismiss") {
     return { success: false, reason: "invalid-action" };
   }
+
   if (engine?.respondToAutoEndNotification(sessionId, action, sender) !== true) {
     return { success: false, reason: "stale-session" };
   }
+
   return { success: true };
 }
 

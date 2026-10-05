@@ -14,11 +14,14 @@ export default function CleanupFailureToastListener() {
     if (pending === 0) return;
     const state = useCleanupFailureStore.getState();
     const failure = state.lastFailure ?? { message: state.lastMessage };
+
     // Draining first keeps a re-run of this effect from toasting the same failure twice.
     if (consumeCleanupFailures() === 0) return;
+
     const title = failure.messageKey
       ? t(failure.messageKey, failure.messageParams)
       : failure.message || t("app.toasts.cleanupFailed.title");
+
     const description = failure.actionKey ? t(failure.actionKey) : failure.action;
     toast({
       title,

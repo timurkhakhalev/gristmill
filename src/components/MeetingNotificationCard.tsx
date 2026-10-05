@@ -57,6 +57,7 @@ export function MeetingNotificationCard({
   onMouseLeave,
 }: MeetingNotificationCardProps) {
   const { t } = useTranslation();
+
   return (
     <div
       className={cn(
@@ -66,7 +67,10 @@ export function MeetingNotificationCard({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <span aria-hidden="true" className="h-9 shrink-0 self-center border-s border-dashed border-border" />
+      <span
+        aria-hidden="true"
+        className="h-9 shrink-0 self-center border-s border-dashed border-border"
+      />
 
       <div className="min-w-0 flex-1">
         <p

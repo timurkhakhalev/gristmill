@@ -5,15 +5,16 @@
 // (invalid input rejected before the DB, malformed rows dropped) and the
 // Calendar privacy opener.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 type CalModule = typeof import("../../src/helpers/calendarIpcHandlers.js");
+
 let registerCalendarIntegrationHandlers: CalModule["registerCalendarIntegrationHandlers"];
 
 test.before(async () => {
-  ({ registerCalendarIntegrationHandlers } = await import(
-    "../../src/helpers/calendarIpcHandlers.ts"
-  ));
+  ({ registerCalendarIntegrationHandlers } =
+    await import("../../src/helpers/calendarIpcHandlers.ts"));
 });
 
 function fullEventRow(overrides: Record<string, unknown> = {}) {
@@ -32,16 +33,33 @@ function fullEventRow(overrides: Record<string, unknown> = {}) {
     conference_data: null,
     organizer_email: "a@b.c",
     attendees_count: 3,
-    attendees: JSON.stringify([{ email: "a@b.c", displayName: null, responseStatus: "accepted", self: false }]),
+    attendees: JSON.stringify([
+      { email: "a@b.c", displayName: null, responseStatus: "accepted", self: false },
+    ]),
     synced_at: "2026-09-15 09:00:00",
     ...overrides,
   };
 }
 
 type CalDeps = Parameters<CalModule["registerCalendarIntegrationHandlers"]>[1];
-interface SetupOverrides { google?: CalDeps["googleManager"]; microsoft?: CalDeps["microsoftManager"]; apple?: CalDeps["appleManager"]; upcoming?: unknown; eventById?: unknown; opener?: unknown }
+
+interface SetupOverrides {
+  google?: CalDeps["googleManager"];
+  microsoft?: CalDeps["microsoftManager"];
+  apple?: CalDeps["appleManager"];
+  upcoming?: unknown;
+  eventById?: unknown;
+  opener?: unknown;
+}
+
 function setup({ google, microsoft, apple, upcoming, eventById, opener }: SetupOverrides = {}) {
-  const calls: { upcoming: unknown[]; eventById: unknown[]; opener: number; errors: Array<{ message: unknown; data: unknown; tag: unknown }> } = { upcoming: [], eventById: [], opener: 0, errors: [] };
+  const calls: {
+    upcoming: unknown[];
+    eventById: unknown[];
+    opener: number;
+    errors: Array<{ message: unknown; data: unknown; tag: unknown }>;
+  } = { upcoming: [], eventById: [], opener: 0, errors: [] };
+
   const managers = {
     google:
       google === undefined
@@ -82,32 +100,42 @@ function setup({ google, microsoft, apple, upcoming, eventById, opener }: SetupO
           }
         : apple,
   };
+
   const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
   registerCalendarIntegrationHandlers(
-    { handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn) },
+    {
+      handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) =>
+        handlers.set(channel, fn),
+    },
     {
       googleManager: managers.google,
       microsoftManager: managers.microsoft,
       appleManager: managers.apple,
       getUpcomingEvents: async (windowMinutes?: number) => {
         calls.upcoming.push(windowMinutes);
+
         return upcoming === undefined ? [fullEventRow()] : (upcoming as unknown[]);
       },
       getCalendarEventById: (eventId: string) => {
         calls.eventById.push(eventId);
+
         return eventById === undefined ? fullEventRow() : eventById;
       },
       openCalendarPrivacySettings:
         opener === undefined
           ? async () => {
               calls.opener += 1;
+
               return { success: true };
             }
           : (opener as CalDeps["openCalendarPrivacySettings"]),
-      logError: (message: unknown, data: unknown, tag: unknown) => { calls.errors.push({ message, data, tag }); },
+      logError: (message: unknown, data: unknown, tag: unknown) => {
+        calls.errors.push({ message, data, tag });
+      },
     }
   );
   const call = (channel: string, ...args: unknown[]): any => handlers.get(channel)!(null, ...args);
+
   return { call, calls, handlers };
 }
 
@@ -135,6 +163,7 @@ test("google status: live manager fields vs unconfigured fallback", async () => 
       syncEvents: async () => {},
     },
   });
+
   // The fallback has NO configured/accounts — absence is the signal.
   assert.deepEqual(await failing.call("gcal-get-connection-status"), {
     connected: false,
@@ -153,6 +182,7 @@ test("microsoft status: fallback omits configured, keeps accounts", async () => 
       setPrimaryOnly: async () => {},
     },
   });
+
   assert.deepEqual(await failing.call("mcal-get-connection-status"), {
     connected: false,
     accounts: [],
@@ -170,6 +200,7 @@ test("apple status: fallback keeps sourceNames", async () => {
       },
     },
   });
+
   assert.deepEqual(await failing.call("acal-get-connection-status"), {
     connected: false,
     sourceNames: [],
@@ -181,13 +212,18 @@ test("a malformed successful status never passes as valid", async () => {
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: "yes", email: "g@x.io" } as unknown as { connected: boolean; email: string | null }),
+      getConnectionStatus: () =>
+        ({ connected: "yes", email: "g@x.io" }) as unknown as {
+          connected: boolean;
+          email: string | null;
+        },
       getCalendars: () => [],
       setCalendarSelection: async () => {},
       setPrimaryOnly: async () => {},
       syncEvents: async () => {},
     },
   });
+
   assert.deepEqual(await junk.call("gcal-get-connection-status"), {
     connected: false,
     email: null,
@@ -214,6 +250,7 @@ test("oauth success and failure detail per provider", async () => {
       syncEvents: async () => {},
     },
   });
+
   assert.deepEqual(await denied.call("gcal-start-oauth"), {
     success: false,
     error: "access_denied",
@@ -235,6 +272,7 @@ test("disconnect: invalid email rejected before the manager; failures carry deta
       syncEvents: async () => {},
     },
   });
+
   assert.deepEqual(await call("gcal-disconnect", 42), {
     success: false,
     error: "Invalid disconnect request",
@@ -256,6 +294,7 @@ test("apple connect: stage reasons and disconnect passthrough", async () => {
       getConnectionStatus: () => ({ connected: false, sourceNames: [] }),
     },
   });
+
   assert.deepEqual(await denied.call("acal-connect"), { success: false, reason: "denied" });
 
   const threw = setup({
@@ -267,6 +306,7 @@ test("apple connect: stage reasons and disconnect passthrough", async () => {
       getConnectionStatus: () => ({ connected: false, sourceNames: [] }),
     },
   });
+
   assert.deepEqual(await threw.call("acal-connect"), {
     success: false,
     error: "helper spawn failed",
@@ -279,17 +319,25 @@ test("apple connect: stage reasons and disconnect passthrough", async () => {
 
 test("selection and primary-only validate args before calling the manager", async () => {
   const calls: unknown[] = [];
+
   const { call } = setup({
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
       getConnectionStatus: () => ({ connected: false, email: null }),
       getCalendars: () => [],
-      setCalendarSelection: async (id: unknown, value: boolean) => { calls.push(["selection", id, value]); },
-      setPrimaryOnly: async (value: boolean) => { calls.push(["primary", value]); },
-      syncEvents: async () => { calls.push(["sync"]); },
+      setCalendarSelection: async (id: unknown, value: boolean) => {
+        calls.push(["selection", id, value]);
+      },
+      setPrimaryOnly: async (value: boolean) => {
+        calls.push(["primary", value]);
+      },
+      syncEvents: async () => {
+        calls.push(["sync"]);
+      },
     },
   });
+
   assert.deepEqual(await call("gcal-set-calendar-selection", "", true), {
     success: false,
     error: "Invalid calendar selection request",
@@ -308,11 +356,7 @@ test("selection and primary-only validate args before calling the manager", asyn
   assert.deepEqual(await call("gcal-set-primary-only", true), { success: true });
   assert.deepEqual(await call("gcal-sync-events"), { success: true });
   assert.deepEqual(await call("mcal-set-primary-only", false), { success: true });
-  assert.deepEqual(calls, [
-    ["selection", "cal-1", false],
-    ["primary", true],
-    ["sync"],
-  ]);
+  assert.deepEqual(calls, [["selection", "cal-1", false], ["primary", true], ["sync"]]);
 });
 
 // Regression: the manager keeps best-effort updates and now returns the
@@ -325,7 +369,9 @@ test("gcal sync reports full failure, partial failure and success from the manag
     { total: 2, succeeded: 1, failed: 1, errors: ["calendar b failed"] },
     { total: 2, succeeded: 2, failed: 0, errors: [] },
   ];
+
   let callIndex = 0;
+
   const { call } = setup({
     google: {
       startOAuth: async () => ({ success: true }),
@@ -362,6 +408,7 @@ test("gcal sync surfaces a thrown manager error and accepts an empty outcome", a
       },
     },
   });
+
   assert.deepEqual(await call("gcal-sync-events"), { success: false, error: "oauth revoked" });
 
   const empty = setup({
@@ -375,13 +422,26 @@ test("gcal sync surfaces a thrown manager error and accepts an empty outcome", a
       syncEvents: async () => undefined,
     },
   });
+
   assert.deepEqual(await empty.call("gcal-sync-events"), { success: true });
 });
 
 // --- Provider-neutral reads --------------------------------------------------------
 
 test("upcoming events: projection keeps consumer fields and drops internals", async () => {
-  const { call } = setup({ upcoming: [fullEventRow(), fullEventRow({ id: "evt-2", is_all_day: 1, start_time: "2026-09-16", end_time: "2026-09-17", attendees: null })] });
+  const { call } = setup({
+    upcoming: [
+      fullEventRow(),
+      fullEventRow({
+        id: "evt-2",
+        is_all_day: 1,
+        start_time: "2026-09-16",
+        end_time: "2026-09-17",
+        attendees: null,
+      }),
+    ],
+  });
+
   const result = await call("gcal-get-upcoming-events", 120);
   assert.equal(result.success, true);
   assert.equal(result.events.length, 2);
@@ -456,6 +516,7 @@ test("calendar list projection drops sync tokens", async () => {
       syncEvents: async () => {},
     },
   });
+
   const result = await call("gcal-get-calendars");
   assert.equal(result.success, true);
   assert.equal(result.calendars.length, 1);
@@ -475,6 +536,7 @@ test("privacy settings go through the injected opener", async () => {
       throw new Error("no system settings pane");
     },
   });
+
   assert.deepEqual(await threw.call("open-calendar-privacy-settings"), {
     success: false,
     error: "no system settings pane",
@@ -495,5 +557,6 @@ test("read failures degrade to empty shapes, not error surfaces", async () => {
       syncEvents: async () => {},
     },
   });
+
   assert.deepEqual(await failing.call("gcal-get-calendars"), { success: false, calendars: [] });
 });

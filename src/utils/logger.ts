@@ -12,35 +12,43 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 const normalizeLevel = (value?: string | null): LogLevel | null => {
   if (!value) return null;
   const lower = value.toLowerCase();
+
   return lower in LOG_LEVELS ? (lower as LogLevel) : null;
 };
 
 const defaultLevel: LogLevel = "info";
 
 let cachedLevel: LogLevel | null = null;
+
 let levelPromise: Promise<LogLevel> | null = null;
 
 const resolveLogLevel = async (): Promise<LogLevel> => {
   if (cachedLevel) {
     return cachedLevel;
   }
+
   if (!levelPromise) {
     levelPromise = (async () => {
       if (typeof window !== "undefined" && window.electronAPI?.getLogLevel) {
         try {
           const level = normalizeLevel(await window.electronAPI.getLogLevel());
+
           if (level) {
             cachedLevel = level;
+
             return level;
           }
         } catch {
           // Fall back to default level
         }
       }
+
       cachedLevel = defaultLevel;
+
       return cachedLevel;
     })();
   }
+
   return levelPromise;
 };
 
@@ -51,12 +59,14 @@ const shouldLog = (level: LogLevel, current: LogLevel) => {
 const logToConsole = (level: LogLevel, message: string, meta?: any, scope?: string) => {
   const levelTag = `[${level.toUpperCase()}]`;
   const scopeTag = scope ? `[${scope}]` : "";
+
   const consoleFn =
     level === "error" || level === "fatal"
       ? console.error
       : level === "warn"
         ? console.warn
         : console.log;
+
   if (meta !== undefined) {
     consoleFn(`${levelTag}${scopeTag} ${message}`, meta);
   } else {
@@ -66,6 +76,7 @@ const logToConsole = (level: LogLevel, message: string, meta?: any, scope?: stri
 
 const log = async (level: LogLevel, message: string, meta?: any, scope?: string) => {
   const currentLevel = await resolveLogLevel();
+
   if (!shouldLog(level, currentLevel)) return;
 
   if (typeof window !== "undefined" && window.electronAPI?.log) {
@@ -77,6 +88,7 @@ const log = async (level: LogLevel, message: string, meta?: any, scope?: string)
         scope,
         source: "renderer",
       });
+
       return;
     } catch {
       // Fall back to console

@@ -1,16 +1,22 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const originalLoad = Module._load;
+
 Module._load = function loadWithElectronStub(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return { app: { isReady: () => false, getPath: () => "", getAppPath: () => process.cwd() } };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const { validateEnterpriseEndpoint }: typeof import("../../src/helpers/enterpriseProviderErrors") = require("../../src/helpers/enterpriseProviderErrors");
+const {
+  validateEnterpriseEndpoint,
+}: typeof import("../../src/helpers/enterpriseProviderErrors") = require("../../src/helpers/enterpriseProviderErrors");
 
 const rejects = (endpoint: string) => {
   assert.throws(

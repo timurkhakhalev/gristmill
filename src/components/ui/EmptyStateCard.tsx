@@ -30,9 +30,7 @@ export default function EmptyStateCard({
       </span>
       {title && <p className="mt-4 text-sm font-semibold text-foreground">{title}</p>}
       {description && (
-        <p className="mt-1 max-w-xs text-sm leading-relaxed text-muted-foreground">
-          {description}
-        </p>
+        <p className="mt-1 max-w-xs text-sm leading-relaxed text-muted-foreground">{description}</p>
       )}
       {children && <div className="mt-5 flex flex-col items-center gap-2">{children}</div>}
     </div>

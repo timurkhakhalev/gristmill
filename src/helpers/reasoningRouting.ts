@@ -16,6 +16,7 @@ export function inheritsFallbackEndpoint(
   fallbackMode: InferenceMode | undefined
 ): boolean {
   if (own.cloudBaseUrl || own.remoteUrl) return false;
+
   return !!fallbackMode && own.mode === fallbackMode;
 }
 
@@ -29,6 +30,7 @@ const MIRRORED_ROUTING_FIELDS = [
 ] as const;
 
 type CleanupPatchKey = (typeof MIRRORED_ROUTING_FIELDS)[number][0];
+
 type MirroredField = (typeof MIRRORED_ROUTING_FIELDS)[number][1];
 
 /** The routing fields a caller may fan out to the non-cleanup scopes. */
@@ -77,6 +79,7 @@ export function buildReasoningScopePatches<S extends CleanupPatchSource>(
   mode: InferenceMode
 ): ReasoningScopePatches {
   const cleanup: CleanupScopePatch = { ...settings, cleanupMode: mode };
+
   const mirrored: Record<MirroredField, string | undefined> = {
     provider: undefined,
     model: undefined,
@@ -85,11 +88,15 @@ export function buildReasoningScopePatches<S extends CleanupPatchSource>(
     remoteUrl: undefined,
     customApiKey: undefined,
   };
+
   for (const [cleanupKey, field] of MIRRORED_ROUTING_FIELDS) {
     const value = settings[cleanupKey satisfies CleanupPatchKey & keyof S];
+
     if (value !== undefined) mirrored[field] = value;
   }
+
   const { provider, model, cloudMode, cloudBaseUrl, remoteUrl, customApiKey } = mirrored;
+
   const shared = {
     ...(provider !== undefined && { provider }),
     ...(model !== undefined && { model }),
@@ -98,6 +105,7 @@ export function buildReasoningScopePatches<S extends CleanupPatchSource>(
     ...(remoteUrl !== undefined && { remoteUrl }),
     ...(customApiKey !== undefined && { customApiKey }),
   };
+
   return {
     cleanup,
     noteFormatting: { mode, ...shared },

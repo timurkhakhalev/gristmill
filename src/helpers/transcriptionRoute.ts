@@ -56,6 +56,7 @@ export const XAI_STT_URL = "https://api.x.ai/v1/stt";
 
 const CUSTOM_ENDPOINT_INVALID_MESSAGE_KEY =
   "hooks.audioRecording.errorDescriptions.customEndpointInvalid";
+
 const STREAMING_ONLY_PROVIDER_MESSAGE_KEY =
   "hooks.audioRecording.errorDescriptions.streamingOnlyProvider";
 
@@ -153,7 +154,9 @@ export const XAI_STT_LANGUAGES = new Set([
 // two together for every shipping model.
 export function resolveByokModel(provider: string, configuredModel?: string): string {
   const trimmed = (configuredModel || "").trim();
+
   if (provider === "custom") return trimmed || "whisper-1";
+
   if (trimmed) {
     const matchesProvider =
       (provider === "groq" && trimmed.startsWith("whisper-large-v3")) ||
@@ -168,16 +171,26 @@ export function resolveByokModel(provider: string, configuredModel?: string): st
       (provider === "elevenlabs" && trimmed === "scribe_v2") ||
       (provider === "assemblyai" &&
         (trimmed.startsWith("universal-") || trimmed.startsWith("slam-")));
+
     if (matchesProvider) return trimmed;
   }
+
   if (provider === "groq") return "whisper-large-v3-turbo";
+
   if (provider === "xai") return "grok-stt";
+
   if (provider === "mistral") return "voxtral-mini-latest";
+
   if (provider === "corti") return "corti-transcribe";
+
   if (provider === "gemini") return "gemini-3.5-transcribe";
+
   if (provider === "deepgram") return "nova-3";
+
   if (provider === "elevenlabs") return "scribe_v2";
+
   if (provider === "assemblyai") return "universal-3-5-pro";
+
   return "gpt-transcribe";
 }
 
@@ -192,7 +205,9 @@ function error(message: string, code?: string, messageKey?: string): Transcripti
 // endpoints under either, depending on when the user configured them.
 function buildBatchEndpoint(rawUrl: string, base: string, model: string | null): string {
   const fallback = buildApiUrl(base, "/audio/transcriptions");
+
   if (!isAzureOpenAIEndpoint(base)) return fallback;
+
   return buildAzureTranscriptionUrl(rawUrl, model || "") || fallback;
 }
 
@@ -211,6 +226,7 @@ export function resolveTranscriptionRoute({
   request,
 }: TranscriptionRouteInput): TranscriptionRoute {
   const s = settings || {};
+
   const language =
     request?.effectiveLanguage ??
     (!s.preferredLanguage || s.preferredLanguage === "auto"
@@ -236,10 +252,13 @@ export function resolveTranscriptionRoute({
     if (isSelfHostedTranscription(s)) {
       const rawUrl = (s.remoteTranscriptionUrl || "").trim();
       const base = normalizeBaseUrl(rawUrl);
+
       if (!base || !isSecureHttpEndpoint(base)) {
         return error("Self-hosted transcription URL is invalid or unsupported");
       }
+
       const selfHostedModel = resolveSelfHostedTranscriptionModel(s);
+
       return {
         transport: "http-batch",
         provider: "self-hosted",
@@ -250,6 +269,7 @@ export function resolveTranscriptionRoute({
         language,
       };
     }
+
     if (s.cloudTranscriptionProvider !== "custom") {
       return error("Self-hosted transcription URL is not configured");
     }
@@ -274,6 +294,7 @@ export function resolveTranscriptionRoute({
       sizeCapBytes: BYOK_FILE_SIZE_LIMIT,
     };
   }
+
   if (provider === "gemini") {
     if (model !== "gemini-3.5-transcribe") {
       return error(
@@ -281,6 +302,7 @@ export function resolveTranscriptionRoute({
         "GEMINI_MODEL_UNSUPPORTED"
       );
     }
+
     return {
       transport: "proxied",
       provider,
@@ -289,6 +311,7 @@ export function resolveTranscriptionRoute({
       sizeCapBytes: GEMINI_FILE_SIZE_LIMIT,
     };
   }
+
   if (provider === "deepgram") {
     if (!model.startsWith("nova-")) {
       return error(
@@ -296,6 +319,7 @@ export function resolveTranscriptionRoute({
         "DEEPGRAM_MODEL_UNSUPPORTED"
       );
     }
+
     return {
       transport: "proxied",
       provider,
@@ -304,6 +328,7 @@ export function resolveTranscriptionRoute({
       sizeCapBytes: DEEPGRAM_FILE_SIZE_LIMIT,
     };
   }
+
   if (provider === "elevenlabs") {
     return {
       transport: "proxied",
@@ -313,6 +338,7 @@ export function resolveTranscriptionRoute({
       sizeCapBytes: ELEVENLABS_FILE_SIZE_LIMIT,
     };
   }
+
   if (provider === "corti") {
     return {
       transport: "proxied",
@@ -329,6 +355,7 @@ export function resolveTranscriptionRoute({
   if (provider === "custom") {
     const rawUrl = (s.cloudTranscriptionBaseUrl || "").trim();
     const base = normalizeBaseUrl(rawUrl);
+
     if (
       !rawUrl ||
       // The untouched store default — Custom was selected but never configured;
@@ -339,9 +366,11 @@ export function resolveTranscriptionRoute({
     ) {
       return customEndpointError();
     }
+
     if (isTinfoilInferenceUrl(base, providers)) {
       return error(TINFOIL_PROXY_REQUIRED_ERROR);
     }
+
     // Azure authenticates with the `api-key` header; Bearer is reserved for Entra ID.
     return {
       transport: "http-batch",
@@ -365,6 +394,7 @@ export function resolveTranscriptionRoute({
         PROVIDER_KEY_MISSING_MESSAGE_KEY
       );
     }
+
     return error(
       "This provider only supports live transcription. Choose another provider for file uploads and retries.",
       "STREAMING_ONLY_PROVIDER",
@@ -373,6 +403,7 @@ export function resolveTranscriptionRoute({
   }
 
   const isGroq = provider === "groq";
+
   return {
     transport: "http-batch",
     provider: isGroq ? "groq" : "openai",

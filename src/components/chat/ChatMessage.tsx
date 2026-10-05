@@ -72,15 +72,11 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
         ) : isError ? (
           <div className="flex items-center gap-1">
             <CircleAlert size={10} className="text-danger shrink-0" />
-            <span className="text-2xs text-danger">
-              {toolCall.result || toolCall.name}
-            </span>
+            <span className="text-2xs text-danger">{toolCall.result || toolCall.name}</span>
           </div>
         ) : isClipboard ? (
           <div className="flex items-center gap-1">
-            <span className="text-2xs text-success">
-              {t("agentMode.tools.copiedToClipboard")}
-            </span>
+            <span className="text-2xs text-success">{t("agentMode.tools.copiedToClipboard")}</span>
             <Check
               size={10}
               className="text-success shrink-0"
@@ -88,9 +84,7 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
             />
           </div>
         ) : (
-          <span className="text-2xs text-muted">
-            {toolCall.result || toolCall.name}
-          </span>
+          <span className="text-2xs text-muted">{toolCall.result || toolCall.name}</span>
         )}
 
         {hasDetail && !isExecuting && (
@@ -123,6 +117,7 @@ function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
 
 function CopyButton({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
   const { t } = useTranslation();
+
   return (
     <button
       type="button"
@@ -154,9 +149,7 @@ function NoteCard({
 
   return (
     <button
-      onClick={() =>
-        onOpenNote?.(noteId)
-      }
+      onClick={() => onOpenNote?.(noteId)}
       className={cn(
         "flex items-center gap-2 w-full mt-2 px-2.5 py-2 rounded-lg",
         "border border-border bg-surface",
@@ -236,17 +229,10 @@ export function ChatMessage({
     >
       <div
         data-chat-bubble
-        className={cn(
-          "w-full px-0.5 py-1 text-foreground",
-          "text-ui leading-relaxed"
-        )}
+        className={cn("w-full px-0.5 py-1 text-foreground", "text-ui leading-relaxed")}
       >
         {hasToolCalls && (
-          <div
-            className={cn(
-              (hasContent || noteCards.length > 0) && "mb-2"
-            )}
-          >
+          <div className={cn((hasContent || noteCards.length > 0) && "mb-2")}>
             {toolCalls.map((tc) => (
               <ToolCallStep key={tc.id} toolCall={tc} />
             ))}

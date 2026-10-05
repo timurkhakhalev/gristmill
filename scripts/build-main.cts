@@ -2,17 +2,22 @@
 // The sandboxed preload cannot require local modules, so after tsc succeeds the
 // preload is bundled into one file with esbuild (electron external, CJS, node).
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const { execFileSync }: typeof import("node:child_process") = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
+
 fs.rmSync(path.join(root, "dist-main"), { recursive: true, force: true });
+
 execFileSync(path.join(root, "node_modules", ".bin", "tsc"), ["-p", "tsconfig.main.json"], {
   cwd: root,
   stdio: "inherit",
 });
 
 const bundledPreload = path.join(root, "dist-main", "preload.js");
+
 try {
   execFileSync(
     path.join(root, "node_modules", ".bin", "esbuild"),

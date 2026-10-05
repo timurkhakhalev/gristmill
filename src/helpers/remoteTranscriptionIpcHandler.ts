@@ -48,12 +48,15 @@ const AUDIO_MIME_TYPES: Record<string, string> = {
 function diarizationHost(endpoint: string): string | null {
   try {
     const host = new URL(endpoint).hostname;
+
     if (host === "mistral.ai" || host.endsWith(".mistral.ai")) return "mistral";
+
     if (host === "openai.com" || host.endsWith(".openai.com")) return "openai";
   } catch {
     // Unreachable for resolved routes (they validated the URL), but staying
     // silent costs nothing.
   }
+
   return null;
 }
 
@@ -87,6 +90,7 @@ export function buildMultipartBody(
   parts.push(`--${boundary}--\r\n`);
 
   const bodyParts = parts.map((p) => (typeof p === "string" ? Buffer.from(p) : p));
+
   return { body: Buffer.concat(bodyParts), boundary };
 }
 
@@ -159,9 +163,11 @@ type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
 
 function parseResult(raw: unknown): RemoteTranscriptionResult {
   const result = remoteTranscriptionResponseSchema.safeParse(raw);
+
   if (!result.success) {
     throw new Error("Remote transcription returned an unexpected result shape");
   }
+
   return result.data;
 }
 
@@ -184,6 +190,7 @@ function projectDiarizedSegments(
     const record = asRecord(item) ?? {};
     const start = typeof record.start === "number" ? record.start : 0;
     const end = typeof record.end === "number" ? record.end : 0;
+
     return {
       speaker: label(record),
       text: typeof record.text === "string" ? record.text : "",
@@ -201,16 +208,30 @@ function formatDiarizedTranscript(
     .join("\n\n");
 }
 
-export function parseOpenAIFileResponse(raw: unknown, diarize: boolean, timestamps = false): RemoteTranscriptionResult {
+export function parseOpenAIFileResponse(
+  raw: unknown,
+  diarize: boolean,
+  timestamps = false
+): RemoteTranscriptionResult {
   const response = asRecord(raw);
+
   if (diarize && Array.isArray(response?.segments)) {
     const segments = projectDiarizedSegments(response.segments, (item) =>
       String(item.speaker || "Speaker ?")
     );
+
     const text = segments.length ? formatDiarizedTranscript(segments) : response.text;
-    return { success: true, ...(typeof text === "string" ? { text } : {}), diarized: true, segments };
+
+    return {
+      success: true,
+      ...(typeof text === "string" ? { text } : {}),
+      diarized: true,
+      segments,
+    };
   }
+
   const segments = timestamps ? mapVerboseSegments(raw) : null;
+
   return {
     success: true,
     ...(typeof response?.text === "string" ? { text: response.text } : {}),
@@ -223,9 +244,11 @@ function errorMessageFromStatus(
   prefix: string
 ): string {
   const error = asRecord(data.data)?.error;
+
   const message =
     (asRecord(error)?.message as string | undefined) ||
     (typeof error === "string" ? error : undefined);
+
   return message || `${prefix} ${data.statusCode}`;
 }
 
@@ -237,14 +260,18 @@ export async function transcribeAudioFileByok(
     signal?: AbortSignal;
   } = {}
 ): Promise<RemoteTranscriptionResult> {
-  const meetingFailureCode = (code: string) => internal.onRawProviderResponse ? { code } : {};
+  const meetingFailureCode = (code: string) => (internal.onRawProviderResponse ? { code } : {});
   const { signal: registrySignal, release } = deps.uploadCancelRegistry.register(payload.requestId);
-  const signal = registrySignal && internal.signal
-    ? AbortSignal.any([registrySignal, internal.signal])
-    : internal.signal ?? registrySignal;
+
+  const signal =
+    registrySignal && internal.signal
+      ? AbortSignal.any([registrySignal, internal.signal])
+      : (internal.signal ?? registrySignal);
+
   try {
     if (signal?.aborted) return cancelled();
     const realByok = deps.resolveAllowedAudioPath(payload.filePath);
+
     if (!realByok) return { success: false, error: "File path not allowed" };
 
     const route: TranscriptionRoute = resolveTranscriptionRoute({
@@ -282,12 +309,14 @@ export async function transcribeAudioFileByok(
     if (route.transport === "http-batch" && route.provider === "self-hosted") {
       // User's own server, so the 25 MB third-party cap does not apply.
       const ext = extname(realByok).toLowerCase().replace(".", "");
+
       const { body, boundary } = buildMultipartBody(
         deps.readFile(realByok),
         basename(realByok),
         AUDIO_MIME_TYPES[ext] || "audio/mpeg",
         { model: route.model, language: route.language }
       );
+
       const data = await deps.postMultipart(
         new URL(route.endpoint),
         body,
@@ -295,15 +324,22 @@ export async function transcribeAudioFileByok(
         {},
         { signal }
       );
+
       if (data.statusCode !== 200) {
         throw new Error(errorMessageFromStatus(data, "Self-hosted API Error:"));
       }
+
       return parseResult({ success: true, text: asRecord(data.data)?.text as string | undefined });
     }
 
     const fileSize = deps.fileSize(realByok);
+
     if (route.sizeCapBytes && fileSize > route.sizeCapBytes) {
-      return { success: false, error: byokSizeCapError(route.sizeCapBytes), ...meetingFailureCode("PROVIDER_LIMIT") };
+      return {
+        success: false,
+        error: byokSizeCapError(route.sizeCapBytes),
+        ...meetingFailureCode("PROVIDER_LIMIT"),
+      };
     }
 
     if (fileSize === 0) {
@@ -318,17 +354,30 @@ export async function transcribeAudioFileByok(
           ...meetingFailureCode("API_KEY_MISSING"),
         };
       }
+
       const ext = extname(realByok).toLowerCase().replace(".", "");
+
       const data = await deps.postRawAudioFile(
-        deepgramFileUrl(route.model || "nova-3", route.language, payload.diarize === true, payload.multichannel === true),
+        deepgramFileUrl(
+          route.model || "nova-3",
+          route.language,
+          payload.diarize === true,
+          payload.multichannel === true
+        ),
         realByok,
         AUDIO_MIME_TYPES[ext] || "application/octet-stream",
         payload.apiKey,
         { signal }
       );
+
       if (data.statusCode === 401 || data.statusCode === 403) {
-        return { success: false, error: "Invalid Deepgram API key. Check your key in Settings.", ...meetingFailureCode("INVALID_KEY") };
+        return {
+          success: false,
+          error: "Invalid Deepgram API key. Check your key in Settings.",
+          ...meetingFailureCode("INVALID_KEY"),
+        };
       }
+
       if (data.statusCode === 413) {
         return {
           success: false,
@@ -336,9 +385,15 @@ export async function transcribeAudioFileByok(
           ...meetingFailureCode("PROVIDER_LIMIT"),
         };
       }
+
       if (data.statusCode === 429) {
-        return { success: false, error: "Deepgram rate limit exceeded. Please try again later.", ...meetingFailureCode("PROVIDER_RATE_LIMITED") };
+        return {
+          success: false,
+          error: "Deepgram rate limit exceeded. Please try again later.",
+          ...meetingFailureCode("PROVIDER_RATE_LIMITED"),
+        };
       }
+
       if (data.statusCode === 504) {
         return {
           success: false,
@@ -346,15 +401,28 @@ export async function transcribeAudioFileByok(
           ...meetingFailureCode("TRANSCRIPTION_TRANSPORT_ERROR"),
         };
       }
+
       if (data.statusCode !== 200) {
         return {
           success: false,
           error: errorMessageFromStatus(data, "Deepgram API error:"),
-          ...meetingFailureCode(data.statusCode >= 500 || data.statusCode === 408 ? "TRANSCRIPTION_TRANSPORT_ERROR" : "DEEPGRAM_API_ERROR"),
+          ...meetingFailureCode(
+            data.statusCode >= 500 || data.statusCode === 408
+              ? "TRANSCRIPTION_TRANSPORT_ERROR"
+              : "DEEPGRAM_API_ERROR"
+          ),
         };
       }
+
       await internal.onRawProviderResponse?.(data.data);
-      return parseResult(parseDeepgramFileResponse(data.data, payload.diarize === true, payload.multichannel === true));
+
+      return parseResult(
+        parseDeepgramFileResponse(
+          data.data,
+          payload.diarize === true,
+          payload.multichannel === true
+        )
+      );
     }
 
     if (route.transport === "proxied" && route.provider === "elevenlabs") {
@@ -365,7 +433,9 @@ export async function transcribeAudioFileByok(
           ...meetingFailureCode("API_KEY_MISSING"),
         };
       }
+
       const ext = extname(realByok).toLowerCase().replace(".", "");
+
       const data = await deps.postRawAudioFile(
         ELEVENLABS_TRANSCRIPTION_URL,
         realByok,
@@ -383,9 +453,15 @@ export async function transcribeAudioFileByok(
           },
         }
       );
+
       if (data.statusCode === 401 || data.statusCode === 403) {
-        return { success: false, error: "Invalid ElevenLabs API key. Check your key in Settings.", ...meetingFailureCode("INVALID_KEY") };
+        return {
+          success: false,
+          error: "Invalid ElevenLabs API key. Check your key in Settings.",
+          ...meetingFailureCode("INVALID_KEY"),
+        };
       }
+
       if (data.statusCode === 413) {
         return {
           success: false,
@@ -393,26 +469,40 @@ export async function transcribeAudioFileByok(
           ...meetingFailureCode("PROVIDER_LIMIT"),
         };
       }
+
       if (data.statusCode === 429) {
-        return { success: false, error: "ElevenLabs rate limit exceeded. Please try again later.", ...meetingFailureCode("PROVIDER_RATE_LIMITED") };
+        return {
+          success: false,
+          error: "ElevenLabs rate limit exceeded. Please try again later.",
+          ...meetingFailureCode("PROVIDER_RATE_LIMITED"),
+        };
       }
+
       if (data.statusCode !== 200) {
         return {
           success: false,
           error: errorMessageFromStatus(data, "ElevenLabs API error:"),
-          ...meetingFailureCode(data.statusCode >= 500 || data.statusCode === 408 ? "TRANSCRIPTION_TRANSPORT_ERROR" : "ELEVENLABS_API_ERROR"),
+          ...meetingFailureCode(
+            data.statusCode >= 500 || data.statusCode === 408
+              ? "TRANSCRIPTION_TRANSPORT_ERROR"
+              : "ELEVENLABS_API_ERROR"
+          ),
         };
       }
+
       await internal.onRawProviderResponse?.(data.data);
+
       return parseResult(parseElevenLabsFileResponse(data.data, payload.diarize === true));
     }
 
     if (route.transport === "proxied" && route.provider === "corti") {
       const clientId = deps.getCortiClientId();
       const clientSecret = deps.getCortiClientSecret();
+
       if (!clientId || !clientSecret) {
         throw new Error("Corti credentials not configured. Add them in Settings.");
       }
+
       const { text } = await deps.transcribeWithCorti({
         environment: route.cortiEnvironment,
         tenant: route.cortiTenant,
@@ -422,11 +512,13 @@ export async function transcribeAudioFileByok(
         language: route.language,
         signal,
       });
+
       return parseResult({ success: true, text });
     }
 
     if (route.transport === "proxied" && route.provider === "tinfoil") {
       const ext = extname(realByok).toLowerCase().replace(".", "");
+
       const { text } = await deps.transcribeWithTinfoil({
         audioBuffer: deps.readFile(realByok),
         fileName: basename(realByok),
@@ -435,24 +527,29 @@ export async function transcribeAudioFileByok(
         apiKey: deps.getTinfoilKey(),
         signal,
       });
+
       return parseResult({ success: true, text });
     }
 
     if (route.transport === "proxied" && route.provider === "gemini") {
       const ext = extname(realByok).toLowerCase().replace(".", "");
-      return parseResult(await deps.transcribeGeminiFile({
-        filePath: realByok,
-        fileSizeBytes: fileSize,
-        model: route.model || "gemini-3.5-transcribe",
-        contentType: AUDIO_MIME_TYPES[ext] || "audio/mpeg",
-        diarize: payload.diarize === true,
-        apiKey: payload.apiKey || deps.getGeminiKey(),
-        signal,
-        onRawResponse: internal.onRawProviderResponse,
-      }));
+
+      return parseResult(
+        await deps.transcribeGeminiFile({
+          filePath: realByok,
+          fileSizeBytes: fileSize,
+          model: route.model || "gemini-3.5-transcribe",
+          contentType: AUDIO_MIME_TYPES[ext] || "audio/mpeg",
+          diarize: payload.diarize === true,
+          apiKey: payload.apiKey || deps.getGeminiKey(),
+          signal,
+          onRawResponse: internal.onRawProviderResponse,
+        })
+      );
     }
 
     const apiKey = payload.apiKey;
+
     if (!apiKey && route.provider !== "custom") {
       throw new Error("No API key configured. Add your key in Settings.");
     }
@@ -467,8 +564,10 @@ export async function transcribeAudioFileByok(
     // directly; everything else consumes the route endpoint as-is.
     let transcriptionUrl: string;
     const multipartFields: Record<string, unknown> = {};
+
     if (route.provider === "xai") {
       transcriptionUrl = XAI_STT_URL;
+
       // xAI STT accepts no model field; the route pre-filters language
       if (route.language) {
         multipartFields.language = route.language;
@@ -483,11 +582,13 @@ export async function transcribeAudioFileByok(
     }
 
     const diarize = payload.diarize === true;
+
     if (diarize) {
       // A Custom endpoint may front OpenAI or Mistral, so fall back to the
       // resolved host before giving up on speaker labels.
       const diarizeTarget =
         route.provider === "custom" ? diarizationHost(batchEndpoint) : route.provider;
+
       if (diarizeTarget === "mistral") {
         multipartFields.diarize = "true";
         multipartFields.timestamp_granularities = "segment";
@@ -507,6 +608,7 @@ export async function transcribeAudioFileByok(
       // Providers/models that don't support the request keep the
       // plain-text request untouched (helper returns null).
       const fields = timestampRequestFields(route.provider, route.model ?? null);
+
       if (fields) Object.assign(multipartFields, fields);
     }
 
@@ -518,6 +620,7 @@ export async function transcribeAudioFileByok(
     );
 
     const url = new URL(transcriptionUrl);
+
     // Mistral authenticates with x-api-key, not Bearer.
     const headers: Record<string, string> | undefined = apiKey
       ? route.provider === "mistral"
@@ -526,14 +629,17 @@ export async function transcribeAudioFileByok(
           ? { "api-key": apiKey }
           : { Authorization: `Bearer ${apiKey}` }
       : undefined;
+
     const data = await deps.postMultipart(url, body, boundary, headers, { signal });
 
     if (data.statusCode === 401) {
       return { success: false, error: "Invalid API key. Check your key in Settings." };
     }
+
     if (data.statusCode === 429) {
       return { success: false, error: "Rate limit exceeded. Please try again later." };
     }
+
     if (data.statusCode !== 200) {
       throw new Error(errorMessageFromStatus(data, "API error:"));
     }
@@ -550,6 +656,7 @@ export async function transcribeAudioFileByok(
       const segments = projectDiarizedSegments(payloadRecord.speakers, (item) =>
         String(item.id || `Speaker ${item.speaker || "?"}`)
       );
+
       return parseResult({
         success: true,
         text: formatDiarizedTranscript(segments),
@@ -561,8 +668,10 @@ export async function transcribeAudioFileByok(
     if (diarize) {
       deps.logWarn("BYOK diarization requested but provider returned no speaker data");
     }
+
     const segments = payload.timestamps === true ? mapVerboseSegments(data.data) : null;
     const text = payloadRecord?.text;
+
     return parseResult({
       success: true,
       ...(typeof text === "string" ? { text } : {}),
@@ -570,17 +679,27 @@ export async function transcribeAudioFileByok(
     });
   } catch (error) {
     const err = error as { name?: string; message?: string; code?: string; messageKey?: string };
+
     if (err?.name === "AbortError" || signal?.aborted) {
       deps.logDebug("BYOK audio file transcription cancelled", { requestId: payload.requestId });
+
       return cancelled();
     }
+
     deps.logError("BYOK audio file transcription error", { error: err?.message });
+
     return {
       success: false,
       error: err?.message,
       ...(internal.onRawProviderResponse
-        ? { code: err?.code || (err?.name === "TypeError" ? "TRANSCRIPTION_TRANSPORT_ERROR" : "TRANSCRIPTION_ERROR") }
-        : err?.code ? { code: err.code } : {}),
+        ? {
+            code:
+              err?.code ||
+              (err?.name === "TypeError" ? "TRANSCRIPTION_TRANSPORT_ERROR" : "TRANSCRIPTION_ERROR"),
+          }
+        : err?.code
+          ? { code: err.code }
+          : {}),
       ...(err?.messageKey ? { messageKey: err.messageKey } : {}),
     };
   } finally {
@@ -598,14 +717,17 @@ export function registerRemoteTranscriptionHandler(
       // Invalid payloads are rejected before any path resolution, read or
       // network call; a non-string filePath keeps the historical message.
       const parsed = remoteTranscriptionRequestSchema.safeParse(args[0]);
+
       if (!parsed.success) {
         const filePath = asRecord(args[0])?.filePath;
+
         return {
           success: false,
           error:
             typeof filePath === "string" ? "Invalid transcription request" : "Invalid file path",
         };
       }
+
       return transcribeAudioFileByok(deps, parsed.data);
     }
   );

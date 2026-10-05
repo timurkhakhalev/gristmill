@@ -17,6 +17,7 @@ export function applyThinkingSuppression(
   // provider — scoping this to one provider is the #1611 bug pattern.
   if (cloudModel?.disableThinking) {
     suppressThinking(requestBody, providerKey, model);
+
     return;
   }
 
@@ -24,6 +25,7 @@ export function applyThinkingSuppression(
 
   const localModel = getLocalModel(model);
   const knownModel = cloudModel || localModel;
+
   if (knownModel && !knownModel.supportsThinking) return;
 
   suppressThinking(requestBody, providerKey, model);

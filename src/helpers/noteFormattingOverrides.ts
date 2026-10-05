@@ -53,7 +53,9 @@ export function buildNoteFormattingOverrides(
       : mode === "providers" || mode === "enterprise"
         ? noteFormatting?.provider || undefined
         : undefined;
+
   const isCustom = provider === "custom";
+
   return {
     inferenceScope: "noteFormatting",
     provider,

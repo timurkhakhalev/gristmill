@@ -16,25 +16,32 @@ export function MeetBindingControl() {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let active = true;
+
     const update = (value: CompanionStatus) => {
       if (active) setStatus(value);
     };
+
     const unsubscribe = window.electronAPI?.onMeetCompanionStatus(update);
     void window.electronAPI
       ?.getMeetCompanionStatus()
       .then(update)
       .catch(() => {});
+
     return () => {
       active = false;
       unsubscribe?.();
     };
   }, []);
+
   if (!isRecording || !recordingId || !status?.enabled) return null;
+
   const bind = async (candidate: CompanionCandidate) => {
     const sessionId = getActiveRecordingSessionId();
+
     if (!sessionId) return;
     setBusy(true);
     setFailed(false);
+
     try {
       setFailed(
         !(
@@ -50,6 +57,7 @@ export function MeetBindingControl() {
       setBusy(false);
     }
   };
+
   const candidates = status.candidates.filter(
     (candidate) =>
       !status.binding ||
@@ -58,6 +66,7 @@ export function MeetBindingControl() {
       candidate.ref.platform !== status.binding.ref.platform ||
       candidate.ref.callId !== status.binding.ref.callId
   );
+
   return (
     <div className="mb-3 min-w-0 space-y-1 break-words text-xs text-muted-foreground">
       {status.binding ? (
@@ -68,7 +77,9 @@ export function MeetBindingControl() {
               : status.contextUnavailableSince !== null
                 ? "meetIntegration.contextLost"
                 : "meetIntegration.bound",
-            { call: `${meetingPlatformLabel(status.binding.ref.platform)} ${status.binding.ref.callId}` }
+            {
+              call: `${meetingPlatformLabel(status.binding.ref.platform)} ${status.binding.ref.callId}`,
+            }
           )}
         </p>
       ) : null}
@@ -86,7 +97,10 @@ export function MeetBindingControl() {
                 key={`${candidate.connectionId}/${candidate.ref.documentId}`}
                 onClick={() => void bind(candidate)}
               >
-                {t("meetIntegration.bind", { call: `${meetingPlatformLabel(candidate.ref.platform)} ${candidate.ref.callId}` })} · {index + 1}
+                {t("meetIntegration.bind", {
+                  call: `${meetingPlatformLabel(candidate.ref.platform)} ${candidate.ref.callId}`,
+                })}{" "}
+                · {index + 1}
                 {candidate.context.mode === "companion"
                   ? ` · ${t("meetIntegration.companionMode")}`
                   : ""}

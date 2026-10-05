@@ -1,0 +1,31 @@
+{
+  "plugins": ["eslint", "typescript", "oxc"],
+  "jsPlugins": [{ "name": "quality", "specifier": "./plugin/index.ts" }],
+  "ignorePatterns": ["node_modules/**", "plugin/**", "dist/**", "coverage/**"],
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-unused-vars": "error",
+    "prefer-const": "error",
+    "no-var": "error",
+    "oxc/no-accumulating-spread": "error",
+    "quality/no-chained-type-assertions": "error",
+    "quality/no-widen-then-assert": "error",
+    "quality/require-safety-comment-for-type-assertion": "error",
+    "quality/no-known-value-widening": "error",
+    "quality/no-object-parameters": "error",
+    "quality/no-unknown-parameters": "error",
+    "quality/no-unknown-returns": "error",
+    "quality/no-unknown-type-aliases": "error",
+    "quality/no-unsafe-dictionary-type": "error",
+    "quality/no-reduce-accumulator-copy": "error",
+    "quality/require-readable-spacing": "error",
+    "quality/no-runtime-typeof": ["error", { "allowInTypeGuards": true }],
+    "quality/no-module-mocking": "off",
+    "quality/no-reflect-get": "off",
+    "quality/no-reflect-apply": "off",
+    "quality/no-array-filter-map": "off",
+    "quality/no-conditional-empty-object-spread": "off",
+    "quality/no-shape-in-symbol-names": "off"
+  }
+}

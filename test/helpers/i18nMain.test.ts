@@ -1,7 +1,10 @@
 const { describe, it }: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { normalizeUiLanguage }: typeof import("../../src/helpers/i18nMain") = require("../../src/helpers/i18nMain");
+const {
+  normalizeUiLanguage,
+}: typeof import("../../src/helpers/i18nMain") = require("../../src/helpers/i18nMain");
 
 describe("normalizeUiLanguage", () => {
   it("keeps exact supported tags, including underscore zh_CN / zh_TW", () => {

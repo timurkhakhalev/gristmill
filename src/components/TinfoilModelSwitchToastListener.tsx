@@ -15,6 +15,7 @@ export default function TinfoilModelSwitchToastListener() {
 
   useEffect(() => {
     if (switchCount === 0) return;
+
     for (const event of consumeTinfoilModelSwitches()) {
       toast({
         title: t("reasoning.tinfoil.modelRetiredTitle"),

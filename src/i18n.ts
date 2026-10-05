@@ -16,6 +16,7 @@ export const SUPPORTED_UI_LANGUAGES = [
   "zh-CN",
   "zh-TW",
 ] as const;
+
 export type UiLanguage = (typeof SUPPORTED_UI_LANGUAGES)[number];
 
 export function normalizeUiLanguage(language: string | null | undefined): UiLanguage {
@@ -23,24 +24,30 @@ export function normalizeUiLanguage(language: string | null | undefined): UiLang
 
   // Check full language-region code first (e.g. "zh-CN", "zh-TW")
   const normalized = candidate.replace(/_/g, "-");
+
   const fullMatch = SUPPORTED_UI_LANGUAGES.find(
     (lang) => lang.toLowerCase() === normalized.toLowerCase()
   );
+
   if (fullMatch) return fullMatch;
 
   // Keep in sync with src/helpers/i18nMain.ts. Chinese is the only UI language
   // that is not the primary subtag; OS/browser tags must map onto zh-CN/zh-TW.
   const lower = normalized.toLowerCase();
+
   if (lower === "zh" || lower.startsWith("zh-")) {
     const parts = lower.split("-");
+
     if (parts.some((part) => part === "hant" || part === "tw" || part === "hk" || part === "mo")) {
       return "zh-TW";
     }
+
     return "zh-CN";
   }
 
   // Fall back to base language code (e.g. "en" from "en-US")
   const base = lower.split("-")[0] as UiLanguage;
+
   if (SUPPORTED_UI_LANGUAGES.includes(base)) {
     return base;
   }

@@ -62,17 +62,21 @@ type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
 // Throw before the DB is touched when the renderer sent a wrong-shaped call.
 function parseArgs<T>(schema: ZodType<T>, args: unknown): T {
   const result = schema.safeParse(args);
+
   if (!result.success) {
     throw new Error("Invalid arguments for a container IPC call");
   }
+
   return result.data;
 }
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, what: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`DatabaseManager returned an unexpected ${what}`);
   }
+
   return result.data;
 }
 
@@ -84,6 +88,7 @@ export function registerContainerHandlers(
 
   ipcMain.handle("db-get-folders", async (_event, ...args: unknown[]) => {
     const [spaceId] = parseArgs(getFoldersArgsSchema, args);
+
     return parseResult(
       folderListResultSchema,
       database.getFolders(spaceId ?? null),
@@ -93,19 +98,23 @@ export function registerContainerHandlers(
 
   ipcMain.handle("db-create-folder", async (_event, ...args: unknown[]) => {
     const [name, spaceId] = parseArgs(createFolderArgsSchema, args);
+
     const result = parseResult(
       folderMutationResultSchema,
       database.createFolder(name, spaceId ?? null),
       "folder mutation result"
     );
+
     if (result.success && result.folder) {
       setImmediate(() => {
         sendFolderCreated(result.folder as FolderItem);
+
         if (deps.noteFilesEnabled()) {
           deps.mirrorEnsureFolder(result.folder!.name);
         }
       });
     }
+
     return result;
   });
 
@@ -114,11 +123,13 @@ export function registerContainerHandlers(
     // database.deleteFolder returns only {success}; notes survive via
     // ON DELETE SET NULL, so there is no relocated-note list to mirror here.
     const folderName = deps.noteFilesEnabled() ? deps.getFolderName(id) : null;
+
     const result = parseResult(
       folderDeleteResultSchema,
       database.deleteFolder(id),
       "folder delete result"
     );
+
     if (result.success) {
       // The relocated ids close over this call: a second delete in the same
       // tick must not swap them out from under the deferred callback.
@@ -126,46 +137,56 @@ export function registerContainerHandlers(
       setImmediate(() => {
         const payload: FolderDeletedPayload = { id };
         sendFolderDeleted(payload);
+
         if (folderName) deps.mirrorDeleteFolderIfUnshared(folderName, relocatedNoteIds);
       });
     }
+
     return result;
   });
 
   ipcMain.handle("db-rename-folder", async (_event, ...args: unknown[]) => {
     const [id, name] = parseArgs(renameFolderArgsSchema, args);
     const oldName = deps.noteFilesEnabled() ? deps.getFolderName(id) : null;
+
     const result = parseResult(
       folderMutationResultSchema,
       database.renameFolder(id, name),
       "folder mutation result"
     );
+
     if (result.success && result.folder) {
       setImmediate(() => {
         sendFolderRenamed(result.folder as FolderItem);
+
         if (deps.noteFilesEnabled() && oldName) {
           deps.mirrorRenameFolder(oldName, result.folder!.name);
         }
       });
     }
+
     return result;
   });
 
   ipcMain.handle("db-update-folder-style", async (_event, ...args: unknown[]) => {
     const [id, style] = parseArgs(updateFolderStyleArgsSchema, args);
+
     const result = parseResult(
       folderMutationResultSchema,
       database.updateFolderStyle(id, style),
       "folder mutation result"
     );
+
     if (result.success && result.folder) {
       setImmediate(() => sendFolderSynced(result.folder as FolderItem));
     }
+
     return result;
   });
 
   ipcMain.handle("db-reorder-folders", async (_event, ...args: unknown[]) => {
     const [spaceId, folderIds] = parseArgs(reorderFoldersArgsSchema, args);
+
     return parseResult(
       folderDeleteResultSchema,
       database.reorderFolders(spaceId, folderIds),
@@ -175,19 +196,23 @@ export function registerContainerHandlers(
 
   ipcMain.handle("db-move-folder-to-space", async (_event, ...args: unknown[]) => {
     const [id, spaceId] = parseArgs(moveFolderToSpaceArgsSchema, args);
+
     const result = parseResult(
       folderMoveResultSchema,
       database.moveFolderToSpace(id, spaceId),
       "folder move result"
     );
+
     if (result.success && result.folder) {
       setImmediate(() => sendFolderSynced(result.folder as FolderItem));
     }
+
     return result;
   });
 
   ipcMain.handle("db-get-folder-note-counts", async (_event, ...args: unknown[]) => {
     parseArgs(getFolderNoteCountsArgsSchema, args);
+
     return parseResult(
       folderNoteCountsResultSchema,
       database.getFolderNoteCounts(),
@@ -197,19 +222,23 @@ export function registerContainerHandlers(
 
   ipcMain.handle("db-get-spaces", async (_event, ...args: unknown[]) => {
     parseArgs(getSpacesArgsSchema, args);
+
     return parseResult(spaceListResultSchema, database.getSpaces(), "space list shape");
   });
 
   ipcMain.handle("db-update-space", async (_event, ...args: unknown[]) => {
     const [id, updates] = parseArgs(updateSpaceArgsSchema, args);
+
     const result = parseResult(
       spaceMutationResultSchema,
       database.updateSpace(id, updates),
       "space mutation result"
     );
+
     if (result.success && result.space) {
       setImmediate(() => sendSpaceSynced(result.space));
     }
+
     return result;
   });
 }

@@ -1,7 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const audio = require("../../../../src/utils/audioUtils.ts");
+
 const fx: typeof import("../../../helpers/harness/pcmFixtures") = require("../../../helpers/harness/pcmFixtures");
 
 test("computeChunkStats matches the inline RMS/peak math (Int16 / 0x7fff)", () => {

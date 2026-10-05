@@ -1,8 +1,13 @@
 const TOKEN_COVERAGE_THRESHOLD = 0.6;
+
 const TOKEN_SEQUENCE_THRESHOLD = 0.6;
+
 const MIN_TOKENS_FOR_OVERLAP = 3;
+
 const MEANINGFUL_TOKEN_COVERAGE_THRESHOLD = 0.55;
+
 const MEANINGFUL_TOKEN_SEQUENCE_THRESHOLD = 0.55;
+
 const MIN_MEANINGFUL_TOKENS_FOR_OVERLAP = 4;
 
 const LOW_SIGNAL_TOKENS = new Set([
@@ -123,6 +128,7 @@ const countCommonTokens = (a: string[], b: string[]): number => {
 
   for (const token of b) {
     const remaining = counts.get(token) || 0;
+
     if (remaining <= 0) continue;
     counts.set(token, remaining - 1);
     common += 1;
@@ -143,21 +149,27 @@ export const transcriptsOverlap = (
 ): boolean => {
   const normalizedA = typeof a === "string" ? normalizeTranscriptText(a) : a;
   const normalizedB = typeof b === "string" ? normalizeTranscriptText(b) : b;
+
   if (!normalizedA || !normalizedB) return false;
+
   if (normalizedA === normalizedB) return true;
+
   if (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA)) return true;
 
   const tokensA = normalizedA.split(" ");
   const tokensB = normalizedB.split(" ");
   const shorter = Math.min(tokensA.length, tokensB.length);
+
   if (shorter < MIN_TOKENS_FOR_OVERLAP) return false;
 
   const common = countCommonTokens(tokensA, tokensB);
+
   if (common / shorter >= TOKEN_COVERAGE_THRESHOLD) {
     return true;
   }
 
   const sequence = longestCommonTokenSubsequence(tokensA, tokensB);
+
   return sequence / shorter >= TOKEN_SEQUENCE_THRESHOLD;
 };
 
@@ -167,21 +179,27 @@ export const transcriptsLooselyOverlap = (
 ): boolean => {
   const normalizedA = typeof a === "string" ? normalizeTranscriptText(a) : a;
   const normalizedB = typeof b === "string" ? normalizeTranscriptText(b) : b;
+
   if (!normalizedA || !normalizedB) return false;
+
   if (normalizedA === normalizedB) return true;
+
   if (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA)) return true;
 
   const tokensA = toMeaningfulTokens(normalizedA);
   const tokensB = toMeaningfulTokens(normalizedB);
   const shorter = Math.min(tokensA.length, tokensB.length);
+
   if (shorter < MIN_MEANINGFUL_TOKENS_FOR_OVERLAP) return false;
 
   const common = countCommonTokens(tokensA, tokensB);
+
   if (common / shorter >= MEANINGFUL_TOKEN_COVERAGE_THRESHOLD) {
     return true;
   }
 
   const sequence = longestCommonTokenSubsequence(tokensA, tokensB);
+
   return sequence / shorter >= MEANINGFUL_TOKEN_SEQUENCE_THRESHOLD;
 };
 
@@ -210,8 +228,10 @@ export const buildMergedCandidates = ({
   nearby.sort((left, right) => (left.timestamp ?? 0) - (right.timestamp ?? 0));
 
   const texts = new Set();
+
   for (let start = 0; start < nearby.length; start += 1) {
     let merged = "";
+
     for (let end = start; end < nearby.length && end < start + mergeLimit; end += 1) {
       merged += `${merged ? " " : ""}${nearby[end].text}`;
       texts.add(merged);

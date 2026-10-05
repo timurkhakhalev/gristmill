@@ -12,10 +12,7 @@ import {
 interface IpcRendererLike {
   send(channel: string, ...args: unknown[]): void;
   on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(
-    channel: string,
-    listener: (event: unknown, ...args: unknown[]) => void
-  ): unknown;
+  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 }
 
 export function createMeetingCompanionBridge(ipcRenderer: IpcRendererLike): MeetingCompanionApi {
@@ -25,11 +22,15 @@ export function createMeetingCompanionBridge(ipcRenderer: IpcRendererLike): Meet
     callback: (value: T) => void
   ) => {
     if (typeof callback !== "function") return () => {};
+
     const listener = (_event: unknown, raw: unknown) => {
       const value = parse(raw);
+
       if (value !== undefined) callback(value);
     };
+
     ipcRenderer.on(channel, listener);
+
     return () => {
       ipcRenderer.removeListener(channel, listener);
     };
@@ -48,7 +49,11 @@ export function createMeetingCompanionBridge(ipcRenderer: IpcRendererLike): Meet
     meetingCompanionReady: () => ipcRenderer.send(meetingCompanionChannels.ready),
     meetingCompanionToggleMic: () => ipcRenderer.send(meetingCompanionChannels.toggleMic),
     onMeetingCompanionToggleMic: (callback) =>
-      subscribe(meetingCompanionEventChannels.toggleMic, () => true, () => callback()),
+      subscribe(
+        meetingCompanionEventChannels.toggleMic,
+        () => true,
+        () => callback()
+      ),
     onMeetingCompanionState: (callback) =>
       subscribe(
         meetingCompanionEventChannels.state,

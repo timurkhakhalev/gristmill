@@ -9,11 +9,26 @@ import { build } from "esbuild";
 test("Meet adapter reads real isolated DOM: RU/EN, mute, multi-active, unknown UI, Leave and Companion mode", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-meet-dom-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const bundle = await build({ entryPoints: [path.resolve("extension/src/meetAdapter.ts")], bundle: true, platform: "browser", format: "iife", globalName: "adapter", write: false });
+
+  const bundle = await build({
+    entryPoints: [path.resolve("extension/src/meetAdapter.ts")],
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    globalName: "adapter",
+    write: false,
+  });
+
   const adapter = bundle.outputFiles[0].text;
-  const fixtures = ["en", "ru"].map((lang) => fs.readFileSync(path.resolve(`test/fixtures/meet/v1/${lang}.html`), "utf8"));
+
+  const fixtures = ["en", "ru"].map((lang) =>
+    fs.readFileSync(path.resolve(`test/fixtures/meet/v1/${lang}.html`), "utf8")
+  );
+
   const entry = path.join(directory, "fixture.cjs");
-  fs.writeFileSync(entry, `const {app,BrowserWindow}=require('electron');
+  fs.writeFileSync(
+    entry,
+    `const {app,BrowserWindow}=require('electron');
 const assert=require('node:assert/strict');
 app.setPath('userData', ${JSON.stringify(path.join(directory, "profile"))});
 app.whenReady().then(async()=>{const win=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true}});
@@ -46,11 +61,17 @@ const afterFocus=await win.webContents.executeJavaScript(${JSON.stringify(adapte
 const transparent=await run(leave+tile('alice',name('Alice'),'border:3px solid rgba(32,76,230,0)')); assert.deepEqual(transparent.activeParticipantIds,[]);
 const hiddenTile=await run(leave+'<div style="opacity:0">'+tile('alice',name('Alice'),'border:3px solid rgb(32,76,230)')+'</div>'); assert.deepEqual(hiddenTile.activeParticipantIds,[]);
 console.log('meet DOM fixtures passed');
-} finally {win.destroy(); app.quit();}}).catch(error=>{console.error(error);app.exit(1);});`);
+} finally {win.destroy(); app.quit();}}).catch(error=>{console.error(error);app.exit(1);});`
+  );
   const { ELECTRON_RUN_AS_NODE: _ignored, ...env } = process.env;
   const executable: string = require("electron");
-  const output = await new Promise<string>((resolve, reject) => execFile(executable, [entry], { env, timeout: 20_000 }, (error, stdout, stderr) => {
-    if (error) reject(new Error(`${error.message}\n${stdout}\n${stderr}`)); else resolve(stdout);
-  }));
+
+  const output = await new Promise<string>((resolve, reject) =>
+    execFile(executable, [entry], { env, timeout: 20_000 }, (error, stdout, stderr) => {
+      if (error) reject(new Error(`${error.message}\n${stdout}\n${stderr}`));
+      else resolve(stdout);
+    })
+  );
+
   assert.match(output, /meet DOM fixtures passed/);
 });

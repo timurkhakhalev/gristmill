@@ -4,23 +4,33 @@
 // rejected at the preload boundary, and the shared main registration
 // duplicate-channel guard.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
+
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-upload-bridge-")));
+
 const audioFile = path.join(tmpRoot, "audio.wav");
+
 fs.writeFileSync(audioFile, Buffer.alloc(64));
 
 let activeHandlers = new Map<string, (...args: unknown[]) => unknown>();
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -34,6 +44,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
           }
+
           activeHandlers.set(channel, listener);
         },
         on() {},
@@ -43,8 +54,10 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       BrowserWindow: { getAllWindows: () => [] },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 process.env.NODE_ENV = "test";
 
 test.after(() => {
@@ -60,6 +73,7 @@ function loadBundledPreload(invoke: unknown) {
     exports: {},
     require(name: string) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: unknown) => {
@@ -79,7 +93,9 @@ function loadBundledPreload(invoke: unknown) {
     process: { platform: "darwin", versions: {} },
     console,
   });
+
   if (!api) throw new Error("Bundled preload did not expose its API");
+
   return api;
 }
 
@@ -89,17 +105,27 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 async function createFixture() {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
-  const ipcMain = { handle: (channel: string, listener: (...args: unknown[]) => unknown) => activeHandlers.set(channel, listener) };
+
+  const ipcMain = {
+    handle: (channel: string, listener: (...args: unknown[]) => unknown) =>
+      activeHandlers.set(channel, listener),
+  };
 
   const { createUploadCancelRegistry } = await import("../../src/helpers/uploadCancelRegistry.ts");
-  const { registerUploadCancelHandler } = await import("../../src/helpers/uploadCancelIpcHandler.ts");
-  const { registerRemoteTranscriptionHandler } = await import(
-    "../../src/helpers/remoteTranscriptionIpcHandler.ts"
-  );
-  const { registerFileDiarizationHandlers } = await import(
-    "../../src/helpers/fileDiarizationIpcHandlers.ts"
-  );
-  const { mergeSpeakersWithText, formatSpeakerTranscript } = require("../../src/helpers/speakerMerge.ts");
+
+  const { registerUploadCancelHandler } =
+    await import("../../src/helpers/uploadCancelIpcHandler.ts");
+
+  const { registerRemoteTranscriptionHandler } =
+    await import("../../src/helpers/remoteTranscriptionIpcHandler.ts");
+
+  const { registerFileDiarizationHandlers } =
+    await import("../../src/helpers/fileDiarizationIpcHandlers.ts");
+
+  const {
+    mergeSpeakersWithText,
+    formatSpeakerTranscript,
+  } = require("../../src/helpers/speakerMerge.ts");
 
   const registry = createUploadCancelRegistry();
   registerUploadCancelHandler(ipcMain, { uploadCancelRegistry: registry });
@@ -154,12 +180,17 @@ async function createFixture() {
   });
 
   const handlersSnapshot = new Map(activeHandlers);
+
   const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
+
     return handler(null, ...args);
   };
+
   const api = loadBundledPreload(invoke);
+
   return { api, registry };
 }
 
@@ -184,20 +215,18 @@ test("all four operations cross the bundled preload boundary", async () => {
     }
   );
 
-  assert.deepEqual(
-    plain(await api.diarizeAudioFile(audioFile, { requestId: "d1" })),
-    {
-      success: true,
-      segments: [{ start: 0, end: 2, speaker: "speaker_0" }],
-      durationSeconds: 2,
-    }
-  );
+  assert.deepEqual(plain(await api.diarizeAudioFile(audioFile, { requestId: "d1" })), {
+    success: true,
+    segments: [{ start: 0, end: 2, speaker: "speaker_0" }],
+    durationSeconds: 2,
+  });
 
   const merged = await api.mergeSpeakerText(
     [{ start: 0, end: 1, speaker: "speaker_0" }],
     "Hello.",
     2
   );
+
   assert.equal(merged.success, true);
   assert.equal(typeof merged.text, "string");
 
@@ -216,10 +245,10 @@ test("all four operations cross the bundled preload boundary", async () => {
 
 test("failure shapes cross the boundary intact", async () => {
   const { api } = await createFixture();
-  assert.deepEqual(
-    plain(await api.transcribeAudioFileByok({ filePath: "/etc/hosts" })),
-    { success: false, error: "File path not allowed" }
-  );
+  assert.deepEqual(plain(await api.transcribeAudioFileByok({ filePath: "/etc/hosts" })), {
+    success: false,
+    error: "File path not allowed",
+  });
   assert.deepEqual(plain(await api.diarizeAudioFile("/etc/hosts", {})), {
     success: false,
     error: "File path not allowed",
@@ -233,13 +262,18 @@ test("failure shapes cross the boundary intact", async () => {
 test("a junk main response rejects at the preload boundary", async () => {
   await createFixture();
   const realHandlers = new Map(activeHandlers);
+
   const api = loadBundledPreload(async (channel: string, ...args: unknown[]) => {
     if (channel === "transcribe-audio-file-byok") return { silentlyWrong: true };
+
     if (channel === "cancel-upload-transcription") return { nope: 1 };
     const handler = realHandlers.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
+
     return handler(null, ...args);
   });
+
   await assert.rejects(api.transcribeAudioFileByok({ filePath: audioFile }));
   await assert.rejects(api.cancelUploadTranscription({ requestId: "x" }));
 });
@@ -249,16 +283,22 @@ test("the shared main registration registers each upload channel exactly once", 
 
   const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
   delete require.cache[handlersModulePath];
-  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
+
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(
+    handlersModulePath
+  );
 
   const anything = (): unknown =>
     new Proxy(function () {}, {
       get: (_target, property) => {
         if (property === Symbol.toPrimitive || property === "toString") return () => "";
+
         if (property === "then") return undefined;
+
         if (property === "apply" || property === "call" || property === "bind") {
           return () => anything();
         }
+
         return anything();
       },
       apply: () => anything(),

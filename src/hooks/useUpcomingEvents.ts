@@ -16,6 +16,7 @@ function getLookaheadMinutes(): number {
   const end = new Date(now);
   end.setDate(end.getDate() + LOOKAHEAD_DAYS);
   end.setHours(0, 0, 0, 0);
+
   return Math.max(1, Math.ceil((end.getTime() - now.getTime()) / 60000));
 }
 
@@ -38,12 +39,16 @@ export function useUpcomingEvents(): UseUpcomingEventsReturn {
       cachedEvents = next;
       setEvents(next);
     };
+
     if (!isConnected) {
       apply([]);
       setIsLoading(false);
+
       return;
     }
+
     if (cachedEvents == null) setIsLoading(true);
+
     try {
       const windowMinutes = getLookaheadMinutes();
       const result = await window.electronAPI?.gcalGetUpcomingEvents(windowMinutes);
@@ -63,15 +68,19 @@ export function useUpcomingEvents(): UseUpcomingEventsReturn {
   // Re-fetch when any provider syncs events
   useEffect(() => {
     if (!isConnected) return;
+
     const unsubGcal = window.electronAPI?.onGcalEventsSynced(() => {
       fetchEvents();
     });
+
     const unsubMcal = window.electronAPI?.onMcalEventsSynced(() => {
       fetchEvents();
     });
+
     const unsubAcal = window.electronAPI?.onAcalEventsSynced(() => {
       fetchEvents();
     });
+
     return () => {
       unsubGcal?.();
       unsubMcal?.();

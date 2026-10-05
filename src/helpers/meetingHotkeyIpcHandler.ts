@@ -37,14 +37,18 @@ export function registerMeetingHotkeyHandler({
       const result = await hotkeyManager.registerSlot("meeting", hotkey, meetingHotkeyCallback, {
         atomic: true,
       });
+
       if (result.success) {
         environmentManager.saveMeetingKey(hotkey);
+
         return { success: true };
       }
+
       return { success: false, message: result.error };
     } else {
       hotkeyManager.unregisterSlot("meeting");
       environmentManager.saveMeetingKey("");
+
       return { success: true };
     }
   });

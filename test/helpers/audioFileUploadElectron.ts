@@ -5,8 +5,11 @@ import path from "node:path";
 import { app } from "electron";
 
 const tempDir = process.env.GRISTMILL_ELECTRON_FIXTURE_PROFILE;
+
 if (!tempDir) throw new Error("Electron fixture profile is required");
+
 app.setPath("userData", tempDir);
+
 app.setPath("sessionData", tempDir);
 
 app
@@ -16,21 +19,27 @@ app
     const filePath = path.join(tempDir, "sample.wav");
     const audio = Buffer.from("audio-file-payload");
     fs.writeFileSync(filePath, audio);
+
     interface Upload {
       headers: http.IncomingHttpHeaders;
       body: Buffer;
     }
+
     const uploads: Upload[] = [];
-    const server = http.createServer((request: http.IncomingMessage, response: http.ServerResponse) => {
-      if (request.url === "/slow") return;
-      const chunks: Buffer[] = [];
-      request.on("data", (chunk: Buffer) => chunks.push(chunk));
-      request.on("end", () => {
-        uploads.push({ headers: request.headers, body: Buffer.concat(chunks) });
-        response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({ ok: true }));
-      });
-    });
+
+    const server = http.createServer(
+      (request: http.IncomingMessage, response: http.ServerResponse) => {
+        if (request.url === "/slow") return;
+        const chunks: Buffer[] = [];
+        request.on("data", (chunk: Buffer) => chunks.push(chunk));
+        request.on("end", () => {
+          uploads.push({ headers: request.headers, body: Buffer.concat(chunks) });
+          response.writeHead(200, { "Content-Type": "application/json" });
+          response.end(JSON.stringify({ ok: true }));
+        });
+      }
+    );
+
     try {
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
       const address = server.address() as { port: number };
@@ -56,9 +65,11 @@ app
       assert.ok(uploads[1].body.includes(audio));
 
       const controller = new AbortController();
+
       const cancelled = postRawAudioFile(new URL("/slow", url), filePath, "audio/wav", "test-key", {
         signal: controller.signal,
       });
+
       controller.abort();
       await assert.rejects(cancelled, { name: "AbortError" });
       console.log("audio file upload smoke passed");

@@ -115,6 +115,7 @@ export async function transcribeFile(
   opts: { requestId?: string; timestamps?: boolean } = {}
 ): Promise<FileTranscriptionResult> {
   const route = resolveFileTranscriptionRoute(cfg);
+
   if (route.transport === "error") {
     return {
       success: false,
@@ -126,6 +127,7 @@ export async function transcribeFile(
 
   if (route.transport === "local") {
     const provider = cfg.localTranscriptionProvider as LocalTranscriptionProvider;
+
     return window.electronAPI.transcribeAudioFile(filePath, {
       provider,
       model:
@@ -202,6 +204,7 @@ export async function resolveDiarizationSettings({
   ensureModels,
 }: DiarizationSettingsRequest): Promise<DiarizationSettings> {
   const needsLocalModels = enabled && !modelsReady && !shouldUseByokDiarize(config, enabled);
+
   return {
     enabled,
     localModelsReady: needsLocalModels ? await ensureModels() : modelsReady,
@@ -220,6 +223,7 @@ export async function transcribeFileWithSpeakers(
   opts: { requestId?: string; timestamps?: boolean } = {}
 ): Promise<FileTranscriptionResult> {
   const byokDiarize = shouldUseByokDiarize(cfg, diarization.enabled);
+
   const diarizePromise =
     diarization.enabled && diarization.localModelsReady && !byokDiarize
       ? (window.electronAPI
@@ -241,6 +245,7 @@ export async function transcribeFileWithSpeakers(
   const result = { ...transcribed, durationSeconds: measuredDuration };
 
   if (!result.success || !result.text || !diarization.enabled || result.diarized) return result;
+
   if (!diar?.success || !diar.segments?.length) {
     return { ...result, diarizationWarning: true };
   }
@@ -251,9 +256,11 @@ export async function transcribeFileWithSpeakers(
       result.text,
       durationSeconds || 0
     );
+
     if (merged?.success && merged.text) return { ...result, text: merged.text };
   } catch {
     // Merge failure falls back to the plain transcript.
   }
+
   return { ...result, diarizationWarning: true };
 }

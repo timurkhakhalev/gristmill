@@ -19,4 +19,5 @@ export const PROMPT_KINDS = {
 } as const satisfies Record<string, { i18nKey: keyof PromptBundle | null; fallback: string }>;
 
 export type PromptKind = keyof typeof PROMPT_KINDS;
+
 export const PROMPT_KIND_LIST = Object.keys(PROMPT_KINDS) as readonly PromptKind[];

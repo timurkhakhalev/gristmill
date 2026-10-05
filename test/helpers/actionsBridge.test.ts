@@ -4,22 +4,36 @@
 // delete protection, event delivery exactly once, independent listeners
 // with exact unsubscribe and malformed response/event rejection.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
+
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 let activeHandlers: Map<string, (event: unknown, ...args: unknown[]) => unknown> | null = null;
+
 let dispatchSend: ((channel: string, ...args: unknown[]) => void) | null = null;
-let listenersByChannel: Map<string, Array<(event: unknown, ...args: unknown[]) => void>> = new Map();
+
+let listenersByChannel: Map<
+  string,
+  Array<(event: unknown, ...args: unknown[]) => void>
+> = new Map();
+
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-actions-bridge-"));
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -27,9 +41,11 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       ipcMain: {
         handle: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => {
           if (!activeHandlers) activeHandlers = new Map();
+
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
           }
+
           activeHandlers.set(channel, listener);
         },
         on() {},
@@ -50,16 +66,21 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 const originalNodeEnv = process.env.NODE_ENV;
+
 process.env.NODE_ENV = "test";
 
 const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
+
 const initialUserDataDir = userDataDir;
 
 test.after(() => {
   Module._load = originalLoad;
+
   if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = originalNodeEnv;
   fs.rmSync(initialUserDataDir, { recursive: true, force: true });
@@ -67,6 +88,7 @@ test.after(() => {
 
 function isNativeBindingUnavailable(error: unknown) {
   const message = String((error as { message?: unknown })?.message || error);
+
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -75,9 +97,15 @@ function isNativeBindingUnavailable(error: unknown) {
 
 function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
   listenersByChannel = new Map();
+
   // The preload surface is exercised dynamically; one loose record type keeps
   // the test reading like the JS original while still checking the harness.
-  type PreloadApi = { [k: string]: (...args: unknown[]) => Promise<any> } & { onActionCreated(cb: (a: unknown) => void): () => void; onActionUpdated(cb: (a: unknown) => void): () => void; onActionDeleted(cb: (p: unknown) => void): () => void; };
+  type PreloadApi = { [k: string]: (...args: unknown[]) => Promise<any> } & {
+    onActionCreated(cb: (a: unknown) => void): () => void;
+    onActionUpdated(cb: (a: unknown) => void): () => void;
+    onActionDeleted(cb: (p: unknown) => void): () => void;
+  };
+
   let api: PreloadApi | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -86,6 +114,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     exports: {},
     require(name: string) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: PreloadApi) => {
@@ -103,6 +132,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
           removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void) {
             const list = listenersByChannel.get(channel) || [];
             const index = list.indexOf(listener);
+
             if (index !== -1) list.splice(index, 1);
           },
         },
@@ -112,6 +142,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     process: { platform: "darwin", versions: {} },
     console,
   });
+
   return api!;
 }
 
@@ -120,32 +151,52 @@ async function createFixture(t: import("node:test").TestContext) {
   dispatchSend = null;
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-actions-bridge-"));
   const fixtureDir = userDataDir;
-  let db: import("../../src/helpers/actionsIpcHandlers.js").ActionsHandlerDeps["database"] & { close: () => void } | null = null;
+
+  let db:
+    | (import("../../src/helpers/actionsIpcHandlers.js").ActionsHandlerDeps["database"] & {
+        close: () => void;
+      })
+    | null = null;
+
   t.after(() => {
     db?.close();
     fs.rmSync(fixtureDir, { recursive: true, force: true });
   });
+
   try {
-    db = new DatabaseManager() as unknown as import("../../src/helpers/actionsIpcHandlers.js").ActionsHandlerDeps["database"] & { close: () => void };
+    db =
+      new DatabaseManager() as unknown as import("../../src/helpers/actionsIpcHandlers.js").ActionsHandlerDeps["database"] & {
+        close: () => void;
+      };
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return null;
     }
+
     throw error;
   }
+
   const { registerActionsHandlers } = await import("../../src/helpers/actionsIpcHandlers.ts");
   registerActionsHandlers(
-    { handle: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => activeHandlers!.set(channel, listener) },
+    {
+      handle: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) =>
+        activeHandlers!.set(channel, listener),
+    },
     { database: db }
   );
 
   const handlersSnapshot = new Map(activeHandlers!);
+
   const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
+
     return handler(null, ...args);
   };
+
   const api = loadBundledPreload(invoke);
   // Close the event loop: main-side sends dispatch into the listeners the
   // preload registered, exactly like Electron would.
@@ -154,7 +205,9 @@ async function createFixture(t: import("node:test").TestContext) {
       listener(null, data);
     }
   };
+
   const flush = () => new Promise((resolve) => setImmediate(resolve));
+
   return { db, api, flush, invoke };
 }
 
@@ -163,13 +216,18 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 test("custom action lifecycle round-trips through the bundled preload", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, flush } = ctx;
 
   const events: unknown[] = [];
   const unsub = api.onActionCreated((action: unknown) => events.push({ type: "created", action }));
 
-  const created = await api.createAction("Bridge action", "d", "p") as { success: boolean; action: { icon: string; id: unknown } };
+  const created = (await api.createAction("Bridge action", "d", "p")) as {
+    success: boolean;
+    action: { icon: string; id: unknown };
+  };
+
   assert.equal(created.success, true);
   assert.equal(created.action.icon, "wand-sparkles");
   await flush();
@@ -177,14 +235,15 @@ test("custom action lifecycle round-trips through the bundled preload", async (t
   assert.equal((events[0] as { action: { id: unknown } }).action.id, created.action.id);
   unsub();
 
-  const loaded = await api.getAction(created.action.id) as { name: string };
+  const loaded = (await api.getAction(created.action.id)) as { name: string };
   assert.equal(loaded.name, "Bridge action");
 
-  const updated = await api.updateAction(created.action.id, {
+  const updated = (await api.updateAction(created.action.id, {
     name: "Renamed",
     prompt: "p2",
     sort_order: 5,
-  }) as { action: { name: string; is_builtin: number } };
+  })) as { action: { name: string; is_builtin: number } };
+
   assert.equal(updated.action.name, "Renamed");
   assert.equal(updated.action.is_builtin, 0);
 
@@ -198,11 +257,17 @@ test("custom action lifecycle round-trips through the bundled preload", async (t
 });
 
 test("builtin actions are listed and cannot be deleted; edits survive restart", async (t: import("node:test").TestContext) => {
-  let ctx = await createFixture(t);
+  const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { db, api } = ctx;
 
-  const actions = await api.getActions() as Array<{ is_builtin: number; id: unknown; translation_key: string }>;
+  const actions = (await api.getActions()) as Array<{
+    is_builtin: number;
+    id: unknown;
+    translation_key: string;
+  }>;
+
   assert.ok(actions.length >= 3);
   assert.ok(actions.every((a) => a.is_builtin === 1 || a.is_builtin === 0));
   const builtin = actions.find((a) => a.is_builtin === 1)!;
@@ -216,24 +281,38 @@ test("builtin actions are listed and cannot be deleted; edits survive restart", 
   db.close();
   const reopened = new DatabaseManager();
   t.after(() => reopened.close());
-  const row = (reopened as unknown as { getActions(): Array<{ translation_key: string; prompt: string }> })
+
+  const row = (
+    reopened as unknown as { getActions(): Array<{ translation_key: string; prompt: string }> }
+  )
     .getActions()
     .find((a) => a.translation_key === builtin.translation_key)!;
+
   assert.equal(row.prompt, "user override");
 });
 
 test("malformed responses and events reject or drop at the preload boundary", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
 
   const handlersSnapshot = new Map(activeHandlers);
   const { db } = ctx;
-  const actionsSnapshot = db.getActions() as Array<{ id: unknown; is_builtin: number; translation_key: string; prompt: string }>;
+
+  const actionsSnapshot = db.getActions() as Array<{
+    id: unknown;
+    is_builtin: number;
+    translation_key: string;
+    prompt: string;
+  }>;
+
   const apiA = loadBundledPreload(async (channel: string) => {
     if (channel === "db-get-action") return { junk: true };
     const handler = handlersSnapshot.get(channel);
+
     return handler?.(null);
   });
+
   await assert.rejects(apiA!.getAction(1));
 
   // The malformed-events listener lives in a fresh preload whose dispatch
@@ -243,17 +322,22 @@ test("malformed responses and events reject or drop at the preload boundary", as
   // loop: junk must be dropped, valid rows must reach the listener.
   const received: unknown[] = [];
   dispatchSend = null;
+
   const apiB = loadBundledPreload(async (channel: string, ...args) => {
     const handler = handlersSnapshot.get(channel);
+
     return handler?.(null, ...args);
   });
+
   // listenersByChannel now holds only apiB's listeners (the last load).
   const privateListeners = listenersByChannel;
+
   const loop = (channel: string, data: unknown) => {
     for (const listener of privateListeners.get(channel) || []) {
       listener(null, data);
     }
   };
+
   dispatchSend = loop;
   const unsub = apiB!.onActionUpdated((action: unknown) => received.push(action));
   dispatchSend("action-updated", { nonsense: true });

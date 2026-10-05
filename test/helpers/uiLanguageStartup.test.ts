@@ -1,11 +1,19 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 function installNavigatorLanguage(t: import("node:test").TestContext, language: string) {
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
@@ -40,6 +48,7 @@ function loadEnvironmentManager(t: import("node:test").TestContext, userDataDire
         },
       };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
@@ -65,14 +74,19 @@ test("fresh Chinese browser locale survives settings hydration", async (t: impor
       },
     },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-ui-language-startup-test-",
   });
 
-  const { default: i18n } = (await vite.ssrLoadModule("/i18n.ts") as typeof import("../../src/i18n.ts"));
+  const { default: i18n } = (await vite.ssrLoadModule(
+    "/i18n.ts"
+  )) as typeof import("../../src/i18n.ts");
+
   const { initializeSettings, useSettingsStore } = (await vite.ssrLoadModule(
     "/stores/settingsStore.ts"
-  ) as typeof import("../../src/stores/settingsStore.ts"));
+  )) as typeof import("../../src/stores/settingsStore.ts");
+
   const initialLanguage = i18n.language;
   const initialStoreLanguage = useSettingsStore.getState().uiLanguage;
 
@@ -104,7 +118,9 @@ test("main locale fallback remains implicit and yields to an explicit preference
   delete process.env.UI_LANGUAGE;
   t.after(() => {
     process.env = originalEnvironment;
-    if (originalResourcesPath) Object.defineProperty(process, "resourcesPath", originalResourcesPath);
+
+    if (originalResourcesPath)
+      Object.defineProperty(process, "resourcesPath", originalResourcesPath);
     else Reflect.deleteProperty(process, "resourcesPath");
     fs.rmSync(userDataDirectory, { recursive: true, force: true });
   });

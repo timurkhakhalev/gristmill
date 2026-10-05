@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -9,14 +10,29 @@ const {
 
 const SERVICE_UNAVAILABLE_MESSAGE =
   "AWS Bedrock is temporarily unavailable due to high demand. This is an AWS service issue, not an Gristmill outage. Please try again in a few minutes.";
+
 const THROTTLED_MESSAGE =
   "AWS Bedrock is temporarily limiting requests because it is receiving too many. Please wait a moment and try again. If this continues, ask your AWS administrator to check your Bedrock usage and quotas.";
+
 const TIMEOUT_MESSAGE =
   "AWS Bedrock did not respond in time. Please try again. If this continues, check your internet connection and AWS Bedrock service status.";
+
 const NETWORK_MESSAGE =
   "AWS Bedrock could not be reached. Check your internet connection and try again.";
 
-function awsError({ name, status, message = name, requestId = "request-123", code }: { name: string; status?: number; message?: string; requestId?: string; code?: string }) {
+function awsError({
+  name,
+  status,
+  message = name,
+  requestId = "request-123",
+  code,
+}: {
+  name: string;
+  status?: number;
+  message?: string;
+  requestId?: string;
+  code?: string;
+}) {
   return Object.assign(new Error(message), {
     name,
     ...(code ? { code } : {}),
@@ -29,6 +45,7 @@ function awsError({ name, status, message = name, requestId = "request-123", cod
 
 function deterministicRetryOptions() {
   const delays: unknown[] = [];
+
   return {
     delays,
     options: {
@@ -46,6 +63,7 @@ test("Bedrock cleanup succeeds after a retryable 503", async () => {
 
   const result = await runBedrockRequest(async () => {
     attempts += 1;
+
     if (attempts === 1) {
       throw awsError({
         name: "ServiceUnavailableException",
@@ -53,6 +71,7 @@ test("Bedrock cleanup succeeds after a retryable 503", async () => {
         message: "Service unavailable",
       });
     }
+
     return "cleaned text";
   }, options);
 
@@ -66,6 +85,7 @@ test("Bedrock cleanup aborts during retry backoff without another attempt", asyn
   let attempts = 0;
   let releaseSleep!: () => void;
   const sleeping = new Promise<void>((resolve) => (releaseSleep = resolve));
+
   const request = runBedrockRequest(
     async () => {
       attempts += 1;
@@ -85,7 +105,10 @@ test("Bedrock cleanup aborts during retry backoff without another attempt", asyn
 
   await sleeping;
   controller.abort();
-  await assert.rejects(request, (error: unknown) => (error as { name?: string })?.name === "AbortError");
+  await assert.rejects(
+    request,
+    (error: unknown) => (error as { name?: string })?.name === "AbortError"
+  );
   assert.equal(attempts, 1);
 });
 
@@ -103,7 +126,8 @@ test("Bedrock stops after six total attempts when 503 responses continue", async
         requestId: `request-${attempts}`,
       });
     }, options),
-    (error: unknown) => (error as { $metadata: { requestId: string } }).$metadata.requestId === "request-6"
+    (error: unknown) =>
+      (error as { $metadata: { requestId: string } }).$metadata.requestId === "request-6"
   );
 
   assert.equal(attempts, 6);
@@ -118,6 +142,7 @@ test("Bedrock stops after six total attempts when 503 responses continue", async
 test("Bedrock retries 429 throttling and returns the quota-specific message", async () => {
   const { options } = deterministicRetryOptions();
   let attempts = 0;
+
   const throttled = awsError({
     name: "ThrottlingException",
     status: 429,
@@ -126,7 +151,9 @@ test("Bedrock retries 429 throttling and returns the quota-specific message", as
 
   const result = await runBedrockRequest(async () => {
     attempts += 1;
+
     if (attempts === 1) throw throttled;
+
     return "ok";
   }, options);
 
@@ -142,7 +169,9 @@ test("Bedrock retries a request timeout and returns the timeout message", async 
 
   const result = await runBedrockRequest(async () => {
     attempts += 1;
+
     if (attempts === 1) throw timeout;
+
     return "ok";
   }, options);
 
@@ -159,16 +188,20 @@ test("Bedrock retries audited network and Undici timeout cause shapes", async ()
     ["UND_ERR_BODY_TIMEOUT", TIMEOUT_MESSAGE],
   ]) {
     const transportError = Object.assign(new Error(`transport failed: ${code}`), { code });
+
     const apiCallError = Object.assign(new Error("Failed to call AWS Bedrock"), {
       name: "AI_APICallError",
       cause: transportError,
     });
+
     const { options } = deterministicRetryOptions();
     let attempts = 0;
 
     const result = await runBedrockRequest(async () => {
       attempts += 1;
+
       if (attempts === 1) throw apiCallError;
+
       return "ok";
     }, options);
 
@@ -181,6 +214,7 @@ test("Bedrock retries audited network and Undici timeout cause shapes", async ()
 test("Bedrock does not retry access denied errors", async () => {
   const { options } = deterministicRetryOptions();
   let attempts = 0;
+
   const denied = awsError({
     name: "AccessDeniedException",
     status: 403,
@@ -250,6 +284,7 @@ test("Bedrock normalizes AI SDK exception identity from headers and parsed data"
     const mapped = mapEnterpriseError("bedrock", scenario.error, {
       bedrockRegion: "us-west-2",
     });
+
     assert.match(mapped.message, scenario.expectedMessage, scenario.label);
     assert.equal(
       mapped.technicalDetails.exceptionType,
@@ -296,6 +331,7 @@ test("RetryError.lastError is unwrapped before classification and diagnostics", 
     message: "Bedrock overloaded in eu-west-1",
     requestId: "aws-request-underlying",
   });
+
   const wrapped = Object.assign(new Error("Failed after 3 attempts"), {
     name: "AI_RetryError",
     lastError: underlying,
@@ -317,16 +353,15 @@ test("Bedrock mappings include renderer localization metadata", () => {
     "bedrock",
     awsError({ name: "ServiceUnavailableException", status: 503 })
   );
-  assert.equal(
-    unavailable.messageKey,
-    "reasoning.enterprise.errors.bedrock.serviceUnavailable"
-  );
+
+  assert.equal(unavailable.messageKey, "reasoning.enterprise.errors.bedrock.serviceUnavailable");
 
   const denied = mapEnterpriseError(
     "bedrock",
     awsError({ name: "AccessDeniedException", status: 403 }),
     { bedrockRegion: "eu-west-1" }
   );
+
   assert.equal(denied.messageKey, "reasoning.enterprise.errors.bedrock.accessDenied");
   assert.deepEqual(denied.messageParams, { region: "eu-west-1" });
 
@@ -335,6 +370,7 @@ test("Bedrock mappings include renderer localization metadata", () => {
     awsError({ name: "ExpiredTokenException", status: 403 }),
     { bedrockProfile: "company-sso" }
   );
+
   assert.equal(expired.messageKey, "reasoning.enterprise.errors.bedrock.ssoExpired");
   assert.equal(expired.actionKey, "reasoning.enterprise.errors.bedrock.actions.reauthenticate");
   assert.equal(expired.copyCommand, "aws sso login --profile company-sso");

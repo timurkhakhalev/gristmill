@@ -1,8 +1,13 @@
 const OPEN_TAG = "<think>";
+
 const CLOSE_TAG = "</think>";
+
 const OPEN_RE = /<think>/gi;
+
 const CLOSE_RE = /<\/think>/gi;
+
 const THINK_TAGS = [OPEN_TAG, CLOSE_TAG] as const;
+
 const MAX_PARTIAL_TAG_LENGTH = CLOSE_TAG.length - 1;
 
 export interface StreamingThinkFilter {
@@ -13,15 +18,19 @@ export interface StreamingThinkFilter {
 function indexOfTag(re: RegExp, input: string, from: number): number {
   re.lastIndex = from;
   const match = re.exec(input);
+
   return match ? match.index : -1;
 }
 
 function getPartialTagSuffix(value: string, tags: readonly string[]): string {
   const maxLength = Math.min(value.length, MAX_PARTIAL_TAG_LENGTH);
+
   for (let length = maxLength; length > 0; length -= 1) {
     const suffix = value.slice(-length);
+
     if (tags.some((tag) => tag.startsWith(suffix.toLowerCase()))) return suffix;
   }
+
   return "";
 }
 
@@ -47,23 +56,28 @@ export function createStreamingThinkFilter(): StreamingThinkFilter {
       if (depth === 0) {
         const close = indexOfTag(CLOSE_RE, input, cursor);
         const next = open === -1 || (close !== -1 && close < open) ? close : open;
+
         if (next === -1) {
           const remaining = input.slice(cursor);
           pending = getPartialTagSuffix(remaining, THINK_TAGS);
           visible += remaining.slice(0, remaining.length - pending.length);
           break;
         }
+
         visible += input.slice(cursor, next);
+
         if (next === open) {
           depth = 1;
           cursor = open + OPEN_TAG.length;
         } else {
           cursor = close + CLOSE_TAG.length;
         }
+
         continue;
       }
 
       const close = indexOfTag(CLOSE_RE, input, cursor);
+
       if (close !== -1 && (open === -1 || close < open)) {
         depth -= 1;
         cursor = close + CLOSE_TAG.length;
@@ -83,6 +97,7 @@ export function createStreamingThinkFilter(): StreamingThinkFilter {
     const trailing = depth === 0 ? pending : "";
     depth = 0;
     pending = "";
+
     return trailing;
   };
 

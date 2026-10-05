@@ -1,7 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const ts: typeof import("typescript") = require("typescript");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
 
 // Strict compiler probes for the pure settings-selectors graph, run against
@@ -10,35 +14,47 @@ const path: typeof import("node:path") = require("node:path");
 
 const ROOT = path.join(__dirname, "..", "..");
 
-function compileWithProbe(probeSource: string, probeName: string, mutateSources?: (files: Map<string, string>) => void) {
+function compileWithProbe(
+  probeSource: string,
+  probeName: string,
+  mutateSources?: (files: Map<string, string>) => void
+) {
   const configPath = path.join(ROOT, "tsconfig.settings-selectors.json");
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, ROOT);
   const probe = path.join(ROOT, probeName);
+
   const virtualFiles = new Map<string, string>(
     parsed.fileNames.map((file: string) => [
       path.relative(ROOT, file).split(path.sep).join("/"),
       fs.readFileSync(file, "utf8"),
     ])
   );
+
   if (mutateSources) mutateSources(virtualFiles);
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
   host.getSourceFile = (file, languageVersion, onError, shouldCreate) => {
     const relative = path.relative(ROOT, file).split(path.sep).join("/");
+
     if (file === probe) {
       return ts.createSourceFile(file, probeSource, languageVersion, true);
     }
+
     const virtualSource = virtualFiles.get(relative);
+
     if (virtualSource !== undefined) {
       return ts.createSourceFile(file, virtualSource, languageVersion, true);
     }
+
     return readSource(file, languageVersion, onError, shouldCreate);
   };
+
   const program = ts.createProgram([...parsed.fileNames, probe], parsed.options, host);
   // Full-program verdict: implementation files and file-less diagnostics all
   // count, so a broken graph can never hide behind a filtered probe.
   const diagnostics = ts.getPreEmitDiagnostics(program);
+
   return { codes: diagnostics.map((d) => d.code) };
 }
 
@@ -52,6 +68,7 @@ selectResolvedLLMConfig(snapshot, "dictation");
 `,
     "settings-selectors-probe.ts"
   );
+
   assert.deepEqual(codes, [2345]);
 });
 
@@ -63,6 +80,7 @@ inheritsFallbackEndpoint({ mode: "providers" }, "totally-invalid-mode");
 `,
     "settings-selectors-probe.ts"
   );
+
   assert.deepEqual(codes, [2345, 2345]);
 });
 
@@ -76,9 +94,10 @@ selectResolvedLLMConfig(snapshot, "cleanup");
     "settings-selectors-probe.ts",
     (virtualFiles) => {
       const target = "src/config/settingsSelectors.ts";
-      virtualFiles.set(target, virtualFiles.get(target) + "\nconst broken: number = \"wrong\";\n");
+      virtualFiles.set(target, virtualFiles.get(target) + '\nconst broken: number = "wrong";\n');
     }
   );
+
   assert.deepEqual(codes, [2322]);
 });
 
@@ -89,6 +108,7 @@ const bad = { noteFormattingProvider: true } as NoteFormattingScopeSettings;
 `,
     "settings-selectors-probe.ts"
   );
+
   assert.deepEqual(codes, [2352]);
 });
 
@@ -99,6 +119,7 @@ const config = { disableThinking: "yes" } as ResolvedLLMConfig;
 `,
     "settings-selectors-probe.ts"
   );
+
   assert.deepEqual(codes, [2352]);
 });
 
@@ -120,6 +141,7 @@ export { cfg, fmt, upload, meeting, mode, key, provider };
 `,
     "settings-selectors-probe.ts"
   );
+
   assert.deepEqual(codes, []);
 });
 
@@ -133,6 +155,7 @@ selectResolvedLLMConfig(snapshot, "cleanup");
 `,
     "settings-selectors-probe.ts"
   );
+
   // With types:[] there is no DOM lib here: HTMLElement is unresolvable.
   assert.deepEqual(codes, [2304]);
 });

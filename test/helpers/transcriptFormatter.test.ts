@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -7,7 +8,10 @@ const {
   formatJson,
   formatMd,
 }: typeof import("../../src/helpers/transcriptFormatter") = require("../../src/helpers/transcriptFormatter");
-const { changeLanguage }: typeof import("../../src/helpers/i18nMain") = require("../../src/helpers/i18nMain");
+
+const {
+  changeLanguage,
+}: typeof import("../../src/helpers/i18nMain") = require("../../src/helpers/i18nMain");
 
 test("TXT and Markdown exports include participant display names", () => {
   const note = {
@@ -146,6 +150,7 @@ test("consecutive speaker-less segments within 2s merge across SRT, TXT and Mark
     segments,
     {}
   );
+
   assert.ok(txtOutput.includes("[00:00:00] Unknown Speaker:\nHello world, this is a test."));
   assert.ok(txtOutput.includes("[00:00:05] Unknown Speaker:\nLater sentence."));
 
@@ -154,6 +159,7 @@ test("consecutive speaker-less segments within 2s merge across SRT, TXT and Mark
     segments,
     {}
   );
+
   assert.ok(mdOutput.includes("**Unknown Speaker** `00:00:00`\nHello world, this is a test."));
   assert.ok(mdOutput.includes("**Unknown Speaker** `00:00:05`\nLater sentence."));
 });
@@ -175,6 +181,7 @@ test("a corrected speaker name applies to legacy upload transcript exports", () 
   const output = formatSrt([{ speakerName: "Speaker 1", timestamp: 0, text: "Uploaded speech." }], {
     "Speaker 1": "Alice",
   });
+
   assert.match(output, /Alice: Uploaded speech\./);
 });
 
@@ -218,6 +225,7 @@ test("own-voice segments share one label whether or not diarization stamped them
   t.after(() => changeLanguage("en"));
 
   const note = { title: "Standup", created_at: "2026-01-01T00:00:00Z" };
+
   const segments = [
     { source: "mic", speaker: "you", timestamp: 0, text: "Guten Morgen." },
     { source: "mic", timestamp: 3, text: "Noch etwas." },
@@ -290,10 +298,12 @@ test("an explicit speaker mapping still overrides the own-voice label", () => {
 
 test("epoch-millisecond segment timestamps export relative to the recording start", () => {
   const recordingStartMs = 1_754_310_000_000;
+
   const segments = [
     { speaker: "speaker_0", timestamp: recordingStartMs, text: "Opening." },
     { speaker: "speaker_1", timestamp: recordingStartMs + 477_000, text: "Closing." },
   ];
+
   const note = {
     title: "Meeting",
     created_at: "2026-08-04 13:02:00",
@@ -305,7 +315,10 @@ test("epoch-millisecond segment timestamps export relative to the recording star
 });
 
 test("SQLite UTC note timestamps are parsed as UTC before local formatting", () => {
-  const { parseNoteDate }: typeof import("../../src/helpers/transcriptFormatter") = require("../../src/helpers/transcriptFormatter");
+  const {
+    parseNoteDate,
+  }: typeof import("../../src/helpers/transcriptFormatter") = require("../../src/helpers/transcriptFormatter");
+
   const parsed = parseNoteDate("2026-08-04 13:02:00");
 
   assert.equal(parsed.toISOString(), "2026-08-04T13:02:00.000Z");

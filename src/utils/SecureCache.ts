@@ -29,6 +29,7 @@ export class SecureCache<T> {
 
     if (Date.now() > entry.expiresAt) {
       this.cache.delete(key);
+
       return undefined;
     }
 
@@ -54,6 +55,7 @@ export class SecureCache<T> {
   cleanup(): void {
     const now = Date.now();
     const entries = Array.from(this.cache.entries());
+
     for (const [key, entry] of entries) {
       if (now > entry.expiresAt) {
         this.cache.delete(key);
@@ -63,6 +65,7 @@ export class SecureCache<T> {
 
   startAutoCleanup(intervalMs: number = 60000): () => void {
     const interval = setInterval(() => this.cleanup(), intervalMs);
+
     return () => clearInterval(interval);
   }
 }

@@ -1,40 +1,57 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const { execFileSync }: typeof import("node:child_process") = require("node:child_process");
+
 const ts: typeof import("typescript") = require("typescript");
 
 const root = path.resolve(__dirname, "../..");
+
 const output = path.join(root, "dist-main");
+
 const pkg = require("../../package.json");
+
 const builder = require("../../electron-builder.json");
 
 test("emitted Electron graph contains every relative import and no TypeScript runtime import", () => {
   assert.ok(fs.existsSync(path.join(root, pkg.main)), "Run pnpm run build:main first");
+
   const files = fs
     .readdirSync(output, { recursive: true })
     .filter((name: string) => /\.(?:js|mjs)$/.test(name));
+
   assert.ok(files.length > 0);
+
   for (const name of files) {
     const file = path.join(output, name);
+
     const source = ts.createSourceFile(
       file,
       fs.readFileSync(file, "utf8"),
       ts.ScriptTarget.Latest,
       true
     );
+
     function visit(node: import("typescript").Node): void {
       let specifier: import("typescript").Expression | undefined;
+
       if (
         ts.isCallExpression(node) &&
         ((ts.isIdentifier(node.expression) && node.expression.text === "require") ||
           node.expression.kind === ts.SyntaxKind.ImportKeyword)
       )
         specifier = node.arguments[0];
+
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
         specifier = node.moduleSpecifier;
+
       if (specifier && ts.isStringLiteral(specifier) && specifier.text.startsWith(".")) {
         assert.doesNotMatch(specifier.text, /\.(?:ts|mts|tsx)$/, `${name}: ${specifier.text}`);
         const target = path.resolve(path.dirname(file), specifier.text);
@@ -44,10 +61,13 @@ test("emitted Electron graph contains every relative import and no TypeScript ru
           `${name}: missing ${specifier.text}`
         );
       }
+
       ts.forEachChild(node, visit);
     }
+
     visit(source);
   }
+
   assert.ok(builder.files.includes("dist-main/**/*"));
   assert.ok(!builder.files.includes("main.js"));
   assert.ok(!builder.files.includes("src/helpers/**/*"));
@@ -56,7 +76,11 @@ test("emitted Electron graph contains every relative import and no TypeScript ru
 });
 
 test("emitted preload loads with the sandbox Electron API and forwards arguments", async () => {
-  type PreloadApi = { getNote(id: number): Promise<unknown>; onMeetingTranscriptionSegment(callback: () => void): () => void };
+  type PreloadApi = {
+    getNote(id: number): Promise<unknown>;
+    onMeetingTranscriptionSegment(callback: () => void): () => void;
+  };
+
   let api: PreloadApi | undefined;
   const calls: unknown[][] = [];
   const listeners = new Map<string, (...args: unknown[]) => void>();
@@ -66,6 +90,7 @@ test("emitted preload loads with the sandbox Electron API and forwards arguments
     exports: preloadModule.exports,
     require(name: string) {
       assert.equal(name, "electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: PreloadApi) => {
@@ -75,11 +100,13 @@ test("emitted preload loads with the sandbox Electron API and forwards arguments
         ipcRenderer: {
           invoke: async (...args: unknown[]) => {
             calls.push(args);
+
             // Notes contract: getNote resolves to a row or null.
             return args[0] === "db-get-note" ? null : { success: true };
           },
           send() {},
-          on: (channel: string, listener: (...args: unknown[]) => void) => listeners.set(channel, listener),
+          on: (channel: string, listener: (...args: unknown[]) => void) =>
+            listeners.set(channel, listener),
           removeListener: (channel: string, listener: (...args: unknown[]) => void) => {
             assert.equal(listeners.get(channel), listener);
             listeners.delete(channel);
@@ -111,6 +138,7 @@ test("compiled route and ESM constants load in plain Node without a TS loader", 
     ],
     { cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "" } }
   );
+
   assert.deepEqual(JSON.parse(result), { transport: "local" });
 });
 
@@ -168,8 +196,10 @@ test("main compiler rejects a wrong typed argument and renderer-only globals", (
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
   assert.equal(parsed.options.strict, true);
   const probe = path.join(root, "main-type-probe.ts");
+
   const source =
     'import { byokFileSizeLimit } from "./src/helpers/transcriptionRoute.js";\nbyokFileSizeLimit(123);\ndocument.title = "not a renderer";';
+
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
   host.getSourceFile = (file, languageVersion, ...args) =>
@@ -183,9 +213,11 @@ test("main compiler rejects a wrong typed argument and renderer-only globals", (
 
 test("emitted modules resolve preload beside code and native resources from the app root", () => {
   const config = require("../../dist-main/src/helpers/windowConfig.js");
+
   for (const name of ["MAIN_WINDOW_CONFIG", "CONTROL_PANEL_CONFIG", "NOTIFICATION_WINDOW_CONFIG"]) {
     assert.equal(config[name].webPreferences.preload, path.join(output, "preload.js"));
   }
+
   const appRoot = path.join(root, "test-app-root");
   const expected = path.join(appRoot, "resources/bin/probe");
   const module = { exports: {} };
@@ -198,8 +230,11 @@ test("emitted modules resolve preload beside code and native resources from the 
     process: { resourcesPath: undefined },
     require(name: string) {
       if (name === "electron") return { app: { getAppPath: () => appRoot } };
+
       if (name === "path") return path;
+
       if (name === "./debugLogger") return { info() {} };
+
       if (name === "fs")
         return {
           existsSync: (candidate: string) => candidate === expected,
@@ -209,6 +244,10 @@ test("emitted modules resolve preload beside code and native resources from the 
       throw new Error(`Unexpected module: ${name}`);
     },
   });
-  const { resolveBundledBinary } = module.exports as { resolveBundledBinary: (name: string, scope: string) => string };
+
+  const { resolveBundledBinary } = module.exports as {
+    resolveBundledBinary: (name: string, scope: string) => string;
+  };
+
   assert.equal(resolveBundledBinary("probe", "test"), expected);
 });

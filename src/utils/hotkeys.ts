@@ -22,15 +22,19 @@ export function parseHotkeyList(value?: string | null): string[] {
   const raw = value.split(",");
   const seen = new Set<string>();
   const result: string[] = [];
+
   for (let i = 0; i < raw.length; i++) {
     let hotkey = raw[i].trim();
+
     if (hotkey.endsWith("+") && i < raw.length - 1 && raw[i + 1].trim() === "") {
       hotkey += ",";
     }
+
     if (!hotkey || seen.has(hotkey)) continue;
     seen.add(hotkey);
     result.push(hotkey);
   }
+
   return result;
 }
 
@@ -52,8 +56,10 @@ function formatSideModifierPart(part: string, platform: Platform): string | null
   const match = /^(Right|Left)(Option|Alt|Command|Cmd|Control|Ctrl|Shift|Super|Meta|Win)$/.exec(
     part
   );
+
   if (!match) return null;
   const [, side, key] = match;
+
   return `${side} ${formatModifierPart(key === "Option" ? "Alt" : key, platform)}`;
 }
 
@@ -65,8 +71,10 @@ function formatSideModifierPart(part: string, platform: Platform): string | null
  */
 export function sidedModifierToken(code: string, platform: Platform): string | null {
   const match = /^(Control|Alt|Shift|Meta)(Left|Right)$/.exec(code);
+
   if (!match) return null;
   const [, key, side] = match;
+
   switch (key) {
     case "Control":
       return `${side}Control`;
@@ -122,6 +130,7 @@ function formatModifierPart(part: string, platform: Platform): string {
 export function formatHotkeyLabel(hotkey?: string | null): string {
   const platform = getPlatform();
   const resolvedHotkey = hotkey && hotkey.trim() !== "" ? hotkey : getDefaultHotkey();
+
   return formatHotkeyLabelForPlatform(resolvedHotkey, platform);
 }
 
@@ -131,7 +140,9 @@ export function formatHotkeyLabel(hotkey?: string | null): string {
  */
 export function formatHotkeyListLabel(value?: string | null): string {
   const list = parseHotkeyList(value);
+
   if (list.length === 0) return formatHotkeyLabel(value);
+
   return list.map((hotkey) => formatHotkeyLabel(hotkey)).join(" / ");
 }
 
@@ -150,9 +161,11 @@ export function formatHotkeyLabelForPlatform(hotkey: string, platform: Platform)
 
   if (hotkey.includes("+")) {
     const parts = hotkey.split("+");
+
     const formattedParts = parts.map(
       (part) => formatSideModifierPart(part, platform) ?? formatModifierPart(part, platform)
     );
+
     return formattedParts.join("+");
   }
 
@@ -201,6 +214,7 @@ export function isCompoundHotkey(hotkey: string): boolean {
  */
 export function getDefaultHotkey(): string {
   const platform = getPlatform();
+
   return platform === "darwin" ? "GLOBE" : "Control+Super";
 }
 
@@ -227,6 +241,7 @@ export function isValidHotkeyFormat(hotkey: string): boolean {
 
   // Compound hotkey: must have at least one modifier and one base key
   const parts = hotkey.split("+");
+
   if (parts.length < 2) {
     return false;
   }

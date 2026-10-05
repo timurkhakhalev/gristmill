@@ -31,6 +31,7 @@ interface StickToBottomResult<T extends HTMLElement> {
 
 function pinToBottom(node: HTMLElement): void {
   const bottom = node.scrollHeight - node.clientHeight;
+
   if (bottom > 0 && Math.abs(node.scrollTop - bottom) > 1) node.scrollTop = bottom;
 }
 
@@ -55,6 +56,7 @@ export function useStickToBottom<T extends HTMLElement>(
   const scrollRef = useRef<T>(null);
   const followerRef = useRef<ScrollFollowController | null>(null);
   const touchYRef = useRef<number | null>(null);
+
   if (!followerRef.current) {
     followerRef.current = createScrollFollowController({
       nearBottomThreshold: PIN_THRESHOLD_PX,
@@ -63,31 +65,41 @@ export function useStickToBottom<T extends HTMLElement>(
 
   useLayoutEffect(() => {
     const node = scrollRef.current;
+
     if (!node) return;
+
     if (resetToTop) {
       followerRef.current?.follow();
       node.scrollTop = 0;
+
       return;
     }
+
     if (followerRef.current?.isFollowing()) pinToBottom(node);
 
     const content = node.firstElementChild;
+
     const ro = new ResizeObserver(() => {
       if (followerRef.current?.isFollowing()) pinToBottom(node);
     });
+
     ro.observe(node);
+
     if (content) ro.observe(content);
+
     return () => ro.disconnect();
   }, [dep, resetToTop]);
 
   const handleScroll = useCallback(() => {
     const node = scrollRef.current;
+
     if (!node) return;
     followerRef.current?.update(node);
   }, []);
 
   const handleWheel = useCallback((event: WheelEvent<T>) => {
     const node = scrollRef.current;
+
     if (event.deltaY < 0 && node && isReaderGesture(node, event.target)) {
       followerRef.current?.leaveBottom();
     }
@@ -100,11 +112,14 @@ export function useStickToBottom<T extends HTMLElement>(
   const handleTouchMove = useCallback((event: TouchEvent<T>) => {
     const nextY = event.touches[0]?.clientY;
     const previousY = touchYRef.current;
+
     if (nextY == null) return;
     const node = scrollRef.current;
+
     if (previousY != null && nextY > previousY && node && isReaderGesture(node, event.target)) {
       followerRef.current?.leaveBottom();
     }
+
     touchYRef.current = nextY;
   }, []);
 

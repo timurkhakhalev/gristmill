@@ -1,4 +1,8 @@
-import { companionSetupSchema, companionStatusSchema, companionPlatformMuteSchema } from "../contracts/companion.js";
+import {
+  companionSetupSchema,
+  companionStatusSchema,
+  companionPlatformMuteSchema,
+} from "../contracts/companion.js";
 // Renderer-facing meeting coordinator bridge. Moved out of preload.js so the
 // recording/detection/auto-end/notification operations and their events have
 // one typed implementation backed by the shared contract. Invoke results are
@@ -50,9 +54,11 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -67,14 +73,19 @@ function subscribe<T>(
   const listener = (_event: unknown, payload: unknown) => {
     if (schema === null) {
       deliver(undefined as T);
+
       return;
     }
+
     const parsed = schema.safeParse(payload);
+
     if (parsed.success) {
       deliver(parsed.data);
     }
   };
+
   ipcRenderer.on(channel, listener);
+
   return () => {
     ipcRenderer.removeListener(channel, listener);
   };
@@ -89,16 +100,61 @@ export function createMeetingCoordinatorBridge(
     ipcRenderer.invoke(channel, ...args).then((raw) => parseResult(schema, raw, channel));
 
   return {
-    finishPausedMeetRecording: (recordingId) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.finishPausedMeetRecording, recordingId),
-    getMeetIntegrationSetup: () => invokeParse(companionSetupSchema, meetingCoordinatorChannels.getMeetIntegrationSetup),
-    configureMeetIntegration: (action) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.configureMeetIntegration, action),
-    respondMeetContextReminder: (request) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.respondMeetContextReminder, request),
-    claimMeetingAutoEnd: (sessionId) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.claimMeetingAutoEnd, sessionId),
-    getMeetCompanionStatus: () => invokeParse(companionStatusSchema, meetingCoordinatorChannels.getMeetCompanionStatus),
-    confirmMeetCompanionBinding: (request) => invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.confirmMeetCompanionBinding, request),
-    onMeetCompanionStatus: (callback) => subscribe(ipcRenderer, meetingCoordinatorEventChannels.meetCompanionStatus, companionStatusSchema, callback),
-    onMeetManualMute: (callback) => subscribe(ipcRenderer, meetingCoordinatorEventChannels.meetManualMute, companionPlatformMuteSchema, callback),
-    onMeetPlatformMute: (callback) => subscribe(ipcRenderer, meetingCoordinatorEventChannels.meetPlatformMute, companionPlatformMuteSchema, callback),
+    finishPausedMeetRecording: (recordingId) =>
+      invokeParse(
+        simpleSuccessResultSchema,
+        meetingCoordinatorChannels.finishPausedMeetRecording,
+        recordingId
+      ),
+    getMeetIntegrationSetup: () =>
+      invokeParse(companionSetupSchema, meetingCoordinatorChannels.getMeetIntegrationSetup),
+    configureMeetIntegration: (action) =>
+      invokeParse(
+        simpleSuccessResultSchema,
+        meetingCoordinatorChannels.configureMeetIntegration,
+        action
+      ),
+    respondMeetContextReminder: (request) =>
+      invokeParse(
+        simpleSuccessResultSchema,
+        meetingCoordinatorChannels.respondMeetContextReminder,
+        request
+      ),
+    claimMeetingAutoEnd: (sessionId) =>
+      invokeParse(
+        simpleSuccessResultSchema,
+        meetingCoordinatorChannels.claimMeetingAutoEnd,
+        sessionId
+      ),
+    getMeetCompanionStatus: () =>
+      invokeParse(companionStatusSchema, meetingCoordinatorChannels.getMeetCompanionStatus),
+    confirmMeetCompanionBinding: (request) =>
+      invokeParse(
+        simpleSuccessResultSchema,
+        meetingCoordinatorChannels.confirmMeetCompanionBinding,
+        request
+      ),
+    onMeetCompanionStatus: (callback) =>
+      subscribe(
+        ipcRenderer,
+        meetingCoordinatorEventChannels.meetCompanionStatus,
+        companionStatusSchema,
+        callback
+      ),
+    onMeetManualMute: (callback) =>
+      subscribe(
+        ipcRenderer,
+        meetingCoordinatorEventChannels.meetManualMute,
+        companionPlatformMuteSchema,
+        callback
+      ),
+    onMeetPlatformMute: (callback) =>
+      subscribe(
+        ipcRenderer,
+        meetingCoordinatorEventChannels.meetPlatformMute,
+        companionPlatformMuteSchema,
+        callback
+      ),
     meetingTranscriptionPrepare: (options) =>
       invokeParse(
         meetingPrepareResultSchema,
@@ -139,10 +195,7 @@ export function createMeetingCoordinatorBridge(
         request
       ),
     meetingTranscriptionCancel: () =>
-      invokeParse(
-        meetingCancelResultSchema,
-        meetingCoordinatorChannels.meetingTranscriptionCancel
-      ),
+      invokeParse(meetingCancelResultSchema, meetingCoordinatorChannels.meetingTranscriptionCancel),
     meetingTranscriptionSetSystemAudioAvailable: (sessionId, available) =>
       invokeParse(
         meetingSetSystemAudioAvailableResultSchema,
@@ -151,7 +204,11 @@ export function createMeetingCoordinatorBridge(
         available
       ),
     acquireRecordingLock: (pipeline) =>
-      invokeParse(recordingLockResultSchema, meetingCoordinatorChannels.acquireRecordingLock, pipeline),
+      invokeParse(
+        recordingLockResultSchema,
+        meetingCoordinatorChannels.acquireRecordingLock,
+        pipeline
+      ),
     releaseRecordingLock: (pipeline) =>
       invokeParse(
         recordingLockResultSchema,
@@ -196,9 +253,17 @@ export function createMeetingCoordinatorBridge(
         action
       ),
     joinCalendarMeeting: (eventId) =>
-      invokeParse(simpleSuccessResultSchema, meetingCoordinatorChannels.joinCalendarMeeting, eventId),
+      invokeParse(
+        simpleSuccessResultSchema,
+        meetingCoordinatorChannels.joinCalendarMeeting,
+        eventId
+      ),
     findCalendarEventNote: (eventId) =>
-      invokeParse(calendarEventNoteResultSchema, meetingCoordinatorChannels.findCalendarEventNote, eventId),
+      invokeParse(
+        calendarEventNoteResultSchema,
+        meetingCoordinatorChannels.findCalendarEventNote,
+        eventId
+      ),
     createCalendarEventNote: (eventId, initial) =>
       invokeParse(
         calendarEventNoteResultSchema,
@@ -312,11 +377,8 @@ export function createMeetingCoordinatorBridge(
         callback
       ),
     onMeetingSystemAudioResumed: (callback) =>
-      subscribe(
-        ipcRenderer,
-        meetingCoordinatorEventChannels.meetingSystemAudioResumed,
-        null,
-        () => callback()
+      subscribe(ipcRenderer, meetingCoordinatorEventChannels.meetingSystemAudioResumed, null, () =>
+        callback()
       ),
     onMeetingNotificationData: (callback) =>
       subscribe(

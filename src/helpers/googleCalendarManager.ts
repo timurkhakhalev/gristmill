@@ -15,13 +15,17 @@ import type {
 } from "./database.js";
 
 const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
+
 const BUFFER_COVERAGE_MS = MAX_BUFFER_MINUTES * 60 * 1000;
+
 const ALL_DAY_TIMEZONE_PADDING_MS = 48 * 60 * 60 * 1000;
 
 // Sync tokens pin the full sync's timeMin/timeMax window, so discard them
 // after a day to keep the lookahead covering the 31-day availability horizon.
 const SYNC_LOOKAHEAD_MS = 33 * 24 * 60 * 60 * 1000;
+
 const SYNC_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
 const GOOGLE_RESPONSE_STATUSES: ReadonlySet<string> = new Set([
   "accepted",
   "declined",
@@ -86,7 +90,12 @@ export interface GoogleManagerDb {
   upsertCalendarEvents(events: CalendarEventInput[]): unknown;
   removeCalendarEvents(ids: string[]): unknown;
   removeStaleCalendarEvents(provider: string, calendarId: string, freshIds: string[]): unknown;
-  updateCalendarSyncToken(id: string, token: string, expiresAt: number, accountEmail: string): unknown;
+  updateCalendarSyncToken(
+    id: string,
+    token: string,
+    expiresAt: number,
+    accountEmail: string
+  ): unknown;
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
   upsertGooglePeople(profiles: GooglePersonProfile[]): unknown;
   getGoogleTokensByEmail(email: string): { id: number; scope: string } | null;
@@ -128,6 +137,7 @@ export class GoogleCalendarManager {
 
   start(): void {
     this._loadAccounts();
+
     if (this.accounts.size === 0) return;
 
     this.fetchCalendars()
@@ -166,6 +176,7 @@ export class GoogleCalendarManager {
       this.stop();
       this.reminderScheduler.reset("google");
     }
+
     this.reminderScheduler.scheduleNextMeeting();
   }
 
@@ -191,6 +202,7 @@ export class GoogleCalendarManager {
     } catch (err) {
       debugLogger.error("Error revoking Google tokens", { error: (err as Error).message }, "gcal");
     }
+
     this.disconnect();
   }
 
@@ -215,13 +227,16 @@ export class GoogleCalendarManager {
     email: string | null;
   } {
     const accounts = this.databaseManager.getGoogleAccounts();
+
     return {
       connected: accounts.length > 0,
       configured: this.isConfigured(),
       accounts,
       peopleAccessMissing: accounts
         .map((account) => account.email)
-        .filter((email) => lacksPeopleAccess(this.databaseManager.getGoogleTokensByEmail(email)?.scope)),
+        .filter((email) =>
+          lacksPeopleAccess(this.databaseManager.getGoogleTokensByEmail(email)?.scope)
+        ),
       // Backwards compat
       email: accounts[0]?.email || null,
     };
@@ -239,9 +254,11 @@ export class GoogleCalendarManager {
       try {
         const accountId = this.databaseManager.getGoogleTokensByEmail(email)?.id;
         this._assertAccountCurrent(email, accountId);
+
         const data = (await this._apiGet("/users/me/calendarList", email)) as {
           items?: GoogleCalendarListItem[];
         };
+
         const calendars: GoogleCalendarInput[] = (data.items || []).map((item) => ({
           id: item.id,
           summary: item.summary,
@@ -249,16 +266,22 @@ export class GoogleCalendarManager {
           background_color: item.backgroundColor || null,
           is_primary: item.primary === true,
         }));
+
         this._assertAccountCurrent(email, accountId);
         this.databaseManager.saveGoogleCalendars(calendars, email);
         allCalendars.push(...calendars);
       } catch (err) {
-        debugLogger.error("Error fetching calendars", { email, error: (err as Error).message }, "gcal");
+        debugLogger.error(
+          "Error fetching calendars",
+          { email, error: (err as Error).message },
+          "gcal"
+        );
       }
     }
 
     this.databaseManager.applyPrimaryOnlyToSelection(this.primaryOnly);
     this.databaseManager.removeEventsFromDeselectedCalendars("google");
+
     return allCalendars;
   }
 
@@ -267,10 +290,12 @@ export class GoogleCalendarManager {
   // can report failure instead of a false success.
   async syncEvents(): Promise<CalendarSyncOutcome> {
     const selectedCalendars = this.databaseManager.getSelectedCalendars();
+
     if (selectedCalendars.length === 0) return { total: 0, succeeded: 0, failed: 0, errors: [] };
 
     const errors: string[] = [];
     let succeeded = 0;
+
     for (const calendar of selectedCalendars) {
       try {
         await this._syncCalendar(calendar);
@@ -288,6 +313,7 @@ export class GoogleCalendarManager {
     sendGcalEventsSynced();
     this.reminderScheduler.scheduleNextMeeting();
     void this.syncPeople();
+
     return { total: selectedCalendars.length, succeeded, failed: errors.length, errors };
   }
 
@@ -298,31 +324,43 @@ export class GoogleCalendarManager {
    */
   async syncPeople({ force = false }: { force?: boolean } = {}): Promise<void> {
     let updated = false;
+
     for (const email of this._getAccountEmails()) {
       const tokens = this.databaseManager.getGoogleTokensByEmail(email);
       const accountId = tokens?.id;
       const scope = tokens?.scope ?? "";
+
       if (lacksPeopleAccess(scope)) continue;
       const last = this.peopleSyncedAt.get(email) ?? 0;
+
       if (!force && Date.now() - last < PEOPLE_SYNC_INTERVAL_MS) continue;
       this.peopleSyncedAt.set(email, Date.now());
+
       try {
         const profiles = await fetchGooglePeople(
           (url) => this._apiGet(url, email),
           scope,
           (source, error) =>
-            debugLogger.warn("Google People source failed", { source, error: error.message }, "gcal")
+            debugLogger.warn(
+              "Google People source failed",
+              { source, error: error.message },
+              "gcal"
+            )
         );
+
         this._assertAccountCurrent(email, accountId);
+
         if (profiles.length > 0) {
           this.databaseManager.upsertGooglePeople(profiles);
           updated = true;
         }
+
         debugLogger.info("Google People synced", { profiles: profiles.length }, "gcal");
       } catch (err) {
         debugLogger.error("Google People sync failed", { error: (err as Error).message }, "gcal");
       }
     }
+
     if (updated) sendGcalEventsSynced();
   }
 
@@ -346,25 +384,31 @@ export class GoogleCalendarManager {
     const hasFreshToken = Boolean(
       calendar.sync_token && (calendar.sync_token_expires_at ?? 0) > Date.now()
     );
+
     let isFullSync = !hasFreshToken;
+
     let tokenExpiresAt = hasFreshToken
       ? (calendar.sync_token_expires_at as number)
       : Date.now() + SYNC_TOKEN_TTL_MS;
+
     let baseParams = isFullSync
       ? buildFullParams()
       : new URLSearchParams({
           singleEvents: "true",
           syncToken: calendar.sync_token as string,
         });
+
     let pageToken: string | null = null;
     let nextSyncToken: string | null = null;
     const allItems: GoogleEventItem[] = [];
 
     for (;;) {
       const params = new URLSearchParams(baseParams);
+
       if (pageToken) params.set("pageToken", pageToken);
 
       let data: GoogleEventsPage;
+
       try {
         data = (await this._apiGet(
           `/calendars/${encodeURIComponent(calendar.id)}/events?${params.toString()}`,
@@ -378,13 +422,16 @@ export class GoogleCalendarManager {
           baseParams = buildFullParams();
           continue;
         }
+
         throw err;
       }
 
       if (data.items) {
         allItems.push(...data.items);
       }
+
       pageToken = data.nextPageToken || null;
+
       if (data.nextSyncToken) {
         nextSyncToken = data.nextSyncToken;
       }
@@ -457,11 +504,20 @@ export class GoogleCalendarManager {
         toUpsert.map((event) => event.id)
       );
     }
+
     if (toUpsert.length > 0) this.databaseManager.upsertCalendarEvents(toUpsert);
+
     if (toRemove.length > 0) this.databaseManager.removeCalendarEvents(toRemove);
+
     if (nextSyncToken) {
-      this.databaseManager.updateCalendarSyncToken(calendar.id, nextSyncToken, tokenExpiresAt, accountEmail as string);
+      this.databaseManager.updateCalendarSyncToken(
+        calendar.id,
+        nextSyncToken,
+        tokenExpiresAt,
+        accountEmail as string
+      );
     }
+
     if (contactsToUpsert.length > 0) this.databaseManager.upsertContacts(contactsToUpsert);
   }
 
@@ -492,6 +548,7 @@ export class GoogleCalendarManager {
   async setPrimaryOnly(value: boolean): Promise<void> {
     if (this.primaryOnly === value) return;
     this.primaryOnly = value;
+
     if (!this.isConnected()) return;
 
     await this.fetchCalendars();
@@ -508,6 +565,7 @@ export class GoogleCalendarManager {
   private _loadAccounts(): void {
     const accounts = this.databaseManager.getGoogleAccounts();
     this.accounts.clear();
+
     for (const account of accounts) {
       this.accounts.set(account.email, { email: account.email });
     }
@@ -523,7 +581,11 @@ export class GoogleCalendarManager {
   }
 
   private _assertAccountCurrent(email: string | null, accountId: number | undefined): void {
-    if (accountId === undefined || !email || this.databaseManager.getGoogleTokensByEmail(email)?.id !== accountId) {
+    if (
+      accountId === undefined ||
+      !email ||
+      this.databaseManager.getGoogleTokensByEmail(email)?.id !== accountId
+    ) {
       throw new Error("Google account changed during calendar request");
     }
   }
@@ -541,28 +603,35 @@ export class GoogleCalendarManager {
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
     } as RequestInit);
+
     const text = await response.text();
     let parsed: unknown = null;
+
     try {
       parsed = JSON.parse(text);
     } catch {
       // Error statuses can arrive with empty or non-JSON bodies; surface the
       // status below instead of masking it as a parse failure.
     }
+
     if (response.status >= 400) {
       const err = new ApiGetError(
         (parsed as { error?: { message?: string } } | null)?.error?.message ||
           `API error ${response.status}`
       );
+
       err.statusCode = response.status;
       throw err;
     }
+
     if (parsed === null) {
       throw new Error(`Invalid JSON response: ${text.slice(0, 200)}`);
     }
+
     return parsed;
   }
 }
 
 module.exports = GoogleCalendarManager;
+
 module.exports.GoogleCalendarManager = GoogleCalendarManager;

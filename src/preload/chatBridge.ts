@@ -24,9 +24,11 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -34,15 +36,14 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
 // this implementation and the contract fails compilation instead of review.
 export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatPersistenceApi {
   return {
-    createAgentConversation: (title?: string, noteId?: number | null, spaceId?: number | null, folderId?: number | null) =>
+    createAgentConversation: (
+      title?: string,
+      noteId?: number | null,
+      spaceId?: number | null,
+      folderId?: number | null
+    ) =>
       ipcRenderer
-        .invoke(
-          chatPersistenceChannels.createAgentConversation,
-          title,
-          noteId,
-          spaceId,
-          folderId
-        )
+        .invoke(chatPersistenceChannels.createAgentConversation, title, noteId, spaceId, folderId)
         .then((raw) =>
           parseResult(
             conversationCreateResultSchema,
@@ -62,12 +63,7 @@ export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatP
         ),
     getConversationsForContainer: (spaceId: number, folderId?: number | null, limit?: number) =>
       ipcRenderer
-        .invoke(
-          chatPersistenceChannels.getConversationsForContainer,
-          spaceId,
-          folderId,
-          limit
-        )
+        .invoke(chatPersistenceChannels.getConversationsForContainer, spaceId, folderId, limit)
         .then((raw) =>
           parseResult(
             containerConversationListResultSchema,
@@ -99,11 +95,7 @@ export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatP
       ipcRenderer
         .invoke(chatPersistenceChannels.deleteAgentConversation, id)
         .then((raw) =>
-          parseResult(
-            successResultSchema,
-            raw,
-            chatPersistenceChannels.deleteAgentConversation
-          )
+          parseResult(successResultSchema, raw, chatPersistenceChannels.deleteAgentConversation)
         ),
     updateAgentConversationTitle: (id: number, title: string) =>
       ipcRenderer
@@ -122,31 +114,21 @@ export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatP
       metadata?: Record<string, unknown>
     ) =>
       ipcRenderer
-        .invoke(
-          chatPersistenceChannels.addAgentMessage,
-          conversationId,
-          role,
-          content,
-          metadata
-        )
+        .invoke(chatPersistenceChannels.addAgentMessage, conversationId, role, content, metadata)
         .then((raw) =>
-          parseResult(
-            messageRowResultSchema,
-            raw,
-            chatPersistenceChannels.addAgentMessage
-          )
+          parseResult(messageRowResultSchema, raw, chatPersistenceChannels.addAgentMessage)
         ),
     getAgentMessages: (conversationId: number) =>
       ipcRenderer
         .invoke(chatPersistenceChannels.getAgentMessages, conversationId)
         .then((raw) =>
-          parseResult(
-            messageRowListResultSchema,
-            raw,
-            chatPersistenceChannels.getAgentMessages
-          )
+          parseResult(messageRowListResultSchema, raw, chatPersistenceChannels.getAgentMessages)
         ),
-    getAgentConversationsWithPreview: (limit?: number, offset?: number, includeArchived?: boolean) =>
+    getAgentConversationsWithPreview: (
+      limit?: number,
+      offset?: number,
+      includeArchived?: boolean
+    ) =>
       ipcRenderer
         .invoke(
           chatPersistenceChannels.getAgentConversationsWithPreview,
@@ -175,21 +157,13 @@ export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatP
       ipcRenderer
         .invoke(chatPersistenceChannels.archiveAgentConversation, id)
         .then((raw) =>
-          parseResult(
-            successResultSchema,
-            raw,
-            chatPersistenceChannels.archiveAgentConversation
-          )
+          parseResult(successResultSchema, raw, chatPersistenceChannels.archiveAgentConversation)
         ),
     unarchiveAgentConversation: (id: number) =>
       ipcRenderer
         .invoke(chatPersistenceChannels.unarchiveAgentConversation, id)
         .then((raw) =>
-          parseResult(
-            successResultSchema,
-            raw,
-            chatPersistenceChannels.unarchiveAgentConversation
-          )
+          parseResult(successResultSchema, raw, chatPersistenceChannels.unarchiveAgentConversation)
         ),
   };
 }

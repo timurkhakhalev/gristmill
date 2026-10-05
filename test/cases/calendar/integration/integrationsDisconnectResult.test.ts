@@ -8,12 +8,17 @@
 // a stubbed store and electronAPI, covering resolved failure, thrown
 // failure and success for Apple, Google and Microsoft.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const test: typeof import("node:test") = require("node:test");
+
 const vm: typeof import("node:vm") = require("node:vm");
 
 const root = path.join(__dirname, "../../../..");
+
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 // The view closure stand-in: the extracted initializers are installed onto it
@@ -37,26 +42,43 @@ interface Sandbox {
 // Extracts the component-scope disconnect callbacks by name and wires them
 // into one sandbox that stands in for the component closure. The account
 // setters round-trip through the fake store like React state would.
-function buildSandbox({ store, api }: { store: Record<string, unknown>; api: Record<string, unknown> }): Sandbox {
-  const source = fs.readFileSync(
-    path.join(root, "src/components/IntegrationsView.tsx"),
-    "utf8"
-  );
+function buildSandbox({
+  store,
+  api,
+}: {
+  store: Record<string, unknown>;
+  api: Record<string, unknown>;
+}): Sandbox {
+  const source = fs.readFileSync(path.join(root, "src/components/IntegrationsView.tsx"), "utf8");
+
   const ts: typeof import("typescript") = require(path.join(root, "node_modules/typescript"));
-  const tree = ts.createSourceFile("view.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+
+  const tree = ts.createSourceFile(
+    "view.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+
   const initializers: Record<string, string> = {};
-  const wanted = new Set(["handleDisconnect", "handleMicrosoftDisconnect", "handleAppleDisconnect"]);
+
+  const wanted = new Set([
+    "handleDisconnect",
+    "handleMicrosoftDisconnect",
+    "handleAppleDisconnect",
+  ]);
+
   const visit = (node: import("typescript").Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      wanted.has(node.name.getText(tree)) &&
-      node.initializer
-    ) {
+    if (ts.isVariableDeclaration(node) && wanted.has(node.name.getText(tree)) && node.initializer) {
       initializers[node.name.getText(tree)] = node.initializer.getText(tree);
     }
+
     ts.forEachChild(node, visit);
   };
+
   visit(tree);
+
   for (const name of wanted) {
     assert.ok(initializers[name], `${name} found in IntegrationsView`);
   }
@@ -77,14 +99,17 @@ function buildSandbox({ store, api }: { store: Record<string, unknown>; api: Rec
     handleMicrosoftDisconnect: async () => {},
     handleAppleDisconnect: async () => {},
   };
+
   for (const name of wanted) {
     // The initializers are TS source; transpile the parenthesized expression
     // so vm parses plain JS.
     const expression = ts.transpileModule(`(${initializers[name]})`, {
       compilerOptions: { target: ts.ScriptTarget.ES2022 },
     }).outputText;
+
     sandbox[name] = vm.runInNewContext(expression, sandbox);
   }
+
   return sandbox;
 }
 
@@ -93,29 +118,42 @@ function buildSandbox({ store, api }: { store: Record<string, unknown>; api: Rec
 // vm-context arrays the handlers produce into this realm so deepStrictEqual
 // sees main-context prototypes.
 function observe(sandbox: Sandbox, store: Record<string, unknown>) {
-  const writes: { accounts?: Array<{ email: string }>; mcal?: Array<{ email: string }>; apple?: boolean; sourceNames?: string[]; failed?: boolean } = {};
+  const writes: {
+    accounts?: Array<{ email: string }>;
+    mcal?: Array<{ email: string }>;
+    apple?: boolean;
+    sourceNames?: string[];
+    failed?: boolean;
+  } = {};
+
   sandbox.setGcalAccounts = (accounts: Array<{ email: string }>) => {
     writes.accounts = Array.from(accounts, (account) => ({ email: account.email }));
     store.gcalAccounts = Array.from(accounts, (account) => ({ email: account.email }));
   };
+
   sandbox.setMcalAccounts = (accounts: Array<{ email: string }>) => {
     writes.mcal = Array.from(accounts, (account) => ({ email: account.email }));
     store.mcalAccounts = Array.from(accounts, (account) => ({ email: account.email }));
   };
+
   sandbox.setAppleCalendarConnected = (value: boolean) => {
     writes.apple = value;
     store.appleCalendarConnected = value;
   };
+
   sandbox.setAppleSourceNames = (names: string[]) => {
     writes.sourceNames = Array.from(names);
   };
+
   sandbox.setDisconnectFailed = (value: boolean) => {
     writes.failed = value;
   };
+
   return writes;
 }
 
 const EMAIL = "g@x.io";
+
 const gcal = (result: unknown) => async () => result;
 
 test("a resolved google disconnect failure keeps the account and flags the error", async () => {
@@ -133,11 +171,13 @@ test("a resolved google disconnect failure keeps the account and flags the error
 
 test("a thrown google disconnect failure keeps the account and flags the error", async () => {
   const store: Record<string, unknown> = { gcalAccounts: [{ email: EMAIL }] };
+
   const api = {
     gcalDisconnect: async () => {
       throw new Error("ipc gone");
     },
   };
+
   const sandbox = buildSandbox({ store, api });
   const writes = observe(sandbox, store);
 
@@ -174,11 +214,13 @@ test("a resolved microsoft disconnect failure keeps the account and flags the er
 
 test("a thrown microsoft disconnect failure keeps the account and flags the error", async () => {
   const store: Record<string, unknown> = { mcalAccounts: [{ email: EMAIL }] };
+
   const api = {
     mcalDisconnect: async () => {
       throw new Error("ipc gone");
     },
   };
+
   const sandbox = buildSandbox({ store, api });
   const writes = observe(sandbox, store);
 
@@ -216,11 +258,13 @@ test("a resolved apple disconnect failure keeps the connection and flags the err
 
 test("a thrown apple disconnect failure keeps the connection and flags the error", async () => {
   const store: Record<string, unknown> = { appleCalendarConnected: true };
+
   const api = {
     acalDisconnect: async () => {
       throw new Error("ipc gone");
     },
   };
+
   const sandbox = buildSandbox({ store, api });
   const writes = observe(sandbox, store);
 

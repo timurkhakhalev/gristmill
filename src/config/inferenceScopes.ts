@@ -8,15 +8,29 @@ import type {
 // fields must reference string snapshot fields, the mode field a mode field,
 // disableThinking a boolean field. The store's SettingsState structurally
 // satisfies the snapshot, so the same keys read its state.
-type StringKey = NonNullable<{
-  [K in keyof InferenceSettingsSnapshot]: NonNullable<InferenceSettingsSnapshot[K]> extends string ? K : never;
-}[keyof InferenceSettingsSnapshot]>;
-type ModeKey = NonNullable<{
-  [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends InferenceMode ? K : never;
-}[keyof InferenceSettingsSnapshot]>;
-type BooleanKey = NonNullable<{
-  [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends boolean ? K : never;
-}[keyof InferenceSettingsSnapshot]>;
+type StringKey = NonNullable<
+  {
+    [K in keyof InferenceSettingsSnapshot]: NonNullable<InferenceSettingsSnapshot[K]> extends string
+      ? K
+      : never;
+  }[keyof InferenceSettingsSnapshot]
+>;
+
+type ModeKey = NonNullable<
+  {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends InferenceMode
+      ? K
+      : never;
+  }[keyof InferenceSettingsSnapshot]
+>;
+
+type BooleanKey = NonNullable<
+  {
+    [K in keyof InferenceSettingsSnapshot]: InferenceSettingsSnapshot[K] extends boolean
+      ? K
+      : never;
+  }[keyof InferenceSettingsSnapshot]
+>;
 
 export interface InferenceScopeStoreKeys {
   mode: ModeKey;

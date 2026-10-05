@@ -16,6 +16,7 @@ export type EnterpriseCallSettings = {
 
 export function getEnterpriseCallSettings(provider: EnterpriseProvider): EnterpriseCallSettings {
   const s = getSettings();
+
   return {
     apiKey: provider === "azure" ? s.azureApiKey : provider === "vertex" ? s.vertexApiKey : "",
     bedrockRegion: s.bedrockRegion,

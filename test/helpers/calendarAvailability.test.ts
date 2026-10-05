@@ -1,11 +1,17 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 type AvailModule = typeof import("../../src/helpers/calendarAvailability.js");
+
 let MAX_AVAILABILITY_HORIZON_DAYS: AvailModule["MAX_AVAILABILITY_HORIZON_DAYS"];
+
 let PAST_START_TOLERANCE_MS: AvailModule["PAST_START_TOLERANCE_MS"];
+
 let isExplicitOffsetRfc3339: AvailModule["isExplicitOffsetRfc3339"];
+
 let validateCalendarAvailabilityRequest: AvailModule["validateCalendarAvailabilityRequest"];
+
 let calculateCalendarAvailability: AvailModule["calculateCalendarAvailability"];
 
 test.before(async () => {
@@ -127,9 +133,11 @@ test("request validation rejects unknown fields, invalid bounds, stale starts, a
 test("request horizon spans 31 local calendar days across fall-back DST", () => {
   const originalTimezone = process.env.TZ;
   process.env.TZ = "America/New_York";
+
   try {
     const localNow = new Date("2026-10-30T09:00:00-04:00");
     const endAtLocalHorizon = "2026-11-30T09:00:00-05:00";
+
     const normalized = validateCalendarAvailabilityRequest(
       {
         start: localNow.toISOString(),
@@ -217,6 +225,7 @@ test("half-open boundaries do not block unless their buffer enters the requested
     bufferMinutes: 0,
     maxResults: 20,
   };
+
   const result = calculateCalendarAvailability(
     [
       buildEvent("2026-08-25T08:00:00Z", "2026-08-25T09:00:00Z"),
@@ -269,6 +278,7 @@ test("free, cancelled, and self-declined rows do not block time", () => {
   const declinedAttendees = JSON.stringify([
     { email: "me@example.com", self: true, responseStatus: "declined" },
   ]);
+
   const result = calculateCalendarAvailability(
     [
       buildEvent("2026-08-25T10:00:00Z", "2026-08-25T11:00:00Z", {
@@ -308,8 +318,10 @@ test("free, cancelled, and self-declined rows do not block time", () => {
 
 test("tentative, busy, unavailable, unknown, and missing availability conservatively block", () => {
   const statuses = ["tentative", "busy", "unavailable", "unknown", undefined];
+
   for (const [index, availabilityStatus] of statuses.entries()) {
     const startHour = 9 + index;
+
     const result = calculateCalendarAvailability(
       [
         buildEvent(
@@ -325,6 +337,7 @@ test("tentative, busy, unavailable, unknown, and missing availability conservati
       },
       NOW
     );
+
     assert.equal(result.busy.length, 1, String(availabilityStatus));
   }
 });
@@ -367,8 +380,10 @@ test("slot durations report whole usable minutes", () => {
 test("date-only all-day rows use device-local midnight instead of UTC", () => {
   const originalTimezone = process.env.TZ;
   process.env.TZ = "America/Los_Angeles";
+
   try {
     const localNow = new Date("2026-08-25T18:00:00-07:00");
+
     const result = calculateCalendarAvailability(
       [
         buildEvent("2026-08-25", "2026-08-26", {

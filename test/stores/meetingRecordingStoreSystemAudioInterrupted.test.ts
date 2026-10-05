@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const {
   createRendererServer,
   installBrowserGlobals,
@@ -43,20 +45,28 @@ interface MeetingStoreModule {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
+
   const promise = new Promise<T>((res) => {
     resolve = res;
   });
+
   return { promise, resolve };
 }
 
 let vitePromise: Promise<import("vite").ViteDevServer> | undefined;
+
 const cleanup: Array<() => void | Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
+
 function getVite() {
   // Reuse one dev server across tests; its TestContext only needs after().
-  const fakeContext = { after: (close: () => void | Promise<void>) => cleanup.push(close) } as unknown as TestContext;
+  const fakeContext = {
+    after: (close: () => void | Promise<void>) => cleanup.push(close),
+  } as unknown as TestContext;
+
   return (vitePromise ??= createRendererServer(fakeContext, {
     cachePrefix: "openwhispr-meeting-system-audio-interrupted-test-",
   }));
@@ -72,11 +82,23 @@ const START_ARGS = {
   folderId: null,
   autoEndEligible: false,
 };
+
 const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
 
-function createElectronAPI({ systemAudioMode, systemAudioStrategy }: { systemAudioMode: string; systemAudioStrategy: string }) {
-  const listeners: SystemAudioListeners = { systemAudioInterrupted: null, systemAudioResumed: null };
+function createElectronAPI({
+  systemAudioMode,
+  systemAudioStrategy,
+}: {
+  systemAudioMode: string;
+  systemAudioStrategy: string;
+}) {
+  const listeners: SystemAudioListeners = {
+    systemAudioInterrupted: null,
+    systemAudioResumed: null,
+  };
+
   const noopListener = () => () => {};
+
   const api = {
     checkSystemAudioAccess: async () => ({
       granted: systemAudioMode !== "unsupported",
@@ -95,7 +117,12 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }: { systemAud
     }),
     meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
     meetingTranscriptionStop: async () => ({ success: true }),
-    meetingTranscriptionSend: async (_buffer: unknown, _source: unknown, _sessionId: unknown, packet: { sequence: number }) => ({
+    meetingTranscriptionSend: async (
+      _buffer: unknown,
+      _source: unknown,
+      _sessionId: unknown,
+      packet: { sequence: number }
+    ) => ({
       success: true,
       sequence: packet.sequence,
     }),
@@ -104,6 +131,7 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }: { systemAud
     onMeetingSystemAudioSilent: noopListener,
     onMeetingSystemAudioInterrupted: (callback: (data: SystemAudioInterruption) => void) => {
       listeners.systemAudioInterrupted = callback;
+
       return () => {
         if (listeners.systemAudioInterrupted === callback) {
           listeners.systemAudioInterrupted = null;
@@ -112,12 +140,14 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }: { systemAud
     },
     onMeetingSystemAudioResumed: (callback: () => void) => {
       listeners.systemAudioResumed = callback;
+
       return () => {
         if (listeners.systemAudioResumed === callback) listeners.systemAudioResumed = null;
       };
     },
     onMeetingTranscriptionStopRequested: noopListener,
   };
+
   return { api, listeners };
 }
 
@@ -127,7 +157,9 @@ async function loadStore(t: TestContext, api: Record<string, unknown>) {
   });
   const vite = await getVite();
   const module = await vite.moduleGraph.getModuleByUrl("/stores/meetingRecordingStore.ts");
+
   if (module) vite.moduleGraph.invalidateModule(module);
+
   return vite.ssrLoadModule("/stores/meetingRecordingStore.ts");
 }
 
@@ -141,8 +173,10 @@ async function startWithPendingMicrophone(t: TestContext, startResult?: MeetingS
   let store!: MeetingStoreModule;
   let starting!: Promise<boolean>;
   let finishStart = async () => {};
+
   t.after(async () => {
     await finishStart();
+
     if (store) await stopStoreAndAssertOutcome(store);
   });
 
@@ -153,24 +187,31 @@ async function startWithPendingMicrophone(t: TestContext, startResult?: MeetingS
   const mainStarted = deferred<void>();
   navigator.mediaDevices.getUserMedia = () => {
     micRequested.resolve();
+
     return microphone.promise;
   };
+
   const { api, listeners } = createElectronAPI({
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
+
   const startMain = api.meetingTranscriptionStart;
   api.meetingTranscriptionStart = async () => {
     mainStarted.resolve();
+
     return startResult ?? startMain();
   };
+
   store = await loadStore(t, api);
   starting = store.startRecording(START_ARGS);
   finishStart = async () => {
     microphone.resolve(micStream);
     await starting;
   };
+
   await Promise.all([mainStarted.promise, micRequested.promise]);
+
   return { api, listeners, store, finishStart };
 }
 
@@ -182,9 +223,11 @@ const stoppedCapture: SystemAudioInterruption = {
 
 test("the final startup interruption survives a pending microphone permission", async (t: TestContext) => {
   const { listeners, store, finishStart } = await startWithPendingMicrophone(t);
+
   for (let attempt = 0; attempt < 3; attempt += 1) {
     listeners.systemAudioInterrupted?.({ ...stoppedCapture, recovering: true });
   }
+
   listeners.systemAudioInterrupted?.(stoppedCapture);
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
 
@@ -225,6 +268,7 @@ test("a mic-only fallback discards buffered system-audio interruptions", async (
     systemAudioMode: "unsupported",
     systemAudioStrategy: "unsupported",
   });
+
   listeners.systemAudioInterrupted?.(stoppedCapture);
   await finishStart();
   listeners.systemAudioInterrupted?.(stoppedCapture);
@@ -239,6 +283,7 @@ test("failed startup removes early interruption listeners before another session
     success: false,
     error: "capture startup failed",
   });
+
   const lateInterrupted = listeners.systemAudioInterrupted;
   const lateResumed = listeners.systemAudioResumed;
   listeners.systemAudioInterrupted?.(stoppedCapture);
@@ -285,10 +330,12 @@ test("resumed audio clears live warnings without creating another interruption",
   });
 
   installMicCaptureGlobals(t);
+
   const { api, listeners } = createElectronAPI({
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
+
   store = await loadStore(t, api);
   await store.startRecording(START_ARGS);
   listeners.systemAudioInterrupted!({ ...stoppedCapture, reason: "gone_quiet" });
@@ -296,6 +343,7 @@ test("resumed audio clears live warnings without creating another interruption",
   listeners.systemAudioResumed?.();
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterrupted, null);
   assert.equal(store.useMeetingRecordingStore.getState().systemAudioInterruptedNonce, nonce);
+
   for (const recovering of [true, false]) {
     listeners.systemAudioInterrupted!({ ...stoppedCapture, recovering });
     listeners.systemAudioResumed?.();
@@ -319,6 +367,7 @@ test("every interruption bumps the nonce so a repeat still notifies", async (t: 
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
+
   const store = await loadStore(t, api);
 
   assert.equal(await store.startRecording(START_ARGS), true);
@@ -357,6 +406,7 @@ test("a give-up report carries recovering false and its reason through to the st
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
+
   const store = await loadStore(t, api);
 
   assert.equal(await store.startRecording(START_ARGS), true);
@@ -389,6 +439,7 @@ test("an interruption arriving after stop is ignored without crashing", async (t
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
+
   const store = await loadStore(t, api);
 
   assert.equal(await store.startRecording(START_ARGS), true);
@@ -405,10 +456,12 @@ test("an interruption arriving after stop is ignored without crashing", async (t
 
 test("no interruption state when the session had no system audio", async (t: TestContext) => {
   installMicCaptureGlobals(t);
+
   const { api, listeners } = createElectronAPI({
     systemAudioMode: "unsupported",
     systemAudioStrategy: "unsupported",
   });
+
   const store = await loadStore(t, api);
 
   assert.equal(await store.startRecording(START_ARGS), true);

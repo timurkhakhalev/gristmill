@@ -1,9 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/services/tools/snippetTool.js");
 
 import type { Snippet } from "../../src/utils/snippets.js";
+
 const snippets: Snippet[] = [
   { trigger: "investor ask", replacement: "We are raising a $2M seed round." },
   { trigger: "Sign-off", replacement: "Best,\nGabe" },
@@ -48,6 +50,7 @@ test("an unknown trigger fails with the saved triggers so the model can retry", 
 
 function vocabulary(current: Array<{ trigger: string; replacement: string }>) {
   const writes: unknown[] = [];
+
   return {
     writes,
     actions: {
@@ -61,6 +64,7 @@ function vocabulary(current: Array<{ trigger: string; replacement: string }>) {
 
 test("registry exposes the vocabulary tools, and get_snippet only when snippets exist", async () => {
   const { createToolRegistry } = await import("../../src/services/tools/index.js");
+
   const settings = {
     isSignedIn: false,
     calendarConnected: false,
@@ -72,6 +76,7 @@ test("registry exposes the vocabulary tools, and get_snippet only when snippets 
     ...settings,
     vocabulary: vocabulary(snippets).actions,
   });
+
   const withoutSnippets = createToolRegistry({ ...settings, vocabulary: vocabulary([]).actions });
   const noVocabulary = createToolRegistry(settings);
 
@@ -106,6 +111,7 @@ test("get_snippet reads the current snippets, not the registry-creation snapshot
 test("a real registry: update_snippets then get_snippet in the same loop returns the new text", async () => {
   const { createToolRegistry } = await import("../../src/services/tools/index.js");
   let current = snippets;
+
   const registry = createToolRegistry({
     calendarConnected: false,
     vocabulary: {
@@ -121,6 +127,7 @@ test("a real registry: update_snippets then get_snippet in the same loop returns
   const update = await registry.get("update_snippets")?.execute({
     add: [{ trigger: "sign-off", replacement: "Cheers,\nGabe" }],
   });
+
   assert.equal(update?.success, true);
 
   const get = await registry.get("get_snippet")?.execute({ trigger: " sign-off " });

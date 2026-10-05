@@ -47,15 +47,19 @@ export const updateNoteTool: ToolDefinition = {
 
     try {
       const note = await window.electronAPI.getNote(id);
+
       if (!note) {
         return { success: false, data: null, displayText: `Note with ID ${id} not found` };
       }
 
       const updates: NoteUpdate = {};
+
       if (title) updates.title = title;
+
       if (content) updates.content = content;
 
       let folderCreated = false;
+
       if (folderName) {
         // Folder resolution stays within the note's space so a move by name
         // never drags the note into another space.
@@ -64,9 +68,11 @@ export const updateNoteTool: ToolDefinition = {
           { createIfMissing: true },
           note.space_id
         );
+
         if (resolved.error !== undefined) {
           return { success: false, data: null, displayText: resolved.error };
         }
+
         updates.folder_id = resolved.folderId;
         folderCreated = resolved.created;
       }
@@ -78,6 +84,7 @@ export const updateNoteTool: ToolDefinition = {
       }
 
       const suffix = folderCreated ? ` (moved to new folder "${folderName}")` : "";
+
       return {
         success: true,
         data: { id, title: title || note.title },

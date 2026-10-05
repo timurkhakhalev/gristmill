@@ -8,6 +8,7 @@ import { getUserDataDir } from "../../../helpers/harness/electronStub.ts";
 import { MeetingRecordingStorage } from "../../../../src/helpers/meetingRecordingStorage.ts";
 import { NoteReadService } from "../../../../src/helpers/noteReadService.ts";
 import type { MeetingProcessingConfig } from "../../../../src/contracts/meetingRecording.ts";
+
 const config: MeetingProcessingConfig = {
   transcription: {
     mode: "providers",
@@ -25,6 +26,7 @@ const config: MeetingProcessingConfig = {
     credentialRef: "OPENAI_API_KEY",
   },
 };
+
 function fixture(t: import("node:test").TestContext) {
   const db = createDb(t)!;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -32,11 +34,13 @@ function fixture(t: import("node:test").TestContext) {
   const note = db.saveNote("Meeting title", "manual", "meeting").note!;
   const recording = db.createMeetingRecording(note.id, { config }, "2026-10-01T10:00:00.000Z");
   db.markMeetingRecordingFinalizing(recording.id);
+
   const run = db.finalizeMeetingRecording(recording.id, {
     captureState: "ready",
     endedAt: "2026-10-01T10:00:01.000Z",
     sourceMetadata: { captureEndFrame: 24000 },
   }).initialRun;
+
   db.setMeetingProcessingRunState(run.id, { status: "running", stage: "normalize" });
   storage.writeRunArtifact(run.id, "provider-response", {});
   assert.equal(db.setMeetingRunArtifact(run.id, "provider-response").success, true);
@@ -52,8 +56,10 @@ function fixture(t: import("node:test").TestContext) {
   assert.equal(db.setMeetingRunArtifact(run.id, "summary").success, true);
   db.setMeetingProcessingRunState(run.id, { status: "complete", stage: "summary" });
   db.updateNote(note.id, { enhanced_content: "manual projection", transcript: "projection text" });
+
   return { db, storage, reader, note, recording, run };
 }
+
 function snapshot(f: ReturnType<typeof fixture>) {
   return {
     version: 1,
@@ -76,6 +82,7 @@ test("Note projection has unknown origin while explicit historical run keeps its
   const newer = f.db.createMeetingProcessingRun(f.recording.id, { kind: "reprocess", config });
   const projection = f.reader.readOutput({ scope: "note", noteId: f.note.id });
   assert.equal(projection.scope, "note");
+
   if (projection.scope !== "note") return;
   assert.equal(projection.summary, "manual projection");
   assert.deepEqual(projection.summaryProvenance, { source: "note-projection", runIds: [] });
@@ -83,6 +90,7 @@ test("Note projection has unknown origin while explicit historical run keeps its
   assert.equal(projection.currentRuns[0].runId, newer.id);
   const historical = f.reader.readOutput({ scope: "run", noteId: f.note.id, runId: f.run.id });
   assert.equal(historical.scope, "run");
+
   if (historical.scope !== "run") return;
   assert.equal(historical.result?.summary?.text, "artifact summary");
   assert.deepEqual(historical.summaryProvenance.runIds, [f.run.id]);
@@ -93,13 +101,16 @@ test("Note projection has unknown origin while explicit historical run keeps its
 
 test("Summary-only reads expose distinct Summary and transcript origins without Note fallback", (t) => {
   const f = fixture(t);
+
   const summary = f.db.createMeetingProcessingRun(f.recording.id, {
     kind: "summary",
     sourceRunId: f.run.id,
     config,
   });
+
   let output = f.reader.readOutput({ scope: "run", noteId: f.note.id, runId: summary.id });
   assert.equal(output.scope, "run");
+
   if (output.scope !== "run") return;
   assert.deepEqual(output.transcriptProvenance.runIds, [f.run.id]);
   assert.deepEqual(output.summaryProvenance.runIds, [f.run.id]);
@@ -111,6 +122,7 @@ test("Summary-only reads expose distinct Summary and transcript origins without 
   f.db.setMeetingRunArtifact(summary.id, "summary");
   output = f.reader.readOutput({ scope: "run", noteId: f.note.id, runId: summary.id });
   assert.equal(output.scope, "run");
+
   if (output.scope !== "run") return;
   assert.deepEqual(output.summaryProvenance.runIds, [summary.id]);
   assert.equal(output.result?.summary?.text, "new summary");
@@ -136,6 +148,7 @@ test("freshness uses saved generation and authoritative corrections, including a
   const revoked = read();
   assert.equal(revoked.summaryFreshness.status, "stale");
   assert.ok(revoked.summaryFreshness.reasons.includes("speaker-corrections-changed"));
+
   if (revoked.scope === "run") {
     assert.deepEqual(revoked.result?.speakerCorrections, []);
     assert.ok(revoked.result!.speakerCorrectionRevision > 0);
@@ -150,6 +163,7 @@ test("missing and invalid run artifacts never become a complete Note projection 
   );
   const invalid = f.reader.readOutput({ scope: "run", noteId: f.note.id, runId: f.run.id });
   assert.equal(invalid.scope, "run");
+
   if (invalid.scope !== "run") return;
   assert.equal(invalid.result, null);
   assert.ok(invalid.diagnostics.length);
@@ -157,6 +171,7 @@ test("missing and invalid run artifacts never become a complete Note projection 
   const empty = f.db.createMeetingProcessingRun(f.recording.id, { kind: "reprocess", config });
   const missing = f.reader.readOutput({ scope: "run", noteId: f.note.id, runId: empty.id });
   assert.equal(missing.scope, "run");
+
   if (missing.scope !== "run") return;
   assert.equal(missing.result?.summary, null);
   assert.ok(missing.diagnostics.includes("summary-artifact-missing"));
@@ -169,6 +184,7 @@ test("Note without recordings reads manual/upload projection, and foreign run re
   f.db.updateNote(plain.id, { transcript: "uploaded text", enhanced_content: "edited summary" });
   const output = f.reader.readOutput({ scope: "note", noteId: plain.id });
   assert.equal(output.scope, "note");
+
   if (output.scope !== "note") return;
   assert.equal(output.transcript.text, "uploaded text");
   assert.equal(output.transcript.segments, null);
@@ -189,6 +205,7 @@ test("invalid aggregate artifacts retain diagnostics without replacing them with
   );
   const output = f.reader.readOutput({ scope: "note", noteId: f.note.id });
   assert.equal(output.scope, "note");
+
   if (output.scope !== "note") return;
   assert.equal(output.transcript.status, "error");
   assert.equal(output.transcript.text, null);

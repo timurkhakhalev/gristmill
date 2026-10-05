@@ -23,6 +23,7 @@ test("get_note keeps projection/manual text and metadata semantics through the p
         getNoteOutput: async (request: { noteId: number; scope: string }) => {
           requests++;
           assert.deepEqual(request, { noteId: 7, scope: "note" });
+
           return { noteId: 7, scope: "note", summary, manual: { text: "manual text" } };
         },
       },

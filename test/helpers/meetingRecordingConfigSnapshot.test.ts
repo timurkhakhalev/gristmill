@@ -1,6 +1,12 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
 const routeGlobals = globalThis as typeof globalThis & { __meetingSnapshotRouteReads?: number };
 
 test("new Local snapshots enable diarization despite a removed preference; saved options stay explicit", async (t: import("node:test").TestContext) => {
@@ -13,21 +19,35 @@ test("new Local snapshots enable diarization despite a removed preference; saved
       preferredLanguage: "en",
     },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: "meeting-local-diarization-snapshot-",
     mockModules: {
       "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Summary instruction" }]; }`,
     },
   });
+
   const { useSettingsStore } = await vite.ssrLoadModule("/stores/settingsStore.ts");
-  useSettingsStore.setState({ meetingTranscriptionMode: "local", meetingLocalTranscriptionProvider: "whisper", meetingWhisperModel: "base" });
-  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule("/helpers/meetingRecordingConfigSnapshot.ts");
+  useSettingsStore.setState({
+    meetingTranscriptionMode: "local",
+    meetingLocalTranscriptionProvider: "whisper",
+    meetingWhisperModel: "base",
+  });
+
+  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule(
+    "/helpers/meetingRecordingConfigSnapshot.ts"
+  );
+
   const fresh = snapshotMeetingRecordingConfig();
   assert.equal(fresh.configError, null);
   assert.equal(fresh.config.transcription.mode, "local");
   assert.equal(fresh.config.transcription.local.options.diarize, true);
 
-  const saved = { ...fresh.config.transcription, local: { ...fresh.config.transcription.local, options: { diarize: false } } };
+  const saved = {
+    ...fresh.config.transcription,
+    local: { ...fresh.config.transcription.local, options: { diarize: false } },
+  };
+
   const reprocessed = snapshotMeetingRecordingConfig(saved);
   assert.equal(reprocessed.configError, null);
   assert.deepEqual(reprocessed.config.transcription, saved);
@@ -51,7 +71,11 @@ test("saved transcription bypasses an unsupported current meeting route while sn
       "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "User-edited Detailed Notes instruction." }]; }`,
     },
   });
-  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule("/helpers/meetingRecordingConfigSnapshot.ts");
+
+  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule(
+    "/helpers/meetingRecordingConfigSnapshot.ts"
+  );
+
   const savedTranscription = {
     mode: "providers",
     provider: "elevenlabs",
@@ -60,7 +84,11 @@ test("saved transcription bypasses an unsupported current meeting route while sn
   };
 
   const corrected = snapshotMeetingRecordingConfig(savedTranscription);
-  assert.equal(routeGlobals.__meetingSnapshotRouteReads, 0, "summary correction does not resolve the current ASR route");
+  assert.equal(
+    routeGlobals.__meetingSnapshotRouteReads,
+    0,
+    "summary correction does not resolve the current ASR route"
+  );
   assert.equal(corrected.configError, null);
   assert.equal(corrected.config.selfDisplayName, "Timur");
   assert.deepEqual(corrected.config.transcription, savedTranscription);
@@ -74,7 +102,11 @@ test("saved transcription bypasses an unsupported current meeting route while sn
     config: null,
     configError: { code: "unsupported-transcription-route" },
   });
-  assert.equal(routeGlobals.__meetingSnapshotRouteReads, 1, "ordinary capture still validates current meeting settings");
+  assert.equal(
+    routeGlobals.__meetingSnapshotRouteReads,
+    1,
+    "ordinary capture still validates current meeting settings"
+  );
 });
 
 test("meeting summary snapshots the selected bb harness, model and reasoning level", async (t: import("node:test").TestContext) => {
@@ -88,10 +120,18 @@ test("meeting summary snapshots the selected bb harness, model and reasoning lev
       "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Current Detailed Notes prompt." }]; }`,
     },
   });
-  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule("/helpers/meetingRecordingConfigSnapshot.ts");
+
+  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule(
+    "/helpers/meetingRecordingConfigSnapshot.ts"
+  );
+
   const result = snapshotMeetingRecordingConfig({
-    mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "ru",
+    mode: "providers",
+    provider: "elevenlabs",
+    model: "scribe_v2",
+    language: "ru",
   });
+
   assert.equal(result.configError, null);
   assert.equal(result.config.selfDisplayName, "Вы");
   assert.equal(result.config.summary.reasoningMode, "agent");
@@ -99,7 +139,6 @@ test("meeting summary snapshots the selected bb harness, model and reasoning lev
   assert.equal(result.config.summary.model, "gpt-6-luna");
   assert.equal(result.config.summary.agentReasoningLevel, "high");
 });
-
 
 test("transcription-only config includes the naming model without requesting Summary", async (t: import("node:test").TestContext) => {
   const vite = await createRendererServer(t, {
@@ -109,8 +148,18 @@ test("transcription-only config includes the naming model without requesting Sum
       "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Summary instruction" }]; }`,
     },
   });
-  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule("/helpers/meetingRecordingConfigSnapshot.ts");
-  const transcription = { mode: "providers", provider: "elevenlabs", model: "scribe_v2", language: "en" };
+
+  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule(
+    "/helpers/meetingRecordingConfigSnapshot.ts"
+  );
+
+  const transcription = {
+    mode: "providers",
+    provider: "elevenlabs",
+    model: "scribe_v2",
+    language: "en",
+  };
+
   const result = snapshotMeetingRecordingConfig(transcription, false);
   assert.equal(result.configError, null);
   assert.equal(result.config.generateSummary, false);

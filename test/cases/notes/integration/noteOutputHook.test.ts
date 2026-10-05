@@ -7,6 +7,7 @@ import {
   installBrowserGlobals,
   installHookDom,
 } from "../../../lib/rendererTestHarness.ts";
+
 const RUN_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   RUN_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
@@ -15,10 +16,12 @@ test("Note/run output ignores late identities, superseded refreshes and unmounte
   t.after(async () => {
     if (root) await act(async () => root!.unmount());
   });
+
   const pending: Array<{
     request: { noteId: number; scope: string; runId?: string };
     resolve: (value: unknown) => void;
   }> = [];
+
   let updated!: (note: { id: number }) => void;
   let unsubscriptions = 0;
   installBrowserGlobals(t, {
@@ -31,6 +34,7 @@ test("Note/run output ignores late identities, superseded refreshes and unmounte
         },
         onNoteUpdated: (callback: typeof updated) => {
           updated = callback;
+
           return () => {
             unsubscriptions++;
           };
@@ -40,26 +44,33 @@ test("Note/run output ignores late identities, superseded refreshes and unmounte
   });
   const container = installHookDom(t);
   const vite = await createRendererServer(t, { cachePrefix: "note-output-hook-" });
+
   const { useNoteOutput } = (await vite.ssrLoadModule(
     "/hooks/useNoteOutput.ts"
   )) as typeof import("../../../../src/hooks/useNoteOutput.ts");
+
   root = createRoot(container as unknown as Element);
   let props = { noteId: 1, runId: RUN_A, enabled: true };
   let state!: ReturnType<typeof useNoteOutput>;
   const readState = () => state;
+
   function Harness() {
     state = useNoteOutput(props.noteId, props.runId, props.enabled);
+
     return null;
   }
+
   const render = async () => {
     await act(async () => root!.render(createElement(Harness)));
   };
+
   const settle = async (index: number, marker: string) => {
     await act(async () => {
       for (const entry of pending.slice(index, index + 2))
         entry.resolve({ ...entry.request, diagnostics: [marker], result: null, summary: null });
     });
   };
+
   await render();
   assert.equal(pending.length, 2);
   props = { noteId: 2, runId: RUN_B, enabled: true };

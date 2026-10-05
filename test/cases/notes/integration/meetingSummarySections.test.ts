@@ -1,5 +1,7 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const {
   replaceMeetingRecap,
   replaceMeetingTasks,
@@ -9,22 +11,45 @@ const {
 }: typeof import("../../../../src/helpers/meetingSummarySections.ts") = require("../../../../src/helpers/meetingSummarySections.ts");
 
 test("tasks accept Markdown and empty results, rejecting JSON and replacement headings", () => {
-  assert.deepEqual(validateMeetingTasks("### HIGH\n- **Ship release**"), { success: true, value: "### HIGH\n- **Ship release**" });
+  assert.deepEqual(validateMeetingTasks("### HIGH\n- **Ship release**"), {
+    success: true,
+    value: "### HIGH\n- **Ship release**",
+  });
   assert.deepEqual(validateMeetingTasks("  "), { success: true, value: "" });
-  for (const input of ['{"HIGH":[]}', "## TLDR\n- Replace summary", "```markdown\n- Task\n```", "No action items."]) {
+
+  for (const input of [
+    '{"HIGH":[]}',
+    "## TLDR\n- Replace summary",
+    "```markdown\n- Task\n```",
+    "No action items.",
+  ]) {
     assert.equal(validateMeetingTasks(input).success, false);
   }
 });
 
 test("task mutation replaces only the final Action Items section and zero tasks remove it", () => {
   const initial = "## TLDR\nKeep this summary.\n\n## Action Items\n\n- Old task\n";
-  const replacement = replaceMeetingTasks(initial, "### HIGH\n\n- Ship the release\n\n### LOW\n\n- Review the notes");
-  assert.equal(replacement.success, true);
-  if (!replacement.success) return;
-  assert.equal(replacement.markdown, "## TLDR\nKeep this summary.\n\n## Action Items\n\n### HIGH\n\n- Ship the release\n\n### LOW\n\n- Review the notes");
 
-  const recap = replaceMeetingRecap(replacement.markdown, { title: "Release", bullets: ["Ship Friday"] });
+  const replacement = replaceMeetingTasks(
+    initial,
+    "### HIGH\n\n- Ship the release\n\n### LOW\n\n- Review the notes"
+  );
+
+  assert.equal(replacement.success, true);
+
+  if (!replacement.success) return;
+  assert.equal(
+    replacement.markdown,
+    "## TLDR\nKeep this summary.\n\n## Action Items\n\n### HIGH\n\n- Ship the release\n\n### LOW\n\n- Review the notes"
+  );
+
+  const recap = replaceMeetingRecap(replacement.markdown, {
+    title: "Release",
+    bullets: ["Ship Friday"],
+  });
+
   assert.equal(recap.success, true);
+
   if (!recap.success) return;
   assert.match(recap.markdown, /## Action Items[\s\S]*## Recap/);
   assert.match(recap.markdown, /\*\*Release\*\*/);
@@ -35,6 +60,7 @@ test("task mutation replaces only the final Action Items section and zero tasks 
 
   const zero = replaceMeetingTasks(recap.markdown, "");
   assert.equal(zero.success, true);
+
   if (!zero.success) return;
   assert.doesNotMatch(zero.markdown, /## Action Items/);
   assert.match(zero.markdown, /## TLDR[\s\S]*## Recap/);
@@ -42,6 +68,7 @@ test("task mutation replaces only the final Action Items section and zero tasks 
 
 test("nonempty tasks refuse absent, ambiguous, or nonfinal Action Items headings", () => {
   const tasks = "### HIGH\n- Do the task";
+
   for (const markdown of [
     "## TLDR\nSummary.",
     "## Action Items\n\n- first\n\n## Topic\nText.",
@@ -54,7 +81,11 @@ test("nonempty tasks refuse absent, ambiguous, or nonfinal Action Items headings
 });
 
 test("Recap validation counts Unicode code points and rejects multiline or empty values", () => {
-  assert.equal(validateMeetingRecap(JSON.stringify({ title: "😀".repeat(58), bullets: [] })).success, true);
+  assert.equal(
+    validateMeetingRecap(JSON.stringify({ title: "😀".repeat(58), bullets: [] })).success,
+    true
+  );
+
   for (const input of [
     { title: "😀".repeat(59), bullets: [] },
     { title: "Title", bullets: [" "] },

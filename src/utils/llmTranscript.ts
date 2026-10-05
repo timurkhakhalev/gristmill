@@ -29,11 +29,15 @@ export function resolveLlmSpeakerLabel(
 ): string {
   if (segment.source === "mic" || segment.speaker === "you") return selfLabel;
   const resolved = resolveSegmentSpeakerName(segment, speakerMappings);
+
   if (resolved) return resolved;
+
   if (segment.speaker) {
     const num = Number.parseInt(segment.speaker.replace("speaker_", ""), 10);
+
     if (!Number.isNaN(num)) return t("notes.speaker.label", { n: num + 1 });
   }
+
   return t("notes.speaker.them");
 }
 
@@ -44,14 +48,19 @@ export function buildLlmTranscript(
   t: Translate
 ): string {
   return segments
-    .map((s) => `${resolveLlmSpeakerLabel(s, speakerMappings, selfLabel, t)}${s.speakerLockSource === "platform" && s.speakerPlatform ? ` [name from ${meetingPlatformLabel(s.speakerPlatform)}]` : ""}: ${s.text}`)
+    .map(
+      (s) =>
+        `${resolveLlmSpeakerLabel(s, speakerMappings, selfLabel, t)}${s.speakerLockSource === "platform" && s.speakerPlatform ? ` [name from ${meetingPlatformLabel(s.speakerPlatform)}]` : ""}: ${s.text}`
+    )
     .join("\n");
 }
 
 const formatPerson = (name: string | null, email: string | null): string => {
   const trimmedName = name?.trim() || "";
   const trimmedEmail = email?.trim() || "";
+
   if (trimmedName && trimmedEmail) return `${trimmedName} <${trimmedEmail}>`;
+
   return trimmedName || trimmedEmail;
 };
 
@@ -63,14 +72,18 @@ const formatPerson = (name: string | null, email: string | null): string => {
 export function buildMeetingContext(identity: MeetingIdentity, selfLabel: string): string {
   const lines: string[] = [];
   const self = formatPerson(identity.selfName, identity.selfEmail);
+
   if (self) {
     lines.push(`The user taking these notes ("${selfLabel}" in the transcript) is ${self}.`);
   }
+
   const invited = identity.participants
     .filter((p) => !isSelfParticipant(p, identity))
     .map((p) => formatPerson(p.displayName, p.email))
     .filter(Boolean);
+
   if (invited.length > 0) lines.push(`Invited participants: ${invited.join(", ")}.`);
+
   return lines.length > 0 ? `## Meeting Context\n${lines.join("\n")}` : "";
 }
 
@@ -86,21 +99,28 @@ export function collectKnownPeople(
 ): MentionPerson[] {
   const people: MentionPerson[] = [];
   const seen = new Set<string>();
+
   const push = (name: string | null | undefined, email: string | null | undefined) => {
     const trimmed = name?.trim();
+
     if (!trimmed) return;
     const key = trimmed.toLowerCase();
+
     if (seen.has(key)) return;
     seen.add(key);
     people.push({ name: trimmed, email: email?.trim() || null });
   };
 
   push(identity.selfName, identity.selfEmail);
+
   for (const p of identity.participants) {
     if (isSelfParticipant(p, identity)) continue;
     push(p.displayName || p.email.split("@")[0], p.email);
   }
+
   for (const name of Object.values(speakerMappings)) push(name, null);
+
   for (const segment of segments) push(segment.speakerName, null);
+
   return people;
 }

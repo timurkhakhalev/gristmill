@@ -5,9 +5,13 @@
 // the Node arm. A negative probe confirms the checker actually rejects a
 // strict violation inside a migrated file.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const ts: typeof import("typescript") = require("typescript");
 
 const root = path.resolve(__dirname, "../..");
@@ -41,9 +45,12 @@ function programDiagnostics(
     if (patch && patch.file === file) {
       return ts.createSourceFile(file, patch.source, languageVersion, true);
     }
+
     return readSource(file, languageVersion, ...args);
   };
+
   const program = ts.createProgram(rootNames, { ...options, noEmit: true }, host);
+
   return ts.getPreEmitDiagnostics(program);
 }
 
@@ -96,10 +103,12 @@ test("shared helpers compile strict under the renderer ESM target", () => {
 
 test("a strict violation inside a migrated shared file is rejected", () => {
   const victim = path.join(root, "src/helpers/stripThinking.ts");
+
   const patch = {
     file: victim,
     source: `${fs.readFileSync(victim, "utf8")}\nconst broken: number = "not a number";\n`,
   };
+
   const diagnostics = programDiagnostics([victim], NODE_OPTIONS, { patch });
   const codes = diagnostics.map((d) => d.code);
   assert.ok(codes.includes(2322), `expected TS2322, got ${codes.join(",")}`);

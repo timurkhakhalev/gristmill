@@ -6,7 +6,6 @@ import { createReasoningBridge } from "./src/preload/reasoningBridge.js";
 import { AgentStreamRequestRegistry } from "./src/helpers/agentStreamRequestRegistry.js";
 import { toCloneableStreamPart } from "./src/helpers/reasoningIpcHandlers.js";
 
-
 declare const ipcMain: {
   handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
   on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
@@ -15,7 +14,13 @@ declare const ipcMain: {
 registerReasoningHandlers(ipcMain, {
   localService: { isAvailable: async () => true, processText: async () => "t" },
   getAnthropicKey: () => "k",
-  proxyFetch: async () => ({ ok: true, status: 200, statusText: "", text: async () => "", json: async () => ({}) }),
+  proxyFetch: async () => ({
+    ok: true,
+    status: 200,
+    statusText: "",
+    text: async () => "",
+    json: async () => ({}),
+  }),
   extractAnthropicText: () => "t",
   describeMissingAnthropicText: () => "t",
   isEnterpriseProvider: (value: unknown) => value === "bedrock",

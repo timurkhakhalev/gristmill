@@ -24,6 +24,7 @@ interface UseVoiceDraftOptions {
  */
 export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
   const settings = useSettings();
+
   const {
     useLocalWhisper,
     whisperModel,
@@ -38,6 +39,7 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
     remoteTranscriptionUrl,
     remoteTranscriptionModel,
   } = settings;
+
   const cortiEnvironment = useSettingsStore((s) => s.cortiEnvironment);
   const cortiTenant = useSettingsStore((s) => s.cortiTenant);
 
@@ -76,6 +78,7 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
   // take record straight into that failure.
   const config = buildConfig();
   const route = resolveFileTranscriptionRoute(config);
+
   const streamingOnlyProvider =
     route?.transport === "error" && route.code === "STREAMING_ONLY_PROVIDER";
 
@@ -92,12 +95,15 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
     if (status !== "recording") return;
     setElapsed(0);
     const id = setInterval(() => setElapsed((s) => s + 1), 1000);
+
     return () => clearInterval(id);
   }, [status]);
 
   const readLevel = useCallback(() => {
     const analyser = analyserRef.current;
+
     if (!analyser) return 0;
+
     return analyserRms(analyser, levelBufRef);
   }, []);
 
@@ -117,17 +123,20 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
 
     if (discardRef.current || blob.size === 0) {
       setStatus("idle");
+
       return;
     }
 
     setStatus("transcribing");
     let tempPath: string | null = null;
+
     try {
       const buffer = await blob.arrayBuffer();
       const saved = await window.electronAPI.saveTempAudio(buffer);
       tempPath = saved.path;
       const result = await transcribeFile(tempPath, buildConfigRef.current(), false);
       const text = result.text?.trim();
+
       if (!result.success || !text) {
         onErrorRef.current(result.error || "");
       } else {
@@ -143,6 +152,7 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
 
   const start = useCallback(async () => {
     if (recorderRef.current) return;
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const context = new AudioContext();
@@ -163,6 +173,7 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
+
       recorder.onstop = () => void finishRecording();
       recorder.start(1000);
 

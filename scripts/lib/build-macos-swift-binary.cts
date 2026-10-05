@@ -1,6 +1,9 @@
 const { spawnSync }: typeof import("child_process") = require("child_process");
+
 const crypto: typeof import("crypto") = require("crypto");
+
 const fs: typeof import("fs") = require("fs");
+
 const path: typeof import("path") = require("path");
 
 // Mach-O CPU type constants for architecture verification
@@ -22,12 +25,15 @@ function verifyBinaryArch(binaryPath: string, expectedArch: "arm64") {
     fs.closeSync(fd);
 
     const magic = header.readUInt32LE(0);
+
     if (magic !== 0xfeedfacf) {
       // Not a 64-bit Mach-O
       return false;
     }
+
     const cpuType = header.readInt32LE(4);
     const expectedCpu = ARCH_CPU_TYPE[expectedArch];
+
     return cpuType === expectedCpu;
   } catch {
     return false;
@@ -63,6 +69,7 @@ function buildMacosSwiftBinary({
   const targetArch = "arm64";
 
   const swiftTarget = target;
+
   if (!swiftTarget) {
     console.error(`[${label}] Unsupported architecture: ${targetArch}`);
     process.exit(1);
@@ -88,6 +95,7 @@ function buildMacosSwiftBinary({
   ensureDir(moduleCacheDir);
 
   let needsBuild = true;
+
   if (fs.existsSync(outputBinary)) {
     // Verify existing binary matches the target architecture
     if (!verifyBinaryArch(outputBinary, targetArch)) {
@@ -97,6 +105,7 @@ function buildMacosSwiftBinary({
       try {
         const binaryStat = fs.statSync(outputBinary);
         const sourceStat = fs.statSync(swiftSource);
+
         if (binaryStat.mtimeMs >= sourceStat.mtimeMs) {
           needsBuild = false;
         }
@@ -109,7 +118,9 @@ function buildMacosSwiftBinary({
   // Hash the Swift source plus any embedded plist, so edits to either rebuild
   function computeSourceHash() {
     let content = fs.readFileSync(swiftSource, "utf8");
+
     if (linkerInfoPlist) content += fs.readFileSync(linkerInfoPlist, "utf8");
+
     return crypto.createHash("sha256").update(content).digest("hex");
   }
 
@@ -120,6 +131,7 @@ function buildMacosSwiftBinary({
 
       if (fs.existsSync(hashFile)) {
         const savedHash = fs.readFileSync(hashFile, "utf8").trim();
+
         if (savedHash !== currentHash) {
           log("Source hash changed, rebuild needed");
           needsBuild = true;
@@ -143,6 +155,7 @@ function buildMacosSwiftBinary({
 
   function attemptCompile(command: string, args: string[]) {
     log(`Compiling with ${[command, ...args].join(" ")}`);
+
     return spawnSync(command, args, {
       stdio: "inherit",
       env: {
@@ -164,6 +177,7 @@ function buildMacosSwiftBinary({
         linkerInfoPlist,
       ]
     : [];
+
   const compileArgs = [
     swiftSource,
     "-O",
@@ -219,4 +233,5 @@ function buildMacosSwiftBinary({
 const api = { buildMacosSwiftBinary };
 
 module.exports = api;
+
 export type API = typeof api;

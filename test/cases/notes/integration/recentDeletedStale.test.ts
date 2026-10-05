@@ -10,21 +10,42 @@
 // folder (uncached) or a loaded one (cached), which is what distinguishes the
 // old cache-identity trigger from the event revision.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react") as typeof import("react");
+
 const { createRoot } = require("react-dom/client");
-const { createRendererServer, installBrowserGlobals, installHookDom }: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  installHookDom,
+}: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
+
 import type { NoteItem, NoteDeletedPayload } from "../../../../src/contracts/notes";
 
 function note(id: number, folderId: number | null, spaceId = 1): NoteItem {
   return {
-    id, title: `Note ${id}`, content: "", note_type: "personal", space_id: spaceId,
-    folder_id: folderId, folder_ids: folderId == null ? [] : [folderId],
-    source_file: null, audio_duration_seconds: null,
-    created_at: "2026-10-02", updated_at: "2026-10-02",
-    enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null,
-    transcript: null, calendar_event_id: null, participants: null,
-    diarization_enabled: null, expected_speaker_count: null,
+    id,
+    title: `Note ${id}`,
+    content: "",
+    note_type: "personal",
+    space_id: spaceId,
+    folder_id: folderId,
+    folder_ids: folderId == null ? [] : [folderId],
+    source_file: null,
+    audio_duration_seconds: null,
+    created_at: "2026-10-02",
+    updated_at: "2026-10-02",
+    enhanced_content: null,
+    enhancement_prompt: null,
+    enhanced_at_content_hash: null,
+    transcript: null,
+    calendar_event_id: null,
+    participants: null,
+    diarization_enabled: null,
+    expected_speaker_count: null,
   };
 }
 
@@ -46,43 +67,72 @@ interface HomeHarness {
 async function mountHome(
   t: import("node:test").TestContext,
   rows: () => NoteItem[],
-  { getNotesImpl, deleteNoteResult = { success: true } }: {
+  {
+    getNotesImpl,
+    deleteNoteResult = { success: true },
+  }: {
     getNotesImpl?: () => Promise<NoteItem[]>;
     deleteNoteResult?: { success: boolean };
   } = {}
 ): Promise<HomeHarness> {
   let root: ReturnType<typeof createRoot> | null = null;
-  t.after(async () => { if (root) await React.act(async () => root.unmount()); });
+  t.after(async () => {
+    if (root) await React.act(async () => root.unmount());
+  });
   let deletedListener: ((payload: NoteDeletedPayload) => void) | undefined;
   let getNotesCalls = 0;
   let deleteCalls = 0;
+
   // Mirrors the real bridge: folderId (3rd arg) or spaceId (4th arg) scopes the
   // list; no scope is the cross-space recent list.
   const realGetNotes = async (folderId: number | null, spaceId: number | null) => {
     const all = rows();
+
     if (folderId != null) return all.filter((n) => n.folder_ids.includes(folderId));
-    if (spaceId != null) return all.filter((n) => n.space_id === spaceId && n.folder_ids.length === 0);
+
+    if (spaceId != null)
+      return all.filter((n) => n.space_id === spaceId && n.folder_ids.length === 0);
+
     return all;
   };
-  installBrowserGlobals(t, { window: {
-    electronAPI: {
-      getNotes: async (_type: unknown, _limit: unknown, folderId: number | null = null, spaceId: number | null = null) => {
-        getNotesCalls += 1;
-        return getNotesImpl ? getNotesImpl() : realGetNotes(folderId, spaceId);
+
+  installBrowserGlobals(t, {
+    window: {
+      electronAPI: {
+        getNotes: async (
+          _type: unknown,
+          _limit: unknown,
+          folderId: number | null = null,
+          spaceId: number | null = null
+        ) => {
+          getNotesCalls += 1;
+
+          return getNotesImpl ? getNotesImpl() : realGetNotes(folderId, spaceId);
+        },
+        onNoteDeleted: (listener: (payload: NoteDeletedPayload) => void) => {
+          deletedListener = listener;
+
+          return () => {
+            deletedListener = undefined;
+          };
+        },
+        onNoteAdded: () => () => {},
+        onNoteUpdated: () => () => {},
+        onFolderDeleted: () => () => {},
+        getFolders: async () => [],
+        getFolderNoteCounts: async () => [],
+        getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
+        deleteNote: async (id: number) => {
+          deleteCalls += 1;
+          void id;
+
+          return deleteNoteResult;
+        },
       },
-      onNoteDeleted: (listener: (payload: NoteDeletedPayload) => void) => {
-        deletedListener = listener;
-        return () => { deletedListener = undefined; };
-      },
-      onNoteAdded: () => () => {},
-      onNoteUpdated: () => () => {},
-      onFolderDeleted: () => () => {},
-      getFolders: async () => [], getFolderNoteCounts: async () => [],
-      getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
-      deleteNote: async (id: number) => { deleteCalls += 1; void id; return deleteNoteResult; },
     },
-  } });
+  });
   const container = installHookDom(t);
+
   const mockModules: Record<string, string> = {
     "react-i18next": `
       const tr = (key) => key;
@@ -107,6 +157,7 @@ async function mountHome(
     `,
     "./HomeSkeleton": `export function RecentNotesSkeleton() { return null; } export function ComingUpSkeleton() { return null; } export function HomeSkeleton() { return null; }`,
   };
+
   const vite = await createRendererServer(t, { mockModules, noExternal: ["react-i18next"] });
   const globals = globalThis as { __recentRows?: number[]; __onDeleteNote?: (id: number) => void };
   delete globals.__recentRows;
@@ -116,39 +167,61 @@ async function mountHome(
   // Production binds the note IPC listeners from initializeNotesTree
   // (ControlPanel). Bind them here so firing note-deleted exercises the real
   // listener → revision → Home path.
-  await React.act(async () => { await store.initializeNotesTree(); });
+  await React.act(async () => {
+    await store.initializeNotesTree();
+  });
   root = createRoot(container as unknown as Element);
   await React.act(async () => {
-    root!.render(React.createElement(HomeView, { onOpenNote: () => {}, onConnectCalendar: () => {}, onOpenEvent: () => {} }));
+    root!.render(
+      React.createElement(HomeView, {
+        onOpenNote: () => {},
+        onConnectCalendar: () => {},
+        onOpenEvent: () => {},
+      })
+    );
     await new Promise((resolve) => setImmediate(resolve));
   });
+
   return {
     rowIds: () => (globals.__recentRows ?? []).map(String),
     remount: async () => {
       await React.act(async () => root!.unmount());
       root = createRoot(container as unknown as Element);
       await React.act(async () => {
-        root!.render(React.createElement(HomeView, { onOpenNote: () => {}, onConnectCalendar: () => {}, onOpenEvent: () => {} }));
+        root!.render(
+          React.createElement(HomeView, {
+            onOpenNote: () => {},
+            onConnectCalendar: () => {},
+            onOpenEvent: () => {},
+          })
+        );
       });
     },
-    fireDeleted: (payload: NoteDeletedPayload) => React.act(async () => {
+    fireDeleted: (payload: NoteDeletedPayload) =>
+      React.act(async () => {
+        deletedListener?.(payload);
+        await new Promise((resolve) => setImmediate(resolve));
+      }),
+    fireDeletedSync: (payload: NoteDeletedPayload) => {
       deletedListener?.(payload);
-      await new Promise((resolve) => setImmediate(resolve));
-    }),
-    fireDeletedSync: (payload: NoteDeletedPayload) => { deletedListener?.(payload); },
+    },
     calls: () => getNotesCalls,
     deleteCalls: () => deleteCalls,
     cachedNotes: (key: string) => store.getNotesByContainerValue()[key] ?? [],
     revision: () => store.getNoteEventsRevisionValue(),
     loadContainer: async (key: string) => {
       let loaded: NoteItem[] = [];
-      await React.act(async () => { loaded = await store.loadContainerNotes(key); });
+      await React.act(async () => {
+        loaded = await store.loadContainerNotes(key);
+      });
+
       return loaded;
     },
-    deleteNote: (id: number) => React.act(async () => {
-      globals.__onDeleteNote?.(id);
-      await new Promise((resolve) => setImmediate(resolve));
-    }),
+    deleteNote: (id: number) =>
+      React.act(async () => {
+        globals.__onDeleteNote?.(id);
+        await new Promise((resolve) => setImmediate(resolve));
+      }),
   };
 }
 
@@ -157,7 +230,11 @@ test("deleting a note from an unloaded folder removes it from RecentNotes withou
   // root, loaded by initializeNotesTree.
   const rows: NoteItem[] = [note(1, 9), note(2, null)];
   const home = await mountHome(t, () => rows);
-  assert.deepEqual(home.cachedNotes("s:1").map((n) => n.id), [2], "only the space root is cached");
+  assert.deepEqual(
+    home.cachedNotes("s:1").map((n) => n.id),
+    [2],
+    "only the space root is cached"
+  );
   assert.deepEqual(home.rowIds(), ["1", "2"]);
   const callsBefore = home.calls();
 
@@ -174,7 +251,10 @@ test("a cached delete refreshes Home and counts the same as an uncached one", as
   const home = await mountHome(t, () => rows);
   // Load folder 9 so note 1 is genuinely cached, making this the cached path.
   await home.loadContainer("f:9");
-  assert.ok(home.cachedNotes("f:9").some((n) => n.id === 1), "note 1 is cached");
+  assert.ok(
+    home.cachedNotes("f:9").some((n) => n.id === 1),
+    "note 1 is cached"
+  );
   assert.deepEqual(home.rowIds(), ["1", "2"]);
   const callsBefore = home.calls();
 
@@ -182,7 +262,11 @@ test("a cached delete refreshes Home and counts the same as an uncached one", as
   await home.fireDeleted({ id: 1 });
 
   assert.deepEqual(home.rowIds(), ["2"], "the deleted cached note disappears");
-  assert.equal(home.calls(), callsBefore + 1, "a cached delete re-reads Home exactly once, like the uncached path");
+  assert.equal(
+    home.calls(),
+    callsBefore + 1,
+    "a cached delete re-reads Home exactly once, like the uncached path"
+  );
 });
 
 test("a failed delete drives the action but hides nothing", async (t) => {
@@ -207,30 +291,45 @@ test("a burst of events drops late older responses from state and the remount ca
   // newer one; each captures the row list as it looked when that read started.
   let holdReads = false;
   const inFlight: Array<{ snapshot: NoteItem[]; release: () => void }> = [];
+
   const home = await mountHome(t, () => rows, {
-    getNotesImpl: () => holdReads
-      ? new Promise<NoteItem[]>((resolve) => {
-          const snapshot = [...rows];
-          inFlight.push({ snapshot, release: () => resolve(snapshot) });
-        })
-      : Promise.resolve([...rows]),
+    getNotesImpl: () =>
+      holdReads
+        ? new Promise<NoteItem[]>((resolve) => {
+            const snapshot = [...rows];
+            inFlight.push({ snapshot, release: () => resolve(snapshot) });
+          })
+        : Promise.resolve([...rows]),
   });
+
   assert.deepEqual(home.rowIds(), ["1", "2", "3"], "mount resolved before the burst");
   const callsBefore = home.calls();
   holdReads = true;
 
   // Event 1 (delete note 1): its getNotes call starts and stays in flight.
   rows.splice(0, 1);
-  await React.act(async () => { home.fireDeletedSync({ id: 1 }); await Promise.resolve(); });
+  await React.act(async () => {
+    home.fireDeletedSync({ id: 1 });
+    await Promise.resolve();
+  });
   // Event 2 (delete note 2): a separate effect run starts a second read.
   rows.splice(0, 1);
-  await React.act(async () => { home.fireDeletedSync({ id: 2 }); await Promise.resolve(); });
+  await React.act(async () => {
+    home.fireDeletedSync({ id: 2 });
+    await Promise.resolve();
+  });
 
   assert.equal(home.calls(), callsBefore + 2, "one re-read per event, no extras");
   assert.equal(inFlight.length, 2, "both burst reads are in flight");
   // The first read captured [2, 3]; the second captured [3].
-  assert.deepEqual(inFlight[0].snapshot.map((n) => n.id), [2, 3]);
-  assert.deepEqual(inFlight[1].snapshot.map((n) => n.id), [3]);
+  assert.deepEqual(
+    inFlight[0].snapshot.map((n) => n.id),
+    [2, 3]
+  );
+  assert.deepEqual(
+    inFlight[1].snapshot.map((n) => n.id),
+    [3]
+  );
 
   // Resolve the newer (second) response first, then the older (first). The
   // stale guard must drop the older one.
@@ -243,6 +342,12 @@ test("a burst of events drops late older responses from state and the remount ca
   assert.deepEqual(home.rowIds(), ["3"], "a late older response must not overwrite the newer list");
   await home.remount();
   assert.equal(inFlight.length, 3, "remount fetch stays pending so the cache is observable");
-  assert.deepEqual(home.rowIds(), ["3"], "superseded response must not restore deleted rows from cache");
-  await React.act(async () => { inFlight[2].release(); });
+  assert.deepEqual(
+    home.rowIds(),
+    ["3"],
+    "superseded response must not restore deleted rows from cache"
+  );
+  await React.act(async () => {
+    inFlight[2].release();
+  });
 });

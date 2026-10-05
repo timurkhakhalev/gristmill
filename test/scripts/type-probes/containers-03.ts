@@ -3,13 +3,25 @@
 // @probe-origin test/scripts/containersTypeProbe.test.js
 import { registerContainerHandlers } from "./src/helpers/containerIpcHandlers.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerContainerHandlers(ipcMain, {
   database: {
     getFolders: (spaceId) => {
       console.log(spaceId);
-      return [{ id: 1, name: "F", is_default: 0, sort_order: 0, space_id: 1, created_at: "t", updated_at: "t" }];
+      return [
+        {
+          id: 1,
+          name: "F",
+          is_default: 0,
+          sort_order: 0,
+          space_id: 1,
+          created_at: "t",
+          updated_at: "t",
+        },
+      ];
     },
     createFolder: (name, spaceId) => {
       console.log(name, spaceId);

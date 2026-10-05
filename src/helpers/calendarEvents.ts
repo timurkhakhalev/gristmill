@@ -15,14 +15,17 @@ import type { ZodType } from "zod";
 
 function parseOrDrop<T>(channel: string, payload: unknown, schema: ZodType<T>): T | null {
   const result = schema.safeParse(payload);
+
   if (!result.success) {
     console.error(
       `[calendarEvents] dropped malformed ${channel} payload: ${result.error.issues
         .map((issue) => issue.message)
         .join("; ")}`
     );
+
     return null;
   }
+
   return result.data;
 }
 
@@ -32,11 +35,16 @@ function sendAccountsEvent(
   schema: typeof calendarAccountsEventSchema
 ): void {
   const valid = parseOrDrop(channel, accounts, schema);
+
   if (valid) broadcastToWindows(channel, valid);
 }
 
 export function sendGcalConnectionChanged(accounts: unknown): void {
-  sendAccountsEvent(calendarIntegrationChannels.gcalConnectionChanged, accounts, calendarAccountsEventSchema);
+  sendAccountsEvent(
+    calendarIntegrationChannels.gcalConnectionChanged,
+    accounts,
+    calendarAccountsEventSchema
+  );
 }
 
 export function sendGcalEventsSynced(): void {
@@ -46,7 +54,11 @@ export function sendGcalEventsSynced(): void {
 }
 
 export function sendMcalConnectionChanged(accounts: unknown): void {
-  sendAccountsEvent(calendarIntegrationChannels.mcalConnectionChanged, accounts, calendarAccountsEventSchema);
+  sendAccountsEvent(
+    calendarIntegrationChannels.mcalConnectionChanged,
+    accounts,
+    calendarAccountsEventSchema
+  );
 }
 
 export function sendMcalEventsSynced(): void {
@@ -61,6 +73,7 @@ export function sendAcalConnectionChanged(status: unknown): void {
     status,
     appleConnectionStatusSchema
   );
+
   if (valid) broadcastToWindows(calendarIntegrationChannels.acalConnectionChanged, valid);
 }
 

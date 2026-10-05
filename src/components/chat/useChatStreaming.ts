@@ -2,10 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import ReasoningService, { type AgentStreamChunk } from "../../services/ReasoningService";
 import { isEnterpriseProvider } from "../../models/ModelRegistry";
-import {
-  getSettings,
-  useSettingsStore,
-} from "../../stores/settingsStore";
+import { getSettings, useSettingsStore } from "../../stores/settingsStore";
 import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
 import { resolveChatRoute } from "../../helpers/chatRouting";
 import { getAgentSystemPrompt } from "../../config/prompts";
@@ -20,7 +17,11 @@ const LOCAL_TOOL_MIN_PARAMS_B = 4;
 export interface ChatSendOptions {
   /** Persisted local conversation, including the very first message's newly created ID. */
   conversationId?: number;
-  onComplete?: (assistantId: string, content: string, toolCalls?: ToolCallInfo[]) => void | Promise<void>;
+  onComplete?: (
+    assistantId: string,
+    content: string,
+    toolCalls?: ToolCallInfo[]
+  ) => void | Promise<void>;
   /** Complete system prompt for a one-off action in the existing conversation. */
   systemPrompt?: string;
   /** Do not expose application tools to this turn. */
@@ -31,6 +32,7 @@ export interface ChatSendOptions {
 
 function estimateModelSizeB(modelId: string): number {
   const match = modelId.match(/-([\d.]+)[bB]/);
+
   return match ? parseFloat(match[1]) : 0;
 }
 
@@ -90,6 +92,7 @@ export function useChatStreaming({
   const clearToolActivity = useCallback(() => {
     clearToolActivityTimer();
     toolActivityStartedAtRef.current = null;
+
     if (!mountedRef.current) return;
     setToolStatus("");
     setActiveToolName("");
@@ -107,15 +110,19 @@ export function useChatStreaming({
 
   const completeToolActivity = useCallback(() => {
     const startedAt = toolActivityStartedAtRef.current;
+
     if (startedAt == null) {
       clearToolActivity();
+
       return;
     }
 
     const remainingMs = getAgentToolActivityRemainingMs(startedAt);
     clearToolActivityTimer();
+
     if (remainingMs === 0) {
       clearToolActivity();
+
       return;
     }
 
@@ -132,11 +139,14 @@ export function useChatStreaming({
   // before routing through cancelStream, so it never stamps this — which is
   // how sendToAI tells a user's cancel from an unmount mid-stream.
   const explicitCancelGenerationRef = useRef(0);
+
   const cancelStream = useCallback(() => {
     sendGenerationRef.current += 1;
+
     if (mountedRef.current) {
       explicitCancelGenerationRef.current = sendGenerationRef.current;
     }
+
     if (!disabled) ReasoningService.cancelActiveStream();
     setAgentState("idle");
     clearToolActivity();
@@ -144,6 +154,7 @@ export function useChatStreaming({
 
   useEffect(() => {
     mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
       // Route through cancelStream so every cancellation path — Esc/Stop and
@@ -163,14 +174,17 @@ export function useChatStreaming({
       const cancelled = () => sendGeneration !== sendGenerationRef.current;
       clearToolActivity();
       let responseAnnounced = false;
+
       const announceResponse = () => {
         if (responseAnnounced) return;
         responseAnnounced = true;
       };
+
       const settings = getSettings();
       const llmConfig = selectResolvedLLMConfig(settings, "chatIntelligence");
       const isLanAgent = llmConfig.mode === "self-hosted" && !!llmConfig.remoteUrl;
       const isCustomAgent = llmConfig.mode === "providers" && llmConfig.provider === "custom";
+
       const route = resolveChatRoute({
         mode: llmConfig.mode,
         provider: llmConfig.provider,
@@ -178,24 +192,32 @@ export function useChatStreaming({
         customApiKey: llmConfig.customApiKey,
         isEnterpriseProvider: isEnterpriseProvider(llmConfig.provider),
       });
+
       const isBbAgent = route.kind === "agent";
       const isLocalProvider = route.kind === "local";
       setAgentState("thinking");
+
       const localModelCanUseTool =
         isLocalProvider && estimateModelSizeB(llmConfig.model) >= LOCAL_TOOL_MIN_PARAMS_B;
-      const supportsTools = !sendOptions?.disableTools && !isBbAgent && (!isLocalProvider || localModelCanUseTool);
+
+      const supportsTools =
+        !sendOptions?.disableTools && !isBbAgent && (!isLocalProvider || localModelCanUseTool);
 
       const scope = searchScopeRef.current;
       let registry: ToolRegistry | null = null;
+
       if (supportsTools) {
         const scopeKey = scope ? `${scope.spaceId}:${scope.folderId ?? ""}` : "";
+
         // The calendar tool reads the shared provider-deduped events table,
         // so any connected provider enables it.
         const calendarConnected =
           settings.gcalConnected || settings.mcalConnected || settings.appleCalendarConnected;
+
         // Triggers ride in the tool description, so a snippet edit rebuilds the registry.
         const snippetKey = settings.snippets.map((s) => s.trigger).join("|");
         const cacheKey = `${calendarConnected}-${scopeKey}-${snippetKey}`;
+
         if (toolRegistryRef.current?.key === cacheKey) {
           registry = toolRegistryRef.current.registry;
         } else {
@@ -215,18 +237,21 @@ export function useChatStreaming({
       }
 
       if (cancelled() || !mountedRef.current) return;
-      const combinedContext = isBbAgent && noteId
-        ? `Current Note ID: ${noteId}.`
-        : noteContextRef.current;
-      const systemPrompt = sendOptions?.systemPrompt ?? getAgentSystemPrompt(
-        registry?.getAll().map((t) => t.name),
-        combinedContext || undefined,
-        isBbAgent
-      );
 
-      const messagesForTurn = sendOptions?.includeConversationHistory === false
-        ? allMessages.slice(-1)
-        : allMessages;
+      const combinedContext =
+        isBbAgent && noteId ? `Current Note ID: ${noteId}.` : noteContextRef.current;
+
+      const systemPrompt =
+        sendOptions?.systemPrompt ??
+        getAgentSystemPrompt(
+          registry?.getAll().map((t) => t.name),
+          combinedContext || undefined,
+          isBbAgent
+        );
+
+      const messagesForTurn =
+        sendOptions?.includeConversationHistory === false ? allMessages.slice(-1) : allMessages;
+
       const history: HistoryMessage[] = messagesForTurn
         .slice(-20)
         .map((m) => ({ role: m.role, content: m.content }));
@@ -248,6 +273,7 @@ export function useChatStreaming({
         if (isBbAgent && (!llmConfig.agentProvider || !llmConfig.agentModel)) {
           throw new Error(t("bbAgent.noSelection"));
         }
+
         const aiTools = registry?.toAISDKFormat();
         stream = ReasoningService.processTextStreamingAI(
           llmMessages,
@@ -256,17 +282,20 @@ export function useChatStreaming({
           {
             systemPrompt,
             inferenceScope: llmConfig.scope,
-            ...(isBbAgent ? {
-              agentSelection: {
-                provider: llmConfig.agentProvider || "",
-                model: llmConfig.agentModel || "",
-                reasoningLevel: llmConfig.agentReasoningLevel || "",
-              },
-              agentConversationId: sendOptions?.conversationId,
-              onThreadTitle: onThreadTitle && sendOptions?.conversationId != null
-                ? (title) => onThreadTitle?.(title, sendOptions.conversationId!)
-                : undefined,
-            } : {}),
+            ...(isBbAgent
+              ? {
+                  agentSelection: {
+                    provider: llmConfig.agentProvider || "",
+                    model: llmConfig.agentModel || "",
+                    reasoningLevel: llmConfig.agentReasoningLevel || "",
+                  },
+                  agentConversationId: sendOptions?.conversationId,
+                  onThreadTitle:
+                    onThreadTitle && sendOptions?.conversationId != null
+                      ? (title) => onThreadTitle?.(title, sendOptions.conversationId!)
+                      : undefined,
+                }
+              : {}),
             lanUrl: isLanAgent ? llmConfig.remoteUrl : undefined,
             baseUrl: isCustomAgent ? llmConfig.cloudBaseUrl || undefined : undefined,
             customApiKey:
@@ -278,6 +307,7 @@ export function useChatStreaming({
 
         for await (const chunk of stream) {
           if (cancelled() || !mountedRef.current) break;
+
           if (chunk.type === "content") {
             if (chunk.text) announceResponse();
             fullContent += chunk.text;
@@ -286,6 +316,7 @@ export function useChatStreaming({
             );
           } else if (chunk.type === "tool_calls") {
             if (chunk.calls.length > 0) announceResponse();
+
             for (const call of chunk.calls) {
               setAgentState("tool-executing");
               beginToolActivity(
@@ -347,10 +378,12 @@ export function useChatStreaming({
           // an explicit cancel drops it. The unmount cleanup cancels too, so
           // cancelled() alone cannot tell the two apart.
           const explicitlyCancelled = explicitCancelGenerationRef.current > sendGeneration;
+
           if (!explicitlyCancelled && fullContent.trim().length > 0) {
             const finalMsg = messagesRef.current.find((m) => m.id === assistantId);
             await sendOptions?.onComplete?.(assistantId, fullContent, finalMsg?.toolCalls);
           }
+
           return;
         }
 
@@ -403,7 +436,7 @@ export function useChatStreaming({
       t,
       disabled,
       setMessages,
-          onThreadTitle,
+      onThreadTitle,
       noteId,
       clearToolActivity,
       beginToolActivity,

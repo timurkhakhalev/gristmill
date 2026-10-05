@@ -22,11 +22,15 @@ const SERIES_MASTER_FIELDS =
 // with — it never rolls forward. Sync a 38-day window and discard the token
 // after 7 days so coverage never drops below the app's 31-day lookahead.
 const DELTA_WINDOW_MS = 38 * 24 * 60 * 60 * 1000;
+
 const DELTA_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 // A failed series-master backfill can't be retried via delta (unchanged
 // occurrences are never re-delivered); a short TTL forces an early full sync.
 const BACKFILL_RETRY_TTL_MS = 10 * 60 * 1000;
+
 const BUFFER_COVERAGE_MS = MAX_BUFFER_MINUTES * 60 * 1000;
+
 const LOOKBACK_SAFETY_MS = 24 * 60 * 60 * 1000;
 
 const AVAILABILITY_STATUS_BY_GRAPH: Record<string, string> = {
@@ -124,7 +128,11 @@ export interface MicrosoftManagerDb {
 export class MicrosoftCalendarManager {
   private readonly databaseManager: MicrosoftManagerDb &
     ConstructorParameters<typeof MicrosoftCalendarOAuth>[0];
-  private readonly reminderScheduler: { scheduleNextMeeting(): void; reset(p: string): void; reconcileProvider(p: string): void };
+  private readonly reminderScheduler: {
+    scheduleNextMeeting(): void;
+    reset(p: string): void;
+    reconcileProvider(p: string): void;
+  };
   private readonly oauth: MicrosoftCalendarOAuth;
   private accounts = new Map<string, { email: string }>();
   private primaryOnly = true;
@@ -132,7 +140,11 @@ export class MicrosoftCalendarManager {
 
   constructor(
     databaseManager: MicrosoftManagerDb & ConstructorParameters<typeof MicrosoftCalendarOAuth>[0],
-    reminderScheduler: { scheduleNextMeeting(): void; reset(p: string): void; reconcileProvider(p: string): void }
+    reminderScheduler: {
+      scheduleNextMeeting(): void;
+      reset(p: string): void;
+      reconcileProvider(p: string): void;
+    }
   ) {
     this.databaseManager = databaseManager;
     this.reminderScheduler = reminderScheduler;
@@ -146,6 +158,7 @@ export class MicrosoftCalendarManager {
 
   start(): void {
     this._loadAccounts();
+
     if (this.accounts.size === 0) return;
 
     this.fetchCalendars()
@@ -184,6 +197,7 @@ export class MicrosoftCalendarManager {
       this.stop();
       this.reminderScheduler.reset("microsoft");
     }
+
     this.reminderScheduler.scheduleNextMeeting();
   }
 
@@ -221,6 +235,7 @@ export class MicrosoftCalendarManager {
     accounts: CalendarAccountRow[];
   } {
     const accounts = this.databaseManager.getMicrosoftAccounts();
+
     return { connected: accounts.length > 0, configured: this.isConfigured(), accounts };
   }
 
@@ -238,10 +253,12 @@ export class MicrosoftCalendarManager {
         this._assertAccountCurrent(email, accountId);
         const calendars: MicrosoftCalendarInput[] = [];
         let url: string | null = "/me/calendars?$select=id,name,hexColor,isDefaultCalendar";
+
         while (url) {
           const data = (await this._apiGet(url, email)) as Partial<GraphDeltaPage> & {
             value?: GraphCalendarItem[];
           };
+
           for (const item of data.value || []) {
             calendars.push({
               id: item.id,
@@ -250,18 +267,25 @@ export class MicrosoftCalendarManager {
               is_primary: item.isDefaultCalendar === true,
             });
           }
+
           url = data["@odata.nextLink"] || null;
         }
+
         this._assertAccountCurrent(email, accountId);
         this.databaseManager.saveMicrosoftCalendars(calendars, email);
         allCalendars.push(...calendars);
       } catch (err) {
-        debugLogger.error("Error fetching calendars", { email, error: (err as Error).message }, "mcal");
+        debugLogger.error(
+          "Error fetching calendars",
+          { email, error: (err as Error).message },
+          "mcal"
+        );
       }
     }
 
     this.databaseManager.applyMicrosoftPrimaryOnlyToSelection(this.primaryOnly);
     this.databaseManager.removeEventsFromDeselectedCalendars("microsoft");
+
     return allCalendars;
   }
 
@@ -270,10 +294,12 @@ export class MicrosoftCalendarManager {
   // treating a fully-failed pass as success.
   async syncEvents(): Promise<CalendarSyncOutcome> {
     const selectedCalendars = this.databaseManager.getSelectedMicrosoftCalendars();
+
     if (selectedCalendars.length === 0) return { total: 0, succeeded: 0, failed: 0, errors: [] };
 
     const errors: string[] = [];
     let succeeded = 0;
+
     for (const calendar of selectedCalendars) {
       try {
         await this._syncCalendar(calendar);
@@ -290,6 +316,7 @@ export class MicrosoftCalendarManager {
 
     sendMcalEventsSynced();
     this.reminderScheduler.scheduleNextMeeting();
+
     return { total: selectedCalendars.length, succeeded, failed: errors.length, errors };
   }
 
@@ -304,13 +331,18 @@ export class MicrosoftCalendarManager {
 
     const hasFreshToken = calendar.sync_token && (calendar.sync_token_expires_at ?? 0) > Date.now();
     let isFullSync = !hasFreshToken;
-    let url: string | null = hasFreshToken ? (calendar.sync_token as string) : this._deltaUrl(calendar.id);
+
+    let url: string | null = hasFreshToken
+      ? (calendar.sync_token as string)
+      : this._deltaUrl(calendar.id);
+
     let tokenExpiresAt = hasFreshToken
       ? (calendar.sync_token_expires_at as number)
       : Date.now() + DELTA_TOKEN_TTL_MS;
 
     while (url) {
       let data: GraphDeltaPage;
+
       try {
         data = (await this._apiGet(url, accountEmail)) as GraphDeltaPage;
       } catch (err) {
@@ -321,6 +353,7 @@ export class MicrosoftCalendarManager {
           tokenExpiresAt = Date.now() + DELTA_TOKEN_TTL_MS;
           continue;
         }
+
         throw err;
       }
 
@@ -334,6 +367,7 @@ export class MicrosoftCalendarManager {
     }
 
     const events = await this._backfillStrippedOccurrences(items, calendar);
+
     if (events.some(isStrippedOccurrence)) {
       tokenExpiresAt = Math.min(tokenExpiresAt, Date.now() + BACKFILL_RETRY_TTL_MS);
     }
@@ -342,6 +376,7 @@ export class MicrosoftCalendarManager {
 
     const toUpsert: CalendarEventInput[] = [];
     const contactsToUpsert: Array<{ email: string; displayName: string | null }> = [];
+
     for (const item of events) {
       // An occurrence still stripped after backfill (master fetch failed) has no
       // subject, attendees, or join link. Overwriting a row a previous sync
@@ -350,7 +385,9 @@ export class MicrosoftCalendarManager {
       if (isStrippedOccurrence(item) && this.databaseManager.getCalendarEventById(item.id)) {
         continue;
       }
+
       toUpsert.push(this._mapEvent(item, calendar));
+
       for (const a of item.attendees || []) {
         if (a.emailAddress?.address) {
           contactsToUpsert.push({
@@ -371,11 +408,15 @@ export class MicrosoftCalendarManager {
         events.map((event) => event.id)
       );
     }
+
     if (toUpsert.length > 0) this.databaseManager.upsertCalendarEvents(toUpsert);
+
     if (toRemove.length > 0) this.databaseManager.removeCalendarEvents(toRemove);
+
     if (deltaLink) {
       this.databaseManager.updateMicrosoftCalendarSyncToken(calendar.id, deltaLink, tokenExpiresAt);
     }
+
     if (contactsToUpsert.length > 0) this.databaseManager.upsertContacts(contactsToUpsert);
   }
 
@@ -391,16 +432,19 @@ export class MicrosoftCalendarManager {
     const masterIds = new Set(
       items.filter(isStrippedOccurrence).map((item) => item.seriesMasterId as string)
     );
+
     if (masterIds.size === 0) return items;
 
     const calendarPath = encodeURIComponent(calendar.id);
     const masters = new Map<string, GraphEventItem>();
+
     for (const id of masterIds) {
       try {
         const master = (await this._apiGet(
           `/me/calendars/${calendarPath}/events/${encodeURIComponent(id)}?$select=${SERIES_MASTER_FIELDS}`,
           calendar.account_email
         )) as GraphEventItem;
+
         masters.set(id, master);
       } catch (err) {
         debugLogger.error(
@@ -413,6 +457,7 @@ export class MicrosoftCalendarManager {
 
     return items.map((item) => {
       const master = isStrippedOccurrence(item) ? masters.get(item.seriesMasterId as string) : null;
+
       return master ? { ...master, ...item } : item;
     });
   }
@@ -420,6 +465,7 @@ export class MicrosoftCalendarManager {
   private _mapEvent(item: GraphEventItem, calendar: MicrosoftCalendarRow): CalendarEventInput {
     const attendees = item.attendees || [];
     const accountEmail = (calendar.account_email || "").toLowerCase();
+
     return {
       id: item.id,
       calendar_id: calendar.id,
@@ -471,6 +517,7 @@ export class MicrosoftCalendarManager {
   async setPrimaryOnly(value: boolean): Promise<void> {
     if (this.primaryOnly === value) return;
     this.primaryOnly = value;
+
     if (!this.isConnected()) return;
 
     await this.fetchCalendars();
@@ -483,6 +530,7 @@ export class MicrosoftCalendarManager {
   private _loadAccounts(): void {
     const accounts = this.databaseManager.getMicrosoftAccounts();
     this.accounts.clear();
+
     for (const account of accounts) {
       this.accounts.set(account.email, { email: account.email });
     }
@@ -499,6 +547,7 @@ export class MicrosoftCalendarManager {
       startDateTime: new Date(Date.now() - LOOKBACK_SAFETY_MS - BUFFER_COVERAGE_MS).toISOString(),
       endDateTime: new Date(Date.now() + DELTA_WINDOW_MS).toISOString(),
     });
+
     return `/me/calendars/${encodeURIComponent(calendarId)}/calendarView/delta?${params.toString()}`;
   }
 
@@ -508,7 +557,11 @@ export class MicrosoftCalendarManager {
   }
 
   private _assertAccountCurrent(email: string | null, accountId: number | undefined): void {
-    if (accountId === undefined || !email || this.databaseManager.getMicrosoftTokensByEmail(email)?.id !== accountId) {
+    if (
+      accountId === undefined ||
+      !email ||
+      this.databaseManager.getMicrosoftTokensByEmail(email)?.id !== accountId
+    ) {
       throw new Error("Microsoft account changed during calendar request");
     }
   }
@@ -529,29 +582,37 @@ export class MicrosoftCalendarManager {
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
     } as RequestInit);
+
     const text = await response.text();
     let parsed: unknown = null;
+
     try {
       parsed = JSON.parse(text);
     } catch {
       // Error statuses can arrive with empty or non-JSON bodies; surface the
       // status below instead of masking it as a parse failure.
     }
+
     if (response.status >= 400) {
       const err = new ApiGetError(
         (parsed as { error?: { message?: string } } | null)?.error?.message ||
           `API error ${response.status}`
       );
+
       err.statusCode = response.status;
       throw err;
     }
+
     if (parsed === null) {
       throw new Error(`Invalid JSON response: ${text.slice(0, 200)}`);
     }
+
     return parsed;
   }
 }
 
 module.exports = MicrosoftCalendarManager;
+
 module.exports.MicrosoftCalendarManager = MicrosoftCalendarManager;
+
 module.exports.normalizeGraphDateTime = normalizeGraphDateTime;

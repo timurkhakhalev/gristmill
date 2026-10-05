@@ -1,8 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const React = require("react");
+
 const { createRoot } = require("react-dom/client");
+
 const { renderToStaticMarkup } = require("react-dom/server");
+
 const {
   createRendererServer,
   installBrowserGlobals,
@@ -20,6 +25,7 @@ test("cleanup toast localizes AWS recovery guidance and keeps fallback status qu
   (globalThis as GlobalWithMocks).__cleanupFailureToasts = [];
   installBrowserGlobals(t);
   const container = installHookDom(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-cleanup-failure-toast-",
     mockModules: {
@@ -33,14 +39,21 @@ test("cleanup toast localizes AWS recovery guidance and keeps fallback status qu
       `,
     },
   });
+
   const { default: CleanupFailureToastListener } = (await vite.ssrLoadModule(
     "/components/CleanupFailureToastListener.tsx"
-  ) as typeof import("../../src/components/CleanupFailureToastListener.tsx"));
-  const { default: i18n } = (await vite.ssrLoadModule("/i18n.ts") as typeof import("../../src/i18n.ts"));
+  )) as typeof import("../../src/components/CleanupFailureToastListener.tsx");
+
+  const { default: i18n } = (await vite.ssrLoadModule(
+    "/i18n.ts"
+  )) as typeof import("../../src/i18n.ts");
+
   await i18n.changeLanguage("es");
+
   const { recordCleanupFailure, useCleanupFailureStore } = (await vite.ssrLoadModule(
     "/stores/cleanupFailureStore.ts"
-  ) as typeof import("../../src/stores/cleanupFailureStore.ts"));
+  )) as typeof import("../../src/stores/cleanupFailureStore.ts");
+
   useCleanupFailureStore.setState({ pending: 0, lastMessage: "", lastFailure: null });
 
   root = createRoot(container);
@@ -60,6 +73,7 @@ test("cleanup toast localizes AWS recovery guidance and keeps fallback status qu
       underlyingError: "Bedrock overloaded",
     },
   };
+
   await React.act(async () => recordCleanupFailure(failure));
 
   assert.equal((globalThis as GlobalWithMocks).__cleanupFailureToasts!.length, 1);
@@ -77,13 +91,19 @@ test("cleanup toast localizes AWS recovery guidance and keeps fallback status qu
 
 test("technical AWS details use the selected UI language", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-technical-error-details-",
   });
+
   const { TechnicalErrorDetails } = (await vite.ssrLoadModule(
     "/components/ui/TechnicalErrorDetails.tsx"
-  ) as typeof import("../../src/components/ui/TechnicalErrorDetails.tsx"));
-  const { default: i18n } = (await vite.ssrLoadModule("/i18n.ts") as typeof import("../../src/i18n.ts"));
+  )) as typeof import("../../src/components/ui/TechnicalErrorDetails.tsx");
+
+  const { default: i18n } = (await vite.ssrLoadModule(
+    "/i18n.ts"
+  )) as typeof import("../../src/i18n.ts");
+
   await i18n.changeLanguage("es");
 
   const markup = renderToStaticMarkup(

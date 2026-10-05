@@ -5,7 +5,10 @@ import {
   type MeetingProcessingConfigError,
 } from "../contracts/meetingRecording.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
-import { selectResolvedMeetingTranscription, selectResolvedNoteFormatting } from "../config/settingsSelectors.js";
+import {
+  selectResolvedMeetingTranscription,
+  selectResolvedNoteFormatting,
+} from "../config/settingsSelectors.js";
 import { DETAILED_NOTES_KEY, MEETING_INPUT_PREAMBLE } from "./builtinActions.js";
 import { appendDictionarySuffix } from "../config/prompts.js";
 import { getSettings } from "../stores/settingsStore.js";
@@ -14,10 +17,14 @@ import { getActions } from "../stores/actionStore.js";
 
 const credentialRefForProvider = (provider: string): string | undefined => {
   if (provider === "custom") return "CUSTOM_TRANSCRIPTION_API_KEY";
+
   return BYOK_API_KEYS.find((entry) => entry.base === provider)?.env;
 };
 
-export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingProcessingConfig["transcription"], generateSummary?: boolean): {
+export function snapshotMeetingRecordingConfig(
+  transcriptionOverride?: MeetingProcessingConfig["transcription"],
+  generateSummary?: boolean
+): {
   config: MeetingProcessingConfig | null;
   configError: MeetingProcessingConfigError | null;
 } {
@@ -31,12 +38,14 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
 
     if (meeting.transcriptionMode === "local") {
       const provider = meeting.localTranscriptionProvider;
+
       const model =
         provider === "whisper"
           ? meeting.whisperModel
           : provider === "nvidia"
             ? meeting.parakeetModel
             : meeting.cohereModel;
+
       transcription = {
         mode: "local",
         language,
@@ -63,12 +72,22 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
   }
 
   const formatting = selectResolvedNoteFormatting(state);
-  const detailedNotes = getActions().find((action) => action.translation_key === DETAILED_NOTES_KEY);
-  if (!detailedNotes) return { config: null, configError: { code: "detailed-notes-action-missing" } };
+
+  const detailedNotes = getActions().find(
+    (action) => action.translation_key === DETAILED_NOTES_KEY
+  );
+
+  if (!detailedNotes)
+    return { config: null, configError: { code: "detailed-notes-action-missing" } };
   let summary: Record<string, unknown> | null = null;
+
   if (
     detailedNotes &&
-    (formatting.mode === "providers" || formatting.mode === "local" || formatting.mode === "self-hosted" || formatting.mode === "enterprise" || formatting.mode === "agent")
+    (formatting.mode === "providers" ||
+      formatting.mode === "local" ||
+      formatting.mode === "self-hosted" ||
+      formatting.mode === "enterprise" ||
+      formatting.mode === "agent")
   ) {
     summary = {
       actionId: DETAILED_NOTES_KEY,
@@ -79,8 +98,15 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
       ),
       reasoningMode: formatting.mode,
       ...(formatting.mode === "agent"
-        ? { agentProvider: formatting.agentProvider, model: formatting.agentModel, agentReasoningLevel: formatting.agentReasoningLevel }
-        : { ...(formatting.provider ? { provider: formatting.provider } : {}), ...(formatting.model ? { model: formatting.model } : {}) }),
+        ? {
+            agentProvider: formatting.agentProvider,
+            model: formatting.agentModel,
+            agentReasoningLevel: formatting.agentReasoningLevel,
+          }
+        : {
+            ...(formatting.provider ? { provider: formatting.provider } : {}),
+            ...(formatting.model ? { model: formatting.model } : {}),
+          }),
       ...(formatting.mode === "providers" && formatting.cloudBaseUrl
         ? { cloudBaseUrl: formatting.cloudBaseUrl }
         : {}),
@@ -119,14 +145,25 @@ export function snapshotMeetingRecordingConfig(transcriptionOverride?: MeetingPr
             },
           }
         : {}),
-      options: { disableThinking: state.noteFormattingDisableThinking, cloudMode: formatting.cloudMode },
+      options: {
+        disableThinking: state.noteFormattingDisableThinking,
+        cloudMode: formatting.cloudMode,
+      },
     };
   }
 
   const parsed = meetingRecordingConfigInputSchema.safeParse({
-    config: { transcription, summary, generateSummary, generateTitle: state.autoGenerateNoteTitle, selfDisplayName: state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }) },
+    config: {
+      transcription,
+      summary,
+      generateSummary,
+      generateTitle: state.autoGenerateNoteTitle,
+      selfDisplayName:
+        state.profileName.trim() || i18n.t("profile.selfLabel", { lng: state.uiLanguage }),
+    },
     configError: null,
   });
+
   return parsed.success
     ? { config: parsed.data.config, configError: null }
     : { config: null, configError: { code: "invalid-processing-config" } };

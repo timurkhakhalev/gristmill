@@ -1,7 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("fs");
+
 const os = require("os");
+
 const path = require("path");
 
 // Regression: the System Info header logged platform/node/electron but not the
@@ -28,15 +32,20 @@ test("debug log System Info header includes the app version", async () => {
   delete require.cache[debugLoggerPath];
 
   try {
-    const debugLogger: typeof import("../../src/helpers/debugLogger.ts").default = require(debugLoggerPath);
+    const debugLogger: typeof import("../../src/helpers/debugLogger.ts").default = require(
+      debugLoggerPath
+    );
+
     debugLogger.initializeFileLogging();
 
     const logFile = debugLogger.getLogPath();
     const stream = debugLogger.logStream;
     assert.ok(stream);
+
     if (typeof (stream as typeof stream & { fd?: number | null }).fd !== "number") {
       await new Promise<void>((resolve) => stream.once("open", () => resolve()));
     }
+
     debugLogger.close();
     await new Promise<void>((resolve) => stream.once("finish", () => resolve()));
 
@@ -46,7 +55,9 @@ test("debug log System Info header includes the app version", async () => {
     assert.match(contents, /9\.9\.9-test/);
   } finally {
     delete require.cache[debugLoggerPath];
+
     if (originalLoggerCache) require.cache[debugLoggerPath] = originalLoggerCache;
+
     if (originalElectronCache) require.cache[electronPath] = originalElectronCache;
     else delete require.cache[electronPath];
     fs.rmSync(tempDir, { recursive: true, force: true });

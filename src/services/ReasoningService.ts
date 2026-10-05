@@ -58,6 +58,7 @@ function toByokStreamProvider(provider: string): ByokStreamProvider {
   if (!(BYOK_STREAM_PROVIDERS as readonly string[]).includes(provider)) {
     throw new Error(`Unsupported reasoning provider: ${provider}`);
   }
+
   return provider as ByokStreamProvider;
 }
 
@@ -110,23 +111,34 @@ class ReasoningService extends BaseReasoningService {
 
   private hasLanCleanupConfiguration(): boolean {
     const settings = getSettings();
+
     return settings.cleanupMode === "self-hosted" && !!settings.cleanupRemoteUrl?.trim();
   }
 
   private async getApiKey(
     provider:
-      "openai" | "anthropic" | "gemini" | "groq" | "tinfoil" | "custom" | "openrouter" | "corti"
+      | "openai"
+      | "anthropic"
+      | "gemini"
+      | "groq"
+      | "tinfoil"
+      | "custom"
+      | "openrouter"
+      | "corti"
   ): Promise<string> {
     if (provider === "custom") {
       let customKey = "";
+
       try {
         customKey = (await window.electronAPI?.getCleanupCustomKey?.()) || "";
       } catch (err) {
         logger.logReasoning("CUSTOM_KEY_IPC_FALLBACK", { error: (err as Error)?.message });
       }
+
       if (!customKey || !customKey.trim()) {
         customKey = getSettings().cleanupCustomApiKey || "";
       }
+
       const trimmedKey = customKey.trim();
 
       logger.logReasoning("CUSTOM_KEY_RETRIEVAL", {
@@ -157,6 +169,7 @@ class ReasoningService extends BaseReasoningService {
           tinfoil: () => window.electronAPI.getTinfoilKey?.(),
           corti: () => window.electronAPI.getCortiKey?.(),
         };
+
         apiKey = (await keyGetters[provider]()) ?? undefined;
 
         logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCHED`, {
@@ -202,15 +215,19 @@ class ReasoningService extends BaseReasoningService {
   ): Promise<{ apiKey: string; baseURL?: string }> {
     const providerKey = toByokStreamProvider(provider);
     const overrideKey = providerKey === "custom" ? config.customApiKey?.trim() || "" : "";
+
     const canFallBackToSharedKey =
       providerKey !== "custom" || canBorrowCleanupCustomKey(config.baseUrl);
+
     const apiKey = overrideKey || (canFallBackToSharedKey ? await this.getApiKey(providerKey) : "");
+
     const baseURL =
       providerKey === "openrouter"
         ? API_ENDPOINTS.OPENROUTER_BASE
         : providerKey === "custom"
           ? resolveConfiguredOpenAIBase(providerKey, config.baseUrl)
           : undefined;
+
     return { apiKey, baseURL };
   }
 
@@ -264,19 +281,23 @@ class ReasoningService extends BaseReasoningService {
     const openCodeHeaders = openCodeSessionHeaders(endpoint);
 
     const requestGeneration = this.requestCancellationGeneration;
+
     const response = await withRetry(async () => {
       if (requestGeneration !== this.requestCancellationGeneration) {
         throw httpError("Request cancelled", 499);
       }
+
       const controller = new AbortController();
       this.activeRequestControllers.add(controller);
       const timeoutSeconds = getLlmRequestTimeoutSeconds();
       const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+
       try {
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
           ...openCodeHeaders,
         };
+
         if (apiKey) {
           headers["Authorization"] = `Bearer ${apiKey}`;
         }
@@ -334,8 +355,10 @@ class ReasoningService extends BaseReasoningService {
           if (requestGeneration !== this.requestCancellationGeneration) {
             throw httpError("Request cancelled", 499);
           }
+
           throw new Error(`Request timed out after ${timeoutSeconds}s`);
         }
+
         throw error;
       } finally {
         clearTimeout(timeoutId);
@@ -354,12 +377,15 @@ class ReasoningService extends BaseReasoningService {
     }
 
     const choice = response.choices[0];
+
     if (config.requireCompleteOutput && isTruncatedFinishReason(choice?.finish_reason)) {
       throw new Error("Model output was truncated before the selection edit completed");
     }
+
     // Reasoning models leak <think> blocks into non-streamed output; strip them
     // unless the user explicitly enabled thinking (same default as streaming).
     const rawContent = choice.message?.content?.trim() || "";
+
     const responseText =
       config.disableThinking !== false ? stripThinkingTags(rawContent) : rawContent;
 
@@ -392,14 +418,16 @@ class ReasoningService extends BaseReasoningService {
     if (!text.trim() && !config.systemPrompt) return "";
     const trimmedModel = model?.trim?.() || "";
     const settings = getSettings();
+
     const isImplicitCleanup =
       config.provider === undefined && config.baseUrl === undefined && config.lanUrl === undefined;
+
     const implicitProvider =
-      settings.cleanupMode === "self-hosted"
-        ? "lan"
-        : settings.cleanupProvider || undefined;
+      settings.cleanupMode === "self-hosted" ? "lan" : settings.cleanupProvider || undefined;
+
     const isImplicitCustomCleanup =
       isImplicitCleanup && settings.cleanupMode === "providers" && implicitProvider === "custom";
+
     const dispatchConfig: ReasoningConfig = isImplicitCleanup
       ? {
           ...config,
@@ -410,13 +438,17 @@ class ReasoningService extends BaseReasoningService {
             : config.customApiKey,
         }
       : config;
+
     const isLanCleanup = !!dispatchConfig.lanUrl || dispatchConfig.provider === "lan";
+
     const providerId = isLanCleanup
       ? "lan"
       : resolveInferenceProvider(dispatchConfig.provider, trimmedModel);
+
     if (!providerId) {
       throw new Error("No reasoning provider selected");
     }
+
     if (!trimmedModel && providerId !== "lan") {
       throw new Error("No reasoning model selected");
     }
@@ -430,11 +462,13 @@ class ReasoningService extends BaseReasoningService {
     });
 
     const handler = PROVIDER_REGISTRY[providerId];
+
     if (!handler) {
       throw new Error(`Unsupported reasoning provider: ${providerId}`);
     }
 
     const startTime = Date.now();
+
     try {
       const result = await handler.call({
         text,
@@ -470,6 +504,7 @@ class ReasoningService extends BaseReasoningService {
   ): AsyncGenerator<string, void, unknown> {
     const abortController = new AbortController();
     this.streamAbortController = abortController;
+
     try {
       yield* this.processTextStreamingRaw(messages, model, provider, config, abortController);
     } finally {
@@ -491,6 +526,7 @@ class ReasoningService extends BaseReasoningService {
       lanUrl: config.lanUrl,
       customApiKey: config.customApiKey,
     });
+
     const isLocalProvider = route.kind === "local";
     const isLanChat = route.kind === "self-hosted";
 
@@ -503,13 +539,16 @@ class ReasoningService extends BaseReasoningService {
       apiKey = route.apiKey;
     } else if (isLocalProvider) {
       const serverResult = await window.electronAPI.llamaServerStart(model);
+
       if (!serverResult.success || !serverResult.port) {
         throw new Error(serverResult.error || "Failed to start local model server");
       }
+
       endpoint = `http://127.0.0.1:${serverResult.port}/v1/chat/completions`;
     } else {
       const access = await this.resolveByokAccess(provider, config);
       apiKey = access.apiKey;
+
       const chatBase =
         access.baseURL ??
         (
@@ -520,10 +559,12 @@ class ReasoningService extends BaseReasoningService {
             gemini: API_ENDPOINTS.GEMINI,
           } as Partial<Record<string, string>>
         )[provider];
+
       // anthropic and tinfoil have no raw Chat Completions transport here.
       if (!chatBase) {
         throw new Error(`${provider} streaming must use the AI SDK transport`);
       }
+
       endpoint = buildApiUrl(
         chatBase,
         provider === "gemini" ? "/openai/chat/completions" : "/chat/completions"
@@ -559,12 +600,14 @@ class ReasoningService extends BaseReasoningService {
       "Content-Type": "application/json",
       ...openCodeSessionHeaders(endpoint),
     };
+
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
 
     const timeoutSeconds = getLlmRequestTimeoutSeconds({ streaming: true });
     let timeoutTriggered = false;
+
     const timeoutId = setTimeout(() => {
       if (abortController.signal.aborted) return;
       timeoutTriggered = true;
@@ -572,6 +615,7 @@ class ReasoningService extends BaseReasoningService {
     }, timeoutSeconds * 1000);
 
     let response: Response;
+
     try {
       response = await fetchWithParamFallback(
         () =>
@@ -586,10 +630,12 @@ class ReasoningService extends BaseReasoningService {
       );
     } catch (error) {
       clearTimeout(timeoutId);
+
       if ((error as Error).name === "AbortError" && abortController.signal.aborted) {
         if (!timeoutTriggered) return;
         throw new Error("Streaming request timed out");
       }
+
       throw error;
     }
 
@@ -597,17 +643,20 @@ class ReasoningService extends BaseReasoningService {
       clearTimeout(timeoutId);
       const errorText = await response.text();
       let errorMessage: string;
+
       try {
         const errorData = JSON.parse(errorText);
         errorMessage = extractApiErrorMessage(errorData, `API error: ${response.status}`);
       } catch {
         errorMessage = errorText || `API error: ${response.status}`;
       }
+
       logger.logReasoning("AGENT_STREAM_ERROR", { status: response.status, errorMessage });
       throw new Error(errorMessage);
     }
 
     const reader = response.body?.getReader();
+
     if (!reader) {
       clearTimeout(timeoutId);
       throw new Error("No response body");
@@ -621,6 +670,7 @@ class ReasoningService extends BaseReasoningService {
     try {
       while (true) {
         const { done, value } = await reader.read();
+
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -629,22 +679,28 @@ class ReasoningService extends BaseReasoningService {
 
         for (const line of lines) {
           const trimmed = line.trim();
+
           if (!trimmed || !trimmed.startsWith("data: ")) continue;
 
           const data = trimmed.slice(6);
+
           if (data === "[DONE]") {
             const trailing = filterThinkTags?.finish();
+
             if (trailing) yield trailing;
+
             return;
           }
 
           try {
             const parsed = JSON.parse(data);
             let content = parsed.choices?.[0]?.delta?.content;
+
             if (!content) continue;
 
             if (filterThinkTags) {
               content = filterThinkTags(content);
+
               if (!content) continue;
             }
 
@@ -656,12 +712,14 @@ class ReasoningService extends BaseReasoningService {
       }
 
       const trailing = filterThinkTags?.finish();
+
       if (trailing) yield trailing;
     } catch (error) {
       if ((error as Error).name === "AbortError" && abortController.signal.aborted) {
         if (!timeoutTriggered) return;
         throw new Error("Streaming request timed out");
       }
+
       throw error;
     } finally {
       clearTimeout(timeoutId);
@@ -679,16 +737,25 @@ class ReasoningService extends BaseReasoningService {
     tools?: Record<string, import("ai").Tool>
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     if (config.agentSelection) {
-      if (!config.agentConversationId) throw new Error("A saved Chat conversation is required for bb");
-      yield* this.processBbStreaming(messages, config.agentSelection, config.agentConversationId, config.onThreadTitle);
+      if (!config.agentConversationId)
+        throw new Error("A saved Chat conversation is required for bb");
+      yield* this.processBbStreaming(
+        messages,
+        config.agentSelection,
+        config.agentConversationId,
+        config.onThreadTitle
+      );
+
       return;
     }
+
     const route = resolveChatRoute({
       provider,
       lanUrl: config.lanUrl,
       customApiKey: config.customApiKey,
       isEnterpriseProvider: isEnterpriseProvider(provider),
     });
+
     // Both streaming transports share this owner so cancellation survives
     // asynchronous server, key, and model setup.
     const abortController = new AbortController();
@@ -707,9 +774,11 @@ class ReasoningService extends BaseReasoningService {
           config,
           abortController
         );
+
         for await (const text of contentGen) {
           yield { type: "content", text };
         }
+
         yield { type: "done", finishReason: "stop" };
       } catch (error) {
         if (abortController.signal.aborted && (error as Error).name === "AbortError") return;
@@ -719,6 +788,7 @@ class ReasoningService extends BaseReasoningService {
           this.streamAbortController = null;
         }
       }
+
       return;
     }
 
@@ -726,6 +796,7 @@ class ReasoningService extends BaseReasoningService {
       (isLocalProvider || isLanChat) && config.disableThinking !== false
         ? createStreamingThinkFilter()
         : null;
+
     let apiKey = "";
     let baseURL: string | undefined;
 
@@ -737,29 +808,37 @@ class ReasoningService extends BaseReasoningService {
       baseURL = resolveSelfHostedOpenAIBase(route.baseUrl);
     } else if (isLocalProvider) {
       const serverResult = await window.electronAPI.llamaServerStart(model);
+
       if (!serverResult.success || !serverResult.port) {
         throw new Error(serverResult.error || "Failed to start local model server");
       }
+
       baseURL = `http://127.0.0.1:${serverResult.port}/v1`;
     } else {
       ({ apiKey, baseURL } = await this.resolveByokAccess(provider, config));
     }
+
     const aiProvider = isLocalProvider || isLanChat ? "local" : provider;
     // OpenRouter ids are never in the local registry, so the supportsThinking
     // exemption below can't apply — honor the toggle directly.
     const openrouterDisableThinking = provider === "openrouter" && config.disableThinking === true;
+
     if (aiProvider === "tinfoil") {
       if (!apiKey?.trim()) throw new Error("Tinfoil API key not configured");
       // Cache-hit application is synchronous. Network repair affects later
       // settings resolution, not this operation's model or request parameters.
       void refreshTinfoilCatalogAndReconcileSelections().catch(() => {});
     }
+
     const apiConfig = detectEndpointDialect(baseURL) ?? getOpenAiApiConfig(model, provider);
     const modelDef = getCloudModel(model);
     const userSuppressesThinking = config.disableThinking === true && !!modelDef?.supportsThinking;
+
     const needsGroqDisableThinking =
       provider === "groq" && (modelDef?.disableThinking || userSuppressesThinking);
+
     const needsGeminiMinimalThinking = provider === "gemini" && userSuppressesThinking;
+
     const providerOptions = {
       // The effort value is a family fact: gpt-oss has no "none" (#1611).
       ...(needsGroqDisableThinking
@@ -774,6 +853,7 @@ class ReasoningService extends BaseReasoningService {
         ? { google: { thinkingConfig: { thinkingLevel: "minimal", includeThoughts: false } } }
         : {}),
     };
+
     const hasProviderOptions = Object.keys(providerOptions).length > 0;
 
     const aiModel = isEnterprise
@@ -784,6 +864,7 @@ class ReasoningService extends BaseReasoningService {
 
     if (abortController.signal.aborted) {
       yield { type: "done", finishReason: "stop" };
+
       return;
     }
 
@@ -812,8 +893,10 @@ class ReasoningService extends BaseReasoningService {
     });
 
     let canFlushFilteredText = true;
+
     const finishFilteredText = (): string => {
       const trailing = filterThinkTags?.finish() ?? "";
+
       return canFlushFilteredText ? trailing : "";
     };
 
@@ -821,9 +904,11 @@ class ReasoningService extends BaseReasoningService {
       for await (const chunk of result.fullStream) {
         if (chunk.type === "text-delta") {
           const text = filterThinkTags ? filterThinkTags(chunk.text) : chunk.text;
+
           if (text) yield { type: "content", text };
         } else if (chunk.type === "text-end" || chunk.type === "finish-step") {
           const trailing = finishFilteredText();
+
           if (trailing) yield { type: "content", text: trailing };
         } else if (chunk.type === "tool-call") {
           yield {
@@ -838,8 +923,10 @@ class ReasoningService extends BaseReasoningService {
           };
         } else if (chunk.type === "tool-result") {
           const output = chunk.output;
+
           const displayText =
             typeof output === "string" ? output : output?.error ? String(output.error) : "Done";
+
           yield {
             type: "tool_result",
             callId: chunk.toolCallId,
@@ -855,12 +942,14 @@ class ReasoningService extends BaseReasoningService {
           // no terminal signal. Re-throw unless we aborted on purpose.
           canFlushFilteredText = false;
           finishFilteredText();
+
           if (!abortController.signal.aborted) {
             const cause = (chunk as { error?: unknown }).error;
             throw cause instanceof Error ? cause : new Error(String(cause ?? "Stream failed"));
           }
         } else if (chunk.type === "finish") {
           const trailing = finishFilteredText();
+
           if (trailing) yield { type: "content", text: trailing };
           yield { type: "done", finishReason: chunk.finishReason };
         }
@@ -868,10 +957,13 @@ class ReasoningService extends BaseReasoningService {
     } catch (error) {
       canFlushFilteredText = false;
       finishFilteredText();
+
       if (abortController.signal.aborted) {
         yield { type: "done", finishReason: "stop" };
+
         return;
       }
+
       throw error;
     } finally {
       if (this.streamAbortController === abortController) {
@@ -895,50 +987,85 @@ class ReasoningService extends BaseReasoningService {
     let keepListeningForTitle = false;
     let titleTimer: ReturnType<typeof setTimeout> | undefined;
     let unsubscribe = () => {};
+
     const stopListening = () => {
       clearTimeout(titleTimer);
       unsubscribe();
     };
+
     unsubscribe = window.electronAPI.onBbStreamPart((part) => {
       if (part.streamId !== streamId) return;
+
       if (part.title) {
         onThreadTitle?.(part.title);
         stopListening();
+
         return;
       }
+
       queue.push(part);
       wake?.();
     });
-    const onAbort = () => { wake?.(); void window.electronAPI.bbStreamCancel(streamId).catch(() => {}); };
+
+    const onAbort = () => {
+      wake?.();
+      void window.electronAPI.bbStreamCancel(streamId).catch(() => {});
+    };
+
     controller.signal.addEventListener("abort", onAbort, { once: true });
+
     try {
-      const messageText = (message: typeof messages[number]) =>
+      const messageText = (message: (typeof messages)[number]) =>
         typeof message.content === "string"
           ? message.content
-          : message.content.filter((part) => part.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n");
-      const formatMessage = (message: typeof messages[number]) => `${message.role.toUpperCase()}:\n${messageText(message)}`;
+          : message.content
+              .filter((part) => part.type === "text" && typeof part.text === "string")
+              .map((part) => part.text)
+              .join("\n");
+
+      const formatMessage = (message: (typeof messages)[number]) =>
+        `${message.role.toUpperCase()}:\n${messageText(message)}`;
+
       const initialPrompt = messages.map(formatMessage).join("\n\n");
       const latestUser = messages.filter((message) => message.role === "user").at(-1);
+
       if (!latestUser) throw new Error("A Chat user message is required for bb");
       const prompt = messageText(latestUser);
-      await window.electronAPI.bbStreamStart({ streamId, conversationId, prompt, initialPrompt, selection });
+      await window.electronAPI.bbStreamStart({
+        streamId,
+        conversationId,
+        prompt,
+        initialPrompt,
+        selection,
+      });
+
       while (!controller.signal.aborted) {
-        if (queue.length === 0) await new Promise<void>((resolve) => { wake = resolve; });
+        if (queue.length === 0)
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
         wake = null;
         const part = queue.shift();
+
         if (!part) continue;
+
         if (part.error) throw new Error(part.error);
+
         if (part.text) yield { type: "content", text: part.text };
+
         if (part.done) {
           keepListeningForTitle = !!onThreadTitle;
           yield { type: "done", finishReason: "stop" };
+
           return;
         }
       }
     } finally {
       controller.signal.removeEventListener("abort", onAbort);
+
       if (keepListeningForTitle) titleTimer = setTimeout(stopListening, 15_000);
       else stopListening();
+
       if (this.streamAbortController === controller) this.streamAbortController = null;
     }
   }
@@ -956,6 +1083,7 @@ class ReasoningService extends BaseReasoningService {
    */
   cancelAllRequests(): void {
     this.requestCancellationGeneration += 1;
+
     for (const controller of this.activeRequestControllers) controller.abort();
     this.activeRequestControllers.clear();
     this.cancelActiveStream();
@@ -964,8 +1092,10 @@ class ReasoningService extends BaseReasoningService {
   async isAvailable(): Promise<boolean> {
     try {
       const settings = getSettings();
+
       if (this.hasLanCleanupConfiguration()) {
         logger.logReasoning("API_KEY_CHECK", { lanCleanup: true });
+
         return true;
       }
 
@@ -974,6 +1104,7 @@ class ReasoningService extends BaseReasoningService {
           customProvider: true,
           hasCustomEndpoint: true,
         });
+
         return true;
       }
 
@@ -984,17 +1115,23 @@ class ReasoningService extends BaseReasoningService {
         const hasBedrockCreds =
           !!settings.bedrockProfile?.trim() ||
           (!!settings.bedrockAccessKeyId?.trim() && !!settings.bedrockSecretAccessKey?.trim());
+
         logger.logReasoning("API_KEY_CHECK", { bedrock: true, hasBedrockCreds });
+
         if (hasBedrockCreds) return true;
       }
+
       if (settings.cleanupProvider === "azure") {
         const hasAzureCreds = !!settings.azureApiKey?.trim() && !!settings.azureEndpoint?.trim();
         logger.logReasoning("API_KEY_CHECK", { azure: true, hasAzureCreds });
+
         if (hasAzureCreds) return true;
       }
+
       if (settings.cleanupProvider === "vertex") {
         const hasVertexCreds = !!settings.vertexApiKey?.trim() || !!settings.vertexProject?.trim();
         logger.logReasoning("API_KEY_CHECK", { vertex: true, hasVertexCreds });
+
         if (hasVertexCreds) return true;
       }
 
@@ -1034,6 +1171,7 @@ class ReasoningService extends BaseReasoningService {
         stack: (error as Error).stack,
         name: (error as Error).name,
       });
+
       return false;
     }
   }
@@ -1054,9 +1192,11 @@ class ReasoningService extends BaseReasoningService {
       if (provider !== "custom") {
         this.apiKeyCache.delete(provider);
       }
+
       if (provider === "tinfoil") {
         clearTinfoilClientCache();
       }
+
       logger.logReasoning("API_KEY_CACHE_CLEARED", { provider });
     } else {
       this.apiKeyCache.clear();
@@ -1067,6 +1207,7 @@ class ReasoningService extends BaseReasoningService {
 
   destroy(): void {
     this.cancelAllRequests();
+
     if (this.cacheCleanupStop) {
       this.cacheCleanupStop();
     }

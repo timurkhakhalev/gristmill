@@ -1,12 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const {
   createRendererServer,
   installBrowserGlobals,
   reloadSettingsStore,
 } = require("../lib/rendererTestHarness.ts");
 
-const modelRegistryData = require("../../src/models/modelRegistryData.json") as typeof import("../../src/models/modelRegistryData.json");
+const modelRegistryData =
+  require("../../src/models/modelRegistryData.json") as typeof import("../../src/models/modelRegistryData.json");
 
 // The one-shot byok → mode migrations decide "local" from a provider list. That
 // list used to be hand-maintained and missed `liquidai` when LFM landed
@@ -17,6 +20,7 @@ test("provider migrations classify every registry local provider as local", asyn
   assert.ok(localProviderIds.includes("liquidai"), "the regression case must be in the registry");
 
   const { storage } = installBrowserGlobals(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-local-provider-migration-test-",
   });

@@ -6,6 +6,7 @@ import {
 } from "./micDeviceSelection.js";
 
 export const MICROPHONE_SELECTION_MODES = ["system", "built-in", "specific"] as const;
+
 export type MicrophoneSelectionMode = (typeof MICROPHONE_SELECTION_MODES)[number];
 
 export interface MicrophoneSelectionSettings {
@@ -49,7 +50,9 @@ export function getMicrophoneSelectionMode(
   if (isMicrophoneSelectionMode(settings.microphoneSelectionMode)) {
     return settings.microphoneSelectionMode;
   }
+
   if (settings.preferBuiltInMic) return "built-in";
+
   return settings.selectedMicDeviceId && settings.selectedMicDeviceId !== "default"
     ? "specific"
     : "system";
@@ -80,21 +83,25 @@ export function resolveSystemDefaultMicDevice<Device extends MicrophoneDeviceLik
 
   if (nativeName) {
     const target = comparableLabel(nativeName);
+
     const exactMatches = physicalInputs.filter(
       (device) => target && comparableLabel(device.label) === target
     );
+
     if (exactMatches.length === 1) {
       return { device: exactMatches[0], status: "native-exact", systemDefault };
     }
 
     const containedMatches = physicalInputs.filter((device) => {
       const candidate = comparableLabel(device.label);
+
       return (
         target.length >= 8 &&
         candidate.length >= 8 &&
         (candidate.includes(target) || target.includes(candidate))
       );
     });
+
     if (containedMatches.length === 1) {
       return { device: containedMatches[0], status: "native-compatible", systemDefault };
     }
@@ -131,6 +138,7 @@ export function resolveMicrophoneSelection<Device extends MicrophoneDeviceLike>(
     const device = inputs.find(
       (candidate) => candidate.deviceId !== "default" && isBuiltInMicrophone(candidate.label)
     );
+
     return { mode, device: device || null, status: device ? "built-in" : "unavailable" };
   }
 
@@ -139,6 +147,7 @@ export function resolveMicrophoneSelection<Device extends MicrophoneDeviceLike>(
     settings.selectedMicDeviceId,
     settings.selectedMicDeviceLabel
   );
+
   return { mode, ...selection };
 }
 
@@ -146,6 +155,7 @@ export function isCacheableMicrophoneResolution(
   resolution: Pick<MicrophoneResolution<MicrophoneDeviceLike>, "device"> | null | undefined
 ): boolean {
   const deviceId = resolution?.device?.deviceId;
+
   return Boolean(deviceId && deviceId !== "default");
 }
 
@@ -160,13 +170,14 @@ export async function resolvePreferredMicrophone({
   mediaDevices?: Pick<MediaDevices, "enumerateDevices">;
   forceSystemDefault?: boolean;
   refreshSystemDefault?: boolean;
-  getSystemDefault?: (
-    options: { refresh: boolean }
-  ) => Promise<SystemDefaultMicrophone | null | undefined> | undefined;
+  getSystemDefault?: (options: {
+    refresh: boolean;
+  }) => Promise<SystemDefaultMicrophone | null | undefined> | undefined;
 }): Promise<MicrophoneResolution<MediaDeviceInfo>> {
   const effectiveSettings: MicrophoneSelectionSettings = forceSystemDefault
     ? { ...settings, microphoneSelectionMode: "system", preferBuiltInMic: false }
     : settings;
+
   const mode = getMicrophoneSelectionMode(effectiveSettings);
   const devices = await mediaDevices.enumerateDevices();
   let systemDefault = null;
@@ -180,6 +191,7 @@ export async function resolvePreferredMicrophone({
   }
 
   const result = resolveMicrophoneSelection(devices, effectiveSettings, systemDefault);
+
   if (
     result.mode === "specific" &&
     result.device &&
@@ -187,5 +199,6 @@ export async function resolvePreferredMicrophone({
   ) {
     settings.setSelectedMicDevice?.(result.device.deviceId, result.device.label);
   }
+
   return result;
 }

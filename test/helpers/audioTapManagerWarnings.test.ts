@@ -1,7 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { EventEmitter } = require("node:events");
+
 const Module = require("node:module");
+
 const createMeetingSystemAudioWatchdog: typeof import("../../src/helpers/meetingSystemAudioWatchdog.ts").createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
 
 // The tap helper reports a stranded device as a stderr warning rather than by
@@ -10,9 +14,14 @@ const createMeetingSystemAudioWatchdog: typeof import("../../src/helpers/meeting
 // start handshake either, which is what the mid-handshake test pins.
 
 const managerModulePath = require.resolve("../../src/helpers/audioTapManager.ts");
+
 const originalLoad = Module._load;
 
-type FakeChildLike = { stdout: { emit: (e: string, data: unknown) => void }; stderr: { emit: (e: string, data: unknown) => void } };
+type FakeChildLike = {
+  stdout: { emit: (e: string, data: unknown) => void };
+  stderr: { emit: (e: string, data: unknown) => void };
+};
+
 let lastChild: FakeChildLike | null = null;
 
 function createFakeChild() {
@@ -27,6 +36,7 @@ function createFakeChild() {
       child.emit("close", 0, null);
     });
   };
+
   return child;
 }
 
@@ -37,15 +47,19 @@ function loadManagerClass() {
       return {
         spawn: () => {
           lastChild = createFakeChild();
+
           return lastChild;
         },
       };
     }
+
     if (request === "./debugLogger" || request === "./debugLogger.js") {
       return { info() {}, debug() {}, error() {}, warn() {} };
     }
+
     return originalLoad(request, parent, isMain);
   };
+
   try {
     return require(managerModulePath);
   } finally {
@@ -61,10 +75,12 @@ function createManager() {
   const manager = new AudioTapManager();
   manager.isSupported = () => true;
   manager._prepareBinary = () => "/fake/macos-audio-tap";
+
   return manager;
 }
 
-const emitLine = (child: FakeChildLike, message: unknown) => child.stderr.emit("data", `${JSON.stringify(message)}\n`);
+const emitLine = (child: FakeChildLike, message: unknown) =>
+  child.stderr.emit("data", `${JSON.stringify(message)}\n`);
 
 test("a device_invalidated warning reaches onWarning and not onError", async () => {
   const manager = createManager();
@@ -76,6 +92,7 @@ test("a device_invalidated warning reaches onWarning and not onError", async () 
     onError: (error: unknown) => errors.push(error),
     onWarning: (warning: unknown) => warnings.push(warning),
   });
+
   emitLine(lastChild!, { type: "start" });
   await started;
 
@@ -97,9 +114,11 @@ test("a warning during the start handshake neither resolves nor rejects it", asy
   const warnings = [];
   let settled = false;
 
-  const started = manager.start({ onWarning: (warning: unknown) => warnings.push(warning) }).then(() => {
-    settled = true;
-  });
+  const started = manager
+    .start({ onWarning: (warning: unknown) => warnings.push(warning) })
+    .then(() => {
+      settled = true;
+    });
 
   const child = lastChild!;
   emitLine(child, { type: "warning", code: "listener_unavailable", message: "no listener" });
@@ -151,16 +170,22 @@ test("stop drops the warning handler along with the rest of the callbacks", asyn
 test("a device warning beside the replacement start acknowledgement triggers another recovery", async (t: import("node:test").TestContext) => {
   const manager = createManager();
   const interruptions: Array<{ reason: string; recovering: boolean }> = [];
+
   const watchdog = createMeetingSystemAudioWatchdog({
-    onInterrupted: (payload: { reason: string; recovering: boolean }) => interruptions.push(payload),
+    onInterrupted: (payload: { reason: string; recovering: boolean }) =>
+      interruptions.push(payload),
   });
+
   const flush = () => new Promise((resolve) => setImmediate(resolve));
+
   const startCapture = () =>
     manager.start({
       onWarning: (warning: unknown) => {
-        if ((warning as { code?: string }).code === "device_invalidated") watchdog.reportDeviceInvalidated();
+        if ((warning as { code?: string }).code === "device_invalidated")
+          watchdog.reportDeviceInvalidated();
       },
     });
+
   watchdog.attachCapture({ stop: () => manager.stop(), start: startCapture });
   t.after(async () => {
     watchdog.stop();
@@ -189,10 +214,12 @@ test("a device warning beside the replacement start acknowledgement triggers ano
   await flush();
   assert.equal(interruptions.length, 2);
   assert.ok(
-    interruptions.every((entry: { reason: string; recovering: boolean }) => entry.reason === "device_invalidated" && entry.recovering)
+    interruptions.every(
+      (entry: { reason: string; recovering: boolean }) =>
+        entry.reason === "device_invalidated" && entry.recovering
+    )
   );
 });
-
 
 test("PCM arriving before start waits for its epoch; clock messages never reorder or replace PCM", async (t: import("node:test").TestContext) => {
   const manager = createManager();
@@ -202,23 +229,47 @@ test("PCM arriving before start waits for its epoch; clock messages never reorde
   const frameStarts: number[] = [];
   const clocks: unknown[] = [];
   const generation = "11111111-1111-4111-8111-111111111111";
+
   const started = manager.start({
     onStart: () => order.push("epoch"),
-    onChunk: (chunk: Buffer, frameStart: number) => { order.push("pcm"); chunks.push(chunk); frameStarts.push(frameStart); },
-    onClock: (clock: unknown) => { order.push("clock"); clocks.push(clock); },
+    onChunk: (chunk: Buffer, frameStart: number) => {
+      order.push("pcm");
+      chunks.push(chunk);
+      frameStarts.push(frameStart);
+    },
+    onClock: (clock: unknown) => {
+      order.push("clock");
+      clocks.push(clock);
+    },
   });
+
   const child = lastChild!;
   child.stdout.emit("data", Buffer.from([1, 2]));
   child.stdout.emit("data", Buffer.from([3, 4]));
   emitLine(child, { type: "pcm", frameStart: 0, frameCount: 1 });
   emitLine(child, { type: "pcm", frameStart: 1, frameCount: 1 });
-  emitLine(child, { type: "clock", generation, startFrame: 0, endFrame: 2,
-    hostStartNs: "100", hostEndNs: "200", timebaseNumer: 1, timebaseDenom: 1,
-    conversion: "uncalibrated", reason: null });
+  emitLine(child, {
+    type: "clock",
+    generation,
+    startFrame: 0,
+    endFrame: 2,
+    hostStartNs: "100",
+    hostEndNs: "200",
+    timebaseNumer: 1,
+    timebaseDenom: 1,
+    conversion: "uncalibrated",
+    reason: null,
+  });
   assert.deepEqual(chunks, []);
   assert.deepEqual(order, ["clock"]);
   assert.equal(clocks.length, 1);
-  emitLine(child, { type: "start", generation, sampleRate: 24_000, channels: 1, bitsPerChannel: 16 });
+  emitLine(child, {
+    type: "start",
+    generation,
+    sampleRate: 24_000,
+    channels: 1,
+    bitsPerChannel: 16,
+  });
   await started;
   assert.deepEqual(order, ["clock", "epoch", "pcm", "pcm"]);
   assert.deepEqual(Buffer.concat(chunks), Buffer.from([1, 2, 3, 4]));
@@ -232,11 +283,16 @@ test("malformed clock metadata reports coverage warning but preserves PCM and ig
   const chunks: Buffer[] = [];
   const frameStarts: number[] = [];
   const errors: Error[] = [];
+
   const started = manager.start({
-    onChunk: (chunk: Buffer, frameStart: number) => { chunks.push(chunk); frameStarts.push(frameStart); },
+    onChunk: (chunk: Buffer, frameStart: number) => {
+      chunks.push(chunk);
+      frameStarts.push(frameStart);
+    },
     onWarning: (warning: { code?: string }) => warnings.push(warning),
     onError: (error: Error) => errors.push(error),
   });
+
   const retired = lastChild!;
   emitLine(retired, { type: "start" });
   await started;

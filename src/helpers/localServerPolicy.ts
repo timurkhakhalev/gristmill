@@ -16,5 +16,6 @@ export function resolveLocalServerNeeds({
   cleanupModel,
 }: LocalServerNeedsInput): { cleanup: string; stopServer: boolean } {
   const cleanup = useCleanupModel && cleanupMode === "local" ? cleanupModel?.trim() || "" : "";
+
   return { cleanup, stopServer: !cleanup };
 }

@@ -19,6 +19,8 @@ export function createIcon(name: string, Nucleo: ComponentType<IconProps>): Icon
       {...props}
     />
   );
+
   Icon.displayName = name;
+
   return Icon;
 }

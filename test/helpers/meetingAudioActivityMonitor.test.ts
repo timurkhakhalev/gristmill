@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -6,6 +7,7 @@ const {
   MIC_ACTIVITY_TAIL_MS,
   SYSTEM_ACTIVITY_TAIL_MS,
 } = require("../../src/helpers/meetingAudioActivityMonitor.ts");
+
 const {
   MEETING_MIC_ACTIVITY_RMS,
   MEETING_SYSTEM_ACTIVITY_RMS,
@@ -17,17 +19,24 @@ const START = 1_000_000;
 function pcmAtRms(rms: number, sampleCount = 800) {
   const buffer = Buffer.alloc(sampleCount * 2);
   const amplitude = Math.round(rms * 32768);
+
   for (let i = 0; i < sampleCount; i += 1) {
     buffer.writeInt16LE(amplitude, i * 2);
   }
+
   return buffer;
 }
 
 function createMonitor() {
-  const changes: import("../../src/helpers/meetingAudioActivityMonitor.js").MeetingAudioActivityState[] = [];
+  const changes: import("../../src/helpers/meetingAudioActivityMonitor.js").MeetingAudioActivityState[] =
+    [];
+
   const monitor = createMeetingAudioActivityMonitor({
-    onActivityChanged: (state: import("../../src/helpers/meetingAudioActivityMonitor.js").MeetingAudioActivityState) => changes.push({ ...state }),
+    onActivityChanged: (
+      state: import("../../src/helpers/meetingAudioActivityMonitor.js").MeetingAudioActivityState
+    ) => changes.push({ ...state }),
   });
+
   return { monitor, changes };
 }
 
@@ -60,6 +69,7 @@ test("digital-zero system chunks (Windows loopback silence) never mark the syste
   for (let i = 0; i < 30; i += 1) {
     monitor.recordChunk("system", Buffer.alloc(1600));
   }
+
   monitor.tick(START);
   monitor.tick(START + 1000);
 

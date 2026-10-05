@@ -14,25 +14,31 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 };
 
 const MAX_CAPTURE_ERROR_LOG_BYTES = 1024 * 1024;
+
 const MAX_CAPTURE_ERROR_ENTRY_BYTES = 16 * 1024;
 
 const normalizeLevel = (value: unknown): LogLevel | null => {
   if (!value) return null;
   const lower = String(value).toLowerCase();
+
   return Object.prototype.hasOwnProperty.call(LOG_LEVELS, lower) ? (lower as LogLevel) : null;
 };
 
 const readArgLogLevel = (): string | null => {
   const argv = process.argv || [];
+
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+
     if (arg === "--log-level" && argv[i + 1]) {
       return argv[i + 1];
     }
+
     if (arg.startsWith("--log-level=")) {
       return arg.split("=", 2)[1];
     }
   }
+
   return null;
 };
 
@@ -75,6 +81,7 @@ class DebugLogger {
 
     try {
       const logsDir = path.join(app.getPath("userData"), "logs");
+
       if (!fs.existsSync(logsDir)) {
         fs.mkdirSync(logsDir, { recursive: true });
       }
@@ -116,11 +123,13 @@ class DebugLogger {
 
   resolveLogLevel(): LogLevel {
     const argLevel = normalizeLevel(readArgLogLevel());
+
     if (argLevel) {
       return argLevel;
     }
 
     const envLevel = normalizeLevel(process.env.GRISTMILL_LOG_LEVEL || process.env.LOG_LEVEL);
+
     if (envLevel) {
       return envLevel;
     }
@@ -135,6 +144,7 @@ class DebugLogger {
 
   refreshLogLevel(): void {
     const nextLevel = this.resolveLogLevel();
+
     if (nextLevel === this.logLevel) return;
 
     this.logLevel = nextLevel;
@@ -156,12 +166,14 @@ class DebugLogger {
 
   shouldLog(level: string): boolean {
     const normalized: LogLevel = normalizeLevel(level) || "info";
+
     return LOG_LEVELS[normalized] >= this.levelValue;
   }
 
   serializeValue(value: unknown): unknown {
     if (value instanceof Error) {
       const code = (value as NodeJS.ErrnoException).code;
+
       return {
         name: value.name,
         message: value.message,
@@ -170,6 +182,7 @@ class DebugLogger {
         ...(value as unknown as Record<string, unknown>),
       };
     }
+
     return value;
   }
 
@@ -183,6 +196,7 @@ class DebugLogger {
             return String(arg);
           }
         }
+
         return String(arg);
       })
       .join(" ");
@@ -190,7 +204,9 @@ class DebugLogger {
 
   formatMeta(meta: unknown): string {
     if (meta === undefined) return "";
+
     if (typeof meta === "string") return meta;
+
     try {
       return JSON.stringify(this.serializeValue(meta), null, 2);
     } catch {
@@ -198,15 +214,12 @@ class DebugLogger {
     }
   }
 
-  write(
-    level: string,
-    message: string,
-    meta?: unknown,
-    scope?: string,
-    source?: string
-  ): void {
+  write(level: string, message: string, meta?: unknown, scope?: string, source?: string): void {
     const normalized = normalizeLevel(level) || "info";
-    const captureFailure = scope === "meeting-capture" && (normalized === "error" || normalized === "fatal");
+
+    const captureFailure =
+      scope === "meeting-capture" && (normalized === "error" || normalized === "fatal");
+
     if (!this.shouldLog(normalized) && !captureFailure) return;
 
     // Try to initialize file logging if pending and app is ready
@@ -241,6 +254,7 @@ class DebugLogger {
     if (this.logStream) {
       this.logStream.write(logLine);
     }
+
     if (captureFailure) {
       this.writeCaptureErrorFile(logLine);
     }
@@ -248,22 +262,30 @@ class DebugLogger {
 
   private writeCaptureErrorFile(line: string): void {
     if (!app.isReady()) return;
+
     try {
       const logsDir = path.join(app.getPath("userData"), "logs");
       fs.mkdirSync(logsDir, { recursive: true });
       const active = path.join(logsDir, "capture-errors.log");
       const previous = path.join(logsDir, "capture-errors.1.log");
       const bytes = Buffer.from(`[${app.getVersion()}] ${line}`);
-      const entry = bytes.length <= MAX_CAPTURE_ERROR_ENTRY_BYTES
-        ? bytes
-        : Buffer.concat([
-            bytes.subarray(0, MAX_CAPTURE_ERROR_ENTRY_BYTES - 14),
-            Buffer.from(" [truncated]\n"),
-          ]);
-      if (fs.existsSync(active) && fs.statSync(active).size + entry.length > MAX_CAPTURE_ERROR_LOG_BYTES) {
+
+      const entry =
+        bytes.length <= MAX_CAPTURE_ERROR_ENTRY_BYTES
+          ? bytes
+          : Buffer.concat([
+              bytes.subarray(0, MAX_CAPTURE_ERROR_ENTRY_BYTES - 14),
+              Buffer.from(" [truncated]\n"),
+            ]);
+
+      if (
+        fs.existsSync(active) &&
+        fs.statSync(active).size + entry.length > MAX_CAPTURE_ERROR_LOG_BYTES
+      ) {
         fs.rmSync(previous, { force: true });
         fs.renameSync(active, previous);
       }
+
       fs.appendFileSync(active, entry, { mode: 0o600 });
     } catch (error) {
       console.error("Failed to write capture error log:", error);
@@ -307,8 +329,10 @@ class DebugLogger {
   logEntry(entry: unknown): void {
     if (!entry || typeof entry !== "object") return;
     const record = entry as Record<string, unknown>;
+
     const normalized =
       normalizeLevel(typeof record.level === "string" ? record.level : undefined) || "info";
+
     const message = record.message ? String(record.message) : "";
     const scope = record.scope ? String(record.scope) : undefined;
     const source = record.source ? String(record.source) : "renderer";
@@ -350,6 +374,7 @@ class DebugLogger {
     // Check parent directory permissions
     if (ffmpegPath) {
       const dir = path.dirname(ffmpegPath);
+
       try {
         fs.accessSync(dir, fs.constants.R_OK);
         debugInfo.dirReadable = true;
@@ -361,6 +386,7 @@ class DebugLogger {
 
     // Platform-specific path checks
     let possiblePaths: (string | null | undefined)[] = [];
+
     if (process.platform === "win32") {
       possiblePaths = [
         ffmpegPath,
@@ -409,6 +435,7 @@ class DebugLogger {
       size?: number;
       constructor?: { name?: string };
     } | null;
+
     const audioInfo: Record<string, unknown> = {
       context,
       type: blob?.type || "unknown",
@@ -462,6 +489,7 @@ class DebugLogger {
     if (!this.isDebugEnabled()) return;
 
     const output = data.toString().trim();
+
     if (output) {
       this.debug(`${processName} ${type}`, output, "process");
     }
@@ -496,5 +524,7 @@ class DebugLogger {
 
 // Singleton instance
 const debugLogger = new DebugLogger();
+
 export default debugLogger;
+
 module.exports = debugLogger;

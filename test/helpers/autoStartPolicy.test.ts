@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -15,6 +16,7 @@ test("an item awaiting approval reads as off, with the reason surfaced", () => {
   const state = resolveAutoStartState({
     loginItemSettings: { openAtLogin: false, status: "requires-approval" },
   });
+
   assert.deepEqual(state, { enabled: false, requiresApproval: true });
 });
 
@@ -22,6 +24,7 @@ test("macOS reports an approved item without prompting for approval", () => {
   const state = resolveAutoStartState({
     loginItemSettings: { openAtLogin: true, status: "enabled" },
   });
+
   assert.deepEqual(state, { enabled: true, requiresApproval: false });
 });
 
@@ -29,6 +32,7 @@ test("a disabled macOS item is neither enabled nor awaiting approval", () => {
   const state = resolveAutoStartState({
     loginItemSettings: { openAtLogin: false, status: "not-registered" },
   });
+
   assert.deepEqual(state, { enabled: false, requiresApproval: false });
 });
 

@@ -9,7 +9,10 @@ import {
   calendarAvailabilityChannels,
   type AvailabilityResponse,
 } from "../contracts/calendarAvailability.js";
-import type { CalendarAvailabilityServiceDeps, CalendarProviderEntry } from "./calendarAvailabilityService.js";
+import type {
+  CalendarAvailabilityServiceDeps,
+  CalendarProviderEntry,
+} from "./calendarAvailabilityService.js";
 import { getCalendarAvailability } from "./calendarAvailabilityService.js";
 
 export interface CalendarAvailabilityHandlerDeps {
@@ -23,9 +26,11 @@ type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
 
 function parseResponse<T>(schema: ZodType<T>, raw: unknown): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error("Calendar availability returned an unexpected response shape");
   }
+
   return result.data;
 }
 
@@ -43,6 +48,7 @@ export function registerCalendarAvailabilityHandler(
           calendarProviders: deps.calendarProviders,
           clock: deps.clock,
         });
+
         return parseResponse(availabilityResponseSchema, {
           success: true as const,
           availability,
@@ -53,6 +59,7 @@ export function registerCalendarAvailabilityHandler(
           { error: error instanceof Error ? error.message : String(error) },
           "calendar"
         );
+
         return {
           success: false as const,
           error: error instanceof Error ? error.message : "Failed to check calendar availability",

@@ -4,19 +4,38 @@ import ApiKeyInput from "../../ui/ApiKeyInput";
 import { Input } from "../../ui/input";
 import { SelectField } from "../../ui/SelectField";
 import { GetApiKeyLink } from "../../ui/GetApiKeyLink";
-import { credentialSetterName, type CredentialKey, type ProviderCapability, type ProviderEntry } from "./providerDirectory";
+import {
+  credentialSetterName,
+  type CredentialKey,
+  type ProviderCapability,
+  type ProviderEntry,
+} from "./providerDirectory";
 import { useCredentialValues } from "./useCredentialValues";
 
 /** Credential fields of one provider, optionally limited to the fields a task needs. */
-export function ProviderCredentialsForm({ entry, capability }: { entry: ProviderEntry; capability?: ProviderCapability }) {
+export function ProviderCredentialsForm({
+  entry,
+  capability,
+}: {
+  entry: ProviderEntry;
+  capability?: ProviderCapability;
+}) {
   const { t } = useTranslation();
   const values = useCredentialValues();
+
   const fields = capability
-    ? entry.fields.filter((field) => field.capability === capability || !entry.fields.some((item) => item.capability === capability))
+    ? entry.fields.filter(
+        (field) =>
+          field.capability === capability ||
+          !entry.fields.some((item) => item.capability === capability)
+      )
     : entry.fields;
 
   const setValue = (key: CredentialKey, value: string) => {
-    const setter = useSettingsStore.getState()[credentialSetterName(key)] as (next: string) => unknown;
+    const setter = useSettingsStore.getState()[credentialSetterName(key)] as (
+      next: string
+    ) => unknown;
+
     return setter(value);
   };
 
@@ -27,6 +46,7 @@ export function ProviderCredentialsForm({ entry, capability }: { entry: Provider
       )}
       {fields.map((field, index) => {
         const label = field.labelKey ? t(field.labelKey) : t("common.apiKey");
+
         return (
           <div key={field.key} className="space-y-1.5">
             <div className="flex items-baseline justify-between gap-2">
@@ -34,12 +54,21 @@ export function ProviderCredentialsForm({ entry, capability }: { entry: Provider
               {index === 0 && <GetApiKeyLink url={entry.consoleUrl} />}
             </div>
             {field.input === "secret" ? (
-              <ApiKeyInput apiKey={values[field.key]} setApiKey={(value) => setValue(field.key, value)} label="" ariaLabel={`${entry.name} ${label}`} helpText="" />
+              <ApiKeyInput
+                apiKey={values[field.key]}
+                setApiKey={(value) => setValue(field.key, value)}
+                label=""
+                ariaLabel={`${entry.name} ${label}`}
+                helpText=""
+              />
             ) : field.input === "select" ? (
               <SelectField
                 value={values[field.key]}
                 onChange={(value) => setValue(field.key, value)}
-                options={(field.options ?? []).map((option) => ({ id: option.value, label: option.label }))}
+                options={(field.options ?? []).map((option) => ({
+                  id: option.value,
+                  label: option.label,
+                }))}
                 ariaLabel={label}
                 size="sm"
                 className="w-full"

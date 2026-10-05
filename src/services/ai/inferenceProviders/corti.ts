@@ -8,6 +8,7 @@ export const cortiProvider: InferenceProvider = {
     logger.logReasoning("CORTI_START", { model, agentName });
     const apiKey = await ctx.getApiKey("corti");
     const endpoint = buildApiUrl(API_ENDPOINTS.CORTI_MODELS_BASE, "/chat/completions");
+
     return ctx.callChatCompletionsApi(endpoint, apiKey, model, text, agentName, config, "Corti");
   },
 };

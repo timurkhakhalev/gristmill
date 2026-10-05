@@ -17,17 +17,21 @@ export const listFoldersTool: ToolDefinition = {
         window.electronAPI.getFolders(),
         window.electronAPI.getSpaces?.() ?? Promise.resolve([]),
       ]);
+
       const spaceNameById = new Map(spaces.map((s) => [s.id, s.name]));
+
       const data = folders.map((f) => ({
         id: f.id,
         name: f.name,
         space: spaceNameById.get(f.space_id) ?? null,
       }));
+
       const displayText = data.length
         ? `Folders: ${data
             .map((f) => (spaces.length > 1 && f.space ? `${f.name} (${f.space})` : f.name))
             .join(", ")}`
         : "No folders";
+
       return { success: true, data, displayText };
     } catch (error) {
       return {

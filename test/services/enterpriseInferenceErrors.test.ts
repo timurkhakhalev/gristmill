@@ -1,6 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 test("enterprise cleanup preserves AWS technical details on the renderer error", async (t: import("node:test").TestContext) => {
   const technicalDetails = {
@@ -9,6 +14,7 @@ test("enterprise cleanup preserves AWS technical details on the renderer error",
     requestId: "aws-request-1",
     underlyingError: "Service unavailable",
   };
+
   installBrowserGlobals(t, {
     window: {
       electronAPI: {
@@ -26,6 +32,7 @@ test("enterprise cleanup preserves AWS technical details on the renderer error",
       },
     },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-enterprise-inference-errors-",
     mockModules: {
@@ -44,6 +51,7 @@ test("enterprise cleanup preserves AWS technical details on the renderer error",
       `,
     },
   });
+
   const { enterpriseProvider } = await vite.ssrLoadModule(
     "/services/ai/inferenceProviders/enterprise.ts"
   );
@@ -60,17 +68,12 @@ test("enterprise cleanup preserves AWS technical details on the renderer error",
       assert.equal(error.message, "AWS Bedrock is temporarily unavailable.");
       assert.equal(error.messageKey, "reasoning.enterprise.errors.bedrock.serviceUnavailable");
       assert.deepEqual(error.messageParams, { region: "eu-west-1" });
-      assert.equal(
-        error.action,
-        "Run the command below in your terminal to re-authenticate:"
-      );
-      assert.equal(
-        error.actionKey,
-        "reasoning.enterprise.errors.bedrock.actions.reauthenticate"
-      );
+      assert.equal(error.action, "Run the command below in your terminal to re-authenticate:");
+      assert.equal(error.actionKey, "reasoning.enterprise.errors.bedrock.actions.reauthenticate");
       assert.equal(error.copyCommand, "aws sso login --profile company-sso");
       assert.equal(error.retryable, true);
       assert.deepEqual(error.technicalDetails, technicalDetails);
+
       return true;
     }
   );

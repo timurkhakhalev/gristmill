@@ -1,7 +1,10 @@
 import { spawn, type ChildProcess } from "child_process";
 
 /** Terminate a child process on macOS. */
-export function killProcess(proc: ChildProcess | null | undefined, signal: NodeJS.Signals = "SIGTERM"): void {
+export function killProcess(
+  proc: ChildProcess | null | undefined,
+  signal: NodeJS.Signals = "SIGTERM"
+): void {
   if (!proc || proc.exitCode !== null) return;
 
   try {
@@ -17,7 +20,9 @@ export function killProcessGroup(
   signal: NodeJS.Signals = "SIGTERM"
 ): void {
   if (!proc || proc.exitCode !== null) return;
+
   if (proc.pid === undefined) return;
+
   try {
     process.kill(-proc.pid, signal);
   } catch {
@@ -53,6 +58,7 @@ function validateCommand(cmd: string, args: string[], shell: boolean): void {
 
   // Check for dangerous characters in arguments
   const dangerousChars = /[;&|`$<>]/;
+
   if (args.some((arg) => dangerousChars.test(arg))) {
     throw new Error("Command arguments contain potentially dangerous characters");
   }
@@ -98,6 +104,7 @@ export async function runCommand(
       childProc = spawn(cmd, args, { shell });
     } catch (error) {
       reject(error);
+
       return;
     }
 
@@ -106,6 +113,7 @@ export async function runCommand(
         clearTimeout(timer);
         timer = undefined;
       }
+
       if (childProc && !completed) {
         completed = true;
         killProcess(childProc, "SIGTERM");
@@ -120,8 +128,8 @@ export async function runCommand(
       cleanup();
       reject(new Error(`Command timed out after ${timeout}ms`));
     }, timeout);
-    timer = timeoutHandle;
 
+    timer = timeoutHandle;
 
     childProc.stdout?.on("data", (data: Buffer) => {
       stdout += data.toString();
@@ -134,6 +142,7 @@ export async function runCommand(
     childProc.on("close", (code) => {
       if (completed) return; // Already handled
       completed = true;
+
       if (timer) clearTimeout(timer);
 
       if (code === 0) {

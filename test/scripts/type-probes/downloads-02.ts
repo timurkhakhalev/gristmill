@@ -15,12 +15,20 @@ import {
   createDownloadInProgressError,
 } from "./src/helpers/downloadUtils.js";
 import { resolveSystemTarExecutable, runSystemTar } from "./src/helpers/systemTar.js";
-import { write as writePid, clear as clearPid, readAll as readPids } from "./src/helpers/sidecarPidFile.js";
+import {
+  write as writePid,
+  clear as clearPid,
+  readAll as readPids,
+} from "./src/helpers/sidecarPidFile.js";
 import { register as registerSidecar, shutdownAll } from "./src/helpers/sidecarRegistry.js";
 import { reapStaleSidecars, waitForExit } from "./src/helpers/sidecarReaper.js";
 import { getSafeTempDir } from "./src/helpers/safeTempDir.js";
 import { resolveBundledBinary } from "./src/helpers/binaryResolver.js";
-import { getCacheRoot, getModelsDirForService, pathHasProblematicChars } from "./src/helpers/modelDirUtils.js";
+import {
+  getCacheRoot,
+  getModelsDirForService,
+  pathHasProblematicChars,
+} from "./src/helpers/modelDirUtils.js";
 import { runCommand, killProcess, killProcessGroup, TIMEOUTS } from "./src/utils/process.js";
 import {
   findAvailablePort,

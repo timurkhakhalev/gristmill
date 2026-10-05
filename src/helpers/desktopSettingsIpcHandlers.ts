@@ -146,7 +146,10 @@ export interface DesktopSettingsDeps {
   };
   oauthProtocolRegistered: boolean;
   oauthProtocol: string;
-  getTrayManager: () => { timeFormat?: "locale" | "12h" | "24h"; updateTrayMenu?: () => void } | null | undefined;
+  getTrayManager: () =>
+    | { timeFormat?: "locale" | "12h" | "24h"; updateTrayMenu?: () => void }
+    | null
+    | undefined;
   sendToMainWindow: (channel: string) => void;
   // Local sidecar seams for startup preference switches.
   stopWhisperServer: () => Promise<void>;
@@ -185,18 +188,21 @@ function syncStartupEnv(
   clearVars: string[] = []
 ): void {
   let changed = false;
+
   for (const [key, value] of Object.entries(setVars)) {
     if (process.env[key] !== value) {
       process.env[key] = value;
       changed = true;
     }
   }
+
   for (const key of clearVars) {
     if (process.env[key]) {
       delete process.env[key];
       changed = true;
     }
   }
+
   if (changed) {
     debugLogger.debug("Synced startup env vars", {
       set: Object.keys(setVars),
@@ -227,12 +233,15 @@ export function registerDesktopSettingsHandlers(
 
   ipcMain.handle(desktopSettingsChannels.setOnboardingWindowMode, (_event, mode: unknown) => {
     const parsed = onboardingWindowModeSchema.safeParse(mode);
+
     if (!parsed.success) return false;
+
     return windowManager.setOnboardingWindowMode(parsed.data);
   });
 
   ipcMain.handle(desktopSettingsChannels.setOnboardingActive, (_event, active: unknown) => {
     if (typeof active !== "boolean") return false;
+
     return windowManager.setOnboardingActive(active);
   });
 
@@ -262,6 +271,7 @@ export function registerDesktopSettingsHandlers(
     if (windowManager.controlPanelWindow) {
       return windowManager.controlPanelWindow.isMaximized();
     }
+
     return false;
   });
 
@@ -279,6 +289,7 @@ export function registerDesktopSettingsHandlers(
       (event as { sender: unknown }).sender,
       Boolean(interactive)
     );
+
     return { success: true };
   });
 
@@ -388,6 +399,7 @@ export function registerDesktopSettingsHandlers(
       if (typeof enabled !== "boolean") {
         return { success: false };
       }
+
       if (hotkeyCaptureMode === enabled) return { success: true, skipped: true };
       hotkeyCaptureMode = enabled;
       windowManager.setHotkeyListeningMode(enabled);
@@ -399,6 +411,7 @@ export function registerDesktopSettingsHandlers(
         // Entering capture mode — unregister ALL slots so none intercept keypresses.
         // Dictation is always active; meeting and agent may or may not be set.
         const allSlots = hotkeyManager.slots;
+
         for (const [slot, info] of allSlots) {
           // Native-listener entries (null accelerator) are handled by the
           // platform hotkey manager.
@@ -407,6 +420,7 @@ export function registerDesktopSettingsHandlers(
             logger.log(
               `[IPC] Unregistering globalShortcut "${accel}" (slot "${slot}") for capture mode`
             );
+
             try {
               globalShortcut.unregister(accel);
             } catch {}
@@ -416,6 +430,7 @@ export function registerDesktopSettingsHandlers(
         // Exiting capture mode — re-register globalShortcut-backed hotkeys.
         for (const [slot, info] of hotkeyManager.slots) {
           const hotkeys = info?.hotkeys || [];
+
           if (hotkeys.length === 0 || !info?.callback) continue;
           logger.log(
             `[IPC] Re-registering slot "${slot}" ("${hotkeys.join(", ")}") after capture mode`
@@ -435,6 +450,7 @@ export function registerDesktopSettingsHandlers(
       typeof requestedHotkey === "string" && requestedHotkey.trim()
         ? requestedHotkey.split(",")[0].trim()
         : hotkeyManager.getCurrentHotkey();
+
     const isUsingNativeShortcut = windowManager.isUsingNativeShortcutHotkeys();
     const supportsPushToTalk = hotkeyManager.supportsPushToTalk(hotkey);
 
@@ -458,6 +474,7 @@ export function registerDesktopSettingsHandlers(
 
   ipcMain.handle(desktopSettingsChannels.unregisterCancelHotkey, () => {
     hotkeyManager.unregisterSlot("cancel");
+
     return { success: true };
   });
 
@@ -477,14 +494,19 @@ export function registerDesktopSettingsHandlers(
   ipcMain.handle(desktopSettingsChannels.openExternal, async (_event, url: unknown) => {
     try {
       const parsedUrl = zUrlString.safeParse(url);
+
       if (!parsedUrl.success) {
         return { success: false, error: "Invalid URL" };
       }
+
       const { protocol } = new URL(parsedUrl.data);
+
       if (!["http:", "https:", "mailto:"].includes(protocol)) {
         return { success: false, error: `Blocked URL scheme: ${protocol}` };
       }
+
       await openExternalUrl(parsedUrl.data);
+
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
@@ -498,6 +520,7 @@ export function registerDesktopSettingsHandlers(
       return getAutoStartState();
     } catch (error) {
       logger.error("Error getting auto-start status:", error);
+
       return { enabled: false, requiresApproval: false };
     }
   });
@@ -506,9 +529,11 @@ export function registerDesktopSettingsHandlers(
     try {
       setAutoStartEnabled(enabled === true);
       logger.debug("Auto-start setting updated", { enabled });
+
       return { success: true };
     } catch (error) {
       logger.error("Error setting auto-start:", error);
+
       return { success: false, error: (error as Error).message };
     }
   });
@@ -517,17 +542,21 @@ export function registerDesktopSettingsHandlers(
 
   ipcMain.handle(desktopSettingsChannels.saveActivationMode, (_event, mode: unknown) => {
     const parsed = activationModeSchema.safeParse(mode);
+
     if (!parsed.success) {
       return { success: false };
     }
+
     return environment.saveActivationMode(parsed.data);
   });
 
   ipcMain.handle(desktopSettingsChannels.syncStartupPreferences, (_event, prefs: unknown) => {
     const parsed = startupPreferencesSchema.safeParse(prefs);
+
     if (!parsed.success) {
       return;
     }
+
     const p = parsed.data;
     const setVars: Record<string, string> = {};
     const clearVars: string[] = [];
@@ -535,7 +564,9 @@ export function registerDesktopSettingsHandlers(
     if (p.useLocalWhisper && p.model) {
       // Local mode with model selected - set provider and model for pre-warming
       setVars.LOCAL_TRANSCRIPTION_PROVIDER = p.localTranscriptionProvider ?? "";
+
       if (p.language) setVars.DICTATION_LANGUAGE = p.language;
+
       if (isSherpaLocalProvider(p.localTranscriptionProvider)) {
         setVars.PARAKEET_MODEL = p.model;
         clearVars.push("LOCAL_WHISPER_MODEL");
@@ -583,6 +614,7 @@ export function registerDesktopSettingsHandlers(
     } else {
       clearVars.push("CLEANUP_PROVIDER", "LOCAL_CLEANUP_MODEL");
     }
+
     // TODO: drop legacy REASONING_PROVIDER / LOCAL_REASONING_MODEL clears once
     // the read fallback is removed (~2 releases after this lands).
     clearVars.push("REASONING_PROVIDER", "LOCAL_REASONING_MODEL");
@@ -605,10 +637,12 @@ export function registerDesktopSettingsHandlers(
   ipcMain.handle(desktopSettingsChannels.setTimeFormat, (_event, format: unknown) => {
     if (format !== "locale" && format !== "12h" && format !== "24h") return { success: false };
     const tray = deps.getTrayManager();
+
     if (tray) {
       tray.timeFormat = format;
       tray.updateTrayMenu?.();
     }
+
     return { success: true };
   });
 
@@ -618,6 +652,7 @@ export function registerDesktopSettingsHandlers(
     if (typeof language !== "string") {
       return { success: false, language: environment.getUiLanguage() };
     }
+
     return environment.saveUiLanguage(language);
   });
 
@@ -625,11 +660,13 @@ export function registerDesktopSettingsHandlers(
     if (typeof language !== "string") {
       return { success: false, language: environment.getUiLanguage() };
     }
+
     const result = environment.saveUiLanguage(language);
     process.env.UI_LANGUAGE = result.language;
     changeLanguage(result.language);
     windowManager.refreshLocalizedUi?.();
     deps.getTrayManager()?.updateTrayMenu?.();
+
     return { success: true, language: result.language };
   });
 
@@ -639,6 +676,7 @@ export function registerDesktopSettingsHandlers(
 
   ipcMain.handle(desktopSettingsChannels.log, (_event, entry: unknown) => {
     debugLogger.logEntry(entry);
+
     return { success: true };
   });
 
@@ -651,6 +689,7 @@ export function registerDesktopSettingsHandlers(
       };
     } catch (error) {
       logger.error("Failed to get debug state:", error);
+
       return { enabled: false, logPath: null, logLevel: "info" };
     }
   });
@@ -660,16 +699,19 @@ export function registerDesktopSettingsHandlers(
       if (typeof enabled !== "boolean") {
         return { success: false, error: "Invalid debug logging request" };
       }
+
       const envPath = path.join(app.getPath("userData"), ".env");
 
       // Read current .env content
       let envContent = "";
+
       if (fs.existsSync(envPath)) {
         envContent = fs.readFileSync(envPath, "utf8");
       }
 
       // Parse lines
       const lines = envContent.split("\n");
+
       const logLevelIndex = lines.findIndex((line) =>
         line.trim().startsWith("GRISTMILL_LOG_LEVEL=")
       );
@@ -683,6 +725,7 @@ export function registerDesktopSettingsHandlers(
           if (lines.length > 0 && lines[lines.length - 1] !== "") {
             lines.push("");
           }
+
           lines.push("# Debug logging setting");
           lines.push("GRISTMILL_LOG_LEVEL=debug");
         }
@@ -709,6 +752,7 @@ export function registerDesktopSettingsHandlers(
       };
     } catch (error) {
       logger.error("Failed to set debug logging:", error);
+
       return { success: false, error: (error as Error).message };
     }
   });
@@ -718,10 +762,13 @@ export function registerDesktopSettingsHandlers(
       const logsDir = path.join(app.getPath("userData"), "logs");
       fs.mkdirSync(logsDir, { recursive: true });
       const errMsg = await shellOpenPath(logsDir);
+
       if (errMsg) return { success: false, error: errMsg };
+
       return { success: true };
     } catch (error) {
       logger.error("Failed to open logs folder:", error);
+
       return { success: false, error: (error as Error).message };
     }
   });
@@ -729,6 +776,7 @@ export function registerDesktopSettingsHandlers(
   ipcMain.handle(desktopSettingsChannels.installAgentCli, () => {
     try {
       installAgentCli();
+
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
@@ -740,9 +788,7 @@ export function registerDesktopSettingsHandlers(
   ipcMain.handle(desktopSettingsChannels.openMicrophoneSettings, () =>
     openSystemSettings("microphone")
   );
-  ipcMain.handle(desktopSettingsChannels.openSoundInputSettings, () =>
-    openSystemSettings("sound")
-  );
+  ipcMain.handle(desktopSettingsChannels.openSoundInputSettings, () => openSystemSettings("sound"));
   ipcMain.handle(desktopSettingsChannels.getSystemDefaultMicrophone, (_event, options: unknown) =>
     resolveSystemDefaultMicrophone({
       refresh: (options as { refresh?: boolean } | undefined)?.refresh === true,
@@ -765,21 +811,25 @@ export function registerDesktopSettingsHandlers(
     try {
       if (app.isEmojiPanelSupported()) {
         app.showEmojiPanel();
+
         return true;
       }
     } catch (error) {
       logger.error("Failed to show native emoji panel:", error);
     }
+
     return false;
   });
 
   ipcMain.handle(desktopSettingsChannels.requestMicrophoneAccess, async () => {
     const granted = await systemPreferences.askForMediaAccess("microphone");
+
     return { granted };
   });
 
   ipcMain.handle(desktopSettingsChannels.checkMicrophoneAccess, () => {
     const status = systemPreferences.getMediaAccessStatus("microphone");
+
     return { granted: status === "granted", status };
   });
 
@@ -787,7 +837,9 @@ export function registerDesktopSettingsHandlers(
     if (!deps.audioTap.isSupported()) {
       return buildSystemAudioAccess();
     }
+
     const result = await deps.audioTap.checkAccess();
+
     return buildSystemAudioAccess({
       granted: result.granted,
       status: result.status,
@@ -801,11 +853,13 @@ export function registerDesktopSettingsHandlers(
     if (!deps.audioTap.isSupported()) {
       return buildSystemAudioAccess();
     }
+
     try {
       await deps.audioTap.requestAccess();
     } catch {
       // Report the permission state without opening Settings over the native prompt.
     }
+
     // TCC is the source of truth; the probe can start before the prompt is answered.
     return getSystemAudioAccess();
   });
@@ -820,6 +874,7 @@ export function registerDesktopSettingsHandlers(
   ipcMain.handle(desktopSettingsChannels.promptAccessibilityPermission, async () => {
     if (systemPreferences.isTrustedAccessibilityClient(false)) return true;
     const bundleId = readBundleIdentifier();
+
     if (bundleId) {
       await new Promise<void>((resolve) => {
         execFile("/usr/bin/tccutil", ["reset", "Accessibility", bundleId], (error) => {
@@ -828,6 +883,7 @@ export function registerDesktopSettingsHandlers(
         });
       });
     }
+
     return systemPreferences.isTrustedAccessibilityClient(true);
   });
 
@@ -840,29 +896,38 @@ export function registerDesktopSettingsHandlers(
   ipcMain.handle(desktopSettingsChannels.writeClipboard, (_event, text: unknown) => {
     if (typeof text !== "string") throw new TypeError("Clipboard text must be a string");
     clipboard.writeText(text);
+
     return { success: true };
   });
 
   // ---- notification preferences ------------------------------------------------------------------
 
-  ipcMain.handle(desktopSettingsChannels.syncNotificationPreferences, (_event, rawPrefs: unknown) => {
-    try {
-      const parsed = notificationPreferencesSchema.safeParse(rawPrefs);
-      if (!parsed.success) {
-        return { success: false, error: "Invalid preferences" };
+  ipcMain.handle(
+    desktopSettingsChannels.syncNotificationPreferences,
+    (_event, rawPrefs: unknown) => {
+      try {
+        const parsed = notificationPreferencesSchema.safeParse(rawPrefs);
+
+        if (!parsed.success) {
+          return { success: false, error: "Invalid preferences" };
+        }
+
+        const prefs: Record<string, boolean> = {};
+
+        for (const [k, v] of Object.entries(parsed.data)) {
+          if (NOTIFICATION_PREF_KEYS.has(k)) prefs[k] = v;
+        }
+
+        windowManager.setNotificationPreferences(prefs);
+        // Detection only serves the notification, so the toggle also gates the detector.
+        deps.setDetectionGateForNotifications(windowManager.notificationsGateDetection());
+
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
       }
-      const prefs: Record<string, boolean> = {};
-      for (const [k, v] of Object.entries(parsed.data)) {
-        if (NOTIFICATION_PREF_KEYS.has(k)) prefs[k] = v;
-      }
-      windowManager.setNotificationPreferences(prefs);
-      // Detection only serves the notification, so the toggle also gates the detector.
-      deps.setDetectionGateForNotifications(windowManager.notificationsGateDetection());
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
     }
-  });
+  );
 
   // ---- device cleanup ------------------------------------------------------------------------------
 
@@ -891,31 +956,37 @@ export function registerDesktopSettingsHandlers(
     } catch (e) {
       errors.push(`Parakeet stop: ${(e as Error).message}`);
     }
+
     try {
       cleanup.stopWhisperServer();
     } catch (e) {
       errors.push(`Whisper stop: ${(e as Error).message}`);
     }
+
     try {
       cleanup.stopGoogleCalendar();
     } catch (e) {
       errors.push(`GCal stop: ${(e as Error).message}`);
     }
+
     try {
       cleanup.stopMicrosoftCalendar();
     } catch (e) {
       errors.push(`MCal stop: ${(e as Error).message}`);
     }
+
     try {
       cleanup.stopAppleCalendar();
     } catch (e) {
       errors.push(`ACal stop: ${(e as Error).message}`);
     }
+
     try {
       await cleanup.shutdownDiarization();
     } catch (e) {
       errors.push(`Diarization stop: ${(e as Error).message}`);
     }
+
     // Revoke Google OAuth tokens before DB is closed
     try {
       await cleanup.revokeGoogleTokens();
@@ -927,12 +998,15 @@ export function registerDesktopSettingsHandlers(
     // file is gone. If any removal fails, keep the database so the user can retry.
     try {
       const result = await cleanup.deleteAllAudio();
+
       if (result.failed > 0) {
         errors.push(`Audio delete: ${result.failed} item(s) could not be deleted`);
+
         return { success: false, message: "Cleanup stopped because audio deletion failed", errors };
       }
     } catch (e) {
       errors.push(`Audio delete: ${(e as Error).message}`);
+
       return { success: false, message: "Cleanup stopped because audio deletion failed", errors };
     }
 
@@ -949,16 +1023,19 @@ export function registerDesktopSettingsHandlers(
     } catch (e) {
       errors.push(`Whisper models: ${(e as Error).message}`);
     }
+
     try {
       await cleanup.deleteParakeetModels();
     } catch (e) {
       errors.push(`Parakeet models: ${(e as Error).message}`);
     }
+
     try {
       await cleanup.deleteDiarizationModels();
     } catch (e) {
       errors.push(`Diarization models: ${(e as Error).message}`);
     }
+
     try {
       await cleanup.deleteLlmModels();
     } catch (e) {
@@ -968,6 +1045,7 @@ export function registerDesktopSettingsHandlers(
     // These caches are not owned by one account. Remove them only through
     // the explicit device-erasure path, never during normal account deletion.
     const homeCacheRoot = path.join(os.homedir(), ".cache", "gristmill");
+
     for (const cacheName of []) {
       try {
         fs.rmSync(path.join(homeCacheRoot, cacheName), { recursive: true, force: true });
@@ -981,18 +1059,19 @@ export function registerDesktopSettingsHandlers(
     // note sets behind under another name.
     try {
       const userDataPath = app.getPath("userData");
+
       const dbPath = path.join(
         userDataPath,
         isDevelopmentChannel() ? "transcriptions-dev.db" : "transcriptions.db"
       );
+
       for (const base of [dbPath, path.join(userDataPath, "transcriptions.db")]) {
         for (const suffix of ["", "-wal", "-shm"]) {
           fs.rmSync(base + suffix, { force: true });
         }
       }
-      for (const entry of fs.existsSync(userDataPath)
-        ? fs.readdirSync(userDataPath)
-        : []) {
+
+      for (const entry of fs.existsSync(userDataPath) ? fs.readdirSync(userDataPath) : []) {
         if (/^transcriptions-legacy-dev-backup.*\.db(-wal|-shm)?$/.test(entry)) {
           fs.rmSync(path.join(userDataPath, entry), { force: true });
         }
@@ -1007,6 +1086,7 @@ export function registerDesktopSettingsHandlers(
     } catch (e) {
       errors.push(`Environment settings: ${(e as Error).message}`);
     }
+
     try {
       for (const fileName of ["globe-preference-state.json", ".system-audio-permission"]) {
         fs.rmSync(path.join(app.getPath("userData"), fileName), { force: true });
@@ -1014,6 +1094,7 @@ export function registerDesktopSettingsHandlers(
     } catch (e) {
       errors.push(`Device setting files: ${(e as Error).message}`);
     }
+
     for (const directoryName of ["bin", "llama-cpp"]) {
       try {
         fs.rmSync(path.join(app.getPath("userData"), directoryName), {
@@ -1024,6 +1105,7 @@ export function registerDesktopSettingsHandlers(
         errors.push(`${directoryName} runtime: ${(e as Error).message}`);
       }
     }
+
     try {
       setAutoStartEnabled(false);
     } catch (e) {
@@ -1034,6 +1116,7 @@ export function registerDesktopSettingsHandlers(
     // Cache Storage and localStorage persisted by any app window.
     try {
       const win = BrowserWindow.fromWebContents((event as { sender: WebContents }).sender);
+
       if (win) {
         await win.webContents.session.clearStorageData();
         await win.webContents.session.clearCache();
@@ -1075,10 +1158,13 @@ export function registerDesktopSettingsHandlers(
       const cacheRoot = getCacheRoot();
       await fs.promises.mkdir(cacheRoot, { recursive: true });
       const errMsg = await shellOpenPath(cacheRoot);
+
       if (errMsg) return { success: false, error: errMsg };
+
       return { success: true };
     } catch (error) {
       logger.error("Failed to open model cache folder:", error);
+
       return { success: false, error: (error as Error).message };
     }
   });
@@ -1087,18 +1173,22 @@ export function registerDesktopSettingsHandlers(
     if (typeof text !== "string") {
       return "";
     }
+
     return crypto.createHash("md5").update(text.toLowerCase().trim()).digest("hex");
   });
 }
 
 const zUrlString = z.string();
+
 const readBundleIdentifier = (): string | null => {
   if (process.platform !== "darwin" || !app.isPackaged) return null;
+
   try {
     const plist = fs.readFileSync(
       path.join(path.dirname(app.getPath("exe")), "..", "Info.plist"),
       "utf8"
     );
+
     return /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1] ?? null;
   } catch {
     return null;

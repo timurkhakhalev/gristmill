@@ -72,6 +72,7 @@ export function useHotkeyRegistration(
   options: UseHotkeyRegistrationOptions
 ): UseHotkeyRegistrationResult {
   const { t } = useTranslation();
+
   const {
     onSuccess,
     onError,
@@ -102,29 +103,37 @@ export function useHotkeyRegistration(
       if (!hotkey || hotkey.trim() === "") {
         const errorMsg = t("hooks.hotkeyRegistration.errors.enterValidHotkey");
         setLastError(errorMsg);
+
         if (showErrorToast && showAlert) {
           showAlert({
             title: t("hooks.hotkeyRegistration.titles.invalidHotkey"),
             description: errorMsg,
           });
         }
+
         onError?.(errorMsg, hotkey);
+
         return false;
       }
 
       const platform = getPlatform();
       const validation = validateHotkey(hotkey, platform);
+
       if (!validation.valid) {
         const errorMsg =
           validation.error || t("hooks.hotkeyRegistration.errors.unsupportedShortcut");
+
         setLastError(errorMsg);
+
         if (showErrorToast && showAlert) {
           showAlert({
             title: t("hooks.hotkeyRegistration.titles.invalidHotkey"),
             description: errorMsg,
           });
         }
+
         onError?.(errorMsg, hotkey);
+
         return false;
       }
 
@@ -151,6 +160,7 @@ export function useHotkeyRegistration(
           }
 
           onError?.(errorMsg, hotkey);
+
           return false;
         }
 
@@ -164,12 +174,14 @@ export function useHotkeyRegistration(
         }
 
         onSuccess?.(hotkey);
+
         return true;
       } catch (error) {
         const errorMsg =
           error instanceof Error
             ? error.message
             : t("hooks.hotkeyRegistration.errors.failedToRegister");
+
         setLastError(errorMsg);
 
         if (showErrorToast && showAlert) {
@@ -180,6 +192,7 @@ export function useHotkeyRegistration(
         }
 
         onError?.(errorMsg, hotkey);
+
         return false;
       } finally {
         setIsRegistering(false);

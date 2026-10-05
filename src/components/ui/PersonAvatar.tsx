@@ -8,15 +8,18 @@ function getInitial(displayName: string | null, email: string | null): string {
 
 function getInitialColor(seed: string): string {
   let hash = 0;
+
   for (let i = 0; i < seed.length; i++) {
     hash = seed.charCodeAt(i) + ((hash << 5) - hash);
   }
+
   return `hsl(${Math.abs(hash) % 360}, 45%, 65%)`;
 }
 
 // Shared across mounts so a remounted avatar paints its final state at once
 // instead of initial → hash lookup → Gravatar 404 → initial again.
 const hashByEmail = new Map<string, string>();
+
 const failedImageUrls = new Set<string>();
 
 interface PersonAvatarProps {
@@ -36,24 +39,34 @@ export default function PersonAvatar({
 }: PersonAvatarProps) {
   const profile = usePersonProfile(email);
   const photoUrl = profile?.photo_url ?? null;
-  const [hash, setHash] = useState<string | null>(() => (email ? hashByEmail.get(email) ?? null : null));
+
+  const [hash, setHash] = useState<string | null>(() =>
+    email ? (hashByEmail.get(email) ?? null) : null
+  );
 
   useEffect(() => {
-    const cached = email ? hashByEmail.get(email) ?? null : null;
+    const cached = email ? (hashByEmail.get(email) ?? null) : null;
     setHash(cached);
+
     if (!email || cached) return;
     let cancelled = false;
     window.electronAPI?.getMD5Hash?.(email).then((result) => {
       if (result) hashByEmail.set(email, result);
+
       if (!cancelled) setHash(result);
     });
+
     return () => {
       cancelled = true;
     };
   }, [email]);
 
-  const gravatarUrl = hash ? `https://www.gravatar.com/avatar/${hash}?d=404&s=${Math.min(512, size * 2)}` : null;
+  const gravatarUrl = hash
+    ? `https://www.gravatar.com/avatar/${hash}?d=404&s=${Math.min(512, size * 2)}`
+    : null;
+
   const [, rerender] = useState(0);
+
   const markFailed = (url: string) => {
     failedImageUrls.add(url);
     rerender((n) => n + 1);

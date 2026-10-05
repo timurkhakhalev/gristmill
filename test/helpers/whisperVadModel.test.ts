@@ -1,19 +1,27 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
 // Stub electron before any src module loads: whisperVadModel needs
 // app.getPath("userData") and app.getAppPath(). The stub's getAppPath points
 // at an empty resources dir, so the bundled-copy branch can never shadow the
 // userData cache under test.
-let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-vad-model-"));
-let appPathDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-vad-app-"));
+const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-vad-model-"));
+
+const appPathDir = fs.mkdtempSync(path.join(os.tmpdir(), "oh-vad-app-"));
 
 const originalLoad = Module._load;
+
 let downloadCalls = 0;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -23,8 +31,10 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   if (request.endsWith("downloadUtils.js") || request.endsWith("downloadUtils.ts")) {
     const real = originalLoad.call(this, request, parent, isMain);
+
     return {
       ...real,
       downloadFile: async (url: string, dest: string) => {
@@ -32,14 +42,19 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
         assert.match(url, /ggml-silero/);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, "downloaded-model");
+
         return dest;
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const { ensureWhisperVadModel, resetWhisperVadModelForTests }: typeof import("../../src/helpers/whisperVadModel.ts") = require("../../src/helpers/whisperVadModel.ts");
+const {
+  ensureWhisperVadModel,
+  resetWhisperVadModelForTests,
+}: typeof import("../../src/helpers/whisperVadModel.ts") = require("../../src/helpers/whisperVadModel.ts");
 
 test("ensureWhisperVadModel downloads into the userData cache when absent", async () => {
   resetWhisperVadModelForTests();

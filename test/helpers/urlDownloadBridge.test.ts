@@ -1,31 +1,50 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const { deferred } = require("./harness/deferred.ts") as typeof import("./harness/deferred.js");
-import type { UrlDownloadApi, UrlDownloadProgress, UrlDownloadSuccess } from "../../src/contracts/urlDownload.js";
+
+import type {
+  UrlDownloadApi,
+  UrlDownloadProgress,
+  UrlDownloadSuccess,
+} from "../../src/contracts/urlDownload.js";
 
 const root = path.resolve(__dirname, "../..");
+
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 // Deferred-controlled fake downloader; every call is recorded and can be held
 // open or failed from the test. No network, no real temp writes.
 type DownloadPayload = Omit<UrlDownloadSuccess, "success">;
+
 type DownloadCall = {
   url: string;
   onProgress: (progress: unknown) => void;
   signal: AbortSignal;
   deferred: import("./harness/deferred.js").Deferred<DownloadPayload>;
 };
+
 type Listener = (event: unknown, data: unknown) => void;
+
 type Handler = (event: unknown, ...args: unknown[]) => unknown;
+
 const downloadCalls: DownloadCall[] = [];
+
 let downloadBehavior: (call: DownloadCall) => Promise<unknown> = () => {
   throw new Error("fake download has no behavior set");
 };
+
 const activeHandlers = new Map<string, Handler>();
+
 let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
 
 function resetDownloader() {
@@ -43,6 +62,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     exports: {},
     require(name: string) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: UrlDownloadApi) => {
@@ -60,6 +80,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
           removeListener(channel: string, listener: Listener) {
             const list = listeners.get(channel) || [];
             const index = list.indexOf(listener);
+
             if (index !== -1) list.splice(index, 1);
           },
         },
@@ -70,6 +91,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     console,
   });
   assert.ok(api);
+
   return { api, listeners };
 }
 
@@ -79,15 +101,22 @@ async function createFixture(t: import("node:test").TestContext) {
   const safeTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-url-bridge-"));
   t.after(() => fs.rmSync(safeTempDir, { recursive: true, force: true }));
 
-  const { registerUrlDownloadHandlers } = await import(
-    "../../src/helpers/urlDownloadIpcHandlers.ts"
-  );
+  const { registerUrlDownloadHandlers } =
+    await import("../../src/helpers/urlDownloadIpcHandlers.ts");
+
   registerUrlDownloadHandlers(
     { handle: (channel, listener) => activeHandlers.set(channel, listener) },
     {
       download: (url, onProgress, signal) => {
-        const call: DownloadCall = { url, onProgress, signal, deferred: deferred<DownloadPayload>() };
+        const call: DownloadCall = {
+          url,
+          onProgress,
+          signal,
+          deferred: deferred<DownloadPayload>(),
+        };
+
         downloadCalls.push(call);
+
         return downloadBehavior(call);
       },
       sweepStaleTempArtifacts: () => {},
@@ -97,17 +126,27 @@ async function createFixture(t: import("node:test").TestContext) {
   );
 
   const handlersSnapshot = new Map(activeHandlers);
+
   const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
-    return handler({ sender: { isDestroyed: () => false, send: (c: string, p: unknown) => dispatchSend?.(c, p) } }, ...args);
+
+    return handler(
+      {
+        sender: { isDestroyed: () => false, send: (c: string, p: unknown) => dispatchSend?.(c, p) },
+      },
+      ...args
+    );
   };
+
   const { api, listeners } = loadBundledPreload(invoke);
   // Close the event loop: main-side sends dispatch into the listeners the
   // preload registered, exactly like Electron would.
   dispatchSend = (channel: string, data: unknown) => {
     for (const listener of listeners.get(channel) || []) listener(null, data);
   };
+
   return { api, listeners, safeTempDir };
 }
 
@@ -151,7 +190,12 @@ test("unsubscribe stops progress; a resubscribed listener sees the next download
 
   const pending = api.downloadUrlAudio("https://example.com/b.mp3", "job-2");
   downloadCalls[0].onProgress({ stage: "downloading", percent: 30 });
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await pending;
   assert.deepEqual(events, []);
 });
@@ -160,14 +204,19 @@ test("a malformed progress event is dropped at the preload boundary; the next va
   const { api, listeners } = await createFixture(t);
   const events: UrlDownloadProgress[] = [];
   const unsubscribe = api.onUrlDownloadProgress((p) => events.push(p));
+
   // Inject straight at the preload input, past the main-side validation, to
   // prove the bridge itself filters junk.
   for (const listener of listeners.get("url-download-progress") || []) {
     listener({}, { stage: "sideways", percent: "many" });
     listener({}, { stage: "ready", percent: 100, downloadId: "z" });
   }
+
   unsubscribe();
-  assert.deepEqual(events.map((p) => ({ ...p })), [{ stage: "ready", percent: 100, downloadId: "z" }]);
+  assert.deepEqual(
+    events.map((p) => ({ ...p })),
+    [{ stage: "ready", percent: 100, downloadId: "z" }]
+  );
 });
 
 test("cancel-one aborts only its job; bare cancel aborts the rest; finished id fails", async (t: import("node:test").TestContext) => {
@@ -184,8 +233,18 @@ test("cancel-one aborts only its job; bare cancel aborts the rest; finished id f
   const cancelAll = await api.cancelUrlDownload();
   assert.equal(cancelAll.success, true);
   assert.equal(downloadCalls[1].signal.aborted, true);
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
-  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
+  downloadCalls[1].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await Promise.all([p1, p2]);
 
   const cancelFinished = await api.cancelUrlDownload("c1");
@@ -197,16 +256,26 @@ test("cancel-one aborts only its job; bare cancel aborts the rest; finished id f
 test("raw JS calls with non-string ids keep the tolerant behavior", async (t: import("node:test").TestContext) => {
   await createFixture(t);
   resetDownloader();
+
   const rawInvoke = async (channel: string, ...args: unknown[]): Promise<{ success: boolean }> => {
     const handler = activeHandlers.get(channel);
     assert.ok(handler);
-    return await handler({ sender: { isDestroyed: () => false, send() {} } }, ...args) as { success: boolean };
+
+    return (await handler({ sender: { isDestroyed: () => false, send() {} } }, ...args)) as {
+      success: boolean;
+    };
   };
+
   const pending = rawInvoke("download-url-audio", "https://example.com/raw.mp3", 7);
   const cancelAll = await rawInvoke("cancel-url-download", 7);
   assert.equal(cancelAll.success, true);
   assert.equal(downloadCalls[0].signal.aborted, true);
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   const result = await pending;
   assert.equal(result.success, true);
 });

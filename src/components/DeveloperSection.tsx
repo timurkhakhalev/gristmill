@@ -44,16 +44,26 @@ export default function DeveloperSection() {
 
   useEffect(() => {
     let cancelled = false;
+
     const refresh = () => {
-      void window.electronAPI.getAgentCliStatus().then((status) => {
-        if (!cancelled) setCliInstalled(status.installed);
-      }).catch(() => {
-        if (!cancelled) toast({ title: t("developerSection.cliStatusFailed"), variant: "destructive" });
-      });
+      void window.electronAPI
+        .getAgentCliStatus()
+        .then((status) => {
+          if (!cancelled) setCliInstalled(status.installed);
+        })
+        .catch(() => {
+          if (!cancelled)
+            toast({ title: t("developerSection.cliStatusFailed"), variant: "destructive" });
+        });
     };
+
     refresh();
     window.addEventListener("focus", refresh);
-    return () => { cancelled = true; window.removeEventListener("focus", refresh); };
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refresh);
+    };
   }, [t, toast]);
 
   const handleToggleDebug = async () => {
@@ -94,6 +104,7 @@ export default function DeveloperSection() {
   const handleOpenLogsFolder = async () => {
     try {
       const result = await window.electronAPI.openLogsFolder();
+
       if (!result.success) {
         throw new Error(result.error || "Failed to open folder");
       }
@@ -131,13 +142,23 @@ export default function DeveloperSection() {
   const handleInstallCli = async () => {
     if (cliInstalled !== false || isInstallingCli) return;
     setIsInstallingCli(true);
+
     try {
       const result = await window.electronAPI.installAgentCli();
+
       if (!result.success) throw new Error(result.error || t("developerSection.cliInstallFailed"));
       setCliInstalled(true);
-      toast({ title: t("developerSection.cliInstalled"), description: "~/.local/bin/gristmill", variant: "success" });
+      toast({
+        title: t("developerSection.cliInstalled"),
+        description: "~/.local/bin/gristmill",
+        variant: "success",
+      });
     } catch (error) {
-      toast({ title: t("developerSection.cliInstallFailed"), description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+      toast({
+        title: t("developerSection.cliInstallFailed"),
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
     } finally {
       setIsInstallingCli(false);
     }
@@ -217,8 +238,18 @@ export default function DeveloperSection() {
       </SettingsPanelRow>
       <SettingsCardRow label="Gristmill CLI" description={t("developerSection.cliDescription")}>
         <div className="flex flex-wrap items-center gap-3">
-          {cliInstalled && <span role="status" className="flex items-center gap-1.5 text-xs text-success"><Check className="size-3.5" />{t("developerSection.cliInstalled")}</span>}
-          <Button onClick={() => void handleInstallCli()} variant="outline" size="sm" disabled={cliInstalled !== false || isInstallingCli}>
+          {cliInstalled && (
+            <span role="status" className="flex items-center gap-1.5 text-xs text-success">
+              <Check className="size-3.5" />
+              {t("developerSection.cliInstalled")}
+            </span>
+          )}
+          <Button
+            onClick={() => void handleInstallCli()}
+            variant="outline"
+            size="sm"
+            disabled={cliInstalled !== false || isInstallingCli}
+          >
             {t("developerSection.installCli", { defaultValue: "Install Gristmill CLI" })}
           </Button>
         </div>

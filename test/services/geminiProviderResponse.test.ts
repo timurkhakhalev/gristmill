@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/services/ai/inferenceProviders/gemini.js");
@@ -32,7 +33,11 @@ function createGeminiResponse(parts: unknown[], finishReason = "STOP") {
   };
 }
 
-async function callGemini(t: import("node:test").TestContext, response: unknown, config: Record<string, unknown> = {}) {
+async function callGemini(
+  t: import("node:test").TestContext,
+  response: unknown,
+  config: Record<string, unknown> = {}
+) {
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -44,6 +49,7 @@ async function callGemini(t: import("node:test").TestContext, response: unknown,
     });
 
   const { geminiProvider } = await load();
+
   return geminiProvider.call({
     text: "raw transcript",
     model: "gemini-2.5-flash",
@@ -101,6 +107,7 @@ test("a caller's output budget cannot shrink the one Gemini would have computed"
   let requestBody: { generationConfig: { maxOutputTokens: number } } | null = null;
   globalThis.fetch = async (_url: unknown, init: { body?: unknown } = {}) => {
     requestBody = JSON.parse(String(init.body));
+
     return new Response(JSON.stringify(createGeminiResponse([{ text: "ok" }])), {
       status: 200,
       headers: { "Content-Type": "application/json" },

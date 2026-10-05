@@ -27,11 +27,14 @@ interface Provider {
   models: string[];
   skipCatalogDiff?: boolean;
 }
+
 interface ProbeResult {
   ok: boolean;
   detail?: string;
 }
+
 type CatalogDiff = { error: string } | { vanished: string[]; newConstrained: string[] };
+
 const PROVIDERS: Provider[] = [
   {
     id: "openai",
@@ -107,6 +110,7 @@ function buildProbeBody(model: string, provider: string, endpoint: string) {
       { role: "user", content: "Reply with OK." },
     ],
   };
+
   // disableThinking exercises the suppression dialect — the shape that has
   // historically 400'd; maxTokens floor keeps thinking families from needing
   // room to reason before emitting content.
@@ -117,25 +121,32 @@ function buildProbeBody(model: string, provider: string, endpoint: string) {
     config: { systemPrompt: "You are a health check.", disableThinking: true },
     maxTokens: 256,
   });
+
   return body;
 }
 
 async function probe(entry: Provider, model: string, apiKey: string): Promise<ProbeResult> {
   const body = buildProbeBody(model, entry.id, entry.base);
+
   const res = await fetch(`${entry.base}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(60_000),
   });
+
   const text = await res.text();
+
   if (!res.ok) {
     return { ok: false, detail: `HTTP ${res.status}: ${text.slice(0, 300)}` };
   }
+
   const content = JSON.parse(text)?.choices?.[0]?.message?.content;
+
   if (!content || !content.trim()) {
     return { ok: false, detail: `2xx but empty content: ${text.slice(0, 300)}` };
   }
+
   return { ok: true };
 }
 
@@ -144,27 +155,34 @@ async function catalogDiff(entry: Provider, apiKey: string): Promise<CatalogDiff
     headers: { Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(30_000),
   });
+
   if (!res.ok) return { error: `models list HTTP ${res.status}` };
   // Gemini's OpenAI-compat /models returns "models/"-prefixed ids; the
   // registry pins bare ids, so compare without the prefix.
   const catalog: { data?: { id?: string }[] } = await res.json();
+
   const live = (catalog.data ?? [])
     .map((m) => m.id?.replace(/^models\//, ""))
     .filter((id): id is string => Boolean(id));
+
   const pinned = registryIdsByProvider.get(entry.id) ?? [];
   const vanished = pinned.filter((id) => !live.includes(id));
   const probed = new Set(entry.models);
   const newConstrained = live.filter((id) => CONSTRAINED_FAMILY.test(id) && !probed.has(id));
+
   return { vanished, newConstrained };
 }
 
 const report = [];
+
 const failures = [];
+
 const skipped = [];
 
 for (const entry of PROVIDERS) {
   const label = entry.label ?? entry.id;
   const apiKey = process.env[entry.keyEnv];
+
   if (!apiKey) {
     skipped.push(label);
     continue;
@@ -175,13 +193,16 @@ for (const entry of PROVIDERS) {
       ok: false,
       detail: err.message,
     }));
+
     const line = `| ${label} | ${model} | ${result.ok ? "✅" : `❌ ${result.detail}`} |`;
     report.push(line);
+
     if (!result.ok) failures.push(`${label}/${model}: ${result.detail}`);
   }
 
   if (!entry.skipCatalogDiff) {
     const diff = await catalogDiff(entry, apiKey).catch((err) => ({ error: err.message }));
+
     if ("error" in diff) {
       report.push(`| ${label} | _catalog_ | ⚠️ ${diff.error} |`);
     } else {
@@ -193,6 +214,7 @@ for (const entry of PROVIDERS) {
           `${label}: registry ids vanished from live catalog: ${diff.vanished.join(", ")}`
         );
       }
+
       if (diff.newConstrained.length) {
         report.push(
           `| ${label} | _catalog_ | ℹ️ unprobed constrained-family ids: ${diff.newConstrained.slice(0, 10).join(", ")} |`
@@ -207,12 +229,18 @@ if (skipped.length === PROVIDERS.length) {
 }
 
 console.log("## LLM request-shape canary\n");
+
 console.log("| provider | model | result |\n|---|---|---|");
+
 for (const line of report) console.log(line);
+
 if (skipped.length) console.log(`\nSkipped (no key configured): ${skipped.join(", ")}`);
+
 if (failures.length) {
   console.log(`\n### ${failures.length} failure(s)\n`);
+
   for (const f of failures) console.log(`- ${f}`);
   process.exit(1);
 }
+
 console.log("\nAll probes passed.");

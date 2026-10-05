@@ -47,6 +47,7 @@ export function fitAssistantWindowToWorkArea(
   const ratio = limits.ratioWidth / limits.ratioHeight;
   const availableSurfaceWidth = Math.max(1, workArea.width - limits.gutter);
   const availableSurfaceHeight = Math.max(1, workArea.height - limits.gutter);
+
   const maximumSurfaceWidth = Math.max(
     1,
     Math.min(
@@ -55,12 +56,15 @@ export function fitAssistantWindowToWorkArea(
       Math.floor(availableSurfaceHeight * ratio)
     )
   );
+
   const minimumSurfaceWidth = Math.min(limits.minSurfaceWidth, maximumSurfaceWidth);
   const requestedSurfaceWidth = Math.round(requestedSize.width - limits.gutter);
+
   const surfaceWidth = Math.max(
     minimumSurfaceWidth,
     Math.min(maximumSurfaceWidth, requestedSurfaceWidth)
   );
+
   const surfaceHeight = Math.round(surfaceWidth / ratio);
 
   return {
@@ -79,9 +83,11 @@ function fitContentWindowToWorkArea(
 ): WindowSize {
   const minimumSurfaceHeight = Math.min(limits.minSurfaceHeight, maximumSurfaceHeight);
   const numericHeight = Number(requestedSurfaceHeight);
+
   const safeHeight = Number.isFinite(numericHeight)
     ? Math.round(numericHeight)
     : minimumSurfaceHeight;
+
   const surfaceHeight = Math.max(minimumSurfaceHeight, Math.min(safeHeight, maximumSurfaceHeight));
 
   return {
@@ -96,6 +102,7 @@ export function fitAssistantContentWindowToWorkArea(
 ): WindowSize {
   const limits = ASSISTANT_PANEL_SIZE_LIMITS;
   const maximumWindow = fitAssistantWindowToWorkArea(ASSISTANT_WINDOW_SIZE, workArea);
+
   return fitContentWindowToWorkArea(limits, requestedSurfaceHeight, {
     width: maximumWindow.width,
     maximumSurfaceHeight: maximumWindow.height - limits.gutter,
@@ -107,10 +114,12 @@ export function fitDictationErrorContentWindowToWorkArea(
   workArea: WindowBounds
 ): WindowSize {
   const limits = DICTATION_ERROR_WINDOW_LIMITS;
+
   const fitted = fitContentWindowToWorkArea(limits, requestedSurfaceHeight, {
     width: fitAssistantWindowToWorkArea(ASSISTANT_WINDOW_SIZE, workArea).width,
     maximumSurfaceHeight: Math.max(1, workArea.height - limits.gutter),
   });
+
   return { ...fitted, height: Math.min(workArea.height, fitted.height) };
 }
 
@@ -192,12 +201,15 @@ export function resolveHorizontalWindowDirection(
   const workArea = display?.workArea || display?.bounds;
   const windowCenter = Number(bounds?.x) + Number(bounds?.width) / 2;
   const displayCenter = Number(workArea?.x) + Number(workArea?.width) / 2;
+
   if (!Number.isFinite(windowCenter) || !Number.isFinite(displayCenter)) {
     return preferredPosition === "bottom-left" ? "left" : "right";
   }
+
   if (windowCenter === displayCenter) {
     return preferredPosition === "bottom-left" ? "left" : "right";
   }
+
   return windowCenter < displayCenter ? "left" : "right";
 }
 
@@ -299,6 +311,7 @@ export const CONTROL_PANEL_CONFIG: LegacyWindowConfig = {
 };
 
 const NOTIFICATION_WINDOW_WIDTH = 420;
+
 const NOTIFICATION_WINDOW_HEIGHT = 80;
 
 export const NOTIFICATION_WINDOW_CONFIG: LegacyWindowConfig = {
@@ -335,6 +348,7 @@ export function getMeetingNotificationWindowSize(
   if (promptData?.kind === "auto-end") {
     return AUTO_END_NOTIFICATION_WINDOW_SIZE;
   }
+
   return {
     width: NOTIFICATION_WINDOW_WIDTH,
     height: NOTIFICATION_WINDOW_HEIGHT,
@@ -370,6 +384,7 @@ export class WindowPositionUtil {
 
     let x: number;
     let y: number;
+
     if (position === "bottom-left") {
       x = workArea.x + MARGIN;
       y = workArea.y + workArea.height - height - MARGIN;
@@ -397,6 +412,7 @@ export class WindowPositionUtil {
   // there is invisible even though the window server still reports it on screen.
   static clampToWorkArea(bounds: WindowBounds, display: DisplayGeometry): { x: number; y: number } {
     const workArea = (display.workArea || display.bounds) as WindowBounds;
+
     return {
       x: Math.max(workArea.x, Math.min(bounds.x, workArea.x + workArea.width - bounds.width)),
       y: Math.max(workArea.y, Math.min(bounds.y, workArea.y + workArea.height - bounds.height)),
@@ -407,10 +423,14 @@ export class WindowPositionUtil {
     display: DisplayGeometry,
     customSize: WindowSize | null = null
   ): WindowBounds {
-    const { width, height } =
-      customSize || { width: NOTIFICATION_WINDOW_WIDTH, height: NOTIFICATION_WINDOW_HEIGHT };
+    const { width, height } = customSize || {
+      width: NOTIFICATION_WINDOW_WIDTH,
+      height: NOTIFICATION_WINDOW_HEIGHT,
+    };
+
     const MARGIN = 16;
     const workArea = (display.workArea || display.bounds) as WindowBounds;
+
     // Same negative-origin trap as getMainWindowPosition: clamp to the display,
     // not to zero, or a monitor above the primary one puts the prompt nowhere.
     const bounds = {
@@ -419,6 +439,7 @@ export class WindowPositionUtil {
       width,
       height,
     };
+
     return { ...WindowPositionUtil.clampToWorkArea(bounds, display), width, height };
   }
 
@@ -427,15 +448,18 @@ export class WindowPositionUtil {
     { level = "floating" }: { level?: AlwaysOnTopLevel } = {}
   ): void {
     window.setAlwaysOnTop(true, level, 1);
+
     if (!window.isVisibleOnAllWorkspaces()) {
       window.setVisibleOnAllWorkspaces(true, {
         visibleOnFullScreen: true,
         skipTransformProcessType: true,
       });
     }
+
     if (window.isFullScreenable()) {
       window.setFullScreenable(false);
     }
+
     if (window.isVisible()) {
       window.setAlwaysOnTop(true, level, 1);
     }

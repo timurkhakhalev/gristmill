@@ -41,20 +41,32 @@ export const noteTranscriptSchema: z.ZodType<NoteTranscript> = z.object({
   note_id: z.number().int().positive(),
   status: z.enum(["ready", "absent", "pending", "error", "partial"]),
   timeline: z.object({
-    unit: z.literal("ms"), duration_ms: z.number().nullable(),
-    basis: z.literal("concatenated_recording_time"), intentional_pauses: z.literal("excluded"),
+    unit: z.literal("ms"),
+    duration_ms: z.number().nullable(),
+    basis: z.literal("concatenated_recording_time"),
+    intentional_pauses: z.literal("excluded"),
   }),
-  speakers: z.array(z.object({
-    id: z.string(), name: z.string().nullable(), email: z.string().nullable(),
-    name_source: z.enum(["user", "voice", "platform", "model"]).optional(),
-    name_platform: meetingPlatformSchema.optional(),
-    source: z.enum(["microphone", "system"]).nullable(),
-  })),
+  speakers: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string().nullable(),
+      email: z.string().nullable(),
+      name_source: z.enum(["user", "voice", "platform", "model"]).optional(),
+      name_platform: meetingPlatformSchema.optional(),
+      source: z.enum(["microphone", "system"]).nullable(),
+    })
+  ),
   text: z.string().nullable(),
-  segments: z.array(z.object({
-    speaker_id: z.string().nullable(), start_ms: z.number().nullable(),
-    end_ms: z.number().nullable(), text: z.string(),
-  })).nullable(),
+  segments: z
+    .array(
+      z.object({
+        speaker_id: z.string().nullable(),
+        start_ms: z.number().nullable(),
+        end_ms: z.number().nullable(),
+        text: z.string(),
+      })
+    )
+    .nullable(),
   diagnostics: z.array(z.string()),
 });
 

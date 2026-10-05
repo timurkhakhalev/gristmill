@@ -1,7 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/regenerableNoteTitle.ts");
+
 const LABELS = ["Untitled Note", "New note", "New note"]; // typical localized labels
 
 test("empty / whitespace title is regenerable", async () => {

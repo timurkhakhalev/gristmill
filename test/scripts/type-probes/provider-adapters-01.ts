@@ -1,7 +1,10 @@
 // @probe-name "wrong factory/adapter/catalog usage fails compilation"
 // @probe-codes [2322,2322,2345,2345,2352,2554,2554,2554,2554,2559]
 // @probe-origin test/scripts/providerAdaptersTypeProbe.test.js
-import { getEnterpriseAIModel, type EnterpriseRuntimeConfig } from "./src/helpers/enterpriseAiProviders.ts";
+import {
+  getEnterpriseAIModel,
+  type EnterpriseRuntimeConfig,
+} from "./src/helpers/enterpriseAiProviders.ts";
 import {
   mapEnterpriseError,
   runBedrockRequest,
@@ -10,7 +13,10 @@ import {
   type MappedEnterpriseError,
 } from "./src/helpers/enterpriseProviderErrors.ts";
 import { normalizeBedrockCatalog } from "./src/helpers/bedrockCatalog.ts";
-import { testProviderConnection, resolveProviderRequest } from "./src/helpers/providerConnectionTest.ts";
+import {
+  testProviderConnection,
+  resolveProviderRequest,
+} from "./src/helpers/providerConnectionTest.ts";
 import { transcribeWithGemini } from "./src/helpers/geminiTranscription.ts";
 import { transcribeWithTinfoil } from "./src/helpers/tinfoilTranscription.ts";
 import { getCortiToken } from "./src/helpers/cortiAuth.ts";

@@ -3,8 +3,16 @@ import type { SqliteDatabase } from "./database.js";
 /** One-way, atomic metadata cutover. Raw audio and decision identities stay intact. */
 export function migrateMeetingPlatformEvidence(database: SqliteDatabase): void {
   database.transaction(() => {
-    const old = database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meeting_zoom_observations'").get();
-    if (old) database.exec("ALTER TABLE meeting_zoom_observations RENAME TO meeting_platform_observations");
+    const old = database
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meeting_zoom_observations'"
+      )
+      .get();
+
+    if (old)
+      database.exec(
+        "ALTER TABLE meeting_zoom_observations RENAME TO meeting_platform_observations"
+      );
     database.exec(`
       CREATE TABLE IF NOT EXISTS meeting_platform_observations (
         id TEXT PRIMARY KEY, recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE, evidence_json TEXT NOT NULL
@@ -23,12 +31,24 @@ export function migrateMeetingPlatformEvidence(database: SqliteDatabase): void {
         FROM json_each(meeting_run_platform_decisions.decisions_json)
       ) WHERE EXISTS (SELECT 1 FROM json_each(meeting_run_platform_decisions.decisions_json) WHERE json_type(value, '$.platform') IS NULL);
     `);
-    const columns = database.pragma("table_info(meeting_run_speaker_corrections)") as Array<{ name: string }>;
+
+    const columns = database.pragma("table_info(meeting_run_speaker_corrections)") as Array<{
+      name: string;
+    }>;
+
     if (!columns.some((column) => column.name === "platform")) {
-      database.exec("ALTER TABLE meeting_run_speaker_corrections ADD COLUMN platform TEXT CHECK(platform IN ('zoom', 'google-meet', 'telemost'))");
-      database.exec("UPDATE meeting_run_speaker_corrections SET platform = 'zoom' WHERE source = 'platform'");
+      database.exec(
+        "ALTER TABLE meeting_run_speaker_corrections ADD COLUMN platform TEXT CHECK(platform IN ('zoom', 'google-meet', 'telemost'))"
+      );
+      database.exec(
+        "UPDATE meeting_run_speaker_corrections SET platform = 'zoom' WHERE source = 'platform'"
+      );
     }
-    const definition = database.prepare("SELECT sql FROM sqlite_master WHERE name = 'meeting_run_speaker_corrections'").get() as { sql: string };
+
+    const definition = database
+      .prepare("SELECT sql FROM sqlite_master WHERE name = 'meeting_run_speaker_corrections'")
+      .get() as { sql: string };
+
     if (!definition.sql.includes("'telemost'")) {
       database.exec(`
         CREATE TABLE meeting_run_speaker_corrections_telemost (

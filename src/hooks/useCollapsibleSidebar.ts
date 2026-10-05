@@ -9,8 +9,10 @@ function useNarrowWindow() {
     const query = window.matchMedia(NARROW_QUERY);
     const update = () => setNarrow(query.matches);
     query.addEventListener("change", update);
+
     return () => query.removeEventListener("change", update);
   }, []);
+
   return narrow;
 }
 

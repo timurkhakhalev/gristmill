@@ -5,6 +5,7 @@ import PersonAvatar from "./PersonAvatar";
 export default function MentionChip({ node }: NodeViewProps) {
   const label = node.attrs.label as string;
   const email = node.attrs.email as string | null;
+
   return (
     <NodeViewWrapper as="span" className="inline-flex items-baseline align-baseline mx-px">
       <span

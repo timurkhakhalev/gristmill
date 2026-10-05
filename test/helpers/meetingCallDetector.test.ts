@@ -1,14 +1,23 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const originalLoad = Module._load;
+
 Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
   if (request === "./binaryResolver.js") return { resolveBundledBinary: () => null };
+
   if (request === "./debugLogger.js") return { debug() {}, info() {}, warn() {} };
+
   return originalLoad.call(this, request, parent, isMain);
 };
-const { MeetingCallDetector }: typeof import("../../src/helpers/meetingCallDetector.ts") = require("../../src/helpers/meetingCallDetector.ts");
+
+const {
+  MeetingCallDetector,
+}: typeof import("../../src/helpers/meetingCallDetector.ts") = require("../../src/helpers/meetingCallDetector.ts");
+
 Module._load = originalLoad;
 
 test("Zoom needs two complete inactive snapshots before a new call can prompt", async () => {

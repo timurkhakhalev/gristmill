@@ -82,6 +82,7 @@ export function acceptExternalNoteUpdate(
 ): { draft: NoteEditorDraft; droppedDirty: { title: boolean; content: boolean } } {
   const next = { ...draft };
   const droppedDirty = { title: false, content: false };
+
   if (external.title !== undefined) {
     if (draft.dirtyTitle) {
       droppedDirty.title = true;
@@ -90,6 +91,7 @@ export function acceptExternalNoteUpdate(
       next.dirtyTitle = false;
     }
   }
+
   if (external.content !== undefined) {
     if (draft.dirtyContent) {
       droppedDirty.content = true;
@@ -98,6 +100,7 @@ export function acceptExternalNoteUpdate(
       next.dirtyContent = false;
     }
   }
+
   return { draft: next, droppedDirty };
 }
 
@@ -109,14 +112,20 @@ export function collectPendingNoteWrites(
   enhanced: PendingEnhancedSnapshot | null
 ): PendingNoteWrite[] {
   const writes: PendingNoteWrite[] = [];
+
   if (document) {
     const updates: { title?: string; content?: string; enhanced_content?: string | null } = {};
+
     if (document.title !== undefined) updates.title = document.title;
+
     if (document.content !== undefined) updates.content = document.content;
+
     if (enhanced && enhanced.noteId === document.noteId) {
       updates.enhanced_content = enhanced.enhancedContent;
     }
+
     writes.push({ noteId: document.noteId, updates });
+
     if (enhanced && enhanced.noteId !== document.noteId) {
       writes.push({
         noteId: enhanced.noteId,
@@ -129,6 +138,7 @@ export function collectPendingNoteWrites(
       updates: { enhanced_content: enhanced.enhancedContent },
     });
   }
+
   return writes;
 }
 
@@ -170,16 +180,20 @@ export function applyEventDraftHandoff(
   handoff: EventDraftHandoff
 ): NoteEditorDraft {
   const pending = handoff.draft;
+
   const content =
     pending.content === undefined
       ? draft.content
       : handoff.mode === "append" && draft.content
         ? `${draft.content}\n\n${pending.content}`
         : pending.content;
+
   // A typed draft title is the user's deliberate input and wins even over an
   // existing note's title; an untouched field leaves the note's value alone.
   const title = pending.title === undefined ? draft.title : pending.title;
+
   if (title === draft.title && content === draft.content) return draft;
+
   return {
     ...draft,
     title,

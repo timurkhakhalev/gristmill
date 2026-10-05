@@ -82,6 +82,7 @@ export function sweepRetiredCloudModelSelections(
         if (storage.getItem(keys.provider) !== providerId) continue;
         const from = storage.getItem(keys.model);
         const to = from ? entry.models[from] : undefined;
+
         if (!from || !to) continue;
         storage.setItem(keys.model, to);
         swept.push({ storeKey: keys.model, provider: providerId, from, to });

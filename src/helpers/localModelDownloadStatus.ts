@@ -19,6 +19,7 @@ export class LocalModelDownloadStatus {
   start(modelType: string, modelId: string): LocalModelDownloadState {
     const key = this._key(modelType, modelId);
     const existing = this.downloads.get(key);
+
     if (existing) return existing;
 
     const status = {
@@ -30,7 +31,9 @@ export class LocalModelDownloadStatus {
       totalBytes: 0,
       sequence: ++this.sequence,
     };
+
     this.downloads.set(key, status);
+
     return status;
   }
 
@@ -45,6 +48,7 @@ export class LocalModelDownloadStatus {
   ): LocalModelDownloadState {
     const key = this._key(modelType, modelId);
     const current = this.downloads.get(key) || this.start(modelType, modelId);
+
     const status = {
       ...current,
       ...updates,
@@ -52,7 +56,9 @@ export class LocalModelDownloadStatus {
       modelId,
       sequence: ++this.sequence,
     };
+
     this.downloads.set(key, status);
+
     return status;
   }
 
@@ -60,6 +66,7 @@ export class LocalModelDownloadStatus {
     const key = this._key(modelType, modelId);
     const current = this.downloads.get(key);
     this.downloads.delete(key);
+
     return current ? { ...current, sequence: ++this.sequence } : null;
   }
 
@@ -68,9 +75,8 @@ export class LocalModelDownloadStatus {
   }
 }
 
-
-
 // Dual export: ipcHandlers.js requires this module as the class itself,
 // while the TS graph imports the named export.
 module.exports = LocalModelDownloadStatus;
+
 module.exports.LocalModelDownloadStatus = LocalModelDownloadStatus;

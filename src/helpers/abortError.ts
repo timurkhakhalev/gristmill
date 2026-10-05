@@ -4,5 +4,6 @@
 export function createAbortError(message = "Aborted"): Error {
   const error = new Error(message);
   error.name = "AbortError";
+
   return error;
 }

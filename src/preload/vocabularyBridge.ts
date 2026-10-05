@@ -22,17 +22,16 @@ const snippetListSchema = z.array(snippetSchema);
 interface IpcRendererLike {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
   on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(
-    channel: string,
-    listener: (event: unknown, ...args: unknown[]) => void
-  ): unknown;
+  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 }
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -45,15 +44,21 @@ function subscribeValidated<T>(
   if (typeof callback !== "function") {
     return () => {};
   }
+
   const listener = (_event: unknown, data: unknown) => {
     const result = schema.safeParse(data);
+
     if (!result.success) {
       console.error(`[vocabularyBridge] dropped malformed ${channel} event`);
+
       return;
     }
+
     callback(result.data);
   };
+
   ipcRenderer.on(channel, listener as (event: unknown, ...args: unknown[]) => void);
+
   return () => {
     ipcRenderer.removeListener(channel, listener as (event: unknown, ...args: unknown[]) => void);
   };
@@ -75,11 +80,7 @@ export function createVocabularyBridge(ipcRenderer: IpcRendererLike): Vocabulary
       ipcRenderer
         .invoke(vocabularyChannels.applyDictionaryChanges, changes)
         .then((raw) =>
-          parseResult(
-            dictionaryChangeResultSchema,
-            raw,
-            vocabularyChannels.applyDictionaryChanges
-          )
+          parseResult(dictionaryChangeResultSchema, raw, vocabularyChannels.applyDictionaryChanges)
         ),
     onDictionaryUpdated: (callback: (words: string[]) => void) =>
       subscribeValidated(

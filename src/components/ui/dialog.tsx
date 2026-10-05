@@ -28,6 +28,7 @@ function Dialog({
     () => ({ open, onOpenChange: onOpenChange ?? (() => {}) }),
     [open, onOpenChange]
   );
+
   return <DialogContext.Provider value={value}>{children}</DialogContext.Provider>;
 }
 
@@ -54,6 +55,7 @@ function DialogContent({
   ...props
 }: DialogContentProps) {
   const { open, onOpenChange } = React.useContext(DialogContext);
+
   return (
     <Modal isOpen={open} onOpenChange={onOpenChange}>
       <Modal.Backdrop isDismissable={isDismissable}>
@@ -76,7 +78,13 @@ const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
   <div className={cn("flex flex-wrap justify-end gap-2", className)} {...props} />
 );
 
-const DialogTitle = ({ className, children }: { className?: string; children: React.ReactNode }) => (
+const DialogTitle = ({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) => (
   <Modal.Heading className={cn("text-base font-semibold leading-snug text-foreground", className)}>
     {children}
   </Modal.Heading>

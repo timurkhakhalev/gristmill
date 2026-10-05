@@ -22,20 +22,25 @@ export default function ControlPanelNavDrawer({
 
   useEffect(() => {
     let cancelled = false;
+
     if (open) {
       setMounted(true);
+
       const frame = window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
           if (!cancelled) setShown(true);
         });
       });
+
       return () => {
         cancelled = true;
         window.cancelAnimationFrame(frame);
       };
     }
+
     setShown(false);
     const timer = window.setTimeout(() => setMounted(false), NAV_DRAWER_MS);
+
     return () => window.clearTimeout(timer);
   }, [open]);
 

@@ -21,6 +21,7 @@ export function shouldShowIntro(
   version: number = intro.version
 ): boolean {
   const seenVersion = Number(storage.getItem(intro.storageKey));
+
   return !Number.isFinite(seenVersion) || seenVersion < version;
 }
 

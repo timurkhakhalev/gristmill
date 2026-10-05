@@ -1,6 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 // The upload flows opt into segment timestamps (issue #1095): the flag must
 // reach the BYOK IPC call, and the segments the handler returns must survive
@@ -23,13 +28,17 @@ function byokConfig() {
 }
 
 test("timestamps opt-in reaches the BYOK IPC call and segments flow back", async (t: import("node:test").TestContext) => {
-  const { window } = installBrowserGlobals(t) as { window: { electronAPI: Record<string, unknown> } };
+  const { window } = installBrowserGlobals(t) as {
+    window: { electronAPI: Record<string, unknown> };
+  };
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-file-timestamps-test-",
     mockModules: {
       "/lib/auth": "export const withSessionRefresh = (fn) => fn();",
     },
   });
+
   const { transcribeFile, transcribeFileWithSpeakers } = await vite.ssrLoadModule(
     "/services/fileTranscription.ts"
   );
@@ -38,12 +47,14 @@ test("timestamps opt-in reaches the BYOK IPC call and segments flow back", async
   let receivedOptions: Record<string, unknown> | null = null;
   window.electronAPI.transcribeAudioFileByok = async (options: Record<string, unknown>) => {
     receivedOptions = options;
+
     return { success: true, text: "Hello.", segments };
   };
 
   const direct = await transcribeFile("/tmp/audio.webm", byokConfig(), false, {
     timestamps: true,
   });
+
   assert.equal(receivedOptions!.timestamps, true);
   assert.deepEqual(direct.segments, segments);
 
@@ -58,6 +69,7 @@ test("timestamps opt-in reaches the BYOK IPC call and segments flow back", async
     120,
     { timestamps: true }
   );
+
   assert.equal(receivedOptions!.timestamps, true);
   assert.deepEqual(withSpeakers.segments, segments);
   assert.equal(withSpeakers.durationSeconds, 120);

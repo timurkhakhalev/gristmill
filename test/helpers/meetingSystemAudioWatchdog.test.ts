@@ -1,19 +1,25 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const createMeetingSystemAudioWatchdog = require("../../src/helpers/meetingSystemAudioWatchdog.ts");
 
 const { STALL_MS, GONE_QUIET_MS, MAX_RESTARTS, TICK_GAP_MS } = createMeetingSystemAudioWatchdog;
+
 const { RECOVERY_RETRY_MS } = createMeetingSystemAudioWatchdog;
 
 const START_TIME = 1_000_000;
+
 const TICK_MS = 2_000;
 
 // The restart hook settles on the microtask queue, so every helper that can
 // trigger one yields the loop before the caller inspects state.
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-const createHarness = ({ startImpl, stopImpl }: { startImpl?: () => Promise<void> | void; stopImpl?: () => Promise<void> | void } = {}) => {
+const createHarness = ({
+  startImpl,
+  stopImpl,
+}: { startImpl?: () => Promise<void> | void; stopImpl?: () => Promise<void> | void } = {}) => {
   let now = START_TIME;
   const calls: unknown[] = [];
   const interruptions: any[] = [];
@@ -31,16 +37,19 @@ const createHarness = ({ startImpl, stopImpl }: { startImpl?: () => Promise<void
     watchdog.attachCapture({
       stop: () => {
         calls.push("stop");
+
         return Promise.resolve(stopImpl?.());
       },
       start: () => {
         calls.push("start");
+
         return Promise.resolve(startImpl?.());
       },
     });
 
   const advance = async (ms: number) => {
     let remaining = ms;
+
     while (remaining > 0) {
       const step = Math.min(TICK_MS, remaining);
       now += step;
@@ -69,7 +78,9 @@ const createHarness = ({ startImpl, stopImpl }: { startImpl?: () => Promise<void
 const startNative = (harness: any, { deliver = true, confirmed = true } = {}) => {
   harness.attach();
   harness.watchdog.start({ systemAudioStrategy: "native", watchesDelivery: true });
+
   if (confirmed) harness.watchdog.recordStarted();
+
   if (deliver) harness.deliver(true);
 };
 
@@ -227,6 +238,7 @@ test("a restart that throws still clears the in-flight flag", async () => {
   const h = createHarness({
     startImpl: () => Promise.reject(new Error("helper would not start")),
   });
+
   startNative(h);
 
   await h.advance(STALL_MS + TICK_MS);
@@ -238,9 +250,11 @@ test("a restart that throws still clears the in-flight flag", async () => {
 
 test("nothing is judged while a restart is still in flight", async () => {
   let release!: () => void;
+
   const h = createHarness({
     startImpl: () => new Promise<void>((resolve) => (release = resolve)),
   });
+
   startNative(h);
 
   await h.advance(STALL_MS + TICK_MS);
@@ -307,6 +321,7 @@ test("a call that goes quiet is reported once and never restarted", async () => 
 
   // Chunks keep arriving, so delivery is healthy; they are simply silent.
   let elapsed = 0;
+
   while (elapsed <= GONE_QUIET_MS + TICK_MS * 2) {
     h.deliver(false);
     await h.advance(TICK_MS);
@@ -325,6 +340,7 @@ test("a session that was never audible does not report going quiet", async () =>
   h.watchdog.start({ systemAudioStrategy: "wasapi-loopback", watchesDelivery: false });
 
   let elapsed = 0;
+
   while (elapsed <= GONE_QUIET_MS * 2) {
     h.deliver(false);
     await h.advance(TICK_MS);
@@ -343,10 +359,12 @@ for (const systemAudioStrategy of ["native", "wasapi-loopback"]) {
 
     for (let quietPeriod = 0; quietPeriod < 2; quietPeriod += 1) {
       h.deliver(true);
+
       for (let elapsed = 0; elapsed <= GONE_QUIET_MS + TICK_MS; elapsed += TICK_MS) {
         h.deliver(false);
         await h.advance(TICK_MS);
       }
+
       assert.equal(h.interruptions.length, quietPeriod + 1);
     }
 
@@ -365,6 +383,7 @@ test("audible audio reports resumption once for each quiet warning", async () =>
       h.deliver(false);
       await h.advance(TICK_MS);
     }
+
     assert.equal(h.resumed.length, quietPeriod, "silence must keep the warning active");
     h.deliver(true);
     assert.equal(h.resumed.length, quietPeriod + 1, "audible return clears the quiet warning");
@@ -393,10 +412,12 @@ test("actual delivery after exhausted recovery clears the failure and rearms mon
   assert.equal(h.resumed.length, 1);
   h.deliver(true);
   assert.equal(h.resumed.length, 1, "only the first recovered chunk dismisses the interruption");
+
   for (let elapsed = 0; elapsed <= GONE_QUIET_MS + TICK_MS; elapsed += TICK_MS) {
     h.deliver(false);
     await h.advance(TICK_MS);
   }
+
   h.watchdog.reportDeviceInvalidated();
   await flush();
 
@@ -407,11 +428,13 @@ test("actual delivery after exhausted recovery clears the failure and rearms mon
 test("successful route changes do not exhaust the recording's recovery budget", async () => {
   const h = createHarness();
   startNative(h);
+
   for (let change = 0; change < MAX_RESTARTS + 3; change += 1) {
     h.watchdog.reportDeviceInvalidated();
     await flush();
     h.deliver(false); // Silent PCM still proves that the tap is delivering.
   }
+
   assert.equal(h.restarts(), MAX_RESTARTS + 3);
   assert.equal(h.resumed.length, MAX_RESTARTS + 3);
   assert.equal(h.interruptions.filter((entry) => !entry.recovering).length, 0);
@@ -438,9 +461,11 @@ test("a helper failure restarts immediately instead of waiting for missing chunk
 
 test("stop ends the session and a late restart cannot resurrect it", async () => {
   let release!: () => void;
+
   const h = createHarness({
     startImpl: () => new Promise<void>((resolve) => (release = resolve)),
   });
+
   startNative(h);
 
   await h.advance(STALL_MS + TICK_MS);
@@ -459,9 +484,11 @@ test("stop ends the session and a late restart cannot resurrect it", async () =>
 // complete anyway and leave an orphan process holding a CoreAudio process tap.
 test("a session that ends mid-restart never starts a replacement helper", async () => {
   let releaseStop!: () => void;
+
   const h = createHarness({
     stopImpl: () => new Promise<void>((resolve) => (releaseStop = resolve)),
   });
+
   startNative(h);
 
   await h.advance(STALL_MS + TICK_MS);
@@ -477,9 +504,11 @@ test("a session that ends mid-restart never starts a replacement helper", async 
 
 test("a session that ends while the replacement is starting stops the orphan", async () => {
   let releaseStart!: () => void;
+
   const h = createHarness({
     startImpl: () => new Promise<void>((resolve) => (releaseStart = resolve)),
   });
+
   startNative(h);
 
   await h.advance(STALL_MS + TICK_MS);
@@ -515,7 +544,9 @@ test("confirmed start without a complete chunk recovers at the first-delivery de
   assert.equal(h.restarts(), 0);
   await h.advance(TICK_MS);
   assert.equal(h.restarts(), 1);
-  assert.deepEqual(h.interruptions, [{ systemAudioStrategy: "native", reason: "no_audio_delivered", recovering: true }]);
+  assert.deepEqual(h.interruptions, [
+    { systemAudioStrategy: "native", reason: "no_audio_delivered", recovering: true },
+  ]);
   assert.equal(h.resumed.length, 0, "an ACK alone is not recovered delivery");
   h.deliver(false);
   assert.equal(h.resumed.length, 1);
@@ -537,11 +568,13 @@ test("sleep rebases the deadline before the first chunk", async () => {
 test("replacement ACK without chunks has its own bounded delivery window", async () => {
   const h = createHarness({ startImpl: () => h.watchdog.recordStarted() });
   startNative(h, { deliver: false });
+
   for (let attempt = 1; attempt <= MAX_RESTARTS; attempt++) {
     await h.advance(STALL_MS + TICK_MS);
     assert.equal(h.restarts(), attempt);
     assert.equal(h.resumed.length, 0);
   }
+
   await h.advance(STALL_MS + TICK_MS);
   assert.equal(h.restarts(), MAX_RESTARTS);
   assert.equal(h.interruptions.at(-1).recovering, false);

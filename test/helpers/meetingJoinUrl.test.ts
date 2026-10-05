@@ -1,21 +1,25 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/meetingJoinUrl.ts");
 
 test("prefers hangout_link when present", async () => {
   const { getMeetingJoinUrl } = await load();
+
   const event = {
     hangout_link: "https://meet.google.com/abc-defg-hij",
     conference_data: JSON.stringify({
       entryPoints: [{ entryPointType: "video", uri: "https://zoom.us/j/123" }],
     }),
   };
+
   assert.equal(getMeetingJoinUrl(event), "https://meet.google.com/abc-defg-hij");
 });
 
 test("falls back to the video entry point in conference_data", async () => {
   const { getMeetingJoinUrl } = await load();
+
   const event = {
     conference_data: JSON.stringify({
       entryPoints: [
@@ -24,16 +28,19 @@ test("falls back to the video entry point in conference_data", async () => {
       ],
     }),
   };
+
   assert.equal(getMeetingJoinUrl(event), "https://zoom.us/j/123");
 });
 
 test("returns null without a video entry point", async () => {
   const { getMeetingJoinUrl } = await load();
+
   const event = {
     conference_data: JSON.stringify({
       entryPoints: [{ entryPointType: "phone", uri: "tel:+15551234567" }],
     }),
   };
+
   assert.equal(getMeetingJoinUrl(event), null);
 });
 
@@ -50,6 +57,7 @@ test("returns null for missing event or links", async () => {
 
 test("extractMeetingUrl matches known meeting vendors", async () => {
   const { extractMeetingUrl } = await load();
+
   const urls = [
     "https://zoom.us/j/123456789",
     "https://us02web.zoom.us/j/123456789?pwd=abc",
@@ -63,6 +71,7 @@ test("extractMeetingUrl matches known meeting vendors", async () => {
     "https://company.webex.com/meet/jdoe",
     "https://chime.aws/1234567890",
   ];
+
   for (const url of urls) {
     assert.equal(extractMeetingUrl([url]), url);
   }
@@ -82,6 +91,7 @@ test("extractMeetingUrl finds a link inside a location string", async () => {
 
 test("extractMeetingUrl rejects meeting paths on untrusted hosts", async () => {
   const { extractMeetingUrl } = await load();
+
   const urls = [
     "https://attacker.example/teams.microsoft.com/meet/123?p=abc",
     "https://attacker.example/zoom.us/w/123?tk=secret",
@@ -112,6 +122,7 @@ test("extractMeetingUrl skips untrusted URLs before a valid meeting URL", async 
 
 test("extractMeetingUrl rejects unsupported paths on trusted hosts", async () => {
   const { extractMeetingUrl } = await load();
+
   const urls = [
     "https://zoom.us/profile/alice",
     "https://meet.google.com/",
@@ -155,6 +166,7 @@ test("getMeetingJoinUrl trims hangout_link and skips whitespace-only links", asy
   const eventWithSpace = {
     hangout_link: "  https://meet.google.com/abc-defg-hij  ",
   };
+
   assert.equal(getMeetingJoinUrl(eventWithSpace), "https://meet.google.com/abc-defg-hij");
 
   const eventWithWhitespaceOnly = {
@@ -163,5 +175,6 @@ test("getMeetingJoinUrl trims hangout_link and skips whitespace-only links", asy
       entryPoints: [{ entryPointType: "video", uri: " https://zoom.us/j/123 " }],
     }),
   };
+
   assert.equal(getMeetingJoinUrl(eventWithWhitespaceOnly), "https://zoom.us/j/123");
 });

@@ -54,14 +54,19 @@ export async function getEnterpriseAIModel(
   }
 }
 
-async function createBedrockModel(model: string, enterprise: EnterpriseRuntimeConfig): Promise<ProviderModel> {
+async function createBedrockModel(
+  model: string,
+  enterprise: EnterpriseRuntimeConfig
+): Promise<ProviderModel> {
   const { createAmazonBedrock } = require("@ai-sdk/amazon-bedrock");
   const region = enterprise?.bedrockRegion || "us-east-1";
+
   const explicitCredentialSource = enterprise?.bedrockProfile
     ? "profile credential provider"
     : enterprise?.bedrockAccessKeyId || enterprise?.bedrockSecretAccessKey
       ? "static credentials"
       : null;
+
   const credentials: AwsCredentialChain | StaticAwsCredentials | null = enterprise?.bedrockProfile
     ? await require("@aws-sdk/credential-providers").fromNodeProviderChain({
         profile: enterprise.bedrockProfile,
@@ -85,6 +90,7 @@ async function createBedrockModel(model: string, enterprise: EnterpriseRuntimeCo
     const error = new Error(
       `AWS ${explicitCredentialSource} returned invalid credentials. Expected accessKeyId and secretAccessKey.`
     );
+
     error.name = "CredentialsProviderError";
     throw error;
   }
@@ -107,6 +113,7 @@ function createAzureModel(
   enterprise: EnterpriseRuntimeConfig
 ): ProviderModel {
   const { createAzure } = require("@ai-sdk/azure");
+
   return createAzure({
     apiKey,
     baseURL: enterprise?.azureEndpoint,
@@ -120,9 +127,11 @@ function createVertexModel(
   enterprise: EnterpriseRuntimeConfig
 ): ProviderModel {
   const { createVertex } = require("@ai-sdk/google-vertex");
+
   if (apiKey) {
     return createVertex({ apiKey })(model);
   }
+
   return createVertex({
     project: enterprise?.vertexProject,
     location: enterprise?.vertexLocation || "us-central1",

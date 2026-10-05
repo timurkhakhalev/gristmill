@@ -28,9 +28,11 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -88,11 +90,7 @@ export function createTranscriptionExecutionBridge(
         data
       ) as Promise<ProxyTranscriptionResult>,
     saveTempAudio: (buffer) =>
-      invokeParse(
-        saveTempAudioResultSchema,
-        transcriptionExecutionChannels.saveTempAudio,
-        buffer
-      ),
+      invokeParse(saveTempAudioResultSchema, transcriptionExecutionChannels.saveTempAudio, buffer),
     deleteTempAudio: (tempPath) =>
       invokeParse(
         deleteTempAudioResultSchema,

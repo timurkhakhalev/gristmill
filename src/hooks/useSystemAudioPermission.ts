@@ -14,12 +14,15 @@ export function useSystemAudioPermission() {
     if (checkingRef.current) return;
     checkingRef.current = true;
     setIsChecking(true);
+
     try {
       const recheckAfterSettings = settingsOpenedRef.current;
       settingsOpenedRef.current = false;
+
       const result = recheckAfterSettings
         ? await window.electronAPI?.requestSystemAudioAccess?.()
         : await window.electronAPI?.checkSystemAudioAccess?.();
+
       setAccess(result ?? DEFAULT_SYSTEM_AUDIO_ACCESS);
     } finally {
       checkingRef.current = false;
@@ -35,6 +38,7 @@ export function useSystemAudioPermission() {
     if (!isMacOS) return;
     const handleFocus = () => check();
     window.addEventListener("focus", handleFocus);
+
     return () => window.removeEventListener("focus", handleFocus);
   }, [isMacOS, check]);
 
@@ -51,27 +55,33 @@ export function useSystemAudioPermission() {
 
     if (currentAccess.mode === "loopback") {
       setAccess(currentAccess);
+
       return currentAccess.granted;
     }
 
     if (currentAccess.mode === "portal") {
       if (!currentAccess.supportsOnboardingGrant) {
         setAccess(currentAccess);
+
         return currentAccess.granted;
       }
     } else if (currentAccess.mode !== "native") {
       setAccess(currentAccess);
+
       return false;
     }
 
     setIsChecking(true);
+
     try {
       const result = await window.electronAPI?.requestSystemAudioAccess?.();
       const nextAccess = result ?? currentAccess;
       setAccess(nextAccess);
+
       if (!nextAccess.granted && currentAccess.status === "denied") {
         await openSettings();
       }
+
       return nextAccess.granted;
     } catch {
       return false;

@@ -1,73 +1,160 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const { spawn }: typeof import("node:child_process") = require("node:child_process");
+
 const { createDb } = require("./harness/db.ts");
-const { getUserDataDir }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
+
+const {
+  getUserDataDir,
+}: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
+
 const MeetingRecordingStorage: typeof import("../../src/helpers/meetingRecordingStorage.ts").MeetingRecordingStorage = require("../../src/helpers/meetingRecordingStorage.ts");
+
 const DatabaseManager = require("../../src/helpers/database.ts");
+
 const { MeetingCaptureSession } = require("../../src/helpers/meetingCaptureSession.ts");
-const { MeetingCaptureWriteQueue }: typeof import("../../src/helpers/meetingCaptureWriteQueue.ts") = require("../../src/helpers/meetingCaptureWriteQueue.ts");
+
+const {
+  MeetingCaptureWriteQueue,
+}: typeof import("../../src/helpers/meetingCaptureWriteQueue.ts") = require("../../src/helpers/meetingCaptureWriteQueue.ts");
 
 const RECORDING_ID = "a1a1a1a1-1111-4111-8111-a1a1a1a1a1a1";
+
 const RUN_ID = "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2";
 
 function createCaptureFakes({ failWrite = false } = {}) {
-  type Recording = { id: string; noteId: number; config: unknown; startedAt: string; captureState: string; captureErrorCode?: string | null };
+  type Recording = {
+    id: string;
+    noteId: number;
+    config: unknown;
+    startedAt: string;
+    captureState: string;
+    captureErrorCode?: string | null;
+  };
+
   const database = {
     recordings: [] as Recording[],
     epochs: [] as { recordingId: string; source: string; epochIndex: number; startFrame: number }[],
     recoveries: [] as unknown[],
-    intentionalIntervals: [] as Array<{ id: string; recordingId: string; source: string; startFrame: number; endFrame: number | null; reason: string }>,
-    finalizations: [] as { recordingId: string; input: { captureState: string; endedAt: string; errorCode?: string | null } }[],
+    intentionalIntervals: [] as Array<{
+      id: string;
+      recordingId: string;
+      source: string;
+      startFrame: number;
+      endFrame: number | null;
+      reason: string;
+    }>,
+    finalizations: [] as {
+      recordingId: string;
+      input: { captureState: string; endedAt: string; errorCode?: string | null };
+    }[],
     createMeetingRecording(noteId: number, config: unknown, startedAt: string, id: string) {
       const recording = { id, noteId, config, startedAt, captureState: "recording" };
       this.recordings.push(recording);
+
       return recording;
     },
     setMeetingRecordingMicIntentionallyEmpty() {},
-    createMeetingRecordingEpoch(recordingId: string, source: string, epochIndex: number, sourceGeneration: number, startFrame: number) {
+    createMeetingRecordingEpoch(
+      recordingId: string,
+      source: string,
+      epochIndex: number,
+      sourceGeneration: number,
+      startFrame: number
+    ) {
       this.epochs.push({ recordingId, source, epochIndex, startFrame });
     },
     addMeetingRecordingEpochAlignment() {},
     markMeetingRecordingEpochAlignmentUnknown() {},
-    updateMeetingRecordingEpochRecovery(recordingId: string, source: string, epochIndex: number, result: Record<string, unknown>) {
+    updateMeetingRecordingEpochRecovery(
+      recordingId: string,
+      source: string,
+      epochIndex: number,
+      result: Record<string, unknown>
+    ) {
       this.recoveries.push({ recordingId, source, epochIndex, ...result });
     },
     markMeetingRecordingFinalizing(recordingId: string) {
       const recording = this.recordings.find((item) => item.id === recordingId);
+
       if (!recording) throw new Error("Recording not found");
       recording.captureState = "finalizing";
     },
-    finalizeMeetingRecording(recordingId: string, input: { captureState: string; endedAt: string; errorCode?: string | null }) {
+    finalizeMeetingRecording(
+      recordingId: string,
+      input: { captureState: string; endedAt: string; errorCode?: string | null }
+    ) {
       this.finalizations.push({ recordingId, input });
       const recording = this.recordings.find((item) => item.id === recordingId);
+
       if (!recording) throw new Error("Recording not found");
       recording.captureState = input.captureState;
       recording.captureErrorCode = input.errorCode ?? null;
+
       return { recording, initialRun: { id: RUN_ID } };
     },
-    openMeetingIntentionalInterval(recordingId: string, source: string, sourceGeneration: number, startFrame: number, reason: string) {
-      const interval = { id: `${recordingId}:${source}:${reason}:${startFrame}`, recordingId, source, startFrame, endFrame: null, reason };
+    openMeetingIntentionalInterval(
+      recordingId: string,
+      source: string,
+      sourceGeneration: number,
+      startFrame: number,
+      reason: string
+    ) {
+      const interval = {
+        id: `${recordingId}:${source}:${reason}:${startFrame}`,
+        recordingId,
+        source,
+        startFrame,
+        endFrame: null,
+        reason,
+      };
+
       this.intentionalIntervals.push(interval);
+
       return interval;
     },
-    closeMeetingIntentionalInterval(recordingId: string, source: string, sourceGeneration: number, endFrame: number, reason: string) {
-      const interval = [...this.intentionalIntervals].reverse().find((item) => item.recordingId === recordingId && item.source === source && item.reason === reason && item.endFrame === null);
+    closeMeetingIntentionalInterval(
+      recordingId: string,
+      source: string,
+      sourceGeneration: number,
+      endFrame: number,
+      reason: string
+    ) {
+      const interval = [...this.intentionalIntervals]
+        .reverse()
+        .find(
+          (item) =>
+            item.recordingId === recordingId &&
+            item.source === source &&
+            item.reason === reason &&
+            item.endFrame === null
+        );
+
       if (!interval) return null;
       interval.endFrame = endFrame;
+
       return interval;
     },
     listMeetingIntentionalIntervals(recordingId: string) {
       return this.intentionalIntervals.filter((item) => item.recordingId === recordingId);
     },
   };
+
   const storage = {
     files: new Map<string, Buffer[]>(),
     openEpochWriter(recordingId: string, source: string, epochIndex: number) {
       this.files.set(`${recordingId}:${source}:${epochIndex}`, []);
     },
-    appendEpochSamples(recordingId: string, source: string, epochIndex: number, samples: Uint8Array) {
+    appendEpochSamples(
+      recordingId: string,
+      source: string,
+      epochIndex: number,
+      samples: Uint8Array
+    ) {
       if (failWrite) throw new Error("disk full");
       const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`);
       assert.ok(buffers);
@@ -76,6 +163,7 @@ function createCaptureFakes({ failWrite = false } = {}) {
     closeEpochWriter() {},
     recoverEpoch(recordingId: string, source: string, epochIndex: number) {
       const buffers = this.files.get(`${recordingId}:${source}:${epochIndex}`) ?? [];
+
       return {
         frameCount: buffers.reduce((total, buffer) => total + buffer.length / 2, 0),
         ignoredTrailingBytes: 0,
@@ -83,14 +171,22 @@ function createCaptureFakes({ failWrite = false } = {}) {
       };
     },
   };
+
   return { database, storage };
 }
 
-const packet = (epochIndex: number, epochStartFrame: unknown, sequence: unknown, sampleOffset: number) => ({
+const packet = (
+  epochIndex: number,
+  epochStartFrame: unknown,
+  sequence: unknown,
+  sampleOffset: number
+) => ({
   epochIndex,
   epochSourceStartFrame: epochStartFrame,
-  alignment: null, alignmentErrorCode: "clock-unavailable",
-  sourceFrameStart: typeof epochStartFrame === "number" ? epochStartFrame + sampleOffset : epochStartFrame,
+  alignment: null,
+  alignmentErrorCode: "clock-unavailable",
+  sourceFrameStart:
+    typeof epochStartFrame === "number" ? epochStartFrame + sampleOffset : epochStartFrame,
   sourceGeneration: 1,
   sequence,
   sampleOffset,
@@ -98,32 +194,69 @@ const packet = (epochIndex: number, epochStartFrame: unknown, sequence: unknown,
 
 test("killed encoders recover complete Ogg pages at several write positions", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
-  const { getFFmpegPath } = require("../../src/helpers/ffmpegUtils.ts") as typeof import("../../src/helpers/ffmpegUtils.js");
-  const { OpusPages, MEETING_OPUS_ARGS } = require("../../src/helpers/meetingOpus.ts") as typeof import("../../src/helpers/meetingOpus.js");
+
+  const { getFFmpegPath } =
+    require("../../src/helpers/ffmpegUtils.ts") as typeof import("../../src/helpers/ffmpegUtils.js");
+
+  const { OpusPages, MEETING_OPUS_ARGS } =
+    require("../../src/helpers/meetingOpus.ts") as typeof import("../../src/helpers/meetingOpus.js");
+
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const recordings: Array<{ id: string; frames: number }> = [];
+
   for (const targetPages of [3, 5, 8]) {
     const note = db.saveNote(`Crash ${targetPages}`, "", "meeting").note!;
     const recording = db.createMeetingRecording(note.id, { config: null });
     db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
     const file = storage.createEpochFile(recording.id, "mic", 0);
-    const child = spawn(getFFmpegPath()!, ["-hide_banner", "-loglevel", "error", "-re", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", "pipe:0", ...MEETING_OPUS_ARGS, "-flush_packets", "1", "-f", "ogg", "pipe:1"], { stdio: ["pipe", "pipe", "ignore"] });
+
+    const child = spawn(
+      getFFmpegPath()!,
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-re",
+        "-f",
+        "s16le",
+        "-ar",
+        "24000",
+        "-ac",
+        "1",
+        "-i",
+        "pipe:0",
+        ...MEETING_OPUS_ARGS,
+        "-flush_packets",
+        "1",
+        "-f",
+        "ogg",
+        "pipe:1",
+      ],
+      { stdio: ["pipe", "pipe", "ignore"] }
+    );
+
     const pages = new OpusPages();
     let count = 0;
     let frames = 0;
-    child.stdout.on("data", (chunk: Buffer) => pages.push(chunk, (page) => {
-      if (count >= targetPages) return;
-      fs.appendFileSync(file, page);
-      count++;
-      frames = pages.frameCount;
-      if (count === targetPages) child.kill("SIGKILL");
-    }));
+    child.stdout.on("data", (chunk: Buffer) =>
+      pages.push(chunk, (page) => {
+        if (count >= targetPages) return;
+        fs.appendFileSync(file, page);
+        count++;
+        frames = pages.frameCount;
+
+        if (count === targetPages) child.kill("SIGKILL");
+      })
+    );
     child.stdin.on("error", () => {});
+
     const closed = new Promise<void>((resolve, reject) => {
       child.once("error", reject);
       child.once("close", () => resolve());
     });
+
     t.after(() => child.kill("SIGKILL"));
     child.stdin.end(Buffer.alloc(24_000 * 2 * 4, 3));
     await closed;
@@ -136,24 +269,38 @@ test("killed encoders recover complete Ogg pages at several write positions", as
     assert.deepEqual(fs.readFileSync(file), bytes, "recovery preserves original pages");
     recordings.push({ id: recording.id, frames });
   }
+
   db.close();
   const reopened = new DatabaseManager();
+
   try {
     storage.recover(reopened);
+
     for (const { id, frames } of recordings) {
       assert.equal(reopened.listMeetingRecordingEpochs(id)[0].frameCount, frames);
       assert.equal(reopened.getMeetingRecording(id).captureState, "incomplete");
     }
-  } finally { reopened.close(); }
+  } finally {
+    reopened.close();
+  }
 });
 
 test("capture writes source epochs separately and finalizes restart gaps as incomplete once", async () => {
   const { database, storage } = createCaptureFakes();
   const origin = new Date("2026-09-24T10:00:00.000Z");
-  const capture = MeetingCaptureSession.create(database, storage, 12, {
-    config: null,
-    configError: { code: "missing-config" },
-  }, origin, RECORDING_ID);
+
+  const capture = MeetingCaptureSession.create(
+    database,
+    storage,
+    12,
+    {
+      config: null,
+      configError: { code: "missing-config" },
+    },
+    origin,
+    RECORDING_ID
+  );
+
   const micA = Buffer.alloc(4_800, 1);
   const micB = Buffer.alloc(4_800, 2);
   const system = Buffer.alloc(2_400, 3);
@@ -165,7 +312,11 @@ test("capture writes source epochs separately and finalizes restart gaps as inco
 
   assert.deepEqual(
     database.epochs.map(({ source, epochIndex, startFrame }) => [source, epochIndex, startFrame]),
-    [["mic", 0, 0], ["mic", 1, 12_000], ["system", 0, 24_000]]
+    [
+      ["mic", 0, 0],
+      ["mic", 1, 12_000],
+      ["system", 0, 24_000],
+    ]
   );
   assert.equal(storage.files.get(`${RECORDING_ID}:mic:0`)?.[0]?.equals(micA), true);
   assert.equal(storage.files.get(`${RECORDING_ID}:system:0`)?.[0]?.equals(system), true);
@@ -205,14 +356,28 @@ test("main-owned native system audio drains without a renderer sequence", async 
   const nativeChunks = storage.files.get(`${RECORDING_ID}:system:0`);
   assert.ok(nativeChunks);
   assert.equal(nativeChunks.length, 10);
-  assert.equal(nativeChunks.reduce((total, chunk) => total + chunk.length, 0), 48_000);
-  assert.equal(nativeChunks.every((chunk) => chunk.length <= 4_800), true);
+  assert.equal(
+    nativeChunks.reduce((total, chunk) => total + chunk.length, 0),
+    48_000
+  );
+  assert.equal(
+    nativeChunks.every((chunk) => chunk.length <= 4_800),
+    true
+  );
   assert.equal(database.finalizations.length, 1);
 });
 
 test("disk-full writes are retained as incomplete errors", async () => {
   const { database, storage } = createCaptureFakes({ failWrite: true });
-  const capture = MeetingCaptureSession.create(database, storage, 12, null, new Date(), RECORDING_ID);
+
+  const capture = MeetingCaptureSession.create(
+    database,
+    storage,
+    12,
+    null,
+    new Date(),
+    RECORDING_ID
+  );
 
   assert.throws(
     () => capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.alloc(4_800)),
@@ -226,7 +391,15 @@ test("disk-full writes are retained as incomplete errors", async () => {
 
 test("short PCM frames and out-of-order packets are rejected", async () => {
   const { database, storage } = createCaptureFakes();
-  const capture = MeetingCaptureSession.create(database, storage, 12, null, new Date(), RECORDING_ID);
+
+  const capture = MeetingCaptureSession.create(
+    database,
+    storage,
+    12,
+    null,
+    new Date(),
+    RECORDING_ID
+  );
 
   assert.throws(
     () => capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.from([1, 2, 3])),
@@ -247,19 +420,32 @@ test("short PCM frames and out-of-order packets are rejected", async () => {
 function deferred() {
   let resolve!: () => void;
   let reject!: (reason?: unknown) => void;
-  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+
+  const promise = new Promise<void>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+
   return { promise, resolve, reject };
 }
 
 test("write queue waits for delayed disk acknowledgement and rejects late packets after drain", async () => {
   const writeGate = deferred();
   let writes = 0;
+
   const queue = new MeetingCaptureWriteQueue({
-    write: () => { writes += 1; return writeGate.promise; },
-    onFailure: (error: unknown) => { throw error; },
+    write: () => {
+      writes += 1;
+
+      return writeGate.promise;
+    },
+    onFailure: (error: unknown) => {
+      throw error;
+    },
     maxFrames: 2,
     maxAgeMs: 500,
   });
+
   const pending = queue.write(Buffer.from([1]), 2);
   await new Promise(setImmediate);
   const drain = queue.drain();
@@ -276,16 +462,23 @@ test("mute waits for accepted writes and unmute can keep writing until Stop clos
   const writeGate = deferred();
   const writes: number[] = [];
   const failures: Error[] = [];
+
   const queue = new MeetingCaptureWriteQueue<number>({
-    write: async (packet) => { writes.push(packet); if (packet === 0) await writeGate.promise; },
+    write: async (packet) => {
+      writes.push(packet);
+
+      if (packet === 0) await writeGate.promise;
+    },
     onFailure: (error) => failures.push(error),
   });
+
   const pending = queue.write(0, 2_400);
   const muting = queue.waitForWrites();
   assert.equal(queue.unacknowledgedFrames, 2_400);
   writeGate.resolve();
   await Promise.all([pending, muting]);
   assert.equal(queue.unacknowledgedFrames, 0);
+
   for (let packet = 1; packet <= 60; packet++) await queue.write(packet, 2_400);
   await queue.waitForWrites();
   await queue.write(61, 2_400);
@@ -299,10 +492,12 @@ test("mute waits for accepted writes and unmute can keep writing until Stop clos
 test("default capture queue preserves audio through a one-second write backlog", async () => {
   const writeGate = deferred();
   const failures: string[] = [];
+
   const queue = new MeetingCaptureWriteQueue({
     write: () => writeGate.promise,
     onFailure: (error: Error) => failures.push(error.message),
   });
+
   const first = queue.write(Buffer.from([1]), 24_000);
   const second = queue.write(Buffer.from([2]), 24_000);
   assert.equal(queue.unacknowledgedFrames, 48_000);
@@ -315,12 +510,14 @@ test("default capture queue preserves audio through a one-second write backlog",
 test("write queue stops at its PCM backlog limit and surfaces delayed writer failure", async () => {
   const writeGate = deferred();
   const failures: unknown[] = [];
+
   const queue = new MeetingCaptureWriteQueue({
     write: () => writeGate.promise,
     onFailure: (error) => failures.push(error.message),
     maxFrames: 2,
     maxAgeMs: 500,
   });
+
   const first = queue.write(Buffer.from([1]), 2);
   await new Promise(setImmediate);
   await assert.rejects(queue.write(Buffer.from([2]), 1), /5000 ms/);

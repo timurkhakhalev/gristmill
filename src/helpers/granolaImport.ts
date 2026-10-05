@@ -32,6 +32,7 @@ export interface ParseCsvResult {
 export function parseCsv(text: unknown): ParseCsvResult {
   const warnings: CsvWarning[] = [];
   let src = String(text ?? "");
+
   if (src.charCodeAt(0) === 0xfeff) src = src.slice(1);
 
   const rows: string[][] = [];
@@ -43,6 +44,7 @@ export function parseCsv(text: unknown): ParseCsvResult {
     row.push(field);
     field = "";
   };
+
   const pushRow = () => {
     pushField();
     rows.push(row);
@@ -51,6 +53,7 @@ export function parseCsv(text: unknown): ParseCsvResult {
 
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
+
     if (inQuotes) {
       if (ch === '"') {
         if (src[i + 1] === '"') {
@@ -75,6 +78,7 @@ export function parseCsv(text: unknown): ParseCsvResult {
   }
 
   if (inQuotes) warnings.push({ code: "MALFORMED_QUOTE_RECOVERED" });
+
   if (field !== "" || row.length > 0) pushRow();
 
   return { rows, warnings };
@@ -83,7 +87,14 @@ export function parseCsv(text: unknown): ParseCsvResult {
 // Reconciled against a real 2026-08-24 export: document_id, user_email,
 // document_title, workspace_name, document_created, summary, notes, transcript.
 // "summary" is the AI notes; "notes" is what the user typed themselves.
-export type GranolaField = "id" | "title" | "summary" | "userNotes" | "transcript" | "createdAt" | "attendees";
+export type GranolaField =
+  | "id"
+  | "title"
+  | "summary"
+  | "userNotes"
+  | "transcript"
+  | "createdAt"
+  | "attendees";
 
 export type GranolaHeaderMapping = Partial<Record<GranolaField, number>>;
 
@@ -134,9 +145,12 @@ export function mapHeaders(headerRow: string[]): MapHeadersResult {
   const claimed = new Set<number>();
   const mapping: GranolaHeaderMapping = {};
 
-  for (const [field, synonyms] of Object.entries(HEADER_SYNONYMS) as Array<[GranolaField, string[]]>) {
+  for (const [field, synonyms] of Object.entries(HEADER_SYNONYMS) as Array<
+    [GranolaField, string[]]
+  >) {
     for (const synonym of synonyms) {
       const index = normalized.findIndex((header, i) => header === synonym && !claimed.has(i));
+
       if (index !== -1) {
         mapping[field] = index;
         claimed.add(index);
@@ -146,6 +160,7 @@ export function mapHeaders(headerRow: string[]): MapHeadersResult {
   }
 
   const unknown = headerRow.filter((_, i) => !claimed.has(i));
+
   if (unknown.length > 0) {
     warnings.push({ code: "UNKNOWN_COLUMNS_IGNORED", detail: unknown.join(", ") });
   }
@@ -161,6 +176,7 @@ const formatSqliteUtc = (date: Date) =>
 
 const ISO_DATE_RE =
   /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
 const US_DATE_RE =
   /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i;
 
@@ -176,42 +192,57 @@ const US_DATE_RE =
  */
 export function normalizeDate(value: unknown): string | null {
   const raw = String(value ?? "").trim();
+
   if (!raw) return null;
 
   if (/^\d{10,13}$/.test(raw)) {
     const num = Number(raw);
+
     return formatSqliteUtc(new Date(raw.length >= 13 ? num : num * 1000));
   }
 
   let match = raw.match(ISO_DATE_RE);
+
   if (match) {
     const [, year, month, day, hour = "00", minute = "00", second = "00", tz] = match;
+
     if (tz && tz !== "Z") {
       const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}${tz}`);
+
       return Number.isNaN(date.getTime()) ? null : formatSqliteUtc(date);
     }
+
     return formatSqliteUtc(new Date(Date.UTC(+year, +month - 1, +day, +hour, +minute, +second)));
   }
 
   match = raw.match(US_DATE_RE);
+
   if (match) {
     const [, monthRaw, dayRaw, year, hourRaw = "0", minuteRaw = "0", secondRaw = "0", ampm] = match;
     let month = +monthRaw;
     let day = +dayRaw;
+
     if (month > 12 && day <= 12) [month, day] = [day, month];
+
     if (month > 12 || day > 31) return null;
     let hour = +hourRaw;
+
     if (ampm?.toUpperCase() === "PM" && hour < 12) hour += 12;
+
     if (ampm?.toUpperCase() === "AM" && hour === 12) hour = 0;
+
     return formatSqliteUtc(new Date(Date.UTC(+year, month - 1, day, hour, +minuteRaw, +secondRaw)));
   }
 
   const parsed = new Date(raw);
+
   return Number.isNaN(parsed.getTime()) ? null : formatSqliteUtc(parsed);
 }
 
 const SPEAKER_LINE_RE = /^([^:\n]{1,60}):\s+(\S.*)$/;
+
 const SPEAKER_LINE_RATIO = 0.6;
+
 const SPEAKER_NAME_MAX_WORDS = 4;
 
 export interface GranolaTranscriptSegment {
@@ -225,9 +256,12 @@ export interface GranolaTranscriptSegment {
 
 const matchSpeakerLine = (line: string): { speakerName: string; text: string } | null => {
   const match = line.match(SPEAKER_LINE_RE);
+
   if (!match) return null;
   const speakerName = match[1].trim();
+
   if (speakerName.split(/\s+/).length > SPEAKER_NAME_MAX_WORDS) return null;
+
   return { speakerName, text: match[2].trim() };
 };
 
@@ -249,20 +283,25 @@ export function parseTranscriptToSegments(
   anchorMs: number
 ): GranolaTranscriptSegment[] {
   const trimmed = String(text ?? "").trim();
+
   if (!trimmed) return [];
 
   const lines = trimmed
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+
   const parsedLines = lines.map(matchSpeakerLine);
+
   const speakerLines = parsedLines.filter(
     (line): line is { speakerName: string; text: string } => line !== null
   );
+
   const distinctSpeakers = new Set(speakerLines.map((line) => line.speakerName));
 
   const useSpeakerMode =
     speakerLines.length / lines.length >= SPEAKER_LINE_RATIO && distinctSpeakers.size >= 2;
+
   if (!useSpeakerMode) {
     return lines.map((line, i) => ({ text: line, source: "system", timestamp: anchorMs + i }));
   }
@@ -270,6 +309,7 @@ export function parseTranscriptToSegments(
   const segments: GranolaTranscriptSegment[] = [];
   lines.forEach((line, i) => {
     const parsed = parsedLines[i];
+
     if (parsed) {
       segments.push({
         text: parsed.text,
@@ -285,6 +325,7 @@ export function parseTranscriptToSegments(
       segments.push({ text: line, source: "system", timestamp: anchorMs });
     }
   });
+
   return segments;
 }
 
@@ -301,6 +342,7 @@ export function deterministicUuid(key: string): string {
   const withVersion = `4${hex.slice(13, 16)}`;
   const variantNibble = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
   const withVariant = `${variantNibble}${hex.slice(17, 20)}`;
+
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${withVersion}-${withVariant}-${hex.slice(20, 32)}`;
 }
 
@@ -339,6 +381,7 @@ export function createGranolaNoteKeyAllocator(): GranolaNoteKeyAllocator {
 
     if (!claimedLegacyFallbackKeys.has(legacyFallbackKey)) {
       claimedLegacyFallbackKeys.add(legacyFallbackKey);
+
       return legacyFallbackKey;
     }
 
@@ -347,6 +390,7 @@ export function createGranolaNoteKeyAllocator(): GranolaNoteKeyAllocator {
 }
 
 const NAME_EMAIL_RE = /^(.*?)\s*<([^<>\s]+@[^<>\s]+)>$/;
+
 const BARE_EMAIL_RE = /^\S+@\S+\.\S+$/;
 
 // Consumers of notes.participants require an email (e.g. SpeakerPicker reads
@@ -363,8 +407,11 @@ const parseAttendees = (cell: unknown): GranolaAttendee[] =>
     .filter(Boolean)
     .flatMap((token) => {
       const named = token.match(NAME_EMAIL_RE);
+
       if (named) return [{ displayName: named[1] || named[2], email: named[2] }];
+
       if (BARE_EMAIL_RE.test(token)) return [{ displayName: token, email: token }];
+
       return [];
     });
 
@@ -406,10 +453,13 @@ export interface ParseGranolaCsvResult {
 
 export function parseGranolaCsv(
   text: unknown,
-  { allocateNoteKey = createGranolaNoteKeyAllocator() }: { allocateNoteKey?: GranolaNoteKeyAllocator } = {}
+  {
+    allocateNoteKey = createGranolaNoteKeyAllocator(),
+  }: { allocateNoteKey?: GranolaNoteKeyAllocator } = {}
 ): ParseGranolaCsvResult {
   const src = String(text ?? "");
   const emptyHeaderInfo: ParseGranolaCsvResult["headerInfo"] = { mapped: {}, unknown: [] };
+
   if (!src.trim()) {
     return {
       ok: false,
@@ -424,6 +474,7 @@ export function parseGranolaCsv(
   const [headerRow, ...dataRows] = rows;
   const { mapping, unknown, warnings: headerWarnings } = mapHeaders(headerRow);
   const warnings = [...csvWarnings, ...headerWarnings];
+
   const headerInfo = {
     mapped: Object.fromEntries(
       Object.entries(mapping).map(([field, index]) => [field, headerRow[index]])
@@ -438,9 +489,11 @@ export function parseGranolaCsv(
   ) {
     return { ok: false, error: { code: "HEADERS_UNRECOGNIZED" }, headerInfo, notes: [], warnings };
   }
+
   if (dataRows.length === 0) {
     return { ok: false, error: { code: "NO_DATA_ROWS" }, headerInfo, notes: [], warnings };
   }
+
   if (mapping.transcript === undefined) {
     warnings.push({ code: "TRANSCRIPT_COLUMN_MISSING" });
   }
@@ -448,28 +501,36 @@ export function parseGranolaCsv(
   const notes: GranolaParsedNote[] = [];
   dataRows.forEach((rawRow, i) => {
     const rowNumber = i + 2; // 1-based line number in the CSV, counting the header
+
     if (rawRow.every((value) => !value.trim())) {
       warnings.push({ code: "ROW_EMPTY_SKIPPED", row: rowNumber });
+
       return;
     }
 
     let row = rawRow;
+
     if (row.length !== headerRow.length) {
       warnings.push({ code: "ROW_COLUMN_COUNT_MISMATCH", row: rowNumber });
       row = row.slice(0, headerRow.length);
+
       while (row.length < headerRow.length) row.push("");
     }
+
     const cell = (field: GranolaField) =>
       mapping[field] === undefined ? "" : (row[mapping[field]] ?? "").trim();
 
     // AI summary first, the user's own typed notes beneath it; either alone works.
     const content = [cell("summary"), cell("userNotes")].filter(Boolean).join("\n\n---\n\n");
+
     if (!content) {
       warnings.push({ code: "ROW_NO_SUMMARY_SKIPPED", row: rowNumber });
+
       return;
     }
 
     let title = cell("title");
+
     if (!title) {
       title = "Untitled";
       warnings.push({ code: "TITLE_MISSING_DEFAULTED", row: rowNumber });
@@ -477,6 +538,7 @@ export function parseGranolaCsv(
 
     const rawDate = cell("createdAt");
     const createdAt = rawDate ? normalizeDate(rawDate) : null;
+
     if (rawDate && createdAt === null) {
       warnings.push({ code: "DATE_UNPARSEABLE", row: rowNumber, detail: rawDate });
     }
@@ -484,6 +546,7 @@ export function parseGranolaCsv(
     const id = cell("id");
     const rawTranscript = cell("transcript");
     const rawAttendees = cell("attendees");
+
     const key = allocateNoteKey({
       id,
       title,

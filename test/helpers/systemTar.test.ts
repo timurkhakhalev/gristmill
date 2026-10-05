@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { EventEmitter } = require("node:events");
 
 const { resolveSystemTarExecutable, runSystemTar } = require("../../src/helpers/systemTar");
@@ -12,9 +14,12 @@ function makeChild({ closeOnKill = true } = {}) {
   child.killed = false;
   child.kill = () => {
     child.killed = true;
+
     if (closeOnKill) setImmediate(() => child.emit("close", null, "SIGKILL"));
+
     return true;
   };
+
   return child;
 }
 
@@ -47,6 +52,7 @@ test("keeps PATH tar resolution on non-Windows platforms", () => {
 test("runs the explicit Windows tar with drive-colon-free arguments", async () => {
   const child = makeChild();
   let invocation: { command: string; args: string[]; options: { cwd: string } } | undefined;
+
   const promise = runSystemTar("C:\\cache\\model.tar.gz", "C:\\cache\\extract", {
     platform: "win32",
     arch: "x64",
@@ -55,6 +61,7 @@ test("runs the explicit Windows tar with drive-colon-free arguments", async () =
     spawnImpl: (command: string, args: string[], options: { cwd: string }) => {
       invocation = { command, args, options };
       setImmediate(() => child.emit("close", 0));
+
       return child;
     },
   });
@@ -76,6 +83,7 @@ test("Windows bzip2 archives reach the JS fallback without starting tar or its e
         platform: "win32",
         spawnImpl: () => {
           spawned = true;
+
           return makeChild();
         },
       }),
@@ -97,6 +105,7 @@ test("derives tar flags from the archive extension", async () => {
       spawnImpl: (_command: unknown, spawnArgs: any) => {
         args = spawnArgs;
         setImmediate(() => child.emit("close", 0));
+
         return child;
       },
     });

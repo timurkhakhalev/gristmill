@@ -33,9 +33,15 @@ export function NoteNotice({
   // Busy notices track live work and notices with actions (retry, regenerate) stay unless the
   // caller opts in with onDismiss. Others can be closed; a changed title shows again.
   const [dismissedTitle, setDismissedTitle] = useState<ReactNode | null>(null);
+
   if (dismissedTitle !== null && dismissedTitle === title) return null;
+
   return (
-    <Alert status={status} className="mb-4 rounded-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-top-1" role={role ?? (status === "danger" ? "alert" : "status")}>
+    <Alert
+      status={status}
+      className="mb-4 rounded-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200 motion-safe:slide-in-from-top-1"
+      role={role ?? (status === "danger" ? "alert" : "status")}
+    >
       {busy ? (
         <Alert.Indicator>
           <Spinner size="sm" color="current" />
@@ -46,9 +52,7 @@ export function NoteNotice({
       <Alert.Content>
         <Alert.Title className="flex items-center gap-2 text-sm">
           <span>{title}</span>
-          {busy && progressStartedAt !== undefined && (
-            <ElapsedClock since={progressStartedAt} />
-          )}
+          {busy && progressStartedAt !== undefined && <ElapsedClock since={progressStartedAt} />}
         </Alert.Title>
         {description && <Alert.Description className="text-xs">{description}</Alert.Description>}
         {actions && <div className="mt-2.5 flex flex-wrap items-center gap-2">{actions}</div>}
@@ -56,7 +60,10 @@ export function NoteNotice({
       {!busy && (!actions || onDismiss) && (
         <button
           type="button"
-          onClick={() => { setDismissedTitle(title); onDismiss?.(); }}
+          onClick={() => {
+            setDismissedTitle(title);
+            onDismiss?.();
+          }}
           aria-label={t("common.dismiss")}
           title={t("common.dismiss")}
           className="-me-1 -mt-1 flex size-6 shrink-0 items-center justify-center self-start rounded-md text-muted outline-none transition-colors hover:bg-default hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus"
@@ -73,7 +80,10 @@ function formatElapsed(ms: number): string {
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const seconds = total % 60;
-  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+  if (hours > 0)
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
@@ -81,8 +91,10 @@ function ElapsedClock({ since }: { since: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
+
     return () => window.clearInterval(id);
   }, []);
+
   return (
     <span
       aria-label="Elapsed"
@@ -111,10 +123,12 @@ export function CaptureDetails({
   capturePhase: string;
 }) {
   const { t } = useTranslation();
+
   const sources = [
     ["mic", micStatus, micDeviceLabel],
     ["system", systemStatus, outputDeviceLabel],
   ] as const;
+
   return (
     <div className="min-w-48 space-y-3 text-xs">
       {sources.map(([source, status, deviceLabel]) => (
@@ -124,16 +138,34 @@ export function CaptureDetails({
               aria-hidden="true"
               className={cn(
                 "size-1.5 rounded-full",
-                status === "active" ? "bg-success" : status === "reconnecting" ? "bg-warning" : "bg-danger"
+                status === "active"
+                  ? "bg-success"
+                  : status === "reconnecting"
+                    ? "bg-warning"
+                    : "bg-danger"
               )}
             />
             <span className="font-medium">{t(`notes.editor.capture.${source}`)}</span>
-            <span className="ms-auto opacity-70">{t(`notes.editor.capture.${status}`, { defaultValue: status === "active" ? "Recording" : status })}</span>
+            <span className="ms-auto opacity-70">
+              {t(`notes.editor.capture.${status}`, {
+                defaultValue: status === "active" ? "Recording" : status,
+              })}
+            </span>
           </div>
-          <div className="mt-1 ps-3 opacity-70">{source === "system" && <span>{t("notes.editor.capture.outputDevice", { defaultValue: "Output" })}: </span>}{deviceLabel || t("notes.editor.capture.deviceNameUnavailable", { defaultValue: "Device name unavailable" })}</div>
+          <div className="mt-1 ps-3 opacity-70">
+            {source === "system" && (
+              <span>{t("notes.editor.capture.outputDevice", { defaultValue: "Output" })}: </span>
+            )}
+            {deviceLabel ||
+              t("notes.editor.capture.deviceNameUnavailable", {
+                defaultValue: "Device name unavailable",
+              })}
+          </div>
         </div>
       ))}
-      <div className="border-t border-current/10 pt-2 opacity-70">{t(`notes.editor.capture.${capturePhase === "recording" ? "writingToDisk" : capturePhase}`)}</div>
+      <div className="border-t border-current/10 pt-2 opacity-70">
+        {t(`notes.editor.capture.${capturePhase === "recording" ? "writingToDisk" : capturePhase}`)}
+      </div>
     </div>
   );
 }

@@ -14,6 +14,7 @@ export function findStaleLocalModelKeys(
   return scopes
     .filter(({ storeKeys }) => {
       const selected = settings[storeKeys.model] as string | undefined;
+
       return settings[storeKeys.mode] === "local" && !!selected && !isInstalled(selected);
     })
     .map(({ storeKeys }) => storeKeys.model);

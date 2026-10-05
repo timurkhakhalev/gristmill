@@ -12,6 +12,7 @@ import { createUpdateDictionaryTool, type DictionaryActions } from "./dictionary
 import type { ContainerScope } from "../../types/chat";
 
 export { ToolRegistry } from "./ToolRegistry";
+
 export type { ToolDefinition, ToolResult } from "./ToolRegistry";
 
 interface ToolRegistrySettings {
@@ -36,6 +37,7 @@ export function createToolRegistry(settings: ToolRegistrySettings): ToolRegistry
     if (settings.vocabulary.getSnippets().length > 0) {
       registry.register(createSnippetTool(settings.vocabulary.getSnippets));
     }
+
     registry.register(createUpdateDictionaryTool(settings.vocabulary));
     registry.register(createUpdateSnippetsTool(settings.vocabulary));
   }

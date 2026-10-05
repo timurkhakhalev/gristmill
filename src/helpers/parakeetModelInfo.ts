@@ -22,10 +22,13 @@ const COHERE_TRANSCRIBE_MODEL_FILES: readonly string[] = [
 ];
 
 export type ParakeetRuntime = "offline" | "online";
+
 export type ParakeetModelKind = "transducer" | "cohere-transcribe";
 
 function getModelInfo(modelName: string): ParakeetModelRegistryEntry | undefined {
-  return (modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry> | undefined)?.[modelName];
+  return (
+    modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry> | undefined
+  )?.[modelName];
 }
 
 export function getModelRuntime(modelName: string): ParakeetRuntime {
@@ -64,10 +67,13 @@ export function isSherpaLocalProvider(provider: unknown): boolean {
 // supported code, falling back to English. Self-detecting models get null.
 export function resolveModelLanguage(modelName: string, language: unknown): string | null {
   if (getModelType(modelName) !== "cohere-transcribe") return null;
+
   const base =
     typeof language === "string"
       ? language.trim().replace(/_/g, "-").split("-")[0].toLowerCase()
       : "";
+
   const supported = getModelInfo(modelName)?.supportedLanguages || [];
+
   return supported.includes(base) ? base : "en";
 }

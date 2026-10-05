@@ -1,9 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { EventEmitter } = require("node:events");
+
 const Module = require("node:module");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const modelData = require("../../src/models/modelRegistryData.json");
 
 // tsx compiles the TS helper to CJS on require, so its internal module
@@ -13,16 +19,21 @@ const modelData = require("../../src/models/modelRegistryData.json");
 function loadHelper(name: string, mocks: any) {
   const filename = require.resolve(`../../src/helpers/${name}`);
   const originalLoad = Module._load;
+
   const mockFor = (request: string) => {
     if (Object.prototype.hasOwnProperty.call(mocks, request)) return mocks[request];
     const stripped = request.replace(/\.js$/, "");
+
     if (Object.prototype.hasOwnProperty.call(mocks, stripped)) return mocks[stripped];
+
     return undefined;
   };
+
   delete require.cache[filename];
   Module._load = function (request: string, parent: unknown, isMain: boolean) {
     return mockFor(request) || originalLoad.call(this, request, parent, isMain);
   };
+
   try {
     return require(filename);
   } finally {
@@ -30,11 +41,18 @@ function loadHelper(name: string, mocks: any) {
   }
 }
 
-async function startupArgs(modelName: string, runtime = "offline", language: string | null = null, registry = modelData) {
+async function startupArgs(
+  modelName: string,
+  runtime = "offline",
+  language: string | null = null,
+  registry = modelData
+) {
   const calls: { binary: string; args: string[] }[] = [];
+
   const modelInfo = loadHelper("parakeetModelInfo", {
     "../models/modelRegistryData.json": registry,
   });
+
   const Server = loadHelper("parakeetWsServer", {
     child_process: {
       spawn: (binary: string, args: Iterable<string>) => {
@@ -42,6 +60,7 @@ async function startupArgs(modelName: string, runtime = "offline", language: str
         const child = new EventEmitter();
         child.stdout = new EventEmitter();
         child.stderr = new EventEmitter();
+
         return child;
       },
     },
@@ -52,14 +71,20 @@ async function startupArgs(modelName: string, runtime = "offline", language: str
     "./safeTempDir": { getSafeTempDir: () => os.tmpdir() },
     "../utils/serverUtils": { findAvailablePort: async () => 6006 },
   });
+
   const server = new Server();
   server.getWsBinaryPath = (mode: unknown) => `sherpa-${mode}`;
   server._waitForReady = async () => {};
+
   server._startHealthCheck = () => {};
+
   server._warmUp = async () => {};
+
   await server.start(modelName, os.tmpdir(), runtime, language);
   assert.equal(calls.length, 1);
+
   if (!calls[0]) throw new Error("Server did not spawn");
+
   return calls[0];
 }
 
@@ -121,6 +146,7 @@ test("invalid or incompatible registry hints cannot select a different decoder",
     const { args } = await startupArgs("fixture", "offline", "en", {
       parakeetModels: { fixture: entry },
     });
+
     assert.ok(!args.some((arg) => arg.startsWith("--model-type=")));
   }
 });

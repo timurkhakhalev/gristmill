@@ -16,6 +16,7 @@ interface ShortcutGroup {
 }
 
 const platform = getCachedPlatform();
+
 const mod = platform === "darwin" ? "⌘" : "Ctrl";
 
 function groups(): ShortcutGroup[] {
@@ -91,6 +92,7 @@ export default function KeyboardShortcutsDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="sm">

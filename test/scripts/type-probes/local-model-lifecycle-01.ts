@@ -3,7 +3,9 @@
 // @probe-origin test/scripts/localModelLifecycleTypeProbe.test.js
 import { registerLocalModelLifecycleHandlers } from "./src/helpers/localModelLifecycleIpcHandlers.ts";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerLocalModelLifecycleHandlers(ipcMain, {
   whisperManager: {

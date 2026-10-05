@@ -48,6 +48,7 @@ function isCjkCodePoint(codePoint: number): boolean {
   for (const [start, end] of CJK_RANGES) {
     if (codePoint >= start && codePoint <= end) return true;
   }
+
   return false;
 }
 
@@ -63,6 +64,7 @@ export function estimateTokens(text: string): number {
 
   let cjkCount = 0;
   let otherCount = 0;
+
   for (const character of text) {
     if (isCjkCodePoint(character.codePointAt(0) ?? 0)) cjkCount += 1;
     else otherCount += 1;
@@ -83,11 +85,14 @@ function scalarValue(raw: number | number[] | boolean | undefined): number | nul
 
 function resolveHeadCountKv(metadata: GgufArchitectureMetadata): number | null {
   const raw = metadata.headCountKv;
+
   // GGUF permits a per-layer array. The widest layer is the safe reading.
   if (Array.isArray(raw)) {
     const widest = raw.reduce((max, value) => (value > max ? value : max), 0);
+
     return widest > 0 ? widest : null;
   }
+
   return scalarValue(raw);
 }
 
@@ -99,15 +104,19 @@ interface HeadWidths {
 function resolveHeadWidths(metadata: GgufArchitectureMetadata): HeadWidths | null {
   const keyLength = scalarValue(metadata.keyLength);
   const valueLength = scalarValue(metadata.valueLength);
+
   if (keyLength !== null && valueLength !== null) return { keyLength, valueLength };
 
   // llama.cpp's own fallback when the widths are not declared.
   const embeddingLength = scalarValue(metadata.embeddingLength);
   const headCount = scalarValue(metadata.headCount);
+
   if (embeddingLength !== null && headCount !== null) {
     const width = embeddingLength / headCount;
+
     if (Number.isInteger(width) && width > 0) return { keyLength: width, valueLength: width };
   }
+
   return null;
 }
 
@@ -124,12 +133,15 @@ export function kvBytesPerToken(metadata: GgufArchitectureMetadata | null): numb
   if (!metadata || typeof metadata !== "object") return null;
 
   const blockCount = scalarValue(metadata.blockCount);
+
   if (blockCount === null) return null;
 
   const headCountKv = resolveHeadCountKv(metadata);
+
   if (headCountKv === null) return null;
 
   const widths = resolveHeadWidths(metadata);
+
   if (widths === null) return null;
 
   return blockCount * headCountKv * (widths.keyLength + widths.valueLength) * KV_ELEMENT_BYTES;
@@ -143,12 +155,14 @@ export const BASELINE_CONTEXT_SIZE = 16384;
 // tighter than llama.cpp's own --fit, which would permit ~9.6 GiB of wired
 // memory on the 16 GB Mac that panicked in #1203.
 export const USABLE_MEMORY_FRACTION = 0.5;
+
 export const FIXED_OS_RESERVE_BYTES = 2 * 1024 * 1024 * 1024;
 
 // Compute buffers also grow with context: measured 144 MiB total at 16384 and
 // 240 MiB at 65536 for a 9B, i.e. ~2 KiB/token plus a fixed base. Doubled for
 // margin, and the base sized for the 31B-class graphs.
 export const COMPUTE_FIXED_BYTES = 384 * 1024 * 1024;
+
 export const COMPUTE_BYTES_PER_TOKEN = 4096;
 
 // Hybrid models (Qwen3.5, LFM2) carry recurrent state that is not part of the
@@ -165,7 +179,9 @@ export const UNVERIFIED_GPU_CEILING = 65536;
 export const CONTEXT_ALIGNMENT = 512;
 
 const MIB = 1024 * 1024;
+
 const MIN_CACHE_RAM_MIB = 512;
+
 const MAX_CACHE_RAM_MIB = 2048;
 
 function clamp(value: number, low: number, high: number): number {
@@ -210,11 +226,13 @@ export function resolveContextCeiling({
   if (!Number.isFinite(totalMemoryBytes) || totalMemoryBytes <= 0) {
     return fallbackCeiling("no-memory-info");
   }
+
   if (!Number.isFinite(kvBytesPerToken) || kvBytesPerToken === null || kvBytesPerToken <= 0) {
     return fallbackCeiling("unknown-kv-cost");
   }
 
   const budgetBytes = totalMemoryBytes * USABLE_MEMORY_FRACTION - FIXED_OS_RESERVE_BYTES;
+
   const kvBudgetBytes =
     budgetBytes -
     weightsBytes -
@@ -231,17 +249,20 @@ export function resolveContextCeiling({
   );
 
   const perTokenBytes = kvBytesPerToken + COMPUTE_BYTES_PER_TOKEN;
+
   const affordable =
     Math.floor(Math.floor(kvBudgetBytes / perTokenBytes) / CONTEXT_ALIGNMENT) * CONTEXT_ALIGNMENT;
 
   let hardMax = trainedContextTokens > 0 ? trainedContextTokens : Number.POSITIVE_INFINITY;
   let hardMaxReason = "trained-context-bound";
+
   if (discreteGpuUnverified && UNVERIFIED_GPU_CEILING < hardMax) {
     hardMax = UNVERIFIED_GPU_CEILING;
     hardMaxReason = "gpu-cap";
   }
 
   const ceiling = Math.min(affordable, hardMax);
+
   if (ceiling <= BASELINE_CONTEXT_SIZE) return fallbackCeiling("floor");
 
   return {
@@ -277,5 +298,6 @@ export function resolveContextSize({
   const target = Math.max(needed || 0, floor || 0, BASELINE_CONTEXT_SIZE);
   const rung = CONTEXT_STEPS.find((step) => step >= target) ?? Number.POSITIVE_INFINITY;
   const bounded = Math.min(rung, Math.max(ceiling, BASELINE_CONTEXT_SIZE));
+
   return Math.max(bounded, BASELINE_CONTEXT_SIZE);
 }

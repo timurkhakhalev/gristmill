@@ -1,12 +1,19 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
+
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 // The real bundled preload talks to a Map of real registered container
@@ -15,11 +22,15 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 // like Electron does, without exposing any event object to renderer
 // callbacks.
 type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
+
 let activeHandlers: Map<string, BridgeHandler> | null = null;
+
 let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
+
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-containers-bridge-"));
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -44,8 +55,10 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 process.env.NODE_ENV = "test";
 
 const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
@@ -56,13 +69,18 @@ test.after(() => {
 
 function isNativeBindingUnavailable(error: unknown) {
   const message = String((error as { message?: unknown })?.message || error);
+
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
   );
 }
 
-type ContainerApi = { [k: string]: (...args: unknown[]) => Promise<any> } & { onFolderDeleted(cb: (p: unknown) => void): () => void; onFolderRenamed(cb: (p: unknown) => void): () => void };
+type ContainerApi = { [k: string]: (...args: unknown[]) => Promise<any> } & {
+  onFolderDeleted(cb: (p: unknown) => void): () => void;
+  onFolderRenamed(cb: (p: unknown) => void): () => void;
+};
+
 function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
   // A channel can have several listeners (Electron supports that); keep arrays.
   const listeners = new Map<string, Array<(event: unknown, ...args: unknown[]) => void>>();
@@ -74,6 +92,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     exports: {},
     require(name: string) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: ContainerApi) => {
@@ -91,6 +110,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
           removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void) {
             const list = listeners.get(channel) || [];
             const index = list.indexOf(listener);
+
             if (index !== -1) list.splice(index, 1);
           },
         },
@@ -100,6 +120,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     process: { platform: "darwin", versions: {} },
     console,
   });
+
   return { api: api!, listeners };
 }
 
@@ -107,21 +128,35 @@ async function createFixture(t: import("node:test").TestContext) {
   activeHandlers = new Map();
   dispatchSend = null;
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-containers-bridge-"));
-  let db: import("../../src/helpers/containerIpcHandlers.js").ContainerHandlerDeps["database"] & { close: () => void; getFolders(): Array<{ id: unknown; name: string }> };
+
+  let db: import("../../src/helpers/containerIpcHandlers.js").ContainerHandlerDeps["database"] & {
+    close: () => void;
+    getFolders(): Array<{ id: unknown; name: string }>;
+  };
+
   try {
-    db = new DatabaseManager() as unknown as import("../../src/helpers/containerIpcHandlers.js").ContainerHandlerDeps["database"] & { close: () => void; getFolders(): Array<{ id: unknown; name: string }> };
+    db =
+      new DatabaseManager() as unknown as import("../../src/helpers/containerIpcHandlers.js").ContainerHandlerDeps["database"] & {
+        close: () => void;
+        getFolders(): Array<{ id: unknown; name: string }>;
+      };
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return null;
     }
+
     throw error;
   }
+
   t.after(() => db.close());
 
   const { registerContainerHandlers } = await import("../../src/helpers/containerIpcHandlers.ts");
   registerContainerHandlers(
-    { handle: (channel: string, listener: BridgeHandler) => activeHandlers!.set(channel, listener) },
+    {
+      handle: (channel: string, listener: BridgeHandler) => activeHandlers!.set(channel, listener),
+    },
     {
       database: db,
       noteFilesEnabled: () => false,
@@ -134,11 +169,15 @@ async function createFixture(t: import("node:test").TestContext) {
   );
 
   const handlersSnapshot = new Map(activeHandlers!);
+
   const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
+
     return handler(null, ...args);
   };
+
   const { api, listeners } = loadBundledPreload(invoke);
   // Close the event loop: main-side sends dispatch into the listeners the
   // preload registered, exactly like Electron would.
@@ -147,7 +186,9 @@ async function createFixture(t: import("node:test").TestContext) {
       listener(null, data);
     }
   };
+
   const flush = () => new Promise((resolve) => setImmediate(resolve));
+
   return { db, api, flush };
 }
 
@@ -156,6 +197,7 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 test("the full bundled preload chain round-trips folders and spaces", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { db, api, flush } = ctx;
 
@@ -210,7 +252,10 @@ test("the full bundled preload chain round-trips folders and spaces", async (t: 
   // Drain the deferred folder-deleted send before this fixture's dispatch
   // loop is replaced by the next test, or it leaks into that test's listeners.
   await flush();
-  assert.equal((await api.getFolders(null)).some((f: any) => f.id === created.folder.id), false);
+  assert.equal(
+    (await api.getFolders(null)).some((f: any) => f.id === created.folder.id),
+    false
+  );
 
   // Unknown ids fail quietly with the documented shapes.
   assert.equal((await api.deleteFolder(987654)).success, false);
@@ -224,6 +269,7 @@ test("the full bundled preload chain round-trips folders and spaces", async (t: 
 
 test("onFolderDeleted delivers payloads and unsubscribes cleanly", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, flush } = ctx;
 
@@ -252,6 +298,7 @@ test("onFolderDeleted delivers payloads and unsubscribes cleanly", async (t: imp
 
 test("wrong arguments reject through the bridge before the DB runs", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api } = ctx;
 
@@ -263,6 +310,7 @@ test("wrong arguments reject through the bridge before the DB runs", async (t: i
 
 test("malformed events are dropped at the preload boundary", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, flush } = ctx;
 

@@ -5,52 +5,81 @@
 // guarded). This mounts the real NoteEditor with mocked leaves and drives the
 // ChatPanel's onOpenNote seam exactly like a citation click does.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const path = require("node:path");
+
 const React = require("react") as typeof import("react");
+
 const { createRoot } = require("react-dom/client");
-const { createRendererServer, installBrowserGlobals, installHookDom }: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+  installHookDom,
+}: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
+
 import type { NoteItem } from "../../../../src/contracts/notes";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 function note(id: number, title: string): NoteItem {
   return {
-    id, title, content: `body ${id}`, note_type: "personal", space_id: 1,
-    folder_id: null, folder_ids: [], source_file: null,
-    audio_duration_seconds: null, created_at: "2026-10-02", updated_at: "2026-10-02",
-    enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null,
-    transcript: null, calendar_event_id: null, participants: null,
-    diarization_enabled: null, expected_speaker_count: null,
+    id,
+    title,
+    content: `body ${id}`,
+    note_type: "personal",
+    space_id: 1,
+    folder_id: null,
+    folder_ids: [],
+    source_file: null,
+    audio_duration_seconds: null,
+    created_at: "2026-10-02",
+    updated_at: "2026-10-02",
+    enhanced_content: null,
+    enhancement_prompt: null,
+    enhanced_at_content_hash: null,
+    transcript: null,
+    calendar_event_id: null,
+    participants: null,
+    diarization_enabled: null,
+    expected_speaker_count: null,
   };
 }
 
 test("an editor chat citation for an out-of-cache note opens it in the editor", async (t) => {
   let root: ReturnType<typeof createRoot> | null = null;
-  t.after(async () => { if (root) await React.act(async () => root.unmount()); });
+  t.after(async () => {
+    if (root) await React.act(async () => root.unmount());
+  });
 
   const rows = Array.from({ length: 51 }, (_, index) => note(index + 1, `Note ${index + 1}`));
   const cited = note(999, "Cited ancient");
   let getNoteCalls = 0;
-  installBrowserGlobals(t, { window: {
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-    electronAPI: {
-      getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
-      getFolders: async () => [],
-      getFolderNoteCounts: async () => [],
-      getNotes: async () => rows,
-      getNote: async (id: number) => {
-        getNoteCalls += 1;
-        return id === 999 ? cited : null;
+  installBrowserGlobals(t, {
+    window: {
+      matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+      electronAPI: {
+        getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
+        getFolders: async () => [],
+        getFolderNoteCounts: async () => [],
+        getNotes: async () => rows,
+        getNote: async (id: number) => {
+          getNoteCalls += 1;
+
+          return id === 999 ? cited : null;
+        },
+        onNoteAdded: () => () => {},
+        onNoteUpdated: () => () => {},
+        onNoteDeleted: () => () => {},
+        onFolderDeleted: () => () => {},
       },
-      onNoteAdded: () => () => {},
-      onNoteUpdated: () => () => {},
-      onNoteDeleted: () => () => {},
-      onFolderDeleted: () => () => {},
     },
-  } });
+  });
   const container = installHookDom(t);
   const empty = "export default function Empty() { return null; }";
+
   const mockModules: Record<string, string> = {
     "react-i18next": `
       const t = (key) => key;
@@ -123,39 +152,57 @@ test("an editor chat citation for an out-of-cache note opens it in the editor", 
     "../../utils/openSettings": `export function openSettings() {}`,
     "../../helpers/builtinActions": `export const FOLLOW_UP_KEY = "follow-up";`,
   };
+
   const vite = await createRendererServer(t, {
     mockModules,
     noExternal: ["react-i18next"],
     resolveAlias: { "@": path.resolve(__dirname, "../../../src") },
   });
-  const globals = globalThis as unknown as { __editorChatCitationProps?: { onOpenNote?: (id: number) => void } };
+
+  const globals = globalThis as unknown as {
+    __editorChatCitationProps?: { onOpenNote?: (id: number) => void };
+  };
+
   delete globals.__editorChatCitationProps;
   const { default: NoteEditor } = await vite.ssrLoadModule("/components/notes/NoteEditor.tsx");
-  const store = await vite.ssrLoadModule("/stores/noteStore.ts") as typeof import("../../../../src/stores/noteStore");
-  await React.act(async () => { await store.initializeNotesTree(); });
+
+  const store = (await vite.ssrLoadModule(
+    "/stores/noteStore.ts"
+  )) as typeof import("../../../../src/stores/noteStore");
+
+  await React.act(async () => {
+    await store.initializeNotesTree();
+  });
 
   root = createRoot(container as unknown as Element);
   await React.act(async () => {
-    root!.render(React.createElement(NoteEditor, {
-      note: rows[0],
-      onTitleChange: () => {},
-      onContentChange: () => {},
-      isSaving: false,
-      isRecording: false,
-      isProcessing: false,
-      onStartRecording: () => {},
-      onStopRecording: () => {},
-    }));
+    root!.render(
+      React.createElement(NoteEditor, {
+        note: rows[0],
+        onTitleChange: () => {},
+        onContentChange: () => {},
+        isSaving: false,
+        isRecording: false,
+        isProcessing: false,
+        onStartRecording: () => {},
+        onStopRecording: () => {},
+      })
+    );
     await tick();
   });
 
-  const chatProps = globals.__editorChatCitationProps as { onOpenNote?: (id: number) => void } | undefined;
+  const chatProps = globals.__editorChatCitationProps as
+    | { onOpenNote?: (id: number) => void }
+    | undefined;
+
   const onOpenNote = chatProps?.onOpenNote as ((id: number) => unknown) | undefined;
   assert.equal(typeof onOpenNote, "function", "the editor wires the chat citation handler");
 
   // Click a citation for the out-of-cache note: openChatNote fetches the row
   // and hands it to openNoteRow.
-  await React.act(async () => { await onOpenNote?.(999); });
+  await React.act(async () => {
+    await onOpenNote?.(999);
+  });
 
   assert.equal(getNoteCalls, 1, "the cited row is fetched once");
   const active = store.getNoteFromStore(store.getActiveNoteIdValue() ?? -1);

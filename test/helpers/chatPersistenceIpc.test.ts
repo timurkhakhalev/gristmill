@@ -4,14 +4,19 @@
 // double: defaults are applied at the handler boundary, wrong-shaped calls
 // throw before the DB is touched, results are validated per operation.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const Module = require("node:module");
 
 type ChatModule = typeof import("../../src/helpers/chatPersistenceIpcHandlers.js");
+
 let registerChatPersistenceHandlers: ChatModule["registerChatPersistenceHandlers"];
+
 const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -19,13 +24,13 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       BrowserWindow: { getAllWindows: () => [] },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 test.before(async () => {
-  ({ registerChatPersistenceHandlers } = await import(
-    "../../src/helpers/chatPersistenceIpcHandlers.ts"
-  ));
+  ({ registerChatPersistenceHandlers } =
+    await import("../../src/helpers/chatPersistenceIpcHandlers.ts"));
 });
 
 test.after(() => {
@@ -33,18 +38,28 @@ test.after(() => {
 });
 
 type ChatDb = Parameters<ChatModule["registerChatPersistenceHandlers"]>[1]["database"];
+
 function setup(database: ChatDb) {
   handlers.clear();
   registerChatPersistenceHandlers(
-    { handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn) },
+    {
+      handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) =>
+        handlers.set(channel, fn),
+    },
     { database }
   );
+
   return handlers as Map<string, (event: unknown, ...args: unknown[]) => unknown>;
 }
 
-function call(handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>, channel: string, ...args: unknown[]): any {
+function call(
+  handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>,
+  channel: string,
+  ...args: unknown[]
+): any {
   const handler = handlers.get(channel);
   assert.ok(handler, `handler registered for ${channel}`);
+
   return handler!(null, ...args);
 }
 
@@ -52,6 +67,7 @@ function fakeDb() {
   const thrower = (name: string) => () => {
     throw new Error(`fake db: ${name} not set`);
   };
+
   return {
     createAgentConversation: thrower("createAgentConversation"),
     getConversationsForNote: thrower("getConversationsForNote"),
@@ -82,10 +98,12 @@ const CONV = {
 
 test("create passes title through untouched and normalizes only omitted ids", async () => {
   const seen: unknown[] = [];
+
   const db = {
     ...fakeDb(),
     createAgentConversation: (...args: unknown[]) => (seen.push(args), { ...CONV, messages: [] }),
   };
+
   const h = setup(db);
   const created = await call(h, "db-create-agent-conversation");
   assert.equal(created.id, 5);
@@ -103,13 +121,16 @@ test("create passes title through untouched and normalizes only omitted ids", as
 
 test("wrong-shaped create args reject before the database runs", async () => {
   let touched = false;
+
   const db = {
     ...fakeDb(),
     createAgentConversation: () => {
       touched = true;
+
       return { ...CONV, messages: [] };
     },
   };
+
   const h = setup(db);
   await assert.rejects(call(h, "db-create-agent-conversation", "t", "not-an-id"));
   await assert.rejects(call(h, "db-create-agent-conversation", "t", 1.5));
@@ -118,6 +139,7 @@ test("wrong-shaped create args reject before the database runs", async () => {
 
 test("list channels apply their documented defaults", async () => {
   const seen: unknown[] = [];
+
   const db = {
     ...fakeDb(),
     getConversationsForNote: (...args: unknown[]) => (seen.push(["note", ...args]), []),
@@ -126,6 +148,7 @@ test("list channels apply their documented defaults", async () => {
     searchAgentConversations: (...args: unknown[]) => (seen.push(["search", ...args]), []),
     getAgentConversationsWithPreview: (...args: unknown[]) => (seen.push(["preview", ...args]), []),
   };
+
   const h = setup(db);
   await call(h, "db-get-conversations-for-note", 7);
   await call(h, "db-get-conversations-for-container", 3, null);
@@ -145,9 +168,13 @@ test("detail and message channels preserve null results", async () => {
   const db = {
     ...fakeDb(),
     getAgentConversation: (id: unknown) => (id === 5 ? { ...CONV, messages: [] } : null),
-    addAgentMessage: (id: unknown) => (id === 5 ? { id: 9, conversation_id: 5, role: "user", content: "x", metadata: null, created_at: "t" } : null),
+    addAgentMessage: (id: unknown) =>
+      id === 5
+        ? { id: 9, conversation_id: 5, role: "user", content: "x", metadata: null, created_at: "t" }
+        : null,
     getAgentMessages: () => [],
   };
+
   const h = setup(db);
   assert.equal((await call(h, "db-get-agent-conversation", 5)).id, 5);
   assert.equal(await call(h, "db-get-agent-conversation", 987654), null);
@@ -158,10 +185,12 @@ test("detail and message channels preserve null results", async () => {
 
 test("addAgentMessage validates the role and passes metadata through untouched", async () => {
   const seen: unknown[] = [];
+
   const db = {
     ...fakeDb(),
     addAgentMessage: (...args: unknown[]) => (seen.push(args), null),
   };
+
   const h = setup(db);
   const toolCalls = [{ id: "t1", name: "search_notes" }];
   await call(h, "db-add-agent-message", 5, "assistant", "answer", { toolCalls });
@@ -177,6 +206,7 @@ test("boolean-shaped results are validated, junk is rejected", async () => {
     archiveAgentConversation: () => ({ success: false }),
     unarchiveAgentConversation: () => ({ nope: true }),
   };
+
   const h = setup(db);
   assert.deepEqual(await call(h, "db-delete-agent-conversation", 5), { success: true });
   assert.deepEqual(await call(h, "db-archive-agent-conversation", 5), { success: false });
@@ -185,11 +215,13 @@ test("boolean-shaped results are validated, junk is rejected", async () => {
 
 test("container list rows must carry message_count, plain lists must not", async () => {
   const withCount = { ...CONV, message_count: 2 };
+
   const db = {
     ...fakeDb(),
     getConversationsForContainer: () => [withCount],
     getAgentConversations: () => [CONV],
   };
+
   const h = setup(db);
   assert.deepEqual(await call(h, "db-get-conversations-for-container", 1, null), [withCount]);
   assert.deepEqual(await call(h, "db-get-agent-conversations"), [CONV]);
@@ -200,10 +232,12 @@ test("container list rows must carry message_count, plain lists must not", async
 
 test("preview rows expose preview; strict ids reject junk before the DB", async () => {
   const row = { ...CONV, preview: "last" };
+
   const db = {
     ...fakeDb(),
     getAgentConversationsWithPreview: () => [row],
   };
+
   const h = setup(db);
   assert.deepEqual(await call(h, "db-get-agent-conversations-with-preview"), [row]);
   await assert.rejects(call(h, "db-get-agent-conversation", "five"));
@@ -213,12 +247,16 @@ test("preview rows expose preview; strict ids reject junk before the DB", async 
 
 test("updating a title passes the raw value through and validates the result", async () => {
   const seen: unknown[] = [];
+
   const db = {
     ...fakeDb(),
     updateAgentConversationTitle: (...args: unknown[]) => (seen.push(args), { success: true }),
   };
+
   const h = setup(db);
-  assert.deepEqual(await call(h, "db-update-agent-conversation-title", 5, "New"), { success: true });
+  assert.deepEqual(await call(h, "db-update-agent-conversation-title", 5, "New"), {
+    success: true,
+  });
   assert.deepEqual(seen, [[5, "New"]]);
   await assert.rejects(call(h, "db-update-agent-conversation-title", "five", "New"));
 });

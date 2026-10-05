@@ -44,6 +44,7 @@ export function useNotesTreeActions() {
   const startRecordingForNote = useCallback(async (note: NoteItem | null, resume = false) => {
     if (!resume) await initializeActions();
     const seedSegments = note?.transcript ? parseTranscriptSegments(note.transcript) : [];
+
     const args = {
       noteId: note?.id ?? null,
       noteTitle: note?.title ?? null,
@@ -54,6 +55,7 @@ export function useNotesTreeActions() {
       expectedCountIsExplicit: isExplicitSpeakerCount(note?.expected_speaker_count),
       autoEndEligible: isMeetingAutoEndEligible(note),
     };
+
     await (resume ? resumeMeeting(args) : storeStartRecording(args));
   }, []);
 
@@ -68,15 +70,19 @@ export function useNotesTreeActions() {
         folderId,
         spaceId
       );
+
       if (result.success && result.note) {
         setActiveContext(result.note.space_id, result.note.folder_id);
         revealContainer(result.note.space_id, result.note.folder_id);
         // Hold the full row in case the container is not loaded (#185).
         void openNoteRow(result.note);
+
         // A new note is a recording waiting to happen: start it unless one is already live.
         if (!isTranscribing) void startRecordingForNote(result.note);
+
         return result.note;
       }
+
       return null;
     },
     [t, isTranscribing, startRecordingForNote]
@@ -89,11 +95,13 @@ export function useNotesTreeActions() {
 
   const handleNewNoteInPrivate = useCallback(() => {
     if (privateSpaceId == null) return Promise.resolve(null);
+
     return handleNewNoteIn(privateSpaceId, null);
   }, [privateSpaceId, handleNewNoteIn]);
 
   const handleNewNote = useCallback(() => {
     if (activeContext) return handleNewNoteIn(activeContext.spaceId, activeContext.folderId);
+
     return handleNewNoteInPrivate();
   }, [activeContext, handleNewNoteIn, handleNewNoteInPrivate]);
 
@@ -101,6 +109,7 @@ export function useNotesTreeActions() {
     if (activeFolderId) {
       await initializeNotes(null, 50, activeFolderId);
     }
+
     loadFolders();
   }, [activeFolderId]);
 
@@ -115,6 +124,7 @@ export function useNotesTreeActions() {
         folder_ids: target.folderIds ?? (target.folderId != null ? [target.folderId] : []),
         space_id: target.spaceId,
       });
+
       if (noteId === activeNoteId) {
         setActiveContext(target.spaceId, target.folderId);
         revealContainer(target.spaceId, target.folderId);
@@ -126,6 +136,7 @@ export function useNotesTreeActions() {
   const handleMoveToFolder = useCallback(
     async (noteId: number, folderId: number) => {
       const folder = folders.find((f) => f.id === folderId);
+
       if (!folder) return;
       await handleMoveNote(noteId, { spaceId: folder.space_id, folderId });
     },
@@ -135,13 +146,16 @@ export function useNotesTreeActions() {
   const handleSetNoteFolders = useCallback(
     async (noteId: number, folderIds: number[]) => {
       const result = await window.electronAPI.updateNote(noteId, { folder_ids: folderIds });
+
       if (!result.success || noteId !== activeNoteId) return;
       // Unticking the folder being browsed would orphan the open note; follow it.
       const note = result.note;
+
       const stillListed =
         activeContext?.folderId != null
           ? note.folder_ids.includes(activeContext.folderId)
           : activeContext?.spaceId === note.space_id && note.folder_id == null;
+
       if (!stillListed) {
         setActiveContext(note.space_id, note.folder_id);
         revealContainer(note.space_id, note.folder_id);
@@ -154,8 +168,10 @@ export function useNotesTreeActions() {
     async (noteId: number, folderName: string) => {
       const note = getNoteFromStore(noteId);
       const spaceId = note?.space_id ?? privateSpaceId;
+
       if (spaceId == null) return;
       const result = await createFolder(folderName, spaceId);
+
       if (result.success && result.folder) {
         await handleSetNoteFolders(noteId, [...(note?.folder_ids ?? []), result.folder.id]);
       } else if (result.error) {
@@ -172,8 +188,10 @@ export function useNotesTreeActions() {
   const handleCreateFolderAndMove = useCallback(
     async (noteId: number, folderName: string) => {
       const spaceId = getNoteFromStore(noteId)?.space_id ?? privateSpaceId;
+
       if (spaceId == null) return;
       const result = await createFolder(folderName, spaceId);
+
       if (result.success && result.folder) {
         await handleMoveToFolder(noteId, result.folder.id);
       } else if (result.error) {

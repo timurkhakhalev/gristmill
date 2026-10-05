@@ -1,4 +1,5 @@
 const modelRegistryData = require("../models/modelRegistryData.json");
+
 import { getModelType } from "./parakeetModelInfo.js";
 
 // Every local speech-to-text model the registry knows, with whether it is on
@@ -21,28 +22,38 @@ export function listLocalTranscriptionModels({
   whisperManager,
   parakeetManager,
   env = process.env,
-}: LocalTranscriptionManagers & { env?: Record<string, string | undefined> }): LocalModelListEntry[] {
+}: LocalTranscriptionManagers & {
+  env?: Record<string, string | undefined>;
+}): LocalModelListEntry[] {
   const configuredProvider = env.LOCAL_TRANSCRIPTION_PROVIDER || "";
+
   const configuredModel =
     configuredProvider === "whisper" ? env.LOCAL_WHISPER_MODEL || "" : env.PARAKEET_MODEL || "";
+
   const isDefault = (provider: string, model: string): boolean =>
     provider === configuredProvider && model === configuredModel;
 
-  const whisper: LocalModelListEntry[] = Object.keys(modelRegistryData.whisperModels).map((model) => ({
-    provider: "whisper",
-    model,
-    downloaded: whisperManager.isModelDownloaded(model),
-    default: isDefault("whisper", model),
-  }));
-  const sherpa: LocalModelListEntry[] = Object.keys(modelRegistryData.parakeetModels).map((model) => {
-    const provider = getModelType(model) === "cohere-transcribe" ? "cohere" : "nvidia";
-    return {
-      provider,
+  const whisper: LocalModelListEntry[] = Object.keys(modelRegistryData.whisperModels).map(
+    (model) => ({
+      provider: "whisper",
       model,
-      downloaded: parakeetManager.isModelDownloaded(model),
-      default: isDefault(provider, model),
-    };
-  });
+      downloaded: whisperManager.isModelDownloaded(model),
+      default: isDefault("whisper", model),
+    })
+  );
+
+  const sherpa: LocalModelListEntry[] = Object.keys(modelRegistryData.parakeetModels).map(
+    (model) => {
+      const provider = getModelType(model) === "cohere-transcribe" ? "cohere" : "nvidia";
+
+      return {
+        provider,
+        model,
+        downloaded: parakeetManager.isModelDownloaded(model),
+        default: isDefault(provider, model),
+      };
+    }
+  );
+
   return [...whisper, ...sherpa];
 }
-

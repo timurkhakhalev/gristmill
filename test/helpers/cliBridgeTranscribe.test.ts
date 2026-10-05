@@ -1,16 +1,24 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return { app: { getPath: () => os.tmpdir(), getAppPath: () => process.cwd() } };
   }
+
   if (request === "./windowBroadcast") return { broadcastToWindows() {} };
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -23,17 +31,27 @@ const MODELS = [
 ];
 
 function createBridge(models = MODELS) {
-  const calls: { approved: string[]; transcribed: Array<{ path: string; options: unknown }> } = { approved: [], transcribed: [] };
+  const calls: { approved: string[]; transcribed: Array<{ path: string; options: unknown }> } = {
+    approved: [],
+    transcribed: [],
+  };
+
   const operations = {
     databaseManager: {},
     listLocalTranscriptionModels: () => models,
     approveAudioPath: (p: string) => calls.approved.push(p),
-    transcribeLocalFile: async (p: string, options: unknown): Promise<{ success: boolean; text?: string; code?: string; message?: string }> => {
+    transcribeLocalFile: async (
+      p: string,
+      options: unknown
+    ): Promise<{ success: boolean; text?: string; code?: string; message?: string }> => {
       calls.transcribed.push({ path: p, options });
+
       return { success: true, text: "hello from disk" };
     },
   };
+
   const bridge = new CliBridge(operations, os.tmpdir());
+
   return { bridge, calls, operations };
 }
 
@@ -41,9 +59,12 @@ function call(bridge: any, method: string, pathname: string, body?: unknown): an
   for (const route of bridge.routes) {
     if (route.method !== method) continue;
     const params = route.match(pathname);
+
     if (!params) continue;
+
     return route.handler({ params, query: new URLSearchParams(), body });
   }
+
   throw new Error(`No route for ${method} ${pathname}`);
 }
 
@@ -51,6 +72,7 @@ function audioFile() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-cli-transcribe-"));
   const file = path.join(dir, "memo.wav");
   fs.writeFileSync(file, "RIFF....WAVE");
+
   return { dir, file };
 }
 
@@ -96,7 +118,12 @@ test("POST /v1/transcribe honors an explicit model and language", async () => {
 
 test("POST /v1/transcribe reports silence as empty text, not an error", async () => {
   const { bridge, operations } = createBridge();
-  operations.transcribeLocalFile = async (): Promise<{ success: boolean; text?: string; code?: string; message?: string }> => ({
+  operations.transcribeLocalFile = async (): Promise<{
+    success: boolean;
+    text?: string;
+    code?: string;
+    message?: string;
+  }> => ({
     success: false,
     code: "NO_SPEECH_DETECTED",
     message: "No audio detected",

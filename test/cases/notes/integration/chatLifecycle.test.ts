@@ -14,12 +14,15 @@ import type { AgentStreamChunk } from "../../../../src/services/ReasoningService
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
+
   const promise = new Promise<T>((ok, no) => {
     resolve = ok;
     reject = no;
   });
+
   return { promise, resolve, reject };
 }
+
 const flush = async () => {
   for (let i = 0; i < 3; i++) await new Promise((resolve) => setImmediate(resolve));
 };
@@ -30,18 +33,25 @@ async function mount(t: import("node:test").TestContext, { home = false, bb = fa
     if (root) await act(async () => root!.unmount());
   });
   const db = createDb(t)!;
+
   const noteA = db.saveNote("A", "manual A", "personal").note!,
     noteB = db.saveNote("B", "manual B", "personal").note!;
+
   const A = db.createAgentConversation("A", noteA.id)!,
     B = db.createAgentConversation("B", noteB.id)!,
     C = db.createAgentConversation("C", noteA.id)!;
-  for (const conv of [A, B, C]) db.addAgentMessage(conv.id, "user", `history ${conv.title}`, undefined);
+
+  for (const conv of [A, B, C])
+    db.addAgentMessage(conv.id, "user", `history ${conv.title}`, undefined);
   const reads = new Map<number, ReturnType<typeof deferred<ConversationDetail | null>>>();
+
   const histories = new Map<
     number,
     ReturnType<typeof deferred<ReturnType<typeof db.getConversationsForNote>>>
   >();
+
   const writes: Array<{ id: number; role: string; text: string }> = [];
+
   let write:
     | ((
         id: number,
@@ -50,10 +60,12 @@ async function mount(t: import("node:test").TestContext, { home = false, bb = fa
         metadata?: Record<string, unknown>
       ) => Promise<MessageRow | null>)
     | null = null;
+
   let createGate: ReturnType<typeof deferred<ConversationDetail | null>> | null = null;
   const streams: Array<{ gate: ReturnType<typeof deferred<void>>; partial: string }> = [];
   const requests: unknown[][] = [];
   let cancellations = 0;
+
   const provider = {
     cancelActiveStream() {
       cancellations++;
@@ -62,12 +74,14 @@ async function mount(t: import("node:test").TestContext, { home = false, bb = fa
       requests.push(args);
       const planned = streams.shift();
       yield { type: "content", text: planned?.partial ?? "complete reply" };
+
       if (planned) {
         await planned.gate.promise;
         yield { type: "content", text: " late tail" };
       }
     },
   };
+
   const globals = globalThis as unknown as { __chatLifecycleProvider?: typeof provider };
   const old = globals.__chatLifecycleProvider;
   globals.__chatLifecycleProvider = provider;
@@ -92,6 +106,7 @@ async function mount(t: import("node:test").TestContext, { home = false, bb = fa
           metadata?: Record<string, unknown>
         ) => {
           writes.push({ id, role, text });
+
           return write
             ? write(id, role, text, metadata)
             : db.addAgentMessage(id, role, text, metadata);
@@ -102,6 +117,7 @@ async function mount(t: import("node:test").TestContext, { home = false, bb = fa
     },
   });
   const container = installHookDom(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "chat-lifecycle-",
     mockModules: {
@@ -109,9 +125,11 @@ async function mount(t: import("node:test").TestContext, { home = false, bb = fa
       "react-i18next": "const t=(key)=>key;export function useTranslation(){return {t};}",
     },
   });
+
   const { useSettingsStore } = (await vite.ssrLoadModule(
     "/stores/settingsStore.ts"
   )) as typeof import("../../../../src/stores/settingsStore.ts");
+
   useSettingsStore.setState({
     chatAgentMode: bb ? "agent" : "local",
     chatAgentProvider: "ollama",
@@ -123,14 +141,18 @@ async function mount(t: import("node:test").TestContext, { home = false, bb = fa
       defaults: { codex: { model: "test-model", reasoningLevel: "low" } },
     },
   });
+
   const { useEmbeddedChat } = (await vite.ssrLoadModule(
     "/hooks/useEmbeddedChat.ts"
   )) as typeof import("../../../../src/hooks/useEmbeddedChat.ts");
+
   const { useHomeChat } = (await vite.ssrLoadModule(
     "/hooks/useHomeChat.ts"
   )) as typeof import("../../../../src/hooks/useHomeChat.ts");
+
   let noteId = noteA.id;
   let chat!: ReturnType<typeof useEmbeddedChat> | ReturnType<typeof useHomeChat>;
+
   function Harness() {
     chat = home
       ? useHomeChat([])
@@ -140,19 +162,24 @@ async function mount(t: import("node:test").TestContext, { home = false, bb = fa
           noteTitle: `Note ${noteId}`,
           noteContent: "manual",
         });
+
     return null;
   }
+
   root = createRoot(container as unknown as Element);
+
   const render = async () => {
     await act(async () => {
       root!.render(createElement(Harness));
       await flush();
     });
   };
+
   const unmount = async () => {
     await act(async () => root!.unmount());
     root = null;
   };
+
   return {
     db,
     A,
@@ -214,8 +241,10 @@ test("late Note A load cannot replace Note B or redirect its next saved turn", a
 test("Home switching, New Chat and missing late details share the same invalidation", async (t) => {
   const h = await mount(t, { home: true });
   await h.render();
+
   const gateA = deferred<ConversationDetail | null>(),
     gateB = deferred<ConversationDetail | null>();
+
   h.reads.set(h.A.id, gateA);
   h.reads.set(h.B.id, gateB);
   let old!: Promise<void>, current!: Promise<void>;
@@ -298,6 +327,7 @@ for (const bb of [false, true])
       ["history B"]
     );
     assert.equal(h.writes.filter((w) => w.role === "assistant").length, 0);
+
     if (bb)
       assert.equal(
         (h.requests[0][3] as { agentConversationId: number }).agentConversationId,
@@ -413,29 +443,64 @@ test("explicit Stop drops partial persistence while unmount saves it to the orig
   );
 });
 
-test("late cancelled chunks neither reset nor cancel a newer active stream", async t => {
-  const h=await mount(t);await h.render();
-  const oldGate=deferred<void>(),newGate=deferred<void>();
-  h.streams.push({gate:oldGate,partial:"old reply"});let old!:Promise<void>,current!:Promise<void>;
-  await act(async()=>{old=h.chat.sendMessage("old question");await flush();});
+test("late cancelled chunks neither reset nor cancel a newer active stream", async (t) => {
+  const h = await mount(t);
+  await h.render();
+
+  const oldGate = deferred<void>(),
+    newGate = deferred<void>();
+
+  h.streams.push({ gate: oldGate, partial: "old reply" });
+  let old!: Promise<void>, current!: Promise<void>;
+  await act(async () => {
+    old = h.chat.sendMessage("old question");
+    await flush();
+  });
   await h.setNote(h.noteB.id);
-  h.streams.push({gate:newGate,partial:"new reply"});
-  await act(async()=>{current=h.chat.sendMessage("new question");await flush();});
-  const before=h.cancellations;
-  await act(async()=>{oldGate.resolve();await old;});
-  assert.equal(h.cancellations,before);assert.equal(h.chat.agentState,"streaming");
-  assert.equal(h.chat.messages.at(-1)?.content,"new reply");
-  await act(async()=>{newGate.resolve();await current;});
-  assert.deepEqual(h.writes.filter(w=>w.role==="assistant"),[{id:h.B.id,role:"assistant",text:"new reply late tail"}]);
+  h.streams.push({ gate: newGate, partial: "new reply" });
+  await act(async () => {
+    current = h.chat.sendMessage("new question");
+    await flush();
+  });
+  const before = h.cancellations;
+  await act(async () => {
+    oldGate.resolve();
+    await old;
+  });
+  assert.equal(h.cancellations, before);
+  assert.equal(h.chat.agentState, "streaming");
+  assert.equal(h.chat.messages.at(-1)?.content, "new reply");
+  await act(async () => {
+    newGate.resolve();
+    await current;
+  });
+  assert.deepEqual(
+    h.writes.filter((w) => w.role === "assistant"),
+    [{ id: h.B.id, role: "assistant", text: "new reply late tail" }]
+  );
 });
 
-test("switch while the user save is pending never starts the old provider request", async t => {
-  const h=await mount(t);await h.render();const gate=deferred<MessageRow|null>();h.setWrite(()=>gate.promise);let send!:Promise<void>;
-  await act(async()=>{send=h.chat.sendMessage("held A");await flush();});
+test("switch while the user save is pending never starts the old provider request", async (t) => {
+  const h = await mount(t);
+  await h.render();
+  const gate = deferred<MessageRow | null>();
+  h.setWrite(() => gate.promise);
+  let send!: Promise<void>;
+  await act(async () => {
+    send = h.chat.sendMessage("held A");
+    await flush();
+  });
   await h.setNote(h.noteB.id);
-  await act(async()=>{gate.resolve(h.db.addAgentMessage(h.C.id,"user","held A",undefined));await send;});
-  assert.equal(h.requests.length,0);assert.equal(h.chat.activeConversationId,h.B.id);
-  assert.deepEqual(h.chat.messages.map(m=>m.content),["history B"]);
+  await act(async () => {
+    gate.resolve(h.db.addAgentMessage(h.C.id, "user", "held A", undefined));
+    await send;
+  });
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.chat.activeConversationId, h.B.id);
+  assert.deepEqual(
+    h.chat.messages.map((m) => m.content),
+    ["history B"]
+  );
 });
 
 for (const bb of [false, true])
@@ -454,20 +519,29 @@ for (const bb of [false, true])
     gate.resolve(h.db.addAgentMessage(h.C.id, "user", "pending before unmount", undefined));
     await send;
     assert.equal(h.requests.length, 0);
-    assert.equal(h.db.getAgentConversation(h.C.id)?.messages.at(-1)?.content, "pending before unmount");
+    assert.equal(
+      h.db.getAgentConversation(h.C.id)?.messages.at(-1)?.content,
+      "pending before unmount"
+    );
     assert.equal(h.writes.filter((w) => w.role === "assistant").length, 0);
   });
 
 for (const home of [false, true]) {
-  test(`${home ? "Home" : "Note"} retries failed first creation with retained scope and message`, async t => {
+  test(`${home ? "Home" : "Note"} retries failed first creation with retained scope and message`, async (t) => {
     const h = await mount(t, { home });
     await h.render();
     await act(async () => h.chat.startNewChat());
     const failed = deferred<ConversationDetail | null>();
     h.setCreate(failed);
     let sending!: Promise<void>;
-    await act(async () => { sending = h.chat.sendMessage("retained first question"); await flush(); });
-    await act(async () => { failed.reject(new Error("DB unavailable")); await sending; });
+    await act(async () => {
+      sending = h.chat.sendMessage("retained first question");
+      await flush();
+    });
+    await act(async () => {
+      failed.reject(new Error("DB unavailable"));
+      await sending;
+    });
     const message = h.chat.messages[0];
     assert.ok(message.persistenceError);
     assert.equal(h.chat.activeConversationId, null);
@@ -476,7 +550,10 @@ for (const home of [false, true]) {
     const saved = deferred<MessageRow | null>();
     h.setWrite(() => saved.promise);
     let retry!: Promise<void>;
-    await act(async () => { retry = h.chat.retrySaveMessage(message.id); await flush(); });
+    await act(async () => {
+      retry = h.chat.retrySaveMessage(message.id);
+      await flush();
+    });
     const id = h.chat.activeConversationId!;
     assert.ok(id);
     const conv = h.db.getAgentConversation(id)!;
@@ -489,7 +566,12 @@ for (const home of [false, true]) {
       await flush();
     });
     assert.equal(h.chat.messages[0].persistenceError, undefined);
-    assert.ok((home ? (h.chat as any).conversations : (h.chat as any).noteConversations).some((row: any) => row.id === id), "history includes the retried conversation");
+    assert.ok(
+      (home ? (h.chat as any).conversations : (h.chat as any).noteConversations).some(
+        (row: any) => row.id === id
+      ),
+      "history includes the retried conversation"
+    );
     h.setWrite(null);
     await act(async () => h.chat.sendMessage("next question"));
     assert.equal(h.requests.length, 1);
@@ -498,19 +580,29 @@ for (const home of [false, true]) {
 }
 
 for (const departure of ["note", "new-chat", "unmount"] as const) {
-  test(`late retry creation after ${departure} cannot publish into a new chat`, async t => {
+  test(`late retry creation after ${departure} cannot publish into a new chat`, async (t) => {
     const h = await mount(t);
     await h.render();
     await act(async () => h.chat.startNewChat());
     const failed = deferred<ConversationDetail | null>();
     h.setCreate(failed);
     let sending!: Promise<void>;
-    await act(async () => { sending = h.chat.sendMessage("retained"); await flush(); });
-    await act(async () => { failed.reject(new Error("DB unavailable")); await sending; });
+    await act(async () => {
+      sending = h.chat.sendMessage("retained");
+      await flush();
+    });
+    await act(async () => {
+      failed.reject(new Error("DB unavailable"));
+      await sending;
+    });
     const retryGate = deferred<ConversationDetail | null>();
     h.setCreate(retryGate);
     let retry!: Promise<void>;
-    await act(async () => { retry = h.chat.retrySaveMessage(h.chat.messages[0].id); await flush(); });
+    await act(async () => {
+      retry = h.chat.retrySaveMessage(h.chat.messages[0].id);
+      await flush();
+    });
+
     if (departure === "note") await h.setNote(h.noteB.id);
     else if (departure === "new-chat") await act(async () => h.chat.startNewChat());
     else await h.unmount();
@@ -521,6 +613,8 @@ for (const departure of ["note", "new-chat", "unmount"] as const) {
     });
     assert.equal(h.writes.length, 0);
     assert.equal(h.requests.length, 0);
-    if (departure !== "unmount") assert.equal(h.chat.activeConversationId, departure === "note" ? h.B.id : null);
+
+    if (departure !== "unmount")
+      assert.equal(h.chat.activeConversationId, departure === "note" ? h.B.id : null);
   });
 }

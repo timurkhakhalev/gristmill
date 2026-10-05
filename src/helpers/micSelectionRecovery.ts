@@ -21,6 +21,7 @@ export function followsSystemDefaultMic({
   selectedMicDeviceId,
 }: MicSelectionRecoverySettings): boolean {
   if (microphoneSelectionMode) return microphoneSelectionMode === "system";
+
   return !preferBuiltInMic && (!selectedMicDeviceId || selectedMicDeviceId === "default");
 }
 
@@ -36,6 +37,7 @@ export async function reconcileSavedMicSelection(
   logChannel?: string
 ): Promise<SavedMicSelectionRecovery> {
   const devices = await navigator.mediaDevices.enumerateDevices();
+
   const { device, status } = resolveMicDeviceSelection(
     devices,
     selectedDeviceId,

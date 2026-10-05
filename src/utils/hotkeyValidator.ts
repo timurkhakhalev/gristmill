@@ -76,11 +76,13 @@ const LEFT_SIDE_MODIFIERS = new Set([
 
 function isRightSideModifier(part: string): boolean {
   const normalized = part.replace(/[-_ ]/g, "").toLowerCase();
+
   return RIGHT_SIDE_MODIFIERS.has(normalized);
 }
 
 function isLeftSideModifier(part: string): boolean {
   const normalized = part.replace(/[-_ ]/g, "").toLowerCase();
+
   return LEFT_SIDE_MODIFIERS.has(normalized);
 }
 
@@ -361,10 +363,14 @@ function normalizeModifier(part: string, platform: Platform): string | null {
   if (isRightSideModifier(part)) {
     // Return a normalized form but mark it as a modifier
     if (lowered.includes("control") || lowered.includes("ctrl")) return "RightControl";
+
     if (lowered.includes("alt") || lowered.includes("option"))
       return platform === "darwin" ? "RightOption" : "RightAlt";
+
     if (lowered.includes("shift")) return "RightShift";
+
     if (lowered.includes("command") || lowered.includes("cmd")) return "RightCommand";
+
     if (lowered.includes("super") || lowered.includes("meta") || lowered.includes("win")) {
       return platform === "darwin" ? "RightCommand" : "RightSuper";
     }
@@ -373,10 +379,14 @@ function normalizeModifier(part: string, platform: Platform): string | null {
   // Handle left-side modifiers (e.g., LeftControl, ControlLeft, LeftOption)
   if (isLeftSideModifier(part)) {
     if (lowered.includes("control") || lowered.includes("ctrl")) return "LeftControl";
+
     if (lowered.includes("alt") || lowered.includes("option"))
       return platform === "darwin" ? "LeftOption" : "LeftAlt";
+
     if (lowered.includes("shift")) return "LeftShift";
+
     if (lowered.includes("command") || lowered.includes("cmd")) return "LeftCommand";
+
     if (lowered.includes("super") || lowered.includes("meta") || lowered.includes("win")) {
       return platform === "darwin" ? "LeftCommand" : "LeftSuper";
     }
@@ -390,28 +400,49 @@ function normalizeKeyToken(part: string): string {
   const lowered = trimmed.toLowerCase();
 
   if (lowered === "arrowleft") return "Left";
+
   if (lowered === "arrowright") return "Right";
+
   if (lowered === "arrowup") return "Up";
+
   if (lowered === "arrowdown") return "Down";
+
   if (lowered === "escape" || lowered === "esc") return "Esc";
+
   if (lowered === "printscreen" || lowered === "print") return "PrintScreen";
+
   if (lowered === "pageup" || lowered === "pgup") return "PageUp";
+
   if (lowered === "pagedown" || lowered === "pgdown") return "PageDown";
+
   if (lowered === "scrolllock") return "ScrollLock";
+
   if (lowered === "numlock") return "NumLock";
+
   if (lowered === "delete" || lowered === "del") return "Delete";
+
   if (lowered === "insert" || lowered === "ins") return "Insert";
+
   if (lowered === "space") return "Space";
+
   if (lowered === "tab") return "Tab";
+
   if (lowered === "home") return "Home";
+
   if (lowered === "end") return "End";
+
   if (lowered === "backspace") return "Backspace";
+
   if (lowered === "globe") return "GLOBE";
+
   if (lowered === "fn") return "Fn";
+
   if (lowered === "mousebutton4") return "MouseButton4";
+
   if (lowered === "mousebutton5") return "MouseButton5";
 
   const functionMatch = lowered.match(/^f(\d{1,2})$/);
+
   if (functionMatch) {
     return `F${functionMatch[1]}`;
   }
@@ -441,11 +472,14 @@ function isLeftRightMix(parts: string[]): boolean {
 
   for (const rawPart of parts) {
     const part = rawPart.replace(/\s+/g, "");
+
     for (const { regex, sideIndex, modIndex } of patterns) {
       const match = part.match(regex);
+
       if (match) {
         const side = match[sideIndex].toLowerCase().includes("left") ? "left" : "right";
         const rawModifier = match[modIndex].toLowerCase();
+
         const normalizedModifier =
           rawModifier === "ctrl"
             ? "control"
@@ -456,6 +490,7 @@ function isLeftRightMix(parts: string[]): boolean {
                 : rawModifier === "win" || rawModifier === "meta"
                   ? "super"
                   : rawModifier;
+
         const set = sidesByModifier.get(normalizedModifier) ?? new Set<string>();
         set.add(side);
         sidesByModifier.set(normalizedModifier, set);
@@ -485,6 +520,7 @@ export function normalizeHotkey(hotkey: string, platform: Platform): string {
 
   for (const part of parts) {
     const normalizedModifier = normalizeModifier(part, platform);
+
     if (normalizedModifier) {
       modifiers.push(normalizedModifier);
       continue;
@@ -530,10 +566,12 @@ export function getValidationMessage(
   existingHotkeys: string[] = []
 ): string | null {
   const result = validateHotkey(hotkey, platform, existingHotkeys);
+
   if (result.valid) return null;
 
   if (result.errorCode === "RESERVED") {
     const label = formatHotkeyLabelForPlatform(hotkey, platform);
+
     return `${label} is reserved by the system`;
   }
 
@@ -555,16 +593,21 @@ export function validateHotkey(
   // through to the regular single-hotkey validation below.
   if (hotkey.includes(",")) {
     const items = parseHotkeyList(hotkey);
+
     if (items.length === 0) {
       return { valid: false, error: "Please enter a valid shortcut." };
     }
+
     if (items.length > 1) {
       for (const item of items) {
         const result = validateHotkey(item, platform, existingHotkeys);
+
         if (!result.valid) return result;
       }
+
       return { valid: true };
     }
+
     hotkey = items[0];
   }
 
@@ -576,6 +619,7 @@ export function validateHotkey(
         errorCode: "INVALID_GLOBE",
       };
     }
+
     return { valid: true };
   }
 
@@ -597,6 +641,7 @@ export function validateHotkey(
         error: "Mouse button hotkeys are currently supported on macOS only.",
       };
     }
+
     return { valid: true };
   }
 
@@ -635,12 +680,14 @@ export function validateHotkey(
 
   for (const part of parts) {
     const normalizedModifier = normalizeModifier(part, platform);
+
     if (normalizedModifier) {
       hasModifier = true;
       continue;
     }
 
     const normalizedKey = normalizeKeyToken(part);
+
     if (SPECIAL_KEYS.has(normalizedKey)) {
       hasSpecialKey = true;
     }
@@ -674,6 +721,7 @@ export function validateHotkey(
 
   if (!hasBaseKey && modifierCount === 1) {
     const singleMod = parts[0];
+
     if (!isRightSideModifier(singleMod)) {
       return {
         valid: false,
@@ -684,6 +732,7 @@ export function validateHotkey(
         errorCode: "LEFT_MODIFIER_ONLY",
       };
     }
+
     // Right-side single modifiers require native listeners (not available on Linux)
     if (platform === "linux") {
       return {

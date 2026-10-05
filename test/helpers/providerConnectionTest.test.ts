@@ -1,5 +1,7 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const providerTest = require("../../src/helpers/providerConnectionTest.ts");
 
 const { resolveProviderRequest, testProviderConnection } = providerTest;
@@ -13,6 +15,7 @@ test("builds provider tests without placing credentials in the URL", () => {
 
 test("honors OpenAI base URL overrides from the environment", () => {
   process.env.OPENAI_BASE_URL = "https://proxy.example.com/v1/";
+
   try {
     const request = resolveProviderRequest({ provider: "openai", apiKey: "secret" });
     assert.deepEqual(request.endpoints, ["https://proxy.example.com/v1/models"]);
@@ -83,23 +86,39 @@ test("normalizes custom compatible endpoints", () => {
 // Issue #181: a compatible server fronting Bearer auth must receive the typed
 // key on the connection test, while an empty key stays a valid anonymous probe.
 test("custom endpoints send Bearer auth for a given key and none without one", async () => {
-  const secured = resolveProviderRequest({ provider: "custom", baseUrl: "http://localhost:1234/v1", apiKey: "local-secret" });
+  const secured = resolveProviderRequest({
+    provider: "custom",
+    baseUrl: "http://localhost:1234/v1",
+    apiKey: "local-secret",
+  });
+
   assert.equal(secured.headers.Authorization, "Bearer local-secret");
 
-  const anonymous = resolveProviderRequest({ provider: "custom", baseUrl: "http://localhost:1234/v1", apiKey: "" });
+  const anonymous = resolveProviderRequest({
+    provider: "custom",
+    baseUrl: "http://localhost:1234/v1",
+    apiKey: "",
+  });
+
   assert.equal(anonymous.headers.Authorization, undefined);
 
   const requests: Array<{ url: string; headers: Record<string, string> }> = [];
+
   const result = await testProviderConnection(
     { provider: "custom", baseUrl: "http://localhost:1234/v1", apiKey: "local-secret" },
     async (url: string, init?: { headers: Record<string, string> }) => {
       requests.push({ url, headers: init?.headers ?? {} });
+
       return { ok: true, status: 200, json: async () => ({ data: [] }) };
     }
   );
+
   assert.deepEqual(result, { success: true });
   assert.equal(requests[0].headers.Authorization, "Bearer local-secret");
-  assert.ok(requests.every((request) => !request.url.includes("local-secret")), "the key rides headers, never the URL");
+  assert.ok(
+    requests.every((request) => !request.url.includes("local-secret")),
+    "the key rides headers, never the URL"
+  );
 });
 
 test("probes the /v1 sibling for bare custom origins", () => {
@@ -212,13 +231,16 @@ test("maps authentication and transport failures to safe messages", async () => 
 
 test("succeeds when only the /v1 candidate responds", async () => {
   const attempted: unknown[] = [];
+
   const result = await testProviderConnection(
     { provider: "custom", baseUrl: "http://localhost:1234" },
     async (url: string) => {
       attempted.push(url);
+
       return url.includes("/v1/models") ? { ok: true, status: 200 } : { ok: false, status: 404 };
     }
   );
+
   assert.deepEqual(result, { success: true });
   assert.deepEqual(attempted, ["http://localhost:1234/models", "http://localhost:1234/v1/models"]);
 });
@@ -258,10 +280,12 @@ test("accepts selected models from OpenAI and Gemini model-list shapes", async (
 
 test("continues to a compatible candidate when an earlier model list omits the selection", async () => {
   const attempted: unknown[] = [];
+
   const result = await testProviderConnection(
     { provider: "custom", baseUrl: "http://localhost:1234", model: "selected-model" },
     async (url: string) => {
       attempted.push(url);
+
       return {
         ok: true,
         status: 200,

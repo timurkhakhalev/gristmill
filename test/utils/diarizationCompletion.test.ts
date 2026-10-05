@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -17,6 +18,7 @@ test("payload noteId targets the owning note", () => {
     payloadSessionId: "diar-100",
     currentSessionId: "diar-100",
   });
+
   assert.deepEqual(result, { targetNoteId: 1, isCurrentSession: true });
 });
 
@@ -29,6 +31,7 @@ test("payload noteId still targets the owning note after a new session started",
     payloadSessionId: "diar-100",
     currentSessionId: "diar-200",
   });
+
   assert.deepEqual(result, { targetNoteId: 1, isCurrentSession: false });
 });
 
@@ -40,6 +43,7 @@ test("payload noteId with no pending session is current", () => {
     payloadSessionId: "diar-100",
     currentSessionId: null,
   });
+
   assert.deepEqual(result, { targetNoteId: 1, isCurrentSession: true });
 });
 
@@ -55,6 +59,7 @@ test("a live recording on the target note supersedes a result with no pending se
     currentSessionId: null,
     activeRecordingNoteId: 1,
   });
+
   assert.deepEqual(result, { targetNoteId: 1, isCurrentSession: false });
 });
 
@@ -65,6 +70,7 @@ test("a live recording on another note does not supersede the result", () => {
     currentSessionId: null,
     activeRecordingNoteId: 2,
   });
+
   assert.deepEqual(result, { targetNoteId: 1, isCurrentSession: true });
 });
 
@@ -77,6 +83,7 @@ test("a stopped recording no longer supersedes its own note's result", () => {
     currentSessionId: null,
     activeRecordingNoteId: null,
   });
+
   assert.deepEqual(result, { targetNoteId: 1, isCurrentSession: true });
 });
 
@@ -89,6 +96,7 @@ test("a payload without a noteId is dropped", () => {
     payloadSessionId: "diar-100",
     currentSessionId: "diar-100",
   });
+
   assert.deepEqual(result, { targetNoteId: null, isCurrentSession: true });
 });
 
@@ -96,12 +104,14 @@ const seg = (id: string) => ({ id, text: id, source: "mic" as const });
 
 test("persisted segments of the target note win over live segments", () => {
   const persisted = [seg("p1")];
+
   const result = selectBaseSegments({
     persistedSegments: persisted,
     liveSegments: [seg("l1")],
     recordingNoteId: 1,
     targetNoteId: 1,
   });
+
   assert.equal(result, persisted);
 });
 
@@ -109,23 +119,27 @@ test("an empty persisted transcript still wins over the fallbacks", () => {
   // A transcript that parses to zero segments is authoritative for the note;
   // falling back to live segments would reintroduce stale data.
   const persisted: ReturnType<typeof seg>[] = [];
+
   const result = selectBaseSegments({
     persistedSegments: persisted,
     liveSegments: [seg("l1")],
     recordingNoteId: 1,
     targetNoteId: 1,
   });
+
   assert.equal(result, persisted);
 });
 
 test("live segments are used only when the recording belongs to the target note", () => {
   const live = [seg("l1")];
+
   const result = selectBaseSegments({
     persistedSegments: null,
     liveSegments: live,
     recordingNoteId: 1,
     targetNoteId: 1,
   });
+
   assert.equal(result, live);
 });
 
@@ -138,6 +152,7 @@ test("another note's live segments are never merged into the target note", () =>
     recordingNoteId: 2,
     targetNoteId: 1,
   });
+
   assert.deepEqual(result, []);
 });
 
@@ -148,5 +163,6 @@ test("no persisted transcript and empty live segments merge into nothing", () =>
     recordingNoteId: 1,
     targetNoteId: 1,
   });
+
   assert.deepEqual(result, []);
 });

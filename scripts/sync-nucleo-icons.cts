@@ -7,17 +7,25 @@
 // bundle works offline and without a Nucleo license on the build machine.
 
 const fs: typeof import("fs") = require("fs");
+
 const os: typeof import("os") = require("os");
+
 const path: typeof import("path") = require("path");
+
 const { execFileSync }: typeof import("child_process") = require("child_process");
 
 const NUCLEO_ROOT = process.env.NUCLEO_SKILLS_ROOT || path.join(os.homedir(), ".nucleo", "skills");
+
 const ICONS_DIR = path.join(__dirname, "..", "src", "components", "icons");
+
 const VENDOR_DIR = path.join(ICONS_DIR, "nucleo");
+
 const FILL = "outline";
+
 // A map entry is either a core 24px label ("calendar") or, for icons that only
 // exist elsewhere, { family, label, size } (e.g. { family: "ui", label: "redo-2", size: "18px" }).
 const DEFAULT_FAMILY = "core";
+
 const DEFAULT_SIZE = "24px";
 
 interface Spec {
@@ -25,6 +33,7 @@ interface Spec {
   label: string;
   size: string;
 }
+
 interface Icon {
   component: string;
   componentPath: string;
@@ -32,9 +41,11 @@ interface Icon {
   sizes?: string[];
   fills?: string[];
 }
+
 const map: Record<string, string | { label: string; family?: string; size?: string }> = JSON.parse(
   fs.readFileSync(path.join(ICONS_DIR, "nucleo-map.json"), "utf8")
 );
+
 const entries: [string, Spec][] = Object.entries(map).map(([name, spec]) => [
   name,
   typeof spec === "string"
@@ -43,11 +54,13 @@ const entries: [string, Spec][] = Object.entries(map).map(([name, spec]) => [
 ]);
 
 const catalogs = new Map<string, Map<string, Icon>>();
+
 function lookup({ family, label, size }: Spec) {
   if (!catalogs.has(family)) {
     const catalog: { icons: Icon[] } = JSON.parse(
       fs.readFileSync(path.join(NUCLEO_ROOT, family, "icons.json"), "utf8")
     );
+
     catalogs.set(
       family,
       new Map(
@@ -57,29 +70,36 @@ function lookup({ family, label, size }: Spec) {
       )
     );
   }
+
   return catalogs.get(family)!.get(`${label}@${size}`);
 }
 
 const missing = entries
   .filter(([, spec]) => !lookup(spec))
   .map(([name, spec]) => `${name} -> ${spec.family}/${spec.label}@${spec.size}`);
+
 if (missing.length) {
   console.error(`Not found as ${FILL}: ${missing.join(", ")}`);
   process.exit(1);
 }
 
 fs.rmSync(VENDOR_DIR, { recursive: true, force: true });
+
 fs.mkdirSync(VENDOR_DIR, { recursive: true });
 
 const components = new Set();
+
 for (const [, spec] of entries) {
   const { component, componentPath } = lookup(spec)!;
+
   if (components.has(component)) continue;
   components.add(component);
+
   // Core components default to butt caps; the app's soft geometry wants round.
   const source = fs
     .readFileSync(path.join(NUCLEO_ROOT, componentPath), "utf8")
     .replace('corners = "square"', 'corners = "round"');
+
   fs.writeFileSync(path.join(VENDOR_DIR, `${component}.tsx`), source);
 }
 
@@ -105,15 +125,18 @@ export { Circle, Square } from "./primitives";
 
 ${exportLines.join("\n")}
 `;
+
 fs.writeFileSync(path.join(ICONS_DIR, "index.ts"), index);
 
 const barrel = [...components]
   .sort()
   .map((component) => `export { ${component} } from "./${component}";`)
   .join("\n");
+
 fs.writeFileSync(path.join(VENDOR_DIR, "index.ts"), `${barrel}\n`);
 
 execFileSync("npx", ["prettier", "--write", ICONS_DIR], { stdio: "ignore" });
+
 console.log(`Vendored ${components.size} Nucleo components for ${entries.length} icons.`);
 
 export type {};

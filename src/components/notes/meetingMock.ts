@@ -2,6 +2,7 @@
 // prioritized tasks, Recap). Only the debug preview uses it; no real work runs.
 
 export type MockTasksState = "loading" | "ok" | "zero" | "error" | "format" | "conflict";
+
 export type MockRecapState = "none" | "running" | "ok";
 
 export interface MockPipeline {
@@ -52,12 +53,20 @@ const RECAP_RUNNING = `## Recap
 
 _Готовим recap…_`;
 
-export function composeMockSummary(base: string, tasks: MockTasksState | undefined, recap: MockRecapState | undefined): string {
+export function composeMockSummary(
+  base: string,
+  tasks: MockTasksState | undefined,
+  recap: MockRecapState | undefined
+): string {
   const parts = [base];
+
   if (tasks === "ok") parts.push(TASKS_OK);
-  else if (tasks === "loading" || tasks === "error" || tasks === "conflict") parts.push(TASKS_PLAIN);
+  else if (tasks === "loading" || tasks === "error" || tasks === "conflict")
+    parts.push(TASKS_PLAIN);
+
   if (recap === "ok") parts.push(RECAP_OK);
   else if (recap === "running") parts.push(RECAP_RUNNING);
+
   return parts.join("\n\n");
 }
 

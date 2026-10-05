@@ -1,8 +1,12 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const WINDOW_CONFIG_PATH = require.resolve("../../src/helpers/windowConfig.ts");
-const { resolveOverlayWindowType }: typeof import("../../src/helpers/windowConfig.ts") = require(WINDOW_CONFIG_PATH);
+
+const { resolveOverlayWindowType }: typeof import("../../src/helpers/windowConfig.ts") = require(
+  WINDOW_CONFIG_PATH
+);
 
 const SESSION_ENV_KEYS = [
   "XDG_SESSION_TYPE",
@@ -20,13 +24,21 @@ function setEnvironmentValue(key: string, value: string | undefined) {
   else process.env[key] = value;
 }
 
-function loadWindowConfig({ platform, environment }: { platform: string; environment: Record<string, string | undefined> }) {
+function loadWindowConfig({
+  platform,
+  environment,
+}: {
+  platform: string;
+  environment: Record<string, string | undefined>;
+}) {
   const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+
   const originalEnvironment = Object.fromEntries(
     SESSION_ENV_KEYS.map((key) => [key, process.env[key]])
   );
 
   Object.defineProperty(process, "platform", { value: platform, configurable: true });
+
   for (const key of SESSION_ENV_KEYS) setEnvironmentValue(key, environment[key]);
   delete require.cache[WINDOW_CONFIG_PATH];
 
@@ -34,6 +46,7 @@ function loadWindowConfig({ platform, environment }: { platform: string; environ
     return require(WINDOW_CONFIG_PATH) as typeof import("../../src/helpers/windowConfig.ts");
   } finally {
     if (originalPlatform) Object.defineProperty(process, "platform", originalPlatform);
+
     for (const key of SESSION_ENV_KEYS) setEnvironmentValue(key, originalEnvironment[key]);
     delete require.cache[WINDOW_CONFIG_PATH];
   }
@@ -45,7 +58,9 @@ function resolveAllOverlayTypes(platform: string, session: unknown) {
   return Object.fromEntries(
     OVERLAY_ROLES.map((role) => [
       role,
-      Reflect.apply(resolveOverlayWindowType, undefined, [{ role, platform, linuxSession: session }]),
+      Reflect.apply(resolveOverlayWindowType, undefined, [
+        { role, platform, linuxSession: session },
+      ]),
     ])
   );
 }

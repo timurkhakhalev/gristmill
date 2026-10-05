@@ -67,7 +67,9 @@ export const noteUpdateSchema = z
 export type NoteUpdate = z.infer<typeof noteUpdateSchema>;
 
 const idArg = z.number().int().nonnegative();
+
 const optionalId = nonNegativeInt.nullable().optional();
+
 const optionalLimit = z.number().optional();
 
 // Positional arguments and channel names are frozen API: renderer preload and
@@ -83,59 +85,73 @@ export const saveNoteArgsSchema = z.tuple([
 ]);
 
 export const getNoteArgsSchema = z.tuple([idArg]);
+
 export const getNotesArgsSchema = z.tuple([
   z.string().nullable().optional(),
   optionalLimit,
   optionalId,
   optionalId,
 ]);
+
 export const getSpaceNotesArgsSchema = z.tuple([idArg, optionalLimit]);
+
 export const updateNoteArgsSchema = z.tuple([idArg, noteUpdateSchema]);
+
 export const deleteNoteArgsSchema = z.tuple([idArg]);
-export const searchNotesArgsSchema = z.tuple([
-  z.string(),
-  optionalLimit,
-  optionalId,
-  optionalId,
-]);
+
+export const searchNotesArgsSchema = z.tuple([z.string(), optionalLimit, optionalId, optionalId]);
 
 export const saveNoteResultSchema = z.object({
   success: z.literal(true),
   note: noteItemSchema,
 });
+
 export const noteMutationFailureSchema = z.object({
   success: z.literal(false),
   error: z.string().optional(),
 });
-export const noteMutationResultSchema = z.union([
-  saveNoteResultSchema,
-  noteMutationFailureSchema,
-]);
+
+export const noteMutationResultSchema = z.union([saveNoteResultSchema, noteMutationFailureSchema]);
 
 // deleteNote never carries the row back; the DB layer reports plain success.
 export const noteDeleteResultSchema = z.object({ success: z.boolean() });
 
 export const noteListResultSchema = z.array(noteItemSchema);
+
 export const noteOrNullResultSchema = noteItemSchema.nullable();
+
 export const noteSearchHitSchema = z.object({
   note: noteItemSchema,
-  matches: z.array(z.object({ source: z.enum(["title", "user_notes", "summary"]), snippet: z.string() })),
+  matches: z.array(
+    z.object({ source: z.enum(["title", "user_notes", "summary"]), snippet: z.string() })
+  ),
 });
+
 export const transcriptSearchHitSchema = z.object({
   note: noteItemSchema,
-  matches: z.array(z.object({
-    start_ms: z.number().nullable(), end_ms: z.number().nullable(),
-    speaker_id: z.string().nullable(), speaker_name: z.string().nullable(), snippet: z.string(),
-  })),
+  matches: z.array(
+    z.object({
+      start_ms: z.number().nullable(),
+      end_ms: z.number().nullable(),
+      speaker_id: z.string().nullable(),
+      speaker_name: z.string().nullable(),
+      snippet: z.string(),
+    })
+  ),
 });
+
 export type TranscriptSearchHit = z.infer<typeof transcriptSearchHitSchema>;
+
 export type NoteMutationResult = z.infer<typeof noteMutationResultSchema>;
+
 export type NoteDeleteResult = z.infer<typeof noteDeleteResultSchema>;
 
 export const noteDeletedPayloadSchema = z.object({ id: idArg });
+
 export type NoteDeletedPayload = z.infer<typeof noteDeletedPayloadSchema>;
 
 export const noteAddedUpdatedPayloadSchema = noteItemSchema;
+
 export type NoteAddedUpdatedPayload = z.infer<typeof noteAddedUpdatedPayloadSchema>;
 
 // The renderer-facing surface: seven operations, three subscriptions.
@@ -167,7 +183,10 @@ export interface NotesApi {
     spaceId?: number | null,
     folderId?: number | null
   ): Promise<NoteItem[]>;
-  searchNoteContent(query: string, spaceId?: number | null): Promise<Array<z.infer<typeof noteSearchHitSchema>>>;
+  searchNoteContent(
+    query: string,
+    spaceId?: number | null
+  ): Promise<Array<z.infer<typeof noteSearchHitSchema>>>;
   searchNoteTranscripts(query: string, spaceId?: number | null): Promise<TranscriptSearchHit[]>;
   getNoteOutput(request: NoteOutputRequest): Promise<NoteOutput>;
   getNoteTranscript(noteId: number): Promise<NoteTranscript>;

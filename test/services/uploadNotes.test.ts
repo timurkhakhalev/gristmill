@@ -1,9 +1,14 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/services/uploadNotes.js");
+
 const { MAX_SPEAKER_COUNT } = require("../../src/constants/speakerDetection.json");
-const { parseTranscriptSegments }: typeof import("../../src/utils/parseTranscriptSegments.ts") = require("../../src/utils/parseTranscriptSegments.ts");
+
+const {
+  parseTranscriptSegments,
+}: typeof import("../../src/utils/parseTranscriptSegments.ts") = require("../../src/utils/parseTranscriptSegments.ts");
 
 test("maps the diarizer invocation onto the note columns", async () => {
   const { buildUploadNoteMetadata } = await load();
@@ -57,18 +62,21 @@ test("speaker counts normalize through the shared stored-count clamp", async () 
     { enabled: true, localModelsReady: true, numSpeakers: MAX_SPEAKER_COUNT + 5 },
     null
   );
+
   assert.equal(above.noteUpdates!.expected_speaker_count, MAX_SPEAKER_COUNT);
 
   const unusable = buildUploadNoteMetadata(
     { enabled: true, localModelsReady: true, numSpeakers: 0 },
     null
   );
+
   assert.equal(unusable.noteUpdates!.expected_speaker_count, null);
 
   const auto = buildUploadNoteMetadata(
     { enabled: true, localModelsReady: true, numSpeakers: null },
     null
   );
+
   assert.equal(auto.noteUpdates!.expected_speaker_count, null);
 });
 
@@ -89,6 +97,7 @@ test("provider segments serialize into the meeting-path transcript shape", async
   const { buildUploadTranscript } = await load();
 
   const anchorMs = 1_700_000_000_000;
+
   const transcript = buildUploadTranscript(
     [
       { text: " Hello world. ", start: 0, end: 4.2 },
@@ -120,9 +129,16 @@ test("provider segments serialize into the meeting-path transcript shape", async
   );
 });
 
-interface SaveCall { kind: string; args?: unknown[]; id?: number; updates?: Record<string, unknown> }
+interface SaveCall {
+  kind: string;
+  args?: unknown[];
+  id?: number;
+  updates?: Record<string, unknown>;
+}
 
-const setWindow = (value: unknown) => { (globalThis as { window?: unknown }).window = value; };
+const setWindow = (value: unknown) => {
+  (globalThis as { window?: unknown }).window = value;
+};
 
 test("Upload keeps the transcript in Transcript and leaves Notes editable", async (t: import("node:test").TestContext) => {
   const { saveUploadNote } = await load();
@@ -136,10 +152,12 @@ test("Upload keeps the transcript in Transcript and leaves Notes editable", asyn
     electronAPI: {
       saveNote: async (...args: unknown[]) => {
         calls.push({ kind: "save", args });
+
         return { success: true, note: { id: 42, content: args[1] } };
       },
       updateNote: async (id: number, updates: Record<string, unknown>) => {
         calls.push({ kind: "update", id, updates });
+
         return { success: true, note: { id, ...updates } };
       },
     },
@@ -152,6 +170,7 @@ test("Upload keeps the transcript in Transcript and leaves Notes editable", asyn
     folderId: null,
     diarization: { enabled: false, localModelsReady: false, numSpeakers: null },
   });
+
   assert.equal(
     calls[0].args![1],
     "Spoken words.",
@@ -177,6 +196,7 @@ test("a failed transcript write leaves the original text in Notes", async (t: im
       },
     },
   });
+
   const saved = await saveUploadNote({
     title: "Call",
     text: "Spoken words.",
@@ -184,6 +204,7 @@ test("a failed transcript write leaves the original text in Notes", async (t: im
     folderId: null,
     diarization: { enabled: false, localModelsReady: false, numSpeakers: null },
   });
+
   assert.equal((saved as { note: { content: string } }).note.content, "Spoken words.");
 });
 
@@ -207,9 +228,13 @@ test("the default anchor is the current epoch so later meeting appends share one
 // epoch rebase, and render the appended segments as ~481,000,000-hour cues.
 test("upload transcripts mixed with later live meeting segments export sane SRT times", async () => {
   const { buildUploadTranscript } = await load();
-  const { formatSrt }: typeof import("../../src/helpers/transcriptFormatter") = require("../../src/helpers/transcriptFormatter");
+
+  const {
+    formatSrt,
+  }: typeof import("../../src/helpers/transcriptFormatter") = require("../../src/helpers/transcriptFormatter");
 
   const anchorMs = 1_700_000_000_000;
+
   const seeded = JSON.parse(
     buildUploadTranscript(
       [
@@ -219,6 +244,7 @@ test("upload transcripts mixed with later live meeting segments export sane SRT 
       anchorMs
     )!
   );
+
   const appended = [{ text: "Live follow-up.", source: "mic", timestamp: anchorMs + 60_000 }];
 
   const output = formatSrt([...seeded, ...appended], {});
@@ -246,6 +272,7 @@ test("segments persist the transcript even when diarization is off", async () =>
   const { buildUploadNoteMetadata } = await load();
 
   const anchorMs = 1_700_000_000_000;
+
   const { noteUpdates } = buildUploadNoteMetadata(
     { enabled: false, localModelsReady: false, numSpeakers: null },
     60,
@@ -264,6 +291,7 @@ test("segments and diarization metadata share one noteUpdates write", async () =
   const { buildUploadNoteMetadata } = await load();
 
   const anchorMs = 1_700_000_000_000;
+
   const { noteUpdates } = buildUploadNoteMetadata(
     { enabled: true, localModelsReady: true, numSpeakers: 2 },
     60,

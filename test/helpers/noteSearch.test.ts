@@ -1,18 +1,28 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { DatabaseSync }: typeof import("node:sqlite") = require("node:sqlite");
+
 const Module = require("node:module");
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return { app: {} };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
+
 Module._load = originalLoad;
-const { buildNoteSearchQuery }: typeof import("../../src/helpers/noteSearch.ts") = require("../../src/helpers/noteSearch.ts");
+
+const {
+  buildNoteSearchQuery,
+}: typeof import("../../src/helpers/noteSearch.ts") = require("../../src/helpers/noteSearch.ts");
 
 test("buildNoteSearchQuery builds quoted prefix queries", () => {
   for (const [input, expected] of [
@@ -65,6 +75,7 @@ function createSearchDatabase() {
   `);
 
   const insertNote = sqlite.prepare("INSERT INTO notes (title, content) VALUES (?, ?)");
+
   const insertFts = sqlite.prepare(
     "INSERT INTO notes_fts (rowid, title, content) VALUES (?, ?, ?)"
   );
@@ -86,6 +97,7 @@ function createSearchDatabase() {
   // `db` is a getter over the private _db field; seeding the field is the
   // only seam a prototype-only fixture has.
   manager._db = sqlite;
+
   return { manager, sqlite };
 }
 
@@ -117,7 +129,9 @@ test("DatabaseManager.searchNotes treats FTS5 operators and punctuation as text"
   const { manager, sqlite } = createSearchDatabase();
   t.after(() => sqlite.close());
 
-  assert.ok(manager.searchNotes("OR", 10).some((note: { title: string }) => note.title === "OR operation"));
+  assert.ok(
+    manager.searchNotes("OR", 10).some((note: { title: string }) => note.title === "OR operation")
+  );
   assert.equal(manager.searchNotes("hello -world", 10)[0]?.title, "hello world");
   assert.deepEqual(manager.searchNotes("title:", 10), []);
   assert.deepEqual(manager.searchNotes('foo"bar', 10), []);

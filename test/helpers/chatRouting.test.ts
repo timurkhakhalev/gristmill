@@ -1,10 +1,12 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/chatRouting.ts");
 
 test("custom BYOK Chat stays on its provider route", async () => {
   const { resolveChatRoute } = await load();
+
   const route = resolveChatRoute({
     provider: "custom",
     customApiKey: "litellm-key",
@@ -29,6 +31,7 @@ test("local Chat stays on its local route", async () => {
 
 test("explicit self-hosted Chat URL wins over a stale enterprise provider", async () => {
   const { resolveChatRoute } = await load();
+
   const route = resolveChatRoute({
     provider: "bedrock",
     lanUrl: "  http://127.0.0.1:4000/v1  ",
@@ -45,6 +48,7 @@ test("explicit self-hosted Chat URL wins over a stale enterprise provider", asyn
 
 test("self-hosted Chat preserves an empty optional API key", async () => {
   const { resolveChatRoute } = await load();
+
   const route = resolveChatRoute({
     provider: "custom",
     lanUrl: "http://127.0.0.1:11434/v1",
@@ -56,6 +60,7 @@ test("self-hosted Chat preserves an empty optional API key", async () => {
 
 test("enterprise Chat stays enterprise without a Chat LAN URL", async () => {
   const { resolveChatRoute } = await load();
+
   const route = resolveChatRoute({
     provider: "vertex",
     isEnterpriseProvider: true,
@@ -66,6 +71,7 @@ test("enterprise Chat stays enterprise without a Chat LAN URL", async () => {
 
 test("blank Chat LAN URL does not activate self-hosted routing", async () => {
   const { resolveChatRoute } = await load();
+
   const route = resolveChatRoute({
     provider: "custom",
     lanUrl: "   ",

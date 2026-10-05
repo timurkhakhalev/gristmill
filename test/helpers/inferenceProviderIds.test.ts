@@ -1,6 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("fs");
+
 const path = require("path");
 
 const modelData: typeof import("../../src/models/modelRegistryData.json") = require("../../src/models/modelRegistryData.json");
@@ -12,15 +15,19 @@ function inferenceProviderIds() {
     path.join(__dirname, "../../src/services/ai/inferenceProviders/index.ts"),
     "utf8"
   );
+
   const block = src.match(/PROVIDER_REGISTRY[^=]*=\s*Object\.freeze\(\{([\s\S]*?)\}\)/);
   assert.ok(block, "PROVIDER_REGISTRY declared in inferenceProviders/index.ts");
   const ids = [...block[1].matchAll(/^\s*([A-Za-z][\w-]*):/gm)].map((m) => m[1]);
   assert.ok(ids.length > 0, "parsed at least one provider id");
+
   return ids;
 }
 
 const localIds = modelData.localProviders.map((p) => p.id);
+
 const cloudIds = modelData.cloudProviders.map((p) => p.id);
+
 const enterpriseIds = modelData.enterpriseProviders.map((p) => p.id);
 
 test("every selectable cloud and enterprise provider has an inference handler", () => {

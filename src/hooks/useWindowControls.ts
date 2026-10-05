@@ -15,9 +15,11 @@ export const useWindowControls = (): UseWindowControlsReturn => {
 
   useEffect(() => {
     let mounted = true;
+
     const syncIsMaximized = async (): Promise<void> => {
       try {
         const maximized = await window.electronAPI?.windowIsMaximized?.();
+
         if (mounted) setIsMaximized(Boolean(maximized));
       } catch {}
     };
@@ -26,6 +28,7 @@ export const useWindowControls = (): UseWindowControlsReturn => {
     // Polled because maximize can also happen outside these buttons (for
     // example, by double-clicking the drag band) and no renderer event reports it.
     const intervalId = window.setInterval(syncIsMaximized, 1000);
+
     return () => {
       mounted = false;
       window.clearInterval(intervalId);

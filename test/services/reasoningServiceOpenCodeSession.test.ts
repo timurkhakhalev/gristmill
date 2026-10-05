@@ -1,20 +1,36 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
 import type { TestContext } from "node:test";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // The module's default export is an instance of a non-exported class.
 type ReasoningService = typeof import("../../src/services/ReasoningService.js").default;
+
 type SentRequest = { endpoint: string; headers: Record<string, string> };
 
-async function loadReasoningService(t: TestContext, cachePrefix: string): Promise<ReasoningService> {
+async function loadReasoningService(
+  t: TestContext,
+  cachePrefix: string
+): Promise<ReasoningService> {
   installBrowserGlobals(t, {});
   const vite = await createRendererServer(t, { cachePrefix });
-  const reasoningService = ((await vite.ssrLoadModule("/services/ReasoningService.ts") as typeof import("../../src/services/ReasoningService.ts"))).default;
+
+  const reasoningService = (
+    (await vite.ssrLoadModule(
+      "/services/ReasoningService.ts"
+    )) as typeof import("../../src/services/ReasoningService.ts")
+  ).default;
+
   t.after(() => reasoningService.destroy());
+
   return reasoningService;
 }
 
@@ -27,6 +43,7 @@ function installStreamRecorder(t: TestContext, sent: SentRequest[]) {
   globalThis.fetch = async (input: unknown, init: { headers?: unknown } = {}) => {
     sent.push({ endpoint: String(input), headers: (init.headers ?? {}) as Record<string, string> });
     const event = `data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}\n\n`;
+
     return new Response(`${event}data: [DONE]\n\n`, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -41,8 +58,11 @@ async function streamAgainst(reasoningService: ReasoningService, lanUrl: string)
     "lan",
     { systemPrompt: "Answer the user.", lanUrl }
   );
+
   let output = "";
+
   for await (const chunk of stream) output += chunk;
+
   return output;
 }
 
@@ -77,6 +97,7 @@ function installCompletionRecorder(t: TestContext, sent: SentRequest[]) {
   });
   globalThis.fetch = async (input: unknown, init: { headers?: unknown } = {}) => {
     sent.push({ endpoint: String(input), headers: (init.headers ?? {}) as Record<string, string> });
+
     return new Response(
       JSON.stringify({ choices: [{ message: { content: "Cleaned" }, finish_reason: "stop" }] }),
       { status: 200, headers: { "Content-Type": "application/json" } }

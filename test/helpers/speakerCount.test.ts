@@ -1,7 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { normalizeStoredSpeakerCount }: typeof import("../../src/helpers/speakerCount") = require("../../src/helpers/speakerCount");
+const {
+  normalizeStoredSpeakerCount,
+}: typeof import("../../src/helpers/speakerCount") = require("../../src/helpers/speakerCount");
+
 const { MAX_SPEAKER_COUNT } = require("../../src/constants/speakerDetection.json");
 
 test("keeps a usable stored count", () => {

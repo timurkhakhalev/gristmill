@@ -44,7 +44,11 @@ const ENDPOINTS: Record<string, string> = {
 
 // These endpoints do not return an OpenAI-shaped model list. A 200 only
 // verifies credentials; it does not prove access to a particular STT model.
-const MODEL_LIST_UNVERIFIABLE: ReadonlySet<string> = new Set(["deepgram", "assemblyai", "elevenlabs"]);
+const MODEL_LIST_UNVERIFIABLE: ReadonlySet<string> = new Set([
+  "deepgram",
+  "assemblyai",
+  "elevenlabs",
+]);
 
 // Renderers translate errorCode via onboarding.rehaul.provider.errors.*; the
 // English `error` string stays for logs and older callers.
@@ -69,29 +73,36 @@ export function resolveProviderRequest(config: ProviderConnectionConfig): Resolv
 
   if (provider === "openai") {
     const override = normalizeBaseUrl(process.env.OPENAI_BASE_URL);
+
     if (override) endpoints = buildModelEndpoints(override);
   }
 
   if (provider === "custom") {
     const raw = String(config?.baseUrl || "").trim();
+
     if (!raw) {
       throw new ConnectionTestError("endpointRequired", "Enter an endpoint URL before testing.");
     }
+
     let parsed;
+
     try {
       parsed = new URL(raw.includes("://") ? raw : `https://${raw}`);
     } catch {
       throw new ConnectionTestError("invalidUrl", "The endpoint must be a valid URL.");
     }
+
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new ConnectionTestError("invalidUrl", "The endpoint must use HTTP or HTTPS.");
     }
+
     if (!isSecureHttpEndpoint(parsed.toString())) {
       throw new ConnectionTestError(
         "httpsRequired",
         "Public endpoints must use HTTPS. HTTP is only allowed on private addresses."
       );
     }
+
     endpoints = buildModelEndpoints(parsed.toString());
   }
 
@@ -101,11 +112,13 @@ export function resolveProviderRequest(config: ProviderConnectionConfig): Resolv
       "Connection testing is not available for this provider."
     );
   }
+
   if (!apiKey && provider !== "custom") {
     throw new ConnectionTestError("apiKeyRequired", "Add an API key before testing.");
   }
 
   const headers: Record<string, string> = { Accept: "application/json" };
+
   if (apiKey) {
     if (provider === "anthropic") {
       headers["x-api-key"] = apiKey;
@@ -140,6 +153,7 @@ type FailureCandidate = Omit<ConnectionTestOutcome, "success">;
 
 function pickFailure(current: FailureCandidate | null, next: FailureCandidate): FailureCandidate {
   if (!current) return next;
+
   return FAILURE_PRIORITY[next.errorCode as string] > FAILURE_PRIORITY[current.errorCode as string]
     ? next
     : current;
@@ -153,6 +167,7 @@ function describeStatusFailure(status: number, provider: string): FailureCandida
       status,
     };
   }
+
   if (status === 404 && provider === "custom") {
     return {
       errorCode: "endpointNotFound",
@@ -160,6 +175,7 @@ function describeStatusFailure(status: number, provider: string): FailureCandida
       status,
     };
   }
+
   return { errorCode: "providerStatus", error: `The provider returned status ${status}.`, status };
 }
 
@@ -175,12 +191,13 @@ function responseModelIds(payload: unknown): string[] {
     | Array<unknown>
     | null
     | undefined;
+
   const models = Array.isArray(payload)
     ? payload
     : Array.isArray(record && !Array.isArray(record) ? record.data : undefined)
-      ? ((record as { data: unknown[] }).data)
+      ? (record as { data: unknown[] }).data
       : Array.isArray(record && !Array.isArray(record) ? record.models : undefined)
-        ? ((record as { models: unknown[] }).models)
+        ? (record as { models: unknown[] }).models
         : [];
 
   return models
@@ -199,15 +216,20 @@ async function responseOffersModel(
   model: string
 ): Promise<boolean> {
   if (!model) return true;
+
   try {
     const payload = await response.json();
+
     return responseModelIds(payload).includes(normalizeModelId(model));
   } catch {
     return false;
   }
 }
 
-export type ConnectionTestFetch = (url: string, init?: RequestInit) => Promise<{
+export type ConnectionTestFetch = (
+  url: string,
+  init?: RequestInit
+) => Promise<{
   ok: boolean;
   status: number;
   json(): Promise<unknown>;
@@ -218,6 +240,7 @@ export async function testProviderConnection(
   fetchImpl: ConnectionTestFetch = fetch as ConnectionTestFetch
 ): Promise<ConnectionTestOutcome> {
   let request;
+
   try {
     request = resolveProviderRequest(config);
   } catch (error) {
@@ -231,17 +254,21 @@ export async function testProviderConnection(
   const provider = String(config?.provider || "").toLowerCase();
   const model = String(config?.model || "").trim();
   let failure: FailureCandidate | null = null;
+
   for (const endpoint of request.endpoints) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
+
     try {
       const response = await fetchImpl(endpoint, {
         method: "GET",
         headers: request.headers,
         signal: controller.signal,
       });
+
       if (response.ok) {
         if (MODEL_LIST_UNVERIFIABLE.has(provider)) return { success: true };
+
         if (await responseOffersModel(response, model)) return { success: true };
         failure = pickFailure(failure, {
           errorCode: "modelNotFound",
@@ -249,6 +276,7 @@ export async function testProviderConnection(
         });
         continue;
       }
+
       failure = pickFailure(failure, describeStatusFailure(response.status, provider));
     } catch (error) {
       if ((error as { name?: string })?.name === "AbortError") {
@@ -266,5 +294,6 @@ export async function testProviderConnection(
       clearTimeout(timeout);
     }
   }
+
   return { success: false, ...(failure || {}) };
 }

@@ -1,6 +1,9 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const test: typeof import("node:test") = require("node:test");
 
 const repoRoot = path.join(__dirname, "../..");
@@ -106,6 +109,7 @@ test("user-authored names and previews detect direction at their display boundar
   const meetingCards = source("src/components/home/ComingUp.tsx").match(
     /<p\s+dir="auto"[^>]*>\s*\{event\.summary \|\| t\("upcoming\.untitledEvent"\)\}/g
   );
+
   assert.equal(
     meetingCards?.length,
     2,

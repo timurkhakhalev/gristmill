@@ -2156,6 +2156,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     s.setUploadCloudTranscriptionMode(cloudTranscriptionMode);
     s.setUploadCloudTranscriptionProvider(cloudTranscriptionProvider);
     s.setUploadCloudTranscriptionModel(cloudTranscriptionModel);
+    if (settings.cloudTranscriptionBaseUrl !== undefined) {
+      s.setMeetingCloudTranscriptionBaseUrl(settings.cloudTranscriptionBaseUrl);
+      s.setUploadCloudTranscriptionBaseUrl(settings.cloudTranscriptionBaseUrl);
+    }
     // Seed the per-provider model memory so a later provider switch-and-return
     // in any scope restores the model onboarding chose.
     if (cloudTranscriptionProvider && cloudTranscriptionModel) {

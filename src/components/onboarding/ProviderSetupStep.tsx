@@ -9,6 +9,7 @@ import { SelectField } from "../ui/SelectField";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { getTranscriptionProviders, type TranscriptionProviderData } from "../../models/ModelRegistry";
 import { pickDefaultModelId } from "../../models/providerDefaultModel";
+import { resolveTranscriptionRoute } from "../../helpers/transcriptionRoute";
 import type { OnboardingByokDraft } from "./flow";
 
 type HostedProvider = TranscriptionProviderData;
@@ -31,8 +32,6 @@ const providerCredential = (provider: string, store: ReturnType<typeof useSettin
   switch (provider) {
     case "openai":
       return { value: store.openaiApiKey, set: store.setOpenaiApiKey };
-    case "anthropic":
-      return { value: store.anthropicApiKey, set: store.setAnthropicApiKey };
     case "gemini":
       return { value: store.geminiApiKey, set: store.setGeminiApiKey };
     case "groq":
@@ -41,8 +40,6 @@ const providerCredential = (provider: string, store: ReturnType<typeof useSettin
       return { value: store.xaiApiKey, set: store.setXaiApiKey };
     case "mistral":
       return { value: store.mistralApiKey, set: store.setMistralApiKey };
-    case "openrouter":
-      return { value: store.openrouterApiKey, set: store.setOpenrouterApiKey };
     case "tinfoil":
       return { value: store.tinfoilApiKey, set: store.setTinfoilApiKey };
     case "deepgram":
@@ -50,7 +47,7 @@ const providerCredential = (provider: string, store: ReturnType<typeof useSettin
     case "elevenlabs":
       return { value: store.elevenLabsApiKey, set: store.setElevenLabsApiKey };
     default:
-      return { value: "", set: () => {} };
+      return null;
   }
 };
 
@@ -77,15 +74,28 @@ export function ByokProviderStep({
 }: ByokProviderStepProps) {
   const { t } = useTranslation();
   const store = useSettingsStore();
-  const providers = useMemo<HostedProvider[]>(() => getTranscriptionProviders(), []);
+  const providers = useMemo<HostedProvider[]>(() => {
+    const catalog = getTranscriptionProviders();
+    return catalog.filter(provider => providerCredential(provider.id, useSettingsStore.getState()) !== null)
+      .map(provider => ({ ...provider, models: provider.models.filter(model =>
+        resolveTranscriptionRoute({ providers: catalog, settings: {
+          transcriptionMode: "providers", cloudTranscriptionProvider: provider.id, cloudTranscriptionModel: model.id,
+        } }).transport !== "error"
+      ) })).filter(provider => provider.models.length > 0);
+  }, []);
   const initialProvider =
     providers.find((item) => item.id === resumeState?.selectedProvider)?.id ??
     providers.find((item) => item.id === store.cloudTranscriptionProvider)?.id ??
     "";
   const [selfHosted, setSelfHosted] = useState(selfHostedRequested);
   const [selectedProvider, setSelectedProvider] = useState(initialProvider);
-  const [selectedModel, setSelectedModel] = useState(resumeState?.selectedModel ?? "");
-  const [draftApiKey, setDraftApiKey] = useState(() => providerCredential(initialProvider, store).value);
+  const [selectedModel, setSelectedModel] = useState(() => {
+    const provider = providers.find(item => item.id === initialProvider);
+    return provider?.models.find(model => model.id === resumeState?.selectedModel)?.id
+      ?? provider?.models.find(model => model.id === store.cloudTranscriptionModel)?.id
+      ?? pickDefaultModelId(provider);
+  });
+  const [draftApiKey, setDraftApiKey] = useState(() => providerCredential(initialProvider, store)?.value ?? "");
   const [draftBaseUrl, setDraftBaseUrl] = useState(resumeState?.baseUrl ?? "");
   const [draftCustomModel, setDraftCustomModel] = useState(resumeState?.customModel ?? "");
   const [connected, setConnected] = useState(false);
@@ -146,7 +156,7 @@ export function ByokProviderStep({
       invalidateSave();
       setSelectedProvider(providerId);
       setSelectedModel(pickDefaultModelId(providers.find((item) => item.id === providerId)));
-      setDraftApiKey(providerCredential(providerId, store).value);
+      setDraftApiKey(providerCredential(providerId, store)?.value ?? "");
       setSaveError(false);
       setConnected(false);
       onConnectionChange(false);
@@ -164,7 +174,7 @@ export function ByokProviderStep({
     try {
       const result = selfHosted
         ? await store.setCustomTranscriptionApiKey(draftApiKey)
-        : await providerCredential(selectedProvider, store).set(draftApiKey);
+        : await providerCredential(selectedProvider, store)?.set(draftApiKey);
       if (!isCurrent()) return;
       if (!result || typeof result !== "object" || !("success" in result) || result.success !== true) {
         setSaveError(true);
@@ -173,14 +183,13 @@ export function ByokProviderStep({
 
       if (selfHosted) {
         const url = draftBaseUrl.includes("://") ? draftBaseUrl.trim() : `https://${draftBaseUrl.trim()}`;
-        store.setCloudTranscriptionBaseUrl(url);
-        store.setCloudTranscriptionModel(draftCustomModel);
-        store.setCloudTranscriptionProvider("custom");
-        store.setCloudTranscriptionMode("byok");
+        store.setCloudTranscriptionForAllScopes({ useLocalWhisper: false,
+          cloudTranscriptionBaseUrl: url, cloudTranscriptionModel: draftCustomModel,
+          cloudTranscriptionProvider: "custom", cloudTranscriptionMode: "byok" });
       } else {
-        store.setCloudTranscriptionMode("byok");
-        store.setCloudTranscriptionProvider(selectedProvider);
-        store.setCloudTranscriptionModel(selectedModel);
+        store.setCloudTranscriptionForAllScopes({ useLocalWhisper: false,
+          cloudTranscriptionBaseUrl: "", cloudTranscriptionMode: "byok",
+          cloudTranscriptionProvider: selectedProvider, cloudTranscriptionModel: selectedModel });
       }
       onProceed();
     } catch {

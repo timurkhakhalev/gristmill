@@ -221,7 +221,11 @@ export default function PersonalNotesView({
       title: activeNote.title,
       content: activeNote.content,
     });
-    commitDraft(merged);
+    commitDraft({ ...merged,
+      enhancedContent: retained.enhanced_content !== undefined
+        ? retained.enhanced_content
+        : (activeNote.enhanced_content ?? null),
+    });
   }, [activeNote, editorSave, commitDraft, transitionToNote]);
 
   const scheduleDocumentSave = useCallback((snapshot: NoteEditorDraft) => {

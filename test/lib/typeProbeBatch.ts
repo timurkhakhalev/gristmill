@@ -8,7 +8,11 @@ const root = path.resolve(__dirname, "../..");
 
 const fixtureDir = path.join(root, "test/scripts/type-probes");
 
-const selectedGroups: string[] = JSON.parse(process.env.GRISTMILL_TYPE_PROBE_GROUPS || "[]");
+// SAFETY: the runner serializes this env var from its own string array; the
+// assertion types the JSON round-trip for local filtering only.
+const selectedGroups: string[] = JSON.parse(
+  process.env.GRISTMILL_TYPE_PROBE_GROUPS ?? "[]"
+) as string[];
 
 let results: Map<string, number[]> | undefined;
 
@@ -30,10 +34,14 @@ function fixtures(group: string): FixtureRecord[] {
       const source = fs.readFileSync(path.join(fixtureDir, name), "utf8");
       const [nameLine, codesLine] = source.split("\n", 2);
 
+      if (!nameLine || !codesLine) throw new Error(`Missing probe header in ${name}`);
+
+      // SAFETY: the header format is this repo's own fixture contract; the
+      // assertions pin the JSON round-trip to the documented value types.
       return {
         name,
-        title: JSON.parse(nameLine.slice("// @probe-name ".length)),
-        expected: JSON.parse(codesLine.slice("// @probe-codes ".length)),
+        title: JSON.parse(nameLine.slice("// @probe-name ".length)) as string,
+        expected: JSON.parse(codesLine.slice("// @probe-codes ".length)) as number[],
         source,
       };
     });
@@ -53,10 +61,15 @@ function compile(): Map<string, number[]> {
 
   const host = ts.createCompilerHost(parsed.options);
   const getSourceFile = host.getSourceFile.bind(host);
-  host.getSourceFile = (file: string, languageVersion: ts.ScriptTarget, ...rest: never[]) =>
-    sources.has(file)
-      ? ts.createSourceFile(file, sources.get(file)!, languageVersion, true)
-      : getSourceFile(file, languageVersion, ...rest);
+  host.getSourceFile = (file: string, languageVersion: ts.ScriptTarget, ...rest: never[]) => {
+    const overridden = sources.get(file);
+
+    if (overridden !== undefined) {
+      return ts.createSourceFile(file, overridden, languageVersion, true);
+    }
+
+    return getSourceFile(file, languageVersion, ...rest);
+  };
 
   const diagnostics = ts.getPreEmitDiagnostics(
     ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host)
@@ -91,7 +104,11 @@ function runTypeProbeBatch(filename: string): void {
   assert.ok(cases.length, `No type probes for ${group}`);
 
   for (const { name, title, expected } of cases) {
-    test.test(title, () => assert.deepEqual(compile().get(name), expected));
+    test
+      .test(title, () => assert.deepEqual(compile().get(name), expected))
+      .catch((error: Error) => {
+        throw error;
+      });
   }
 }
 

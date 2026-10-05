@@ -59,7 +59,12 @@ async function createDownloadRenderer(
     if (root) await React.act(async () => root.unmount());
   });
   installBrowserGlobals(t, {
-    window: { electronAPI, dispatchEvent() {} },
+    window: {
+      electronAPI,
+      dispatchEvent(): boolean {
+        return true;
+      },
+    },
   });
   const container = installHookDom(t);
 

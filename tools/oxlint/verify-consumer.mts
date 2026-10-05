@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  symlinkSync,
+  rmSync,
+  cpSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +36,24 @@ await test("project consumer preserves type, Promise and runtime boundary rules"
   const consumer = mkdtempSync(path.join(tmpdir(), "gristmill-oxlint-consumer-"));
   t.after(() => rmSync(consumer, { recursive: true, force: true }));
   symlinkSync(path.join(root, "node_modules"), path.join(consumer, "node_modules"), "dir");
+  // The bundle and plugin dirs must exist at their documented relative
+  // locations as real directories; symlinks or missing pieces change how
+  // oxlint resolves the plugin graph and drift type-aware results.
+  mkdirSync(path.join(consumer, "tools/typescript-quality/plugin"), { recursive: true });
+  cpSync(
+    path.join(root, "tools/typescript-quality/plugin"),
+    path.join(consumer, "tools/typescript-quality/plugin"),
+    { recursive: true }
+  );
+  cpSync(
+    path.join(root, "tools/typescript-quality/.oxlintrc.json"),
+    path.join(consumer, "tools/typescript-quality/.oxlintrc.json")
+  );
+  cpSync(
+    path.join(root, "tools/oxlint/critical-write.mts"),
+    path.join(consumer, "tools/oxlint/critical-write.mts"),
+    { recursive: true }
+  );
   writeFileSync(path.join(consumer, "package.json"), '{"type":"module"}');
   writeFileSync(
     path.join(consumer, "tsconfig.json"),
@@ -43,11 +69,8 @@ await test("project consumer preserves type, Promise and runtime boundary rules"
     JSON.parse(readFileSync(path.join(root, ".oxlintrc.json"), "utf8"))
   );
 
-  configuration.extends = [path.join(root, "tools/typescript-quality/.oxlintrc.json")];
-  configuration.jsPlugins = configuration.jsPlugins.map((plugin) => ({
-    ...plugin,
-    specifier: path.resolve(root, plugin.specifier),
-  }));
+  // configuration keeps the documented relative extends; the bundle above is
+  // copied so the resolution graph matches a real consumer checkout.
   writeFileSync(path.join(consumer, ".oxlintrc.json"), JSON.stringify(configuration));
 
   const write = (file: string, source: string) => {
@@ -147,4 +170,52 @@ await test("project consumer preserves type, Promise and runtime boundary rules"
   assert.deepEqual(run("src/helpers/boundary.ts"), []);
   write("src/helpers/other.ts", parser);
   assert.ok(run("src/helpers/other.ts").includes("quality(no-unknown-parameters)"));
+
+  // node:test top-level policy: there is no blanket test exception. The
+  // shared harness observes each registration promise through a catch handler
+  // (test/lib helpers do the same), so an observed registration stays allowed,
+  // while an unawaited subtest and a plain unhandled Promise are flagged.
+  write(
+    "test/tsconfig.json",
+    JSON.stringify({
+      extends: path.join(root, "tsconfig.test.json"),
+      compilerOptions: { rootDir: ".", noEmit: true },
+      include: ["*.ts"],
+      exclude: [],
+    })
+  );
+
+  // node:test top-level policy: there is no blanket test exception. The
+  // shared harness observes each registration promise through a catch handler
+  // (test/lib helpers do the same), so an observed registration stays allowed,
+  // while an unawaited subtest and a plain unhandled Promise are flagged.
+  const observedRegistration =
+    'import test from "node:test";\n\ntest("root case", async () => {}).catch((error: Error) => {\n  throw error;\n});\n';
+
+  write("test/registration.ts", observedRegistration);
+  assert.deepEqual(
+    run("test/registration.ts", "test/tsconfig.json"),
+    [],
+    "observed node:test registration must stay allowed"
+  );
+
+  const unawaitedSubtest =
+    'import test from "node:test";\n\ntest("outer", (t) => {\n  t.test("dropped", async () => {});\n});\n';
+
+  write("test/unawaited-subtest.ts", unawaitedSubtest);
+  assert.ok(
+    run("test/unawaited-subtest.ts", "test/tsconfig.json").includes(
+      "typescript(no-floating-promises)"
+    ),
+    "unawaited subtest must be flagged"
+  );
+
+  const unhandledPromise = "Promise.resolve().then(() => {});\n";
+  write("test/unhandled-promise.ts", unhandledPromise);
+  assert.ok(
+    run("test/unhandled-promise.ts", "test/tsconfig.json").includes(
+      "typescript(no-floating-promises)"
+    ),
+    "plain unhandled Promise must be flagged"
+  );
 });

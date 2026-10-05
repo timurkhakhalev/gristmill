@@ -4,19 +4,21 @@ export function createMeetingDetectionClock() {
   let nextId = 0;
   const timers = new Map<number, { callback: () => void; due: number; interval: number | null }>();
 
-  const schedule = (callback: () => void, delay: number, interval: number | null) => {
+  const schedule = (callback: () => void, delay: number, interval: number | null): number => {
     const id = nextId++;
     timers.set(id, { callback, due: now + delay, interval });
 
     return id;
   };
 
+  const cancel = (id: number): boolean => timers.delete(id);
+
   return {
     now: () => now,
-    setInterval: (callback: () => void, delay: number) => schedule(callback, delay, delay),
-    clearInterval: (id: unknown) => typeof id === "number" && timers.delete(id),
-    setTimeout: (callback: () => void, delay: number) => schedule(callback, delay, null),
-    clearTimeout: (id: unknown) => typeof id === "number" && timers.delete(id),
+    setInterval: (callback: () => void, delay: number): number => schedule(callback, delay, delay),
+    clearInterval: (id: number): boolean => cancel(id),
+    setTimeout: (callback: () => void, delay: number): number => schedule(callback, delay, null),
+    clearTimeout: (id: number): boolean => cancel(id),
     activeIntervals: () => [...timers.values()].filter((timer) => timer.interval !== null).length,
     activeTimeouts: () => [...timers.values()].filter((timer) => timer.interval === null).length,
     advance: (ms: number) => {

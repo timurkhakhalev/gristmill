@@ -1,8 +1,19 @@
-const test: typeof import("node:test") = require("node:test");
+import assert from "node:assert/strict";
+import test from "node:test";
 
-const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+import type { NoteDraftMutation, NoteEditorDraft } from "../../src/lib/noteEditorPendingSave.ts";
 
-const load = () => import("../../src/lib/noteEditorPendingSave.js");
+const load = async (): Promise<typeof import("../../src/lib/noteEditorPendingSave.js")> =>
+  import("../../src/lib/noteEditorPendingSave.js");
+
+// The canonical runner loads these files through tsx in CJS mode, so top-level
+// await is unavailable; node:test awaits every root registration itself, and
+// this wrapper only keeps the registration promise observed.
+const it = (name: string, fn: () => void | Promise<void>): void => {
+  test(name, fn).catch((error: Error) => {
+    throw error;
+  });
+};
 
 interface SourceNote {
   id: number;
@@ -20,7 +31,7 @@ function note(id: number, content: string, enhancedContent: string | null = null
   };
 }
 
-test("applies title, content, and enhanced mutations only for the draft owner", async () => {
+it("applies title, content, and enhanced mutations only for the draft owner", async () => {
   const { applyNoteDraftMutation } = await load();
 
   const original = {
@@ -62,7 +73,7 @@ test("applies title, content, and enhanced mutations only for the draft owner", 
   });
 });
 
-test("rejects foreign and stale source-note mutations without changing the draft", async () => {
+it("rejects foreign and stale source-note mutations without changing the draft", async () => {
   const { applyNoteDraftMutation } = await load();
 
   const draftA = {
@@ -72,11 +83,13 @@ test("rejects foreign and stale source-note mutations without changing the draft
     enhancedContent: "A enhancement",
   };
 
-  for (const mutation of [
+  const foreignMutations: NoteDraftMutation[] = [
     { sourceNoteId: 2, field: "title", value: "B title" },
     { sourceNoteId: 2, field: "content", value: "B body" },
     { sourceNoteId: 2, field: "enhancedContent", value: "B enhancement" },
-  ] as import("../../src/lib/noteEditorPendingSave.js").NoteDraftMutation[]) {
+  ];
+
+  for (const mutation of foreignMutations) {
     assert.equal(applyNoteDraftMutation(draftA, mutation), null);
   }
 
@@ -106,7 +119,7 @@ test("rejects foreign and stale source-note mutations without changing the draft
   );
 });
 
-test("collects document and enhanced writes under their captured owner", async () => {
+it("collects document and enhanced writes under their captured owner", async () => {
   const { collectPendingNoteWrites } = await load();
   const documentA = { noteId: 1, title: "A title", content: "A body" };
   const enhancedA = { noteId: 1, enhancedContent: "A enhancement" };
@@ -136,7 +149,7 @@ test("collects document and enhanced writes under their captured owner", async (
   ]);
 });
 
-test("keeps document and enhanced writes with different owners separate", async () => {
+it("keeps document and enhanced writes with different owners separate", async () => {
   const { collectPendingNoteWrites } = await load();
 
   assert.deepEqual(
@@ -157,12 +170,14 @@ test("keeps document and enhanced writes with different owners separate", async 
   );
 });
 
-test("models B's editor event before the A-to-B parent transition, then returns to A", async () => {
+it("models B's editor event before the A-to-B parent transition, then returns to A", async () => {
   const { applyNoteDraftMutation, planNoteTransition } = await load();
   const noteA = note(1, "A body", "A enhancement");
   const noteB = note(2, "B body", "B enhancement");
 
-  let draft = planNoteTransition(noteA, null, null).nextDraft!;
+  const firstDraft = planNoteTransition(noteA, null, null).nextDraft;
+  assert.ok(firstDraft);
+  let draft: NoteEditorDraft = firstDraft;
   assert.equal(
     applyNoteDraftMutation(draft, {
       sourceNoteId: 2,
@@ -181,7 +196,8 @@ test("models B's editor event before the A-to-B parent transition, then returns 
     enhancedContent: "B enhancement",
   });
 
-  draft = toB.nextDraft!;
+  assert.ok(toB.nextDraft);
+  draft = toB.nextDraft;
   assert.equal(
     applyNoteDraftMutation(draft, {
       sourceNoteId: 1,
@@ -201,22 +217,22 @@ test("models B's editor event before the A-to-B parent transition, then returns 
   });
 });
 
-test("edit A then immediately switch to B keeps empty, zero, and raw content owned by A", async () => {
+it("edit A then immediately switch to B keeps empty, zero, and raw content owned by A", async () => {
   const { applyNoteDraftMutation, planNoteTransition } = await load();
   const noteA = note(1, "Original A");
   const noteB = note(2, "Original B");
 
   for (const content of ["", "0", "Edited raw A"]) {
-    const draftA = planNoteTransition(noteA, null, null).nextDraft!;
+    const draftA = planNoteTransition(noteA, null, null).nextDraft;
+    assert.ok(draftA);
 
-    const editedA = applyNoteDraftMutation(draftA, {
+    const edited = applyNoteDraftMutation(draftA, {
       sourceNoteId: 1,
       field: "content",
       value: content,
     });
 
-    assert.ok(editedA);
-    const edited = editedA!;
+    assert.ok(edited);
 
     const pendingA = {
       noteId: edited.noteId,
@@ -240,25 +256,26 @@ test("edit A then immediately switch to B keeps empty, zero, and raw content own
         updates: { title: "Note 1", content },
       },
     ]);
-    assert.equal(toB.nextDraft!.noteId, 2);
+    assert.ok(toB.nextDraft);
+    assert.equal(toB.nextDraft.noteId, 2);
     assert.equal(pendingA.noteId, 1);
   }
 });
 
-test("an enhanced A edit flushes only to A during an immediate B transition", async () => {
+it("an enhanced A edit flushes only to A during an immediate B transition", async () => {
   const { applyNoteDraftMutation, planNoteTransition } = await load();
   const noteA = note(1, "A body", "Old enhanced A");
   const noteB = note(2, "B body", "Enhanced B");
-  const draftA = planNoteTransition(noteA, null, null).nextDraft!;
+  const draftA = planNoteTransition(noteA, null, null).nextDraft;
+  assert.ok(draftA);
 
-  const editedA = applyNoteDraftMutation(draftA, {
+  const edited = applyNoteDraftMutation(draftA, {
     sourceNoteId: 1,
     field: "enhancedContent",
     value: "New enhanced A",
   });
 
-  assert.ok(editedA);
-  const edited = editedA!;
+  assert.ok(edited);
 
   const pendingEnhancedA = {
     noteId: edited.noteId,
@@ -281,11 +298,12 @@ test("an enhanced A edit flushes only to A during an immediate B transition", as
       updates: { enhanced_content: "New enhanced A" },
     },
   ]);
-  assert.equal(toB.nextDraft!.noteId, 2);
+  assert.ok(toB.nextDraft);
+  assert.equal(toB.nextDraft.noteId, 2);
   assert.equal(pendingEnhancedA.noteId, 1);
 });
 
-test("an overview transition flushes captured owners and clears the draft", async () => {
+it("an overview transition flushes captured owners and clears the draft", async () => {
   const { planNoteTransition } = await load();
 
   const transition = planNoteTransition(
@@ -309,7 +327,7 @@ test("an overview transition flushes captured owners and clears the draft", asyn
   });
 });
 
-test("deleting inactive B does not cancel A's pending save", async () => {
+it("deleting inactive B does not cancel A's pending save", async () => {
   const { shouldCancelPendingSavesForDelete } = await load();
 
   assert.equal(shouldCancelPendingSavesForDelete(17, 23), false);
@@ -317,7 +335,7 @@ test("deleting inactive B does not cancel A's pending save", async () => {
   assert.equal(shouldCancelPendingSavesForDelete(null, 17), false);
 });
 
-test("an event draft handoff replaces the fresh note's draft and appends to an existing one", async () => {
+it("an event draft handoff replaces the fresh note's draft and appends to an existing one", async () => {
   const { applyEventDraftHandoff } = await load();
 
   // Fresh note: the typed draft wins outright.
@@ -390,7 +408,7 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
 // Issue #157: autosave must track dirty fields so a content-only edit never
 // republishes a stale title over an externally-updated one, and vice versa.
 
-test("external updates fill untouched fields and keep the user's dirty ones", async () => {
+it("external updates fill untouched fields and keep the user's dirty ones", async () => {
   const { acceptExternalNoteUpdate } = await load();
 
   // Content-only edit: the externally-generated title is accepted, the typed
@@ -479,7 +497,7 @@ test("external updates fill untouched fields and keep the user's dirty ones", as
   assert.equal(emptyClean.draft.content, "");
 });
 
-test("dirty-trimmed snapshots write only the fields the user edited", async () => {
+it("dirty-trimmed snapshots write only the fields the user edited", async () => {
   const { collectPendingNoteWrites } = await load();
 
   // A content-only edit writes only content: an external title survives.

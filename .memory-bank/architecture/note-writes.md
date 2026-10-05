@@ -10,6 +10,8 @@ For a participant edit, the service then refreshes the active capture speaker co
 
 Changing participants does not assign speaker names, create voice profiles or rewrite transcript speaker labels. Post-Stop processing owns automatic run corrections. It uses voice matches, platform evidence and model proposals, with user corrections first. See [speaker evidence](speaker-evidence.md).
 
+The editor writes only fields the user edited. A save acknowledgment clears a field's dirty state only when its current value matches the saved snapshot. Later edits remain pending.
+
 ## Separate write policies
 
 These operations have different ownership and publication rules. They do not use the editable-Note service.

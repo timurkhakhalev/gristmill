@@ -242,3 +242,30 @@ test("focus syncs are throttled to one per window", async () => {
   await flushPromises();
   runner.stop();
 });
+
+for (const outcome of ["failed", "rejected", "clean"] as const) {
+  test(`late focus ${outcome} outcome cannot re-arm a stopped timer`, async t => {
+    t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 100_000 });
+    let resolve!: (value: Outcome) => void, reject!: (error: Error) => void;
+    let calls = 0;
+    const runner = createRunner(() => ++calls === 1
+      ? new Promise<Outcome>((done, fail) => { resolve = done; reject = fail; })
+      : Promise.resolve(FAILURE));
+    t.after(() => runner.stop());
+    runner.notifyOutcome(FAILURE);
+    runner.syncOnFocus();
+    assert.equal(calls, 1);
+    runner.stop();
+    if (outcome === "rejected") reject(new Error("provider down"));
+    else resolve(outcome === "failed" ? FAILURE : { total: 1, succeeded: 1, failed: 0, errors: [] });
+    await flushPromises();
+    assert.equal(runner.timer, null);
+    assert.equal(runner._consecutiveFailures, 1, "old outcome cannot change backoff");
+    t.mock.timers.tick(100_000);
+    assert.equal(calls, 1);
+    runner.syncOnFocus();
+    await flushPromises();
+    assert.equal(calls, 2);
+    assert.notEqual(runner.timer, null, "a deliberate new focus failure can schedule backoff");
+  });
+}

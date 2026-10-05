@@ -47,8 +47,9 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
     window.electronAPI
       .getNotes(null, RECENT_NOTES_LIMIT)
       .then((rows) => {
+        if (stale) return;
         cachedRecentNotes = rows ?? [];
-        if (!stale) setNotes(cachedRecentNotes);
+        setNotes(cachedRecentNotes);
       })
       .catch(() => {
         if (!stale) setNotes([]);

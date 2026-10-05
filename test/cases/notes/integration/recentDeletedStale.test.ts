@@ -30,6 +30,7 @@ function note(id: number, folderId: number | null, spaceId = 1): NoteItem {
 
 interface HomeHarness {
   rowIds(): string[];
+  remount(): Promise<void>;
   fireDeleted(payload: NoteDeletedPayload): Promise<void>;
   // Synchronous trigger, for interleaving two events before either read lands.
   fireDeletedSync(payload: NoteDeletedPayload): void;
@@ -123,6 +124,13 @@ async function mountHome(
   });
   return {
     rowIds: () => (globals.__recentRows ?? []).map(String),
+    remount: async () => {
+      await React.act(async () => root!.unmount());
+      root = createRoot(container as unknown as Element);
+      await React.act(async () => {
+        root!.render(React.createElement(HomeView, { onOpenNote: () => {}, onConnectCalendar: () => {}, onOpenEvent: () => {} }));
+      });
+    },
     fireDeleted: (payload: NoteDeletedPayload) => React.act(async () => {
       deletedListener?.(payload);
       await new Promise((resolve) => setImmediate(resolve));
@@ -193,7 +201,7 @@ test("a failed delete drives the action but hides nothing", async (t) => {
   assert.equal(home.revision(), revisionBefore, "a failed delete does not bump the revision");
 });
 
-test("a burst of events issues one re-read each and drops a late older response", async (t) => {
+test("a burst of events drops late older responses from state and the remount cache", async (t) => {
   const rows: NoteItem[] = [note(1, 9), note(2, 9), note(3, null)];
   // Post-mount reads are held open so an older response can be resolved after a
   // newer one; each captures the row list as it looked when that read started.
@@ -233,4 +241,8 @@ test("a burst of events issues one re-read each and drops a late older response"
     await new Promise((resolve) => setImmediate(resolve));
   });
   assert.deepEqual(home.rowIds(), ["3"], "a late older response must not overwrite the newer list");
+  await home.remount();
+  assert.equal(inFlight.length, 3, "remount fetch stays pending so the cache is observable");
+  assert.deepEqual(home.rowIds(), ["3"], "superseded response must not restore deleted rows from cache");
+  await React.act(async () => { inFlight[2].release(); });
 });

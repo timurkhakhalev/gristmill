@@ -10,7 +10,7 @@ For a participant edit, the service then refreshes the active capture speaker co
 
 Changing participants does not assign speaker names, create voice profiles or rewrite transcript speaker labels. Post-Stop processing owns automatic run corrections. It uses voice matches, platform evidence and model proposals, with user corrections first. See [speaker evidence](speaker-evidence.md).
 
-The editor writes only fields the user edited. A save acknowledgment clears a field's dirty state only when its current value matches the saved snapshot. Later edits remain pending. The renderer Note store keeps unsaved fields across editor navigation and unmount. One writer per Note drains those fields after a confirmed save. Rejected and unsuccessful writes keep the latest fields and show an error with Retry when that Note is open. This draft retention lasts for the current renderer session; it does not survive an application restart.
+The editor writes only fields the user edited. A save acknowledgment clears a field's dirty state only when its current value matches the saved snapshot. Later edits remain pending. The renderer Note store keeps unsaved fields across editor navigation and unmount. One writer per Note drains those fields after a confirmed save. Rejected and unsuccessful writes keep the latest fields and show an error with Retry when that Note is open. An open editor adopts external Summary output when no local Summary field remains pending or in flight. This draft retention lasts for the current renderer session; it does not survive an application restart.
 
 ## Separate write policies
 

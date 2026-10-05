@@ -85,7 +85,7 @@
     "lint": "eslint --config eslint.config.js . && cd src && eslint .",
     "knip": "knip",
     "test": "node scripts/run-tests.cts",
-    "typecheck": "pnpm run typecheck:main && pnpm run typecheck:renderer && pnpm run typecheck:settings-selectors && pnpm run typecheck:tests && pnpm run typecheck:companion && pnpm run typecheck:scripts",
+    "typecheck": "pnpm run typecheck:main && pnpm run typecheck:renderer && pnpm run typecheck:settings-selectors && pnpm run typecheck:tests && pnpm run typecheck:companion && pnpm run typecheck:scripts && pnpm run typecheck:lint-tools",
     "typecheck:tests": "tsc -p tsconfig.test.json",
     "i18n:check": "node scripts/check-i18n.cts",
     "build:main": "node scripts/build-main.cts",
@@ -96,7 +96,13 @@
     "typecheck:companion": "tsc -p extension/tsconfig.json",
     "build:runtime-tools": "node scripts/build-runtime-tools.cts",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json",
-    "update:local": "node scripts/update-local.cts"
+    "update:local": "node scripts/update-local.cts",
+    "lint:oxlint": "oxlint .",
+    "lint:oxlint:fix": "oxlint . --fix",
+    "lint:policy:test": "node --test tools/typescript-quality/verify.test.mjs tools/oxlint/verify-consumer.mts",
+    "format:oxfmt": "oxfmt --check .",
+    "format:oxfmt:write": "oxfmt --write .",
+    "typecheck:lint-tools": "tsc -p tools/oxlint/tsconfig.json"
   },
   "keywords": [
     "speech-to-text",
@@ -113,6 +119,7 @@
   "devDependencies": {
     "@electron/rebuild": "4.1.0",
     "@eslint/js": "^9.39.4",
+    "@oxlint/plugins": "1.86.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "24.13.2",
     "@types/react": "^19.1.2",
@@ -130,6 +137,9 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "17.5.0",
     "knip": "6.37.0",
+    "oxfmt": "0.71.0",
+    "oxlint": "1.86.0",
+    "oxlint-tsgolint": "7.0.2003",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.1.10",
     "tsx": "^4.23.1",

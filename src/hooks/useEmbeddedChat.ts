@@ -111,6 +111,19 @@ export function useEmbeddedChat({
     };
   }, [noteId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const { getSession, isCurrent } = persistence;
+  useEffect(() => {
+    if (!noteId || conversationId === null) return;
+    const session = getSession();
+    let stale = false;
+    void window.electronAPI.getConversationsForNote(noteId).then(conversations => {
+      if (!stale && isCurrent(session)) setNoteConversations(conversations ?? []);
+    }).catch(() => {
+      if (!stale && isCurrent(session)) setNoteConversations([]);
+    });
+    return () => { stale = true; };
+  }, [noteId, conversationId, getSession, isCurrent]);
+
   const switchConversation = useCallback(
     async (id: number) => {
       streaming.cancelStream();
@@ -130,10 +143,9 @@ export function useEmbeddedChat({
     async (text: string) => {
       const id = await persistence.createConversation(conversationTitleFromMessage(text), noteId);
       untitledConversationRef.current = id;
-      void fetchNoteConversations();
       return id;
     },
-    [fetchNoteConversations, noteId, persistence]
+    [noteId, persistence]
   );
   const sendMessageWithResult = useChatMessageSender({
     persistence,

@@ -497,7 +497,7 @@ for (const provider of ["google", "microsoft"] as const) {
         save("old");
         const oldId = read()!.id;
         const CalendarManager = require(`../../src/helpers/${provider}CalendarManager.ts`);
-        const scheduler = { scheduleNextMeeting() {}, reset() {} };
+        const scheduler = { scheduleNextMeeting() {}, reset() {}, reconcileProvider() {} };
         const manager = provider === "google" ? new CalendarManager(db, null, scheduler) : new CalendarManager(db, scheduler);
         t.after(() => manager.stop());
         manager.addAccount(email);
@@ -578,4 +578,65 @@ for (const provider of ["google", "microsoft"] as const) {
     assert.equal(await oauth.getValidAccessToken(email), "current");
     assert.equal(resolvers.length, 2);
   });
+}
+
+for (const provider of ["google", "microsoft"] as const) {
+  for (const final of [false, true]) {
+    test(`${provider} ${final ? "final" : "non-final"} removal cannot attach its cached event to a new capture Note`, async t => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gm-calendar-disconnect-"));
+      const db = createDb(t, directory);
+      t.after(() => { db?.db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+      if (!db) return;
+      const accounts = final ? ["a@example.com"] : ["a@example.com", "b@example.com"];
+      for (const email of accounts) {
+        const values = { access_token: "test", refresh_token: "refresh", expires_at: 0, scope: "calendar" };
+        const calendar = { id: email, summary: email, is_primary: true };
+        if (provider === "google") {
+          db.saveGoogleTokens({ ...values, google_email: email });
+          db.saveGoogleCalendars([calendar], email);
+        } else {
+          db.saveMicrosoftTokens({ ...values, microsoft_email: email });
+          db.saveMicrosoftCalendars([calendar], email);
+        }
+        db.upsertCalendarEvents([{ id: email, calendar_id: email, provider,
+          summary: `private ${email}`, attendees_count: 1, attendees: JSON.stringify([{ email, displayName: email }]),
+          start_time: new Date(Date.now() - (email.startsWith("a@") ? 30_000 : 60_000)).toISOString(), end_time: new Date(Date.now() + 3_600_000).toISOString(),
+        }]);
+      }
+      const Scheduler = require("../../src/helpers/calendarReminderScheduler.ts");
+      const scheduler = new Scheduler(db);
+      t.after(() => scheduler.stop());
+      let reminders = 0;
+      scheduler.meetingDetectionEngine = { handleCalendarReminder: () => { reminders++; } };
+      scheduler.scheduleNextMeeting();
+      const a = db.getCalendarEventById("a@example.com")!;
+      assert.equal(scheduler.getActiveMeetingState().activeMeeting?.id, a.id, "eligible A is cached before disconnect");
+      assert.equal(reminders, accounts.length, "A and each remaining account already delivered a reminder");
+      const baseline = reminders;
+      const Manager = require(`../../src/helpers/${provider}CalendarManager.ts`);
+      const manager = provider === "google" ? new Manager(db, null, scheduler) : new Manager(db, scheduler);
+      t.after(() => manager.stop());
+      for (const email of accounts) manager.addAccount(email);
+      manager.removeAccount("a@example.com");
+      assert.equal(scheduler.getActiveMeetingState().activeMeeting, null);
+      assert.equal(reminders, baseline, "remaining account's delivered reminder is not repeated");
+      const Detection = require("../../src/helpers/meetingDetectionEngine.ts");
+      let noteId: number | undefined;
+      const { EventEmitter } = require("node:events");
+      const engine = new Detection(scheduler, new EventEmitter(), Object.assign(new EventEmitter(), { resetPrompt() {} }), {
+        notificationPrefs: {}, dismissMeetingNotification() {},
+        showMeetingNotification: async () => true,
+        queueMeetingNoteNavigation: async (request: { noteId: number }) => { noteId = request.noteId; },
+      }, db);
+      assert.equal(engine._findCalendarEvent(), null);
+      engine.activeDetections.set("audio:test", { source: "audio", key: "test" });
+      engine._showPrompt("audio:test", "audio", "test", { service: "zoom" });
+      await engine.handleNotificationResponse("audio:test", "start");
+      assert.ok(noteId);
+      const note = db.getNote(noteId!);
+      assert.notEqual(note?.title, a.summary);
+      assert.equal(note?.calendar_event_id, null);
+      assert.equal(note?.participants, null);
+    });
+  }
 }

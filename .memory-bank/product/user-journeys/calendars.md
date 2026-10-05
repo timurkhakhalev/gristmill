@@ -21,7 +21,7 @@ As a Gristmill user, I want to see meetings and receive recording prompts.
 - An active meeting suppresses prompts; recording/cooldown can queue them.
 - Calendar notes store event participants. Known local names can enrich them, but participants remain identity hints.
 - Disconnect invalidates pending token refresh, calendar-list and event-sync results. Reconnecting the same email creates a new connection identity; old results cannot change it.
-- Google/Microsoft normally refresh every two minutes with error backoff. Apple follows EventKit changes and periodic snapshots.
+- Google/Microsoft normally refresh every two minutes with error backoff. Stop invalidates in-flight interval and focus outcomes, so late completion cannot re-arm polling. A new explicit sync keeps its normal backoff policy. Apple follows EventKit changes and periodic snapshots.
 
 Google keeps a separate association for each account and calendar ID. Primary status, selection and sync tokens belong to that association. Live events remain eligible while any association is selected; event sync chooses one selected account per calendar. Disconnect removes only that account’s associations and keeps historical event/Note links.
 

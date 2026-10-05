@@ -11,7 +11,7 @@ type FakeWindow = typeof globalThis & {
 };
 
 export function installBrowserGlobals(
-  t: TestContext,
+  t: Pick<TestContext, "after">,
   { initialStorage = {}, window: windowProps = {} }: { initialStorage?: Record<string, string>; window?: Record<string, unknown> } = {}
 ) {
   const originalWindow = (globalThis as { window?: unknown }).window;
@@ -112,7 +112,14 @@ interface FakeDocument {
 // Minimal fake DOM for mounting hook harnesses with react-dom's createRoot:
 // just enough node structure for React to attach a root — no layout, no real
 // events. Call installBrowserGlobals first; this assigns onto globalThis.window.
-export function installHookDom(t: TestContext): FakeNode {
+export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
+  const elementNames = ["Element", "HTMLElement", "HTMLIFrameElement", "SVGElement"] as const;
+  const elementDescriptors = elementNames.map(name => Object.getOwnPropertyDescriptor(globalThis, name));
+  t.after(() => elementNames.forEach((name, index) => {
+    const original = elementDescriptors[index];
+    if (original) Object.defineProperty(globalThis, name, original);
+    else delete (globalThis as Record<string, unknown>)[name];
+  }));
   const originalDocument = (globalThis as { document?: unknown }).document;
   const originalActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown }).IS_REACT_ACT_ENVIRONMENT;
   const originalRequestAnimationFrame = (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
@@ -261,7 +268,6 @@ export function installHookDom(t: TestContext): FakeNode {
   document.body = document.createElement("body");
   document.documentElement.appendChild(document.head);
   document.documentElement.appendChild(document.body);
-  const originalElementClasses = (globalThis as { Element?: unknown; HTMLElement?: unknown; HTMLIFrameElement?: unknown; SVGElement?: unknown });
   Object.assign(globalThis.window as object, {
     Element,
     HTMLElement,
@@ -271,10 +277,9 @@ export function installHookDom(t: TestContext): FakeNode {
     getSelection: () => null,
   });
   // react-aria's press cleanup reads bare global element constructors on unmount.
-  (globalThis as Record<string, unknown>).Element = Element;
-  (globalThis as Record<string, unknown>).HTMLElement = HTMLElement;
-  (globalThis as Record<string, unknown>).HTMLIFrameElement = HTMLIFrameElement;
-  (globalThis as Record<string, unknown>).SVGElement = SVGElement;
+  for (const [name, value] of Object.entries({ Element, HTMLElement, HTMLIFrameElement, SVGElement })) {
+    Object.defineProperty(globalThis, name, { value, writable: true, enumerable: true, configurable: true });
+  }
   document.defaultView = globalThis.window;
   document.documentElement = container;
   (globalThis as Record<string, unknown>).document = document;
@@ -292,14 +297,6 @@ export function installHookDom(t: TestContext): FakeNode {
     else globals.requestAnimationFrame = originalRequestAnimationFrame;
     if (originalCancelAnimationFrame === undefined) delete globals.cancelAnimationFrame;
     else globals.cancelAnimationFrame = originalCancelAnimationFrame;
-    if (originalElementClasses.Element === undefined) delete globals.Element;
-    else globals.Element = originalElementClasses.Element;
-    if (originalElementClasses.HTMLElement === undefined) delete globals.HTMLElement;
-    else globals.HTMLElement = originalElementClasses.HTMLElement;
-    if (originalElementClasses.HTMLIFrameElement === undefined) delete globals.HTMLIFrameElement;
-    else globals.HTMLIFrameElement = originalElementClasses.HTMLIFrameElement;
-    if (originalElementClasses.SVGElement === undefined) delete globals.SVGElement;
-    else globals.SVGElement = originalElementClasses.SVGElement;
   });
 
   return container;

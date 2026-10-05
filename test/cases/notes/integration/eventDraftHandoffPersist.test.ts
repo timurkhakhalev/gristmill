@@ -29,6 +29,7 @@ function noteFixture(id: number, title: string, content: string): NoteItem {
 interface Harness {
   openNote(id: number): Promise<void>;
   typeContent(value: string): Promise<void>;
+  typeTitle(value: string): Promise<void>;
   fireExternalUpdate(note: NoteItem): Promise<void>;
   editorState(): { id: number; title: string; content: string } | null;
   updateNoteCalls(): Array<{ id: number; updates: Record<string, unknown> }>;
@@ -38,7 +39,8 @@ async function mountNotesView(
   t: import("node:test").TestContext,
   rows: NoteItem[],
   getNote: (id: number) => Promise<NoteItem | null>,
-  pendingHandoff: EventDraftHandoff | null
+  pendingHandoff: EventDraftHandoff | null,
+  save?: (id: number, updates: Record<string, unknown>) => Promise<unknown>
 ): Promise<Harness> {
   let root: ReturnType<typeof createRoot> | null = null;
   t.after(async () => { if (root) await React.act(async () => root.unmount()); });
@@ -54,6 +56,7 @@ async function mountNotesView(
       getNote: (id: number) => getNote(id),
       updateNote: async (id: number, updates: Record<string, unknown>) => {
         updateCalls.push({ id, updates });
+        if (save) return await save(id, updates);
         return { success: true, note: noteFixture(id, String(updates.title ?? ""), String(updates.content ?? "")) };
       },
       gcalGetEvent: async () => null,
@@ -138,6 +141,9 @@ async function mountNotesView(
       const id = openedNoteId;
       assert.ok(id, "typeContent requires an open note");
       await React.act(async () => { noteEditorModule.props?.onContentChange(id, value); });
+    },
+    typeTitle: async (value: string) => {
+      await React.act(async () => { noteEditorModule.props?.onTitleChange(openedNoteId!, value); });
     },
     fireExternalUpdate: async (note: NoteItem) => {
       await React.act(async () => { noteUpdatedListener?.(note); });
@@ -239,3 +245,38 @@ test("an external update lands even while a save is queued", async (t) => {
   assert.equal(calls[0].updates.title, undefined, "the externally-generated title is not overwritten");
   assert.equal(calls[0].updates.content, "Typed body");
 });
+
+for (const field of ["content", "title"] as const) {
+  test(`an old ${field} ACK preserves a newer edit when the other field changes`, async t => {
+    const stored = noteFixture(11, "T0", "C0");
+    const other = noteFixture(12, "Other", "Other body");
+    let resolveFirst!: () => void;
+    const first = new Promise<void>(resolve => { resolveFirst = resolve; });
+    let count = 0;
+    const h = await mountNotesView(t, [stored, other], async id => id === 11 ? stored : other, null, async (_id, updates) => {
+      if (++count === 1) await first;
+      Object.assign(stored, updates);
+      return { success: true, note: { ...stored } };
+    });
+    t.after(resolveFirst);
+    await h.openNote(11);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const type = field === "content" ? h.typeContent : h.typeTitle;
+    const typeOther = field === "content" ? h.typeTitle : h.typeContent;
+    await type("first");
+    await React.act(async () => { t.mock.timers.tick(1000); });
+    assert.equal(count, 1);
+    await type("latest");
+    await React.act(async () => { resolveFirst(); await first; });
+    await typeOther("other edit");
+    await React.act(async () => { t.mock.timers.tick(1000); });
+    assert.equal(stored[field], "latest");
+    assert.deepEqual(h.updateNoteCalls().map(c => c.updates), [
+      { [field]: "first" },
+      { [field]: "latest", [field === "content" ? "title" : "content"]: "other edit" },
+    ]);
+    await h.openNote(12);
+    await h.openNote(11);
+    assert.equal(h.editorState()?.[field], "latest");
+  });
+}

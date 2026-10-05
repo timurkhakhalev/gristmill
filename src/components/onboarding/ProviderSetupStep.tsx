@@ -183,6 +183,8 @@ export function ByokProviderStep({
 
       if (selfHosted) {
         const url = draftBaseUrl.includes("://") ? draftBaseUrl.trim() : `https://${draftBaseUrl.trim()}`;
+        store.setRemoteTranscriptionUrl("");
+        store.setMeetingRemoteTranscriptionUrl("");
         store.setCloudTranscriptionForAllScopes({ useLocalWhisper: false,
           cloudTranscriptionBaseUrl: url, cloudTranscriptionModel: draftCustomModel,
           cloudTranscriptionProvider: "custom", cloudTranscriptionMode: "byok" });

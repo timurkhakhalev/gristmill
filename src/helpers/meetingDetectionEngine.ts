@@ -196,6 +196,7 @@ interface MeetingDetectionEngineOptions {
 }
 
 export class MeetingDetectionEngine {
+  onNoteSaved?: (noteId: number) => void;
   private readonly reminderScheduler: MeetingReminderSchedulerLike;
   private readonly meetingProcessDetector: MeetingProcessDetectorLike;
   private readonly audioActivityDetector: AudioActivityDetectorLike;
@@ -944,6 +945,7 @@ export class MeetingDetectionEngine {
           }
         }
 
+        this._requestNoteMirror(noteResult.note.id);
         await this.windowManager.queueMeetingNoteNavigation?.({
           noteId: noteResult.note.id,
           folderId: noteResult.note.folder_id ?? null,
@@ -997,6 +999,8 @@ export class MeetingDetectionEngine {
     }
 
     sendNoteAdded(noteResult.note);
+
+    this._requestNoteMirror(noteResult.note.id);
 
     await this.windowManager.queueMeetingNoteNavigation?.({
       noteId: noteResult.note.id,
@@ -1141,7 +1145,17 @@ export class MeetingDetectionEngine {
     const updateResult = this.databaseManager.updateNote?.(noteResult.note.id, updates);
 
     sendNoteAdded(updateResult?.note || noteResult.note);
+    this._requestNoteMirror(noteResult.note.id);
     return { noteId: noteResult.note.id, folderId: noteResult.note.folder_id ?? null };
+  }
+
+  private _requestNoteMirror(noteId: number): void {
+    try { this.onNoteSaved?.(noteId); }
+    catch (error) {
+      debugLogger.error("Note mirror request failed after commit", {
+        noteId, error: error instanceof Error ? error.message : String(error),
+      }, "note-files");
+    }
   }
 
   // A card can vanish without a response — a compositor kill, a load failure,

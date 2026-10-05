@@ -204,7 +204,10 @@ export class MarkdownMirror {
     if (!this._baseRealPath) throw new Error("Markdown mirror is not initialized");
     try {
       const segments = JSON.parse(note.transcript || "[]");
-      if (!segments.length) return;
+      if (!segments.length) {
+        for (const existing of this._globTranscriptFiles(note.id)) fs.unlinkSync(existing);
+        return;
+      }
 
       const dirPath = this._resolveFolderPath(folderName, { create: true });
       if (!dirPath) return;
@@ -299,9 +302,7 @@ export class MarkdownMirror {
       for (const note of notes) {
         const folderName = (note.folder_id != null ? folderMap[note.folder_id] : undefined) || "Personal";
         this.writeNote(note, folderName);
-        if (note.transcript) {
-          this.writeTranscript(note, folderName, speakerMappingsMap?.[note.id] || {});
-        }
+        this.writeTranscript(note, folderName, speakerMappingsMap?.[note.id] || {});
       }
       debugLogger.info("Markdown mirror rebuild complete", { count: notes.length }, "note-files");
     } catch (err) {

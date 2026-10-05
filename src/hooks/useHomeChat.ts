@@ -63,7 +63,7 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
     return () => {
       stale = true;
     };
-  }, [fetchConversations]);
+  }, [fetchConversations, conversationId]);
 
   const switchConversation = useCallback(
     async (id: number) => {
@@ -81,10 +81,9 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
   const createConversation = useCallback(
     async (text: string) => {
       const id = await persistence.createConversation(deriveConversationTitle(text, ""), null);
-      void fetchConversations();
       return id;
     },
-    [fetchConversations, persistence]
+    [persistence]
   );
   const sendMessageWithResult = useChatMessageSender({
     persistence,

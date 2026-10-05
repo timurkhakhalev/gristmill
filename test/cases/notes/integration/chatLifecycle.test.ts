@@ -457,3 +457,70 @@ for (const bb of [false, true])
     assert.equal(h.db.getAgentConversation(h.C.id)?.messages.at(-1)?.content, "pending before unmount");
     assert.equal(h.writes.filter((w) => w.role === "assistant").length, 0);
   });
+
+for (const home of [false, true]) {
+  test(`${home ? "Home" : "Note"} retries failed first creation with retained scope and message`, async t => {
+    const h = await mount(t, { home });
+    await h.render();
+    await act(async () => h.chat.startNewChat());
+    const failed = deferred<ConversationDetail | null>();
+    h.setCreate(failed);
+    let sending!: Promise<void>;
+    await act(async () => { sending = h.chat.sendMessage("retained first question"); await flush(); });
+    await act(async () => { failed.reject(new Error("DB unavailable")); await sending; });
+    const message = h.chat.messages[0];
+    assert.ok(message.persistenceError);
+    assert.equal(h.chat.activeConversationId, null);
+    assert.equal(h.requests.length, 0);
+    h.setCreate(null);
+    const saved = deferred<MessageRow | null>();
+    h.setWrite(() => saved.promise);
+    let retry!: Promise<void>;
+    await act(async () => { retry = h.chat.retrySaveMessage(message.id); await flush(); });
+    const id = h.chat.activeConversationId!;
+    assert.ok(id);
+    const conv = h.db.getAgentConversation(id)!;
+    assert.equal(conv.note_id, home ? null : h.noteA.id);
+    assert.equal(h.writes.at(-1)?.text, message.content);
+    assert.equal(h.requests.length, 0, "AI does not start before confirmation");
+    await act(async () => {
+      saved.resolve(h.db.addAgentMessage(id, "user", message.content, undefined));
+      await retry;
+      await flush();
+    });
+    assert.equal(h.chat.messages[0].persistenceError, undefined);
+    assert.ok((home ? (h.chat as any).conversations : (h.chat as any).noteConversations).some((row: any) => row.id === id), "history includes the retried conversation");
+    h.setWrite(null);
+    await act(async () => h.chat.sendMessage("next question"));
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.db.getAgentConversation(id)!.messages[0].content, message.content);
+  });
+}
+
+for (const departure of ["note", "new-chat", "unmount"] as const) {
+  test(`late retry creation after ${departure} cannot publish into a new chat`, async t => {
+    const h = await mount(t);
+    await h.render();
+    await act(async () => h.chat.startNewChat());
+    const failed = deferred<ConversationDetail | null>();
+    h.setCreate(failed);
+    let sending!: Promise<void>;
+    await act(async () => { sending = h.chat.sendMessage("retained"); await flush(); });
+    await act(async () => { failed.reject(new Error("DB unavailable")); await sending; });
+    const retryGate = deferred<ConversationDetail | null>();
+    h.setCreate(retryGate);
+    let retry!: Promise<void>;
+    await act(async () => { retry = h.chat.retrySaveMessage(h.chat.messages[0].id); await flush(); });
+    if (departure === "note") await h.setNote(h.noteB.id);
+    else if (departure === "new-chat") await act(async () => h.chat.startNewChat());
+    else await h.unmount();
+    await act(async () => {
+      const created = h.db.createAgentConversation("late", h.noteA.id)!;
+      retryGate.resolve(h.db.getAgentConversation(created.id));
+      await retry;
+    });
+    assert.equal(h.writes.length, 0);
+    assert.equal(h.requests.length, 0);
+    if (departure !== "unmount") assert.equal(h.chat.activeConversationId, departure === "note" ? h.B.id : null);
+  });
+}

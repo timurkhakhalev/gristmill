@@ -189,7 +189,7 @@ interface AudioPipelineOptions {
   alignmentAtRenderFrame?: (frame: number) => MeetingFrameAlignmentPoint | null;
   reserveEpoch?: () => number;
   onMicrophoneBoundary: (boundary: NonNullable<MeetingCaptureStopRequest["microphoneBoundary"]>) => void;
-  onAck: (sequence: number) => void;
+  onAck: (sequence: number, epochIndex: number) => void;
   onFailure: (error: Error) => void;
 }
 
@@ -246,7 +246,7 @@ export const createAudioPipeline = async ({
       if (!ack.success || ack.sequence !== packet.sequence) {
         throw new Error("Meeting recording write was not acknowledged");
       }
-      onAck(packet.sequence);
+      onAck(packet.sequence, packet.epochIndex);
       processor.port.postMessage({ type: "ack", sequence: packet.sequence });
       return ack;
     },

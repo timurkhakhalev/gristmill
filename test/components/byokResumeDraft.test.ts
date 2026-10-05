@@ -286,6 +286,7 @@ async function setupRealPair(
   const proceeds: string[] = [];
   const savedKeys: unknown[] = [];
   let footerCommit: (() => Promise<void>) | null = null;
+  let footerSaving = false;
   const state = { connected: false, saveError: false };
   installBrowserGlobals(t, {
     window: {
@@ -327,8 +328,9 @@ async function setupRealPair(
         onSelfHostedChange() {},
         onConnectionChange: onConnectionChange,
         onProceed() { proceeds.push("proceed"); },
-        onFooterContinue(commit: () => Promise<void>) {
+        onFooterContinue(commit: () => Promise<void>, saving: boolean) {
           footerCommit = commit;
+          footerSaving = saving;
         },
         onResumeStateChange() {},
       });
@@ -399,6 +401,7 @@ async function setupRealPair(
   return {
     routeChanges: () => routeChanges,
     beginSave: () => footerCommit!(),
+    footerSaving: () => footerSaving,
     changeField: async (field: "provider" | "model" | "key" | "url" | "custom-model") => {
       const select = field === "provider" || field === "model";
       const label = field === "provider" ? "providerLabel" : "modelLabel";
@@ -537,4 +540,39 @@ test("late secure save after leaving the provider step cannot apply route or pro
   await React.act(async () => { resolve({ success: true }); await saving; });
   assert.deepEqual(ui.routeChanges(), []);
   assert.deepEqual(ui.proceeds(), []);
+});
+
+test("same-tick and pending Continue clicks have one secure save and transition", async t => {
+  let resolve!: (value: { success: boolean }) => void;
+  const saveResult = new Promise<{ success: boolean }>(done => { resolve = done; });
+  const ui = await setupRealPair(t, { testResult: { success: true }, saveResult });
+  try {
+    await ui.runTest();
+    let first!: Promise<void>, duplicate!: Promise<void>;
+    await React.act(async () => { first = ui.beginSave(); duplicate = ui.beginSave(); });
+    assert.equal(ui.footerSaving(), true);
+    assert.equal(ui.savedKeys().length, 1);
+    await React.act(async () => { await ui.beginSave(); });
+    assert.equal(ui.savedKeys().length, 1);
+    await React.act(async () => { resolve({ success: true }); await first; await duplicate; });
+    assert.deepEqual(ui.proceeds(), ["proceed"]);
+    assert.equal(ui.footerSaving(), false);
+  } finally { await ui.unmount(); }
+});
+
+test("a failed secure save releases the submit guard for Retry", async t => {
+  let resolve!: (value: { success: boolean }) => void;
+  const saveResult = new Promise<{ success: boolean }>(done => { resolve = done; });
+  const ui = await setupRealPair(t, { testResult: { success: true }, saveResult });
+  try {
+    await ui.runTest();
+    let first!: Promise<void>;
+    await React.act(async () => { first = ui.beginSave(); });
+    await React.act(async () => { resolve({ success: false }); await first; });
+    assert.equal(ui.saveErrorShown(), true);
+    assert.equal(ui.footerSaving(), false);
+    await ui.clickFooterContinue();
+    assert.equal(ui.savedKeys().length, 2);
+    assert.deepEqual(ui.proceeds(), []);
+  } finally { await ui.unmount(); }
 });

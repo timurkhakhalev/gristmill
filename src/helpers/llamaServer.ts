@@ -114,7 +114,6 @@ export class LlamaServerManager {
   startupPromise: Promise<void> | null;
   healthCheckInterval: NodeJS.Timeout | null;
   healthCheckFailures: number;
-  cachedServerBinaryPaths: ServerBinaryPaths | null;
   activeBackend: string | null;
   idleTimer: NodeJS.Timeout | null;
 
@@ -134,30 +133,22 @@ export class LlamaServerManager {
     this.startupPromise = null;
     this.healthCheckInterval = null;
     this.healthCheckFailures = 0;
-    this.cachedServerBinaryPaths = null;
     this.activeBackend = null;
     this.idleTimer = null;
   }
 
   getServerBinaryPaths(): ServerBinaryPaths {
-    if (this.cachedServerBinaryPaths) return this.cachedServerBinaryPaths;
-
     const defaultBin = resolveBinaryPath("llama-server-darwin-arm64");
-    // Completeness: the executable alone is not enough — the binary needs its
-    // shared libraries next to it. A partial install (issue #160) must not
-    // count as available, or the loader error repeats on every start.
+    // Match the installer: executable, top-level libraries and its final stamp.
+    // Recheck each discovery so a removed stamp cannot leave a cached hit.
     const hasLibraries = defaultBin
       ? fs.readdirSync(path.dirname(defaultBin)).some((file: string) => file.endsWith(".dylib"))
       : false;
-    const paths: ServerBinaryPaths = defaultBin && hasLibraries
+    const stamped = defaultBin && fs.existsSync(`${defaultBin}.complete`);
+    const paths: ServerBinaryPaths = defaultBin && stamped && hasLibraries
       ? { default: defaultBin }
       : { default: "" };
 
-    // Only cache hits: a miss may be transient (binary downloaded after
-    // startup), and caching it would require an app restart to recover.
-    if (paths.default) {
-      this.cachedServerBinaryPaths = paths;
-    }
     return paths;
   }
 

@@ -99,6 +99,7 @@ const PEOPLE_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export interface ReminderSchedulerLike {
   scheduleNextMeeting(): void;
   reset(provider: string): void;
+  reconcileProvider(provider: string): void;
 }
 
 export class GoogleCalendarManager {
@@ -159,12 +160,13 @@ export class GoogleCalendarManager {
     this.accounts.delete(email);
     this.databaseManager.removeGoogleAccount(email);
     this._broadcastAccountsChanged();
+    this.reminderScheduler.reconcileProvider("google");
 
     if (this.accounts.size === 0) {
       this.stop();
       this.reminderScheduler.reset("google");
-      this.reminderScheduler.scheduleNextMeeting();
     }
+    this.reminderScheduler.scheduleNextMeeting();
   }
 
   async startOAuth(): Promise<{ success: boolean; email?: string; error?: string }> {

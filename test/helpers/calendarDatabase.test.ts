@@ -674,6 +674,7 @@ for (const remove of ["a@example.com", "b@example.com"]) {
     db.removeGoogleAccount(remove);
     assert.equal(db.getSelectedCalendars().length, 1);
     assert.equal(db.getSelectedCalendars()[0].account_email, remove === "a@example.com" ? "b@example.com" : "a@example.com");
+    assert.equal(db.getGoogleCalendars()[0].account_email, remove === "a@example.com" ? "b@example.com" : "a@example.com");
     assert.equal(db.getActiveEvents()[0].id, event.id);
     assert.equal(db.getNote(note.id)!.calendar_event_id, event.id);
     db.removeGoogleAccount(remove === "a@example.com" ? "b@example.com" : "a@example.com");
@@ -709,4 +710,22 @@ test("Google calendar schema cutover preserves selection, sync and Note history 
   db.saveGoogleCalendars([{ id: "legacy", summary: "Other subscription", is_primary: false }], "b@example.com");
   assert.equal(db.getGoogleCalendars("a@example.com")[0].summary, "Legacy");
   assert.equal(db.getGoogleCalendars("b@example.com").length, 1);
+});
+
+test("Google UI list cannot prefer a selected ownerless row over a connected secondary association", t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gm-google-ui-"));
+  const db = createDb(t, directory);
+  t.after(() => { db?.db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  if (!db) return;
+  db.db.prepare("INSERT INTO google_calendars(id,summary,is_selected,is_primary) VALUES ('shared','Historical',1,1)").run();
+  db.saveGoogleTokens({ google_email: "b@example.com", access_token: "test", refresh_token: "refresh", expires_at: 0, scope: "calendar" });
+  db.saveGoogleCalendars([{ id: "shared", summary: "Current secondary", is_primary: false }], "b@example.com");
+  db.applyPrimaryOnlyToSelection(true);
+  const rows = db.getGoogleCalendars();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].account_email, "b@example.com");
+  assert.equal(rows[0].summary, "Current secondary");
+  assert.equal(rows[0].is_selected, 0);
+  db.removeGoogleAccount("b@example.com");
+  assert.deepEqual(db.getGoogleCalendars(), []);
 });

@@ -3,7 +3,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const { MeetingCaptureSession }: typeof import("../../../../src/helpers/meetingCaptureSession.ts") = require("../../../../src/helpers/meetingCaptureSession.ts");
 const { createRendererServer, installBrowserGlobals, installMicCaptureGlobals } = require("../../../lib/rendererTestHarness.ts") as typeof import("../../../lib/rendererTestHarness.js");
 
-function captureHarness(delayMicClose = false) {
+function captureHarness(delayMicClose = false, initialMuted = false) {
   const intervals: Array<{ recordingId: string; source: string; startFrame: number; endFrame: number | null; reason: string }> = [];
   const writes: Array<{ source: string; epoch: number; bytes: number }> = [];
   const database = {
@@ -43,7 +43,7 @@ function captureHarness(delayMicClose = false) {
     },
     recoverEpoch: (_id: string, _source: string, _epoch: number) => ({ frameCount: 2_400, ignoredTrailingBytes: 0, errorCode: null }),
   };
-  return { capture: MeetingCaptureSession.create(database as any, storage as any, 1, null, new Date("2026-10-01T00:00:00Z"), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), intervals, writes, waitForClose: () => closeStarted, releaseClose: () => releaseClose?.() };
+  return { capture: MeetingCaptureSession.create(database as any, storage as any, 1, null, new Date("2026-10-01T00:00:00Z"), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", undefined, initialMuted), intervals, writes, waitForClose: () => closeStarted, releaseClose: () => releaseClose?.() };
 }
 
 const packet = (epochIndex: number, epochStartFrame: number, frameStart: number, sequence: number, sampleOffset: number, sourceGeneration = 1) => ({
@@ -90,7 +90,7 @@ test("Stop waits for an in-flight mic boundary commit and rejects later controls
   assert.equal(intervals[0].endFrame, 2_400);
 });
 
-for (const mode of ["open", "manual", "meet", "replacement-muted", "changed-during-ack", "old-intent-pending", "manual-during-drain", "ended-setup-retry", "stop-during-ack"] as const) {
+for (const mode of ["open", "manual", "meet", "replacement-muted", "changed-during-ack", "old-intent-pending", "manual-during-drain", "ended-setup-retry", "stop-during-ack", "initial-muted-replacements", "saved-muted-replacements"] as const) {
 test(`renderer recovery ${mode} keeps the gated analyser and current track intent`, async (t: import("node:test").TestContext) => {
   installMicCaptureGlobals(t);
   let currentRenderFrame = 50_400;
@@ -170,17 +170,23 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
   const processors: FakeAudioWorkletNode[] = [];
   class FakeAudioWorkletNode extends GraphNode {
     gateClosed: boolean;
+    epochIndex: number;
+    sourceGeneration: number;
     port: { onmessage: ((event: { data: unknown }) => void) | null; postMessage(message: unknown): void };
-    constructor(_context: unknown, _name: string, options: { processorOptions: { gateClosed: boolean } }) {
+    constructor(_context: unknown, _name: string, options: { processorOptions: { gateClosed: boolean; epochIndex: number; sourceGeneration: number } }) {
       super();
       this.gateClosed = options.processorOptions.gateClosed;
+      this.epochIndex = options.processorOptions.epochIndex;
+      this.sourceGeneration = options.processorOptions.sourceGeneration;
       processors.push(this);
       if (mode === "ended-setup-retry" && processors.length === 2) tracks[1].readyState = "ended";
       this.port = {
         onmessage: null,
         postMessage: (message) => {
-          const request = message as { type?: string; commandId?: string; sourceGeneration?: number; effectiveMuted?: boolean };
+          const request = message as { type?: string; commandId?: string; sourceGeneration?: number; epochIndex?: number; effectiveMuted?: boolean };
           if (request.type === "set-gate") {
+            this.epochIndex = request.epochIndex!;
+            this.sourceGeneration = request.sourceGeneration!;
             this.gateClosed = request.effectiveMuted === true;
             queueMicrotask(() => this.port.onmessage?.({ data: {
               type: "gate-ack", commandId: request.commandId, sourceGeneration: request.sourceGeneration,
@@ -211,7 +217,7 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
     else delete globals.AudioWorkletNode;
   });
 
-  const main = (mode === "ended-setup-retry" || mode === "stop-during-ack") ? captureHarness() : null;
+  const main = (mode === "ended-setup-retry" || mode === "stop-during-ack" || mode === "initial-muted-replacements" || mode === "saved-muted-replacements") ? captureHarness(false, mode === "initial-muted-replacements") : null;
   const sentSequences: number[] = [];
   let stopBoundary: import("../../../../src/contracts/meetingCoordinator.ts").MeetingCaptureStopRequest["microphoneBoundary"];
   const intentRequests: Array<{ sequence: number; boundaryFrame: number; sourceGeneration: number; effectiveMuted: boolean }> = [];
@@ -273,8 +279,41 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
   const vite = await createRendererServer(t, { cachePrefix: "gristmill-meeting-mic-gate-store-" });
   const store = await vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as typeof import("../../../../src/stores/meetingRecordingStore.js");
   try {
-    assert.equal(await store.startRecording({ noteId: 1, noteTitle: "Meeting", folderId: null, autoEndEligible: false }), true);
+    assert.equal(await store.startRecording({ noteId: 1, noteTitle: "Meeting", folderId: null, autoEndEligible: false, manualMicMuted: mode === "initial-muted-replacements" }), true);
     assert.equal(acquired, 1);
+    if (mode === "initial-muted-replacements" || mode === "saved-muted-replacements") {
+      const emit = () => {
+        const processor = processors.at(-1)!;
+        processor.port.onmessage?.({ data: {
+          type: "chunk", buffer: new ArrayBuffer(4_800), sequence: 0, sampleOffset: 0,
+          renderStartFrame: currentRenderFrame, epochIndex: processor.epochIndex, sourceGeneration: processor.sourceGeneration,
+        } });
+      };
+      if (mode === "saved-muted-replacements") {
+        emit();
+        await new Promise(setImmediate);
+        currentRenderFrame += 2_400;
+        assert.equal(await store.setManualMicMuted(true), true);
+      }
+      for (let i = 0; i < 3; i++) {
+        const old = tracks.at(-1)!;
+        old.readyState = "ended";
+        old.dispatch("ended");
+        for (let attempt = 0; attempt < 100 && store.useMeetingRecordingStore.getState().micCaptureDeviceLabel !== `mic-${i + 2}`; attempt++) {
+          await new Promise(setImmediate);
+        }
+        assert.equal(store.useMeetingRecordingStore.getState().micCaptureDeviceLabel, `mic-${i + 2}`);
+        assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
+      }
+      assert.equal(main!.writes.length, mode === "saved-muted-replacements" ? 1 : 0, "empty replacements create no audio epochs");
+      assert.equal(await store.setManualMicMuted(false), true);
+      emit();
+      await new Promise(setImmediate);
+      assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
+      assert.deepEqual(main!.writes.map(write => write.epoch), mode === "saved-muted-replacements" ? [0, 1] : [0]);
+      assert.equal(intentRequests.at(-1)?.sourceGeneration, 4);
+      return;
+    }
     processors[0].port.onmessage?.({ data: {
       type: "chunk", buffer: new ArrayBuffer(4_800), sequence: 0, sampleOffset: 0,
       renderStartFrame: audioContextOriginFrame, epochIndex: 0, sourceGeneration: 1,

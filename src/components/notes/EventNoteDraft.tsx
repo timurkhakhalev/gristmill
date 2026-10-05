@@ -69,6 +69,7 @@ export default function EventNoteDraft({ event, onBack, onMaterialized, onDraftH
         // note replaces (its insert already carries the early snapshot).
         onDraftHandoff({
           noteId: target.noteId,
+          note,
           mode: target.existing ? "append" : "replace",
           draft: { ...draftRef.current },
         });

@@ -147,6 +147,7 @@ test("input typed during the whole create → get round-trip reaches the handoff
 
   assert.deepEqual(harness.handoffs, [{
     noteId: 42,
+    note: noteFixture(42, "Design review", ""),
     mode: "replace",
     draft: { content: "ABC" },
   }], "the handoff carries the full latest revision, not the snapshot");
@@ -164,6 +165,7 @@ test("a reused note hands the draft off in append mode", async (t) => {
 
   assert.deepEqual(harness.handoffs, [{
     noteId: 7,
+    note: noteFixture(7, "Manual title", "Manual content"),
     mode: "append",
     draft: { content: "first input" },
   }], "an existing note must not have its manual text clobbered");

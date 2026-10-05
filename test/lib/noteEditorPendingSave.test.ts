@@ -314,7 +314,7 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
   assert.deepEqual(
     applyEventDraftHandoff(
       { noteId: 1, title: "Event title", content: "early snapshot", enhancedContent: null },
-      { noteId: 1, mode: "replace", draft: { content: "early snapshot plus ABC" } }
+      { noteId: 1, note: note(1, ""), mode: "replace", draft: { content: "early snapshot plus ABC" } }
     ),
     {
       noteId: 1,
@@ -329,7 +329,7 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
   assert.deepEqual(
     applyEventDraftHandoff(
       { noteId: 2, title: "Manual title", content: "Manual content", enhancedContent: null },
-      { noteId: 2, mode: "append", draft: { content: "first input" } }
+      { noteId: 2, note: note(2, ""), mode: "append", draft: { content: "first input" } }
     ),
     {
       noteId: 2,
@@ -344,7 +344,7 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
   assert.deepEqual(
     applyEventDraftHandoff(
       { noteId: 3, title: "T", content: "C", enhancedContent: null },
-      { noteId: 3, mode: "append", draft: {} }
+      { noteId: 3, note: note(3, ""), mode: "append", draft: {} }
     ),
     { noteId: 3, title: "T", content: "C", enhancedContent: null }
   );
@@ -354,7 +354,7 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
   assert.deepEqual(
     applyEventDraftHandoff(
       { noteId: 4, title: "Manual title", content: "", enhancedContent: null },
-      { noteId: 4, mode: "append", draft: { title: "Typed title" } }
+      { noteId: 4, note: note(4, ""), mode: "append", draft: { title: "Typed title" } }
     ).title,
     "Typed title"
   );
@@ -362,7 +362,7 @@ test("an event draft handoff replaces the fresh note's draft and appends to an e
   // No change returns the same draft object.
   const draft = { noteId: 5, title: "T", content: "C", enhancedContent: null };
   assert.equal(
-    applyEventDraftHandoff(draft, { noteId: 5, mode: "replace", draft: { title: "T", content: "C" } }),
+    applyEventDraftHandoff(draft, { noteId: 5, note: note(5, ""), mode: "replace", draft: { title: "T", content: "C" } }),
     draft
   );
 });

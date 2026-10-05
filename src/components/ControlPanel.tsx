@@ -234,12 +234,13 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   );
 
   useEffect(() => {
+    if (isTreeLoading || spaces.length === 0) return;
     const dispose = window.electronAPI?.onTrayOpenEvent?.((event) => {
       setActiveView("home");
       void openCalendarEvent(event);
     });
     return () => dispose?.();
-  }, [openCalendarEvent]);
+  }, [openCalendarEvent, isTreeLoading, spaces.length]);
 
   // Leaving Home or opening any note drops the draft.
   useEffect(() => {

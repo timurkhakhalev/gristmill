@@ -19,6 +19,7 @@ app.whenReady().then(async () => {
   const Database = require(path.join(repo, "node_modules/better-sqlite3"));
   const db = new Database(path.join(profile, "notes.db"));
   db.exec("CREATE TABLE notes(id INTEGER PRIMARY KEY, title TEXT NOT NULL)");
+  db.prepare("INSERT INTO notes(id, title) VALUES (99, 'Existing note')").run();
   const row = (id: number, title: string) => ({ id, title, content: "", note_type: "personal",
     space_id: 1, folder_id: null, folder_ids: [], source_file: null, audio_duration_seconds: null,
     created_at: "2026-10-05", updated_at: "2026-10-05", enhanced_content: null,
@@ -30,7 +31,8 @@ app.whenReady().then(async () => {
     await spaces;
     return [{ id: 1, name: "Personal", emoji: null, kind: "private", sort_order: 0, created_at: "2026-10-05", updated_at: "2026-10-05" }];
   });
-  for (const channel of [containerChannels.getFolders, containerChannels.getFolderNoteCounts, noteChannels.getNotes]) ipcMain.handle(channel, () => []);
+  for (const channel of [containerChannels.getFolders, containerChannels.getFolderNoteCounts]) ipcMain.handle(channel, () => []);
+  ipcMain.handle(noteChannels.getNotes, () => [row(99, "Existing note")]);
   for (const channel of ["get-pending-note-navigation", meetingCoordinatorChannels.getPendingMeetingNoteNavigation, meetingCoordinatorChannels.findCalendarEventNote]) ipcMain.handle(channel, () => null);
   ipcMain.handle("get-log-level", () => "error");
   ipcMain.handle("app-log", () => {});
@@ -57,11 +59,12 @@ app.whenReady().then(async () => {
     "notes/MeetingRecordingPill", "notes/BackgroundActionToastListener", "home/HomeView", "notes/UploadAudioView",
     "CommandSearch", "KeyboardShortcutsDialog", "notes/NotesDebugPreview", "notes/NoteSkeleton"])
     mocks[`/${leaf}`] = empty;
-  try { await build({ stdin: { contents: `import React from "react";import {createRoot} from "react-dom/client";
+  try { await build({ stdin: { contents: `import React from "react";import {createRoot} from "react-dom/client";import {flushSync} from "react-dom";
     import ControlPanel from ${JSON.stringify(path.join(repo, "src/components/ControlPanel.tsx"))};
     import {useIsTreeLoading,useSpaces} from ${JSON.stringify(path.join(repo, "src/stores/noteStore.ts"))};
     function Fixture(){const loading=useIsTreeLoading();const spaces=useSpaces();React.useEffect(()=>{window.panelReady=!loading&&spaces.length>0;});return React.createElement(ControlPanel);}
     let root;window.mountPanel=()=>{root=createRoot(document.getElementById("root"));root.render(React.createElement(Fixture));};
+    window.flushPanel=()=>flushSync(()=>root.render(React.createElement(Fixture)));
     window.unmountPanel=()=>{root.unmount();};window.bootstrapReady=true;`, resolveDir: repo },
     outfile: renderer, bundle: true, platform: "browser", format: "iife", define: { "import.meta.env": '{"DEV":false}' },
     plugins: [{ name: "fixture-leaves", setup(plugin) {
@@ -120,6 +123,8 @@ app.whenReady().then(async () => {
         await waitFor("window.panelReady === true");
         await send();
       }
+      await waitFor("window.panelReady === true");
+      await win.webContents.executeJavaScript("window.flushPanel()");
       try { await waitFor(action === "note" ? "document.querySelector('[data-note-id]')?.getAttribute('data-note-id') > 0"
         : action === "event" ? `document.querySelector('[data-event-id]')?.getAttribute('data-event-id') === '${phase}-event'`
         : "document.querySelector('[data-settings]') !== null"); }
@@ -127,7 +132,7 @@ app.whenReady().then(async () => {
       assert.equal(win.isVisible(), false, "delivery never overrides visibility authority");
     }
     assert.deepEqual(missing, [], "all actions must reach their mounted owner");
-    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM notes").get().count, 4);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM notes WHERE id != 99").get().count, 4);
     console.log("tray readiness actions passed: before/after subscription, document reload and remount retry; 4 persisted Notes");
   } finally { win.destroy(); server.close(); db.close(); }
   app.exit(0);

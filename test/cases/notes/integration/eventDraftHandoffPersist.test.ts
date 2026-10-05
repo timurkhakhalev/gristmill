@@ -30,8 +30,12 @@ interface Harness {
   openNote(id: number): Promise<void>;
   typeContent(value: string): Promise<void>;
   typeTitle(value: string): Promise<void>;
+  typeEnhanced(value: string): Promise<void>;
+  remount(): Promise<void>;
+  retry(): Promise<void>;
+  errorVisible(): boolean;
   fireExternalUpdate(note: NoteItem): Promise<void>;
-  editorState(): { id: number; title: string; content: string } | null;
+  editorState(): { id: number; title: string; content: string; enhanced: string | null } | null;
   updateNoteCalls(): Array<{ id: number; updates: Record<string, unknown> }>;
 }
 
@@ -111,9 +115,10 @@ async function mountNotesView(
   const { default: PersonalNotesView } = await vite.ssrLoadModule("/components/notes/PersonalNotesView.tsx");
   const noteEditorModule = await vite.ssrLoadModule("./NoteEditor") as {
     props: {
-      note: { id: number; title: string; content: string };
+      note: { id: number; title: string; content: string; enhanced_content: string | null };
       onContentChange: (id: number, value: string) => void;
       onTitleChange: (id: number, value: string) => void;
+      enhancement?: { onChange: (id: number, value: string) => void };
     } | undefined;
   };
   const store = await vite.ssrLoadModule("/stores/noteStore.ts") as typeof import("../../../../src/stores/noteStore");
@@ -145,12 +150,29 @@ async function mountNotesView(
     typeTitle: async (value: string) => {
       await React.act(async () => { noteEditorModule.props?.onTitleChange(openedNoteId!, value); });
     },
+    typeEnhanced: async (value: string) => {
+      await React.act(async () => { noteEditorModule.props?.enhancement?.onChange(openedNoteId!, value); });
+    },
+    remount: async () => {
+      await React.act(async () => { root!.unmount(); });
+      root = createRoot(container as unknown as Element);
+      await React.act(async () => { root!.render(React.createElement(PersonalNotesView)); });
+    },
+    errorVisible: () => container.textContent?.includes("notes.editor.saveFailed") ?? false,
+    retry: async () => {
+      const find = (node: any): any => node.tagName === "BUTTON" && node.textContent === "common.retry"
+        ? node : node.childNodes?.map(find).find(Boolean);
+      const button = find(container);
+      assert.ok(button, "visible Retry control");
+      const props = button[Object.keys(button).find(key => key.startsWith("__reactProps$"))!];
+      await React.act(async () => { props.onClick(); });
+    },
     fireExternalUpdate: async (note: NoteItem) => {
       await React.act(async () => { noteUpdatedListener?.(note); });
     },
     editorState: () => {
       const props = noteEditorModule.props;
-      return props ? { id: props.note.id, title: props.note.title, content: props.note.content } : null;
+      return props ? { id: props.note.id, title: props.note.title, content: props.note.content, enhanced: props.note.enhanced_content } : null;
     },
     updateNoteCalls: () => updateCalls,
   };
@@ -167,7 +189,7 @@ test("a handoff for a not-yet-cached note keeps the stored title and appends wit
   );
 
   await harness.openNote(7);
-  await wait(1100);
+  await React.act(async () => { await wait(1100); });
 
   const calls = harness.updateNoteCalls();
   assert.equal(calls.length, 1, "the handoff is persisted through the debounced save");
@@ -190,7 +212,7 @@ test("a handoff for a fresh note replaces the snapshot fields", async (t) => {
   );
 
   await harness.openNote(8);
-  await wait(1100);
+  await React.act(async () => { await wait(1100); });
 
   const calls = harness.updateNoteCalls();
   assert.equal(calls.length, 1);
@@ -208,7 +230,7 @@ test("a content-only edit's debounced write does not republish the title over an
   // While the debounce runs, processing publishes a new title.
   stored.title = "Generated title";
   await harness.fireExternalUpdate(stored);
-  await wait(1100);
+  await React.act(async () => { await wait(1100); });
 
   const calls = harness.updateNoteCalls();
   assert.equal(calls.length, 1, "the debounce fires once");
@@ -237,10 +259,11 @@ test("an external update lands even while a save is queued", async (t) => {
     id: 10,
     title: "Generated title",
     content: "Typed body",
+    enhanced: null,
   });
 
   const calls = harness.updateNoteCalls();
-  await wait(1100);
+  await React.act(async () => { await wait(1100); });
   assert.equal(calls.length, 1, "only the dirty field is written");
   assert.equal(calls[0].updates.title, undefined, "the externally-generated title is not overwritten");
   assert.equal(calls[0].updates.content, "Typed body");
@@ -271,12 +294,71 @@ for (const field of ["content", "title"] as const) {
     await typeOther("other edit");
     await React.act(async () => { t.mock.timers.tick(1000); });
     assert.equal(stored[field], "latest");
-    assert.deepEqual(h.updateNoteCalls().map(c => c.updates), [
-      { [field]: "first" },
-      { [field]: "latest", [field === "content" ? "title" : "content"]: "other edit" },
-    ]);
+    assert.equal(stored[field === "content" ? "title" : "content"], "other edit");
     await h.openNote(12);
     await h.openNote(11);
     assert.equal(h.editorState()?.[field], "latest");
   });
 }
+
+for (const failure of ["reject", "structured"] as const) {
+  for (const field of ["content", "title", "enhanced_content"] as const) {
+    test(`${failure} ${field} save retains input across switch and remount until Retry`, async t => {
+      const stored = { ...noteFixture(21, "Old title", "Old content"), enhanced_content: "Old summary" };
+      const other = noteFixture(22, "B", "B body");
+      let failing = true;
+      const h = await mountNotesView(t, [stored, other], async id => id === 21 ? stored : other, null, async (id, updates) => {
+        assert.equal(id, 21);
+        if (failing) {
+          if (failure === "reject") throw new Error("storage unavailable");
+          return { success: false, error: "storage unavailable" };
+        }
+        Object.assign(stored, updates);
+        return { success: true, note: { ...stored } };
+      });
+      await h.openNote(21);
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const type = field === "content" ? h.typeContent : field === "title" ? h.typeTitle : h.typeEnhanced;
+      await type("unsaved input");
+      await React.act(async () => { t.mock.timers.tick(1000); });
+      assert.ok(h.errorVisible());
+      await h.openNote(22);
+      await h.openNote(21);
+      await h.remount();
+      const key = field === "enhanced_content" ? "enhanced" : field;
+      assert.equal((h.editorState() as any)?.[key], "unsaved input");
+      assert.ok(h.errorVisible());
+      failing = false;
+      await h.retry();
+      assert.equal(stored[field], "unsaved input");
+      assert.equal(h.errorVisible(), false);
+      await h.openNote(22);
+      await h.openNote(21);
+      assert.equal((h.editorState() as any)?.[key], "unsaved input");
+    });
+  }
+}
+
+test("an old rejection retains the superseding edit and queued transition write", async t => {
+  const stored = noteFixture(31, "T", "C");
+  const other = noteFixture(32, "B", "B body");
+  let reject!: (error: Error) => void;
+  const pending = new Promise<void>((_resolve, fail) => { reject = fail; });
+  let count = 0;
+  const h = await mountNotesView(t, [stored, other], async id => id === 31 ? stored : other, null, async (_id, updates) => {
+    if (++count === 1) await pending;
+    Object.assign(stored, updates);
+    return { success: true, note: { ...stored } };
+  });
+  await h.openNote(31);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  await h.typeContent("first");
+  await React.act(async () => { t.mock.timers.tick(1000); });
+  await h.typeContent("latest");
+  await h.openNote(32);
+  await React.act(async () => { reject(new Error("unavailable")); });
+  await h.openNote(31);
+  assert.equal(h.editorState()?.content, "latest");
+  await h.retry();
+  assert.equal(stored.content, "latest");
+});

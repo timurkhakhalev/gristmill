@@ -1481,6 +1481,7 @@
       }
     },
     "editor": {
+      "saveFailed": "La nota non è stata salvata. Le modifiche sono ancora disponibili.",
       "untitled": "Senza titolo",
       "noteTitle": "Titolo della nota",
       "stop": "Ferma",

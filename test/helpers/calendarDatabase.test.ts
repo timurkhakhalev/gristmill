@@ -424,7 +424,7 @@ test("google sync token persists alongside its expiry", (t: import("node:test").
   insertCalendar(db, "google", "google-calendar");
 
   const expiresAt = Date.parse("2026-07-23T10:00:00Z");
-  db.updateCalendarSyncToken("google-calendar", "sync-token", expiresAt);
+  db.updateCalendarSyncToken("google-calendar", "sync-token", expiresAt, "google@example.com");
 
   const calendar = db.getGoogleCalendars().find((row) => row.id === "google-calendar");
   assert.equal(calendar!.sync_token, "sync-token");
@@ -640,3 +640,92 @@ for (const provider of ["google", "microsoft"] as const) {
     });
   }
 }
+
+for (const remove of ["a@example.com", "b@example.com"]) {
+  test(`shared Google calendar keeps account selection and survives disconnect ${remove}`, async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gm-shared-google-"));
+    let db = createDb(t, directory);
+    t.after(() => { db?.db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+    if (!db) return;
+    for (const email of ["a@example.com", "b@example.com"]) {
+      db.saveGoogleTokens({ google_email: email, access_token: "test", refresh_token: "refresh", expires_at: 0, scope: "calendar" });
+      db.saveGoogleCalendars([{ id: "shared", summary: "Shared", is_primary: email === "a@example.com" }], email);
+    }
+    db.db.prepare("INSERT INTO google_calendars(id, summary, is_primary, is_selected) VALUES (?, ?, 1, 1)").run("shared", "Ownerless historical row");
+    db.applyPrimaryOnlyToSelection(true);
+    assert.equal(db.getGoogleCalendars("a@example.com")[0].is_selected, 1);
+    assert.equal(db.getGoogleCalendars("b@example.com")[0].is_selected, 0);
+    assert.equal(db.getSelectedCalendars().length, 1);
+    assert.equal(db.getSelectedCalendars()[0].account_email, "a@example.com");
+    db.updateCalendarSyncToken("shared", "a-token", Date.now() + 60_000, "a@example.com");
+    assert.equal(db.getGoogleCalendars("b@example.com")[0].sync_token, null);
+    // Explicit shared selection makes the secondary association eligible too.
+    db.updateCalendarSelection("shared", true);
+    assert.equal(db.getSelectedCalendars().length, 1, "sync uses one eligible association per calendar");
+    const event = { id: "shared-event", calendar_id: "shared", provider: "google",
+      summary: "Shared meeting", attendees_count: 1,
+      start_time: new Date(Date.now() - 60_000).toISOString(), end_time: new Date(Date.now() + 60_000).toISOString() };
+    db.upsertCalendarEvents([event]);
+    const note = db.saveNote("Historical", "", "meeting").note!;
+    db.updateNote(note.id, { calendar_event_id: event.id });
+    db.db.close(); db = createDb(t, directory)!;
+    assert.equal(db.getGoogleCalendars("a@example.com")[0].sync_token, "a-token");
+    assert.equal(db.getGoogleCalendars("b@example.com")[0].is_selected, 1);
+    db.removeGoogleAccount(remove);
+    assert.equal(db.getSelectedCalendars().length, 1);
+    assert.equal(db.getSelectedCalendars()[0].account_email, remove === "a@example.com" ? "b@example.com" : "a@example.com");
+    assert.equal(db.getGoogleCalendars()[0].account_email, remove === "a@example.com" ? "b@example.com" : "a@example.com");
+    assert.equal(db.getActiveEvents()[0].id, event.id);
+    assert.equal(db.getNote(note.id)!.calendar_event_id, event.id);
+    db.removeGoogleAccount(remove === "a@example.com" ? "b@example.com" : "a@example.com");
+    assert.deepEqual(db.getActiveEvents(), []);
+    assert.deepEqual(db.getSelectedCalendars(), [], "an ownerless row cannot replace a connected association");
+    assert.equal(db.getCalendarEventById(event.id)!.summary, event.summary, "history stays readable");
+  });
+}
+
+test("Google calendar schema cutover preserves selection, sync and Note history on reopen", t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gm-google-migration-"));
+  let db = createDb(t, directory);
+  t.after(() => { db?.db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  if (!db) return;
+  db.db.exec(`DROP TABLE google_calendars; CREATE TABLE google_calendars (
+    id TEXT PRIMARY KEY, summary TEXT NOT NULL, description TEXT, background_color TEXT,
+    is_selected INTEGER NOT NULL DEFAULT 1, is_primary INTEGER NOT NULL DEFAULT 0,
+    sync_token TEXT, sync_token_expires_at INTEGER, account_email TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ); INSERT INTO google_calendars(id,summary,is_selected,is_primary,sync_token,account_email)
+    VALUES ('legacy','Legacy',0,1,'old-token','a@example.com')`);
+  const note = db.saveNote("History", "", "meeting").note!;
+  db.upsertCalendarEvents([{ id: "legacy-event", calendar_id: "legacy", summary: "Legacy event",
+    start_time: new Date().toISOString(), end_time: new Date(Date.now()+60_000).toISOString() }]);
+  db.updateNote(note.id, { calendar_event_id: "legacy-event" });
+  db.db.close(); db = createDb(t, directory)!;
+  const row = db.getGoogleCalendars("a@example.com")[0];
+  assert.equal(row.is_selected, 0);
+  assert.equal(row.is_primary, 1);
+  assert.equal(row.sync_token, "old-token");
+  assert.equal(db.getNote(note.id)!.calendar_event_id, "legacy-event");
+  assert.equal(db.getCalendarEventById("legacy-event")!.summary, "Legacy event");
+  db.saveGoogleCalendars([{ id: "legacy", summary: "Other subscription", is_primary: false }], "b@example.com");
+  assert.equal(db.getGoogleCalendars("a@example.com")[0].summary, "Legacy");
+  assert.equal(db.getGoogleCalendars("b@example.com").length, 1);
+});
+
+test("Google UI list cannot prefer a selected ownerless row over a connected secondary association", t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gm-google-ui-"));
+  const db = createDb(t, directory);
+  t.after(() => { db?.db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  if (!db) return;
+  db.db.prepare("INSERT INTO google_calendars(id,summary,is_selected,is_primary) VALUES ('shared','Historical',1,1)").run();
+  db.saveGoogleTokens({ google_email: "b@example.com", access_token: "test", refresh_token: "refresh", expires_at: 0, scope: "calendar" });
+  db.saveGoogleCalendars([{ id: "shared", summary: "Current secondary", is_primary: false }], "b@example.com");
+  db.applyPrimaryOnlyToSelection(true);
+  const rows = db.getGoogleCalendars();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].account_email, "b@example.com");
+  assert.equal(rows[0].summary, "Current secondary");
+  assert.equal(rows[0].is_selected, 0);
+  db.removeGoogleAccount("b@example.com");
+  assert.deepEqual(db.getGoogleCalendars(), []);
+});

@@ -23,6 +23,8 @@ As a Gristmill user, I want to see meetings and receive recording prompts.
 - Disconnect invalidates pending token refresh, calendar-list and event-sync results. Reconnecting the same email creates a new connection identity; old results cannot change it.
 - Google/Microsoft normally refresh every two minutes with error backoff. Apple follows EventKit changes and periodic snapshots.
 
+Google keeps a separate association for each account and calendar ID. Primary status, selection and sync tokens belong to that association. Live events remain eligible while any association is selected; event sync chooses one selected account per calendar. Disconnect removes only that account’s associations and keeps historical event/Note links.
+
 Every Google/Microsoft account removal reconciles the cached active meeting with live calendar rows and reschedules reminders. Removing one account preserves delivered-reminder deduplication for the remaining accounts.
 
 Apple Calendar accepts data and permission messages only from its current helper process. Late stdout from a stopped or replaced helper cannot restore a disconnected calendar or change a replacement connection.

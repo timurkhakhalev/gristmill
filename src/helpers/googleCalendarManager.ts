@@ -77,7 +77,7 @@ export interface GoogleManagerDb {
   getAllGoogleTokens(): Array<{ access_token: string }>;
   removeGoogleAccount(email: string): unknown;
   clearGoogleCalendarData(): unknown;
-  saveGoogleCalendars(calendars: GoogleCalendarInput[], accountEmail: string | null): unknown;
+  saveGoogleCalendars(calendars: GoogleCalendarInput[], accountEmail: string): unknown;
   getGoogleCalendars(accountEmail?: string | null): GoogleCalendarRow[];
   getSelectedCalendars(accountEmail?: string | null): GoogleCalendarRow[];
   applyPrimaryOnlyToSelection(primaryOnly: boolean): unknown;
@@ -86,7 +86,7 @@ export interface GoogleManagerDb {
   upsertCalendarEvents(events: CalendarEventInput[]): unknown;
   removeCalendarEvents(ids: string[]): unknown;
   removeStaleCalendarEvents(provider: string, calendarId: string, freshIds: string[]): unknown;
-  updateCalendarSyncToken(id: string, token: string, expiresAt: number): unknown;
+  updateCalendarSyncToken(id: string, token: string, expiresAt: number, accountEmail: string): unknown;
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
   upsertGooglePeople(profiles: GooglePersonProfile[]): unknown;
   getGoogleTokensByEmail(email: string): { id: number; scope: string } | null;
@@ -460,7 +460,7 @@ export class GoogleCalendarManager {
     if (toUpsert.length > 0) this.databaseManager.upsertCalendarEvents(toUpsert);
     if (toRemove.length > 0) this.databaseManager.removeCalendarEvents(toRemove);
     if (nextSyncToken) {
-      this.databaseManager.updateCalendarSyncToken(calendar.id, nextSyncToken, tokenExpiresAt);
+      this.databaseManager.updateCalendarSyncToken(calendar.id, nextSyncToken, tokenExpiresAt, accountEmail as string);
     }
     if (contactsToUpsert.length > 0) this.databaseManager.upsertContacts(contactsToUpsert);
   }

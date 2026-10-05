@@ -21,6 +21,7 @@ import { createDesktopSettingsBridge } from "./src/preload/desktopSettingsBridge
 import { createMeetingCoordinatorBridge } from "./src/preload/meetingCoordinatorBridge";
 import { createMeetingProcessingBridge } from "./src/preload/meetingProcessingBridge";
 import { createMeetingCompanionBridge } from "./src/preload/meetingCompanionBridge";
+import { createControlPanelActionSubscriptions } from "./src/preload/controlPanelActions";
 
 /** Unsubscribe returned to the renderer for every subscription. */
 type Unsubscribe = () => void;
@@ -52,6 +53,7 @@ const registerListener = <T>(
 };
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  ...createControlPanelActionSubscriptions(ipcRenderer),
   ...createNotesBridge(ipcRenderer),
   ...createVocabularyBridge(ipcRenderer),
   ...createActionsBridge(ipcRenderer),
@@ -177,12 +179,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("setting-updated", listener);
     return () => ipcRenderer.removeListener("setting-updated", listener);
   },
-  // Settings shortcut (Cmd+, / Ctrl+,)
-  onShowSettings: registerListener<void>("show-settings", (callback) => () => callback()),
-
-  onTrayOpenEvent: registerListener<unknown>("tray-open-event", (callback) => (_event, data) => callback(data)),
-  onTrayNewNote: registerListener<void>("tray-new-note", (callback) => () => callback()),
-
   // Accessibility permission events (macOS)
   onAccessibilityMissing: (callback: (() => void) | undefined): Unsubscribe => {
     const listener = () => callback?.();

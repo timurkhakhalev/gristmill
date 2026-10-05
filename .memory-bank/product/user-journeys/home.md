@@ -11,6 +11,7 @@ As a Gristmill user, I want to find upcoming meetings and return to my notes.
 
 ## Behavior and limits
 
+- Tray New Note, event and Settings commands wait in preload until ControlPanel subscribes. New Note also waits for loaded spaces. The document-load sender guard applies to all three commands; delivering one does not override window visibility.
 - Home is the default main view. Notes without a selected note also shows Home.
 - Recent Notes fetches up to 50 notes across spaces, selected by last update. The display groups and orders this set by creation time.
 - Confirmed note events refresh the recent list, including deletion from a folder that is not loaded.

@@ -215,6 +215,8 @@ export default function PersonalNotesView({
     // pending save (#157).
     const retained = getNoteEditorUpdates(activeNote.id);
     const { draft: merged } = acceptExternalNoteUpdate({ ...currentDraft,
+      title: retained.title ?? currentDraft.title,
+      content: retained.content ?? currentDraft.content,
       dirtyTitle: retained.title !== undefined,
       dirtyContent: retained.content !== undefined,
     }, {

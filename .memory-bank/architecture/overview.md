@@ -55,3 +55,5 @@ Capture does not use the network.
 ## Local engine startup
 
 The llama.cpp and Whisper managers own each stop, spawn and readiness operation before it can yield. Identical pending requests share their result. Different model or startup settings requests wait and then check the loaded identity again. Stop invalidates queued starts and waits for their settlement; a new request waits for teardown. Llama context can grow and a smaller request can reuse the loaded context. Whisper captures VAD/thread options for wake rewarming.
+
+Llama runtime discovery uses the installer completeness rule: an executable binary, top-level shared libraries and the final `.complete` stamp. An unstamped kit triggers installation repair before startup. Discovery rechecks completeness instead of caching a path. A complete kit needs no installation network access.

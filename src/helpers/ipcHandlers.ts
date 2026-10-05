@@ -284,6 +284,7 @@ export class IPCHandlers {
       refreshMeetingSpeakerConfigFromNote: (noteId, note) =>
         this._meetingCoordinator?.refreshMeetingSpeakerConfigFromNote(noteId, note),
     });
+    this.meetingDetectionEngine.onNoteSaved = (noteId) => this._asyncMirrorWrite({ id: noteId });
     this._setupRetentionCleanup();
     this.setupHandlers();
   }
@@ -451,7 +452,7 @@ export class IPCHandlers {
     }
   }
 
-  _asyncMirrorWrite(note: NoteItem): void {
+  _asyncMirrorWrite(note: Pick<NoteItem, "id">): void {
     if (!this._noteFilesEnabled) {
       debugLogger.debug(
         "Mirror write skipped: note files disabled",
@@ -465,18 +466,22 @@ export class IPCHandlers {
       try {
         const current = this.databaseManager.getNote(note.id);
         if (!current) return;
-        note = current as unknown as NoteItem;
-        const folderName = this._getFolderName(note.folder_id);
-        markdownMirror.writeNote(note, folderName);
-        if (note.transcript) {
-          markdownMirror.writeTranscript(note, folderName, this._buildSpeakerMappings(note.id));
-        }
+        const folderName = this._getFolderName(current.folder_id);
+        markdownMirror.writeNote(current, folderName);
+        markdownMirror.writeTranscript(current, folderName, this._buildSpeakerMappings(note.id));
       } catch (error) {
         debugLogger.error("Note mirror failed after commit", {
           noteId: note.id, error: error instanceof Error ? error.message : String(error),
         }, "note-files");
       }
     });
+  }
+
+  _publishMeetingNoteProjection(noteId: number): void {
+    const note = this.databaseManager.getNote(noteId);
+    if (!note) return;
+    sendNoteUpdated(note);
+    this._asyncMirrorWrite(note);
   }
 
   _asyncMirrorDelete(noteId: number): void {
@@ -1348,10 +1353,7 @@ export class IPCHandlers {
         return corrections;
       },
       getCredential: getMeetingCredential,
-      onNoteProjectionChanged: (noteId) => {
-        const note = this.databaseManager.getNote(noteId);
-        if (note) sendNoteUpdated(note);
-      },
+      onNoteProjectionChanged: (noteId) => this._publishMeetingNoteProjection(noteId),
       onChanged: (recordingId, runId) =>
         broadcastToWindows("meeting-processing-updated", { recordingId, runId }),
     });

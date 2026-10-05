@@ -962,9 +962,7 @@ export class WindowManager {
 
   async openSettings(): Promise<void> {
     await this.createControlPanelWindow();
-    if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
-      this.controlPanelWindow.webContents.send("show-settings");
-    }
+    this.sendToControlPanel("show-settings");
   }
 
   showLoadFailureDialog(

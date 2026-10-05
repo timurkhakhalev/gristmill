@@ -599,8 +599,8 @@ for (const provider of ["google", "microsoft"] as const) {
           db.saveMicrosoftCalendars([calendar], email);
         }
         db.upsertCalendarEvents([{ id: email, calendar_id: email, provider,
-          summary: `private ${email}`, attendees: JSON.stringify([{ email, displayName: email }]),
-          start_time: new Date(Date.now() - 60_000).toISOString(), end_time: new Date(Date.now() + 3_600_000).toISOString(),
+          summary: `private ${email}`, attendees_count: 1, attendees: JSON.stringify([{ email, displayName: email }]),
+          start_time: new Date(Date.now() - (email.startsWith("a@") ? 30_000 : 60_000)).toISOString(), end_time: new Date(Date.now() + 3_600_000).toISOString(),
         }]);
       }
       const Scheduler = require("../../src/helpers/calendarReminderScheduler.ts");
@@ -609,9 +609,9 @@ for (const provider of ["google", "microsoft"] as const) {
       let reminders = 0;
       scheduler.meetingDetectionEngine = { handleCalendarReminder: () => { reminders++; } };
       scheduler.scheduleNextMeeting();
-      // The last delivered event is cached A regardless of the SQL tie order.
       const a = db.getCalendarEventById("a@example.com")!;
-      scheduler.onMeetingStart(a);
+      assert.equal(scheduler.getActiveMeetingState().activeMeeting?.id, a.id, "eligible A is cached before disconnect");
+      assert.equal(reminders, accounts.length, "A and each remaining account already delivered a reminder");
       const baseline = reminders;
       const Manager = require(`../../src/helpers/${provider}CalendarManager.ts`);
       const manager = provider === "google" ? new Manager(db, null, scheduler) : new Manager(db, scheduler);

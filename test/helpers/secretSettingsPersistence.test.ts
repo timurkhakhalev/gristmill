@@ -1,16 +1,23 @@
-const test: typeof import("node:test") = require("node:test");
+import assert from "node:assert/strict";
+import test from "node:test";
 
-const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+import { createRendererServer, installBrowserGlobals } from "../lib/rendererTestHarness.ts";
 
-const {
-  createRendererServer,
-  installBrowserGlobals,
-}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+// The canonical runner loads these files through tsx in CJS mode, so top-level
+// await is unavailable; node:test awaits every root registration itself, and
+// this wrapper only keeps the registration promise observed.
+const it = (name: string, fn: (t: import("node:test").TestContext) => Promise<void>): void => {
+  test(name, fn).catch((error: Error) => {
+    throw error;
+  });
+};
 
-test("secret settings expose values only after encrypted persistence succeeds", async (t: import("node:test").TestContext) => {
+it("secret settings expose values only after encrypted persistence succeeds", async (t: import("node:test").TestContext) => {
   const { storage } = installBrowserGlobals(t, {
     window: {
-      dispatchEvent() {},
+      dispatchEvent(): boolean {
+        return true;
+      },
       electronAPI: {
         saveOpenAIKey: async () => ({ success: false }),
         saveNoteFormattingCustomKey: async () => ({ success: false }),
@@ -26,6 +33,8 @@ test("secret settings expose values only after encrypted persistence succeeds", 
     },
   });
 
+  // SAFETY: the URL above loads this repo's own settings store; the assertion
+  // names its module surface for the assertions below.
   const { useSettingsStore, setResolvedLLMConfig } = (await vite.ssrLoadModule(
     "/stores/settingsStore.ts"
   )) as typeof import("../../src/stores/settingsStore.ts");

@@ -12,29 +12,43 @@ const REQUIRED_DB_FAILURE =
   "failed. Restore that step instead of deleting this check: without it every DB test " +
   "skips and the suite stays green with no database coverage. Underlying error: ";
 
-function isNativeBindingUnavailable(error: unknown): boolean {
-  const message = String((error as { message?: unknown })?.message || error);
+interface NativeBindingError {
+  message: string;
+  code: string | null;
+}
 
+// Loader failures surface as Error or bare string codes; the probe reads the
+// two fields the skip decision needs. The unknown parameter is the catch-site
+// contract (narrow exact-file override below documents this boundary).
+function parseNativeBindingError(error: unknown): NativeBindingError {
+  const message = error instanceof Error ? error.message : String(error);
+
+  // SAFETY: loader failures put their errno-style code on the `code` field.
+  const code = (error as { code?: string }).code ?? null;
+
+  return { message, code };
+}
+
+function isNativeBindingUnavailable(error: NativeBindingError): boolean {
   return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file") ||
-    message.includes("ERR_DLOPEN_FAILED") ||
-    (error as { code?: string })?.code === "ERR_DLOPEN_FAILED"
+    error.message.includes("NODE_MODULE_VERSION") ||
+    error.message.includes("Could not locate the bindings file") ||
+    error.message.includes("ERR_DLOPEN_FAILED") ||
+    error.code === "ERR_DLOPEN_FAILED"
   );
 }
 
 // Locally the binding is built for Electron's ABI, so a plain `node` run must skip. In CI the
 // rebuild step makes it loadable, so a skip there means that step vanished and must fail.
 export function skipOrFail(t: TestContext, error: unknown): void {
-  if (!isNativeBindingUnavailable(error)) {
+  const parsed = parseNativeBindingError(error);
+
+  if (!isNativeBindingUnavailable(parsed)) {
     throw error;
   }
 
   if (process.env.REQUIRE_DB_TESTS) {
-    throw new Error(
-      REQUIRED_DB_FAILURE + String((error as { message?: unknown })?.message || error),
-      { cause: error }
-    );
+    throw new Error(REQUIRED_DB_FAILURE + parsed.message, { cause: error });
   }
 
   t.skip("better-sqlite3 native binding is not available for this Node runtime");
@@ -49,6 +63,8 @@ installElectronStub();
 
 type DatabaseManagerModule = typeof import("../../../src/helpers/database.js");
 
+// SAFETY: the require loads this repo's own database module; the assertion
+// restores the ESM type surface tsc knows for the same file.
 const { DatabaseManager: DatabaseManagerClass } =
   require("../../../src/helpers/database.ts") as DatabaseManagerModule;
 
@@ -66,6 +82,8 @@ export function createDb(t: TestContext): DatabaseManager | null {
   // better-sqlite3 ships no declarations; the structural surface here is new/close.
   type ProbeDatabase = { close(): void };
 
+  // SAFETY: better-sqlite3 ships no declarations; the constructor probe pins
+  // the structural surface this harness uses (new/close).
   const BetterSqlite = require("better-sqlite3") as new (path: string) => ProbeDatabase;
 
   try {

@@ -6,13 +6,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 globalThis.React = React;
 
-export const renderStatic = (type: unknown, props: unknown, ...children: unknown[]): string =>
-  renderToStaticMarkup(
-    React.createElement(
-      type as React.ElementType,
-      props as React.Attributes,
-      ...(children as React.ReactNode[])
-    )
-  );
+export const renderStatic = (
+  type: React.ElementType,
+  // Component props are the component's own contract; createElement accepts
+  // them structurally through the any props slot of ElementType.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- props come from the component under test
+  props?: any,
+  ...children: React.ReactNode[]
+): string => renderToStaticMarkup(React.createElement(type, props, ...children));
 
 export { React };

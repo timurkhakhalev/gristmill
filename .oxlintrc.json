@@ -89,6 +89,31 @@
       }
     },
     {
+      "files": ["test/helpers/harness/electronStub.ts"],
+      "rules": {
+        "quality/no-chained-type-assertions": "off",
+        "quality/no-unknown-returns": "off"
+      }
+    },
+    {
+      "files": ["test/helpers/harness/db.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
+      "files": ["test/helpers/devRendererOriginElectron.ts"],
+      "rules": {
+        "quality/no-chained-type-assertions": "off"
+      }
+    },
+    {
+      "files": ["test/lib/rendererTestHarness.ts"],
+      "rules": {
+        "quality/no-chained-type-assertions": "off"
+      }
+    },
+    {
       "files": ["src/helpers/ipcHandlers.ts"],
       "rules": {
         "quality/no-chained-type-assertions": "off",

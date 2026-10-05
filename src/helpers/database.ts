@@ -76,6 +76,19 @@ const CALENDARS_TABLE_BY_PROVIDER: Record<string, string> = {
 };
 const CALENDAR_PROVIDERS: ReadonlySet<string> = new Set(["google", "microsoft", "apple"]);
 const CALENDAR_TOKEN_PREFIX = "ohenc:v1:";
+const GOOGLE_CALENDARS_SCHEMA = `CREATE TABLE IF NOT EXISTS google_calendars (
+          id TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          description TEXT,
+          background_color TEXT,
+          is_selected INTEGER NOT NULL DEFAULT 1,
+          is_primary INTEGER NOT NULL DEFAULT 0,
+          sync_token TEXT,
+          sync_token_expires_at INTEGER,
+          account_email TEXT NOT NULL DEFAULT '',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id, account_email)
+        );`;
 
 function encryptCalendarToken(token: string): string {
   if (!token) throw new Error("Calendar OAuth response did not include a token");
@@ -489,6 +502,7 @@ function selectedCalendarFilter(): string {
       SELECT 1 FROM google_calendars
       WHERE google_calendars.id = calendar_events.calendar_id
         AND google_calendars.is_selected = 1
+        AND google_calendars.account_email != ''
     )) OR
     (provider = 'microsoft' AND EXISTS (
       SELECT 1 FROM microsoft_calendars
@@ -925,18 +939,7 @@ export class DatabaseManager {
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE TABLE IF NOT EXISTS google_calendars (
-          id TEXT PRIMARY KEY,
-          summary TEXT NOT NULL,
-          description TEXT,
-          background_color TEXT,
-          is_selected INTEGER NOT NULL DEFAULT 1,
-          is_primary INTEGER NOT NULL DEFAULT 0,
-          sync_token TEXT,
-          sync_token_expires_at INTEGER,
-          account_email TEXT,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
+        ${GOOGLE_CALENDARS_SCHEMA}
 
         CREATE TABLE IF NOT EXISTS microsoft_calendar_tokens (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1196,6 +1199,18 @@ export class DatabaseManager {
         for (const name of added) {
           if (!columns.some((column) => column.name === name)) this.sql.exec(`ALTER TABLE ${table} ADD COLUMN ${name} TEXT`);
         }
+      }
+      const googleCalendarColumns = this.sql.pragma("table_info(google_calendars)") as Array<{ name: string; pk: number }>;
+      if (!googleCalendarColumns.some(column => column.name === "account_email" && column.pk > 0)) {
+        this.sql.transaction(() => {
+          this.sql.exec("ALTER TABLE google_calendars RENAME TO google_calendars_single_account");
+          this.sql.exec(GOOGLE_CALENDARS_SCHEMA);
+          this.sql.exec(`INSERT INTO google_calendars
+            (id, summary, description, background_color, is_selected, is_primary, sync_token, sync_token_expires_at, account_email, created_at)
+            SELECT id, summary, description, background_color, is_selected, is_primary, sync_token, sync_token_expires_at,
+              COALESCE(account_email, ''), created_at FROM google_calendars_single_account`);
+          this.sql.exec("DROP TABLE google_calendars_single_account");
+        })();
       }
       const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{ name: string }>;
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
@@ -3439,11 +3454,11 @@ export class DatabaseManager {
     this.sql.prepare("DELETE FROM google_calendars WHERE account_email = ?").run(email);
     return { success: true };
   }
-  saveGoogleCalendars(calendars: GoogleCalendarInput[], accountEmail: string | null = null): {
+  saveGoogleCalendars(calendars: GoogleCalendarInput[], accountEmail: string): {
     success: boolean;
   } {
     const stmt = this.sql.prepare(
-      "INSERT INTO google_calendars (id, summary, description, background_color, account_email, is_primary) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, description = excluded.description, background_color = excluded.background_color, account_email = excluded.account_email, is_primary = excluded.is_primary"
+      "INSERT INTO google_calendars (id, summary, description, background_color, account_email, is_primary) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id, account_email) DO UPDATE SET summary = excluded.summary, description = excluded.description, background_color = excluded.background_color, is_primary = excluded.is_primary"
     );
     calendars.forEach((cal) =>
       stmt.run(
@@ -3460,14 +3475,23 @@ export class DatabaseManager {
   getGoogleCalendars(accountEmail: string | null = null): GoogleCalendarRow[] {
     return (accountEmail
       ? this.sql.prepare("SELECT * FROM google_calendars WHERE account_email = ?").all(accountEmail)
-      : this.sql.prepare("SELECT * FROM google_calendars").all()) as GoogleCalendarRow[];
+      : this.sql.prepare(`SELECT * FROM google_calendars WHERE rowid IN (
+          SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (
+            PARTITION BY id ORDER BY is_selected DESC, is_primary DESC, account_email
+          ) AS rank FROM google_calendars) WHERE rank = 1
+        )`).all()) as GoogleCalendarRow[];
   }
   getSelectedCalendars(accountEmail: string | null = null): GoogleCalendarRow[] {
     return (accountEmail
       ? this.sql
-          .prepare("SELECT * FROM google_calendars WHERE is_selected = 1 AND account_email = ?")
+          .prepare("SELECT * FROM google_calendars WHERE is_selected = 1 AND account_email = ? AND account_email IN (SELECT google_email FROM google_calendar_tokens)")
           .all(accountEmail)
-      : this.sql.prepare("SELECT * FROM google_calendars WHERE is_selected = 1").all()) as GoogleCalendarRow[];
+      : this.sql.prepare(`SELECT * FROM google_calendars WHERE rowid IN (
+          SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (
+            PARTITION BY id ORDER BY is_primary DESC, account_email
+          ) AS rank FROM google_calendars WHERE is_selected = 1
+            AND account_email IN (SELECT google_email FROM google_calendar_tokens)) WHERE rank = 1
+        )`).all()) as GoogleCalendarRow[];
   }
   applyPrimaryOnlyToSelection(primaryOnly: boolean): { success: boolean } {
     this.sql
@@ -3666,10 +3690,10 @@ export class DatabaseManager {
           .get(eventId, excludeNoteId)) as RawNoteRow | undefined;
     return raw ? hydrateNote(raw) : null;
   }
-  updateCalendarSyncToken(id: string, token: string, expiresAt: number): { success: boolean } {
+  updateCalendarSyncToken(id: string, token: string, expiresAt: number, accountEmail: string): { success: boolean } {
     this.sql
-      .prepare("UPDATE google_calendars SET sync_token = ?, sync_token_expires_at = ? WHERE id = ?")
-      .run(token, expiresAt, id);
+      .prepare("UPDATE google_calendars SET sync_token = ?, sync_token_expires_at = ? WHERE id = ? AND account_email = ?")
+      .run(token, expiresAt, id, accountEmail);
     return { success: true };
   }
   updateMicrosoftCalendarSyncToken(id: string, token: string, expiresAt: number): { success: boolean } {

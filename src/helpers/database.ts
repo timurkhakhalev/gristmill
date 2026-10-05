@@ -3478,7 +3478,7 @@ export class DatabaseManager {
       : this.sql.prepare(`SELECT * FROM google_calendars WHERE rowid IN (
           SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (
             PARTITION BY id ORDER BY is_selected DESC, is_primary DESC, account_email
-          ) AS rank FROM google_calendars) WHERE rank = 1
+          ) AS rank FROM google_calendars WHERE account_email != '') WHERE rank = 1
         )`).all()) as GoogleCalendarRow[];
   }
   getSelectedCalendars(accountEmail: string | null = null): GoogleCalendarRow[] {

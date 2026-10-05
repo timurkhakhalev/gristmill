@@ -6,17 +6,17 @@ Run all commands from the repository root.
 
 ## Test selection
 
-| Command | Selection |
-| --- | --- |
-| `pnpm test` | Full suite, including compiler probes and native and GUI checks. A maximum of two ordinary files at the same time |
-| `pnpm test --verbose` | The same selection with full live output |
-| `pnpm test -- --processes 1` | Explicit one-process diagnostic mode |
-| `pnpm test --domain calendar` | All kinds in one domain |
-| `pnpm test --domain calendar --domain notes` | The union of the domains, without duplicates |
-| `pnpm test --domain calendar --kind unit` | Unit tests in the domain |
-| `pnpm test --kind types` | Batch and standalone compiler probes in all domains |
-| `pnpm test --domain calendar --list` | Read-only plan with kind, domains and build requirement |
-| `pnpm test --help` | Available selectors and usage |
+| Command                                      | Selection                                                                                                         |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`                                  | Full suite, including compiler probes and native and GUI checks. A maximum of two ordinary files at the same time |
+| `pnpm test --verbose`                        | The same selection with full live output                                                                          |
+| `pnpm test -- --processes 1`                 | Explicit one-process diagnostic mode                                                                              |
+| `pnpm test --domain calendar`                | All kinds in one domain                                                                                           |
+| `pnpm test --domain calendar --domain notes` | The union of the domains, without duplicates                                                                      |
+| `pnpm test --domain calendar --kind unit`    | Unit tests in the domain                                                                                          |
+| `pnpm test --kind types`                     | Batch and standalone compiler probes in all domains                                                               |
+| `pnpm test --domain calendar --list`         | Read-only plan with kind, domains and build requirement                                                           |
+| `pnpm test --help`                           | Available selectors and usage                                                                                     |
 
 ### Selector rules
 
@@ -54,7 +54,7 @@ Run all commands from the repository root.
 ## Typecheck, lint and build
 
 - `pnpm run typecheck:main`, `pnpm run typecheck:renderer`, `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select compiler targets for the native TypeScript 7 `tsc`.
-- `pnpm run typecheck` runs those targets, `typecheck:companion` and `typecheck:scripts` in sequence.
+- `pnpm run typecheck` runs those targets, `typecheck:companion`, `typecheck:scripts` and `typecheck:lint-tools` in sequence.
 - `pnpm run build:main` uses the same native compiler for emitted Electron code.
 - The `typescript` dependency is an alias for TypeScript 6. Compiler API consumers (test probes and ESLint) use it. Its executable is `tsc6`. Keep the CLI and API packages separate until TypeScript 7 supplies a supported programmatic API.
 - The test target automatically includes ordinary TypeScript tests and helpers. It excludes intentionally invalid type-probe fixtures.
@@ -63,6 +63,11 @@ Run all commands from the repository root.
 - When a full suite is necessary, also run `pnpm run typecheck:renderer` separately.
 - `pnpm run lint` covers the root and main configuration and the renderer configuration.
 - For focused lint, use the configuration that owns the changed file. The root and `src/` have different configurations.
+- `pnpm run lint:oxlint` checks the root Oxlint policy with type-aware rules in one pass. Use `pnpm exec oxlint --format json .` for all diagnostics. The root, test and script `tsconfig.json` files inherit the canonical compiler settings so the type-aware engine can discover them. Renderer and extension already have standard config entry points.
+- `pnpm run lint:oxlint:fix` applies ordinary Oxlint fixes. It does not enable suggestions or dangerous fixes. Unfixed errors still produce a failed command.
+- `pnpm run lint:policy:test` checks the copied TypeScript quality bundle with valid and invalid consumer examples.
+- `pnpm run format:oxfmt` is check-only. `pnpm run format:oxfmt:write` writes supported files with the root Oxfmt configuration. Temporary task files and the copied quality bundle are excluded.
+- Run lint fixes before Oxfmt. A second complete pass must not change files. Preserve the separate typecheck and behavior checks; lint does not prove result ownership or resource cleanup.
 - Do not use auto-fix across unrelated changed files.
 - `pnpm run build:renderer` examines the renderer bundle.
 - Packaging is a separate, heavier check. Do it when the package output or native integration is relevant.

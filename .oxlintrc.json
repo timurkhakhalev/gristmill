@@ -1,0 +1,212 @@
+{
+  "extends": ["./tools/typescript-quality/.oxlintrc.json"],
+  "plugins": ["eslint", "typescript", "oxc", "react"],
+  "jsPlugins": [
+    {
+      "name": "gristmill",
+      "specifier": "./tools/oxlint/critical-write.mts"
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/**",
+    "tools/typescript-quality/**",
+    ".tasks/**",
+    "dist/**",
+    "dist-dev/**",
+    "dist-main/**",
+    "src/dist/**",
+    "build/**",
+    "**/*.min.js",
+    "test/scripts/type-probes/*-0?.ts"
+  ],
+  "env": {
+    "node": true,
+    "browser": true
+  },
+  "rules": {
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        "ignoreVoid": false
+      }
+    ],
+    "typescript/no-misused-promises": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "no-empty": [
+      "error",
+      {
+        "allowEmptyCatch": false
+      }
+    ],
+    "no-async-promise-executor": "error",
+    "no-unsafe-finally": "error",
+    "no-control-regex": "off",
+    "react/globals": "off",
+    "react/immutability": "off",
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "react/purity": "off",
+    "react/incompatible-library": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.{ts,tsx,cts,mts}"],
+      "rules": {
+        "no-undef": "off"
+      }
+    },
+    {
+      "files": [
+        "**/src/*.{ts,tsx,js,jsx}",
+        "**/src/components/**/*.{ts,tsx,js,jsx}",
+        "**/src/hooks/**/*.{ts,tsx,js,jsx}",
+        "**/src/stores/**/*.{ts,tsx,js,jsx}",
+        "**/src/services/**/*.{ts,tsx,js,jsx}",
+        "**/src/models/**/*.{ts,tsx,js,jsx}",
+        "**/src/lib/**/*.{ts,tsx,js,jsx}"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^(?:node:|electron(?:/|$)|(?:_http_agent|_http_client|_http_common|_http_incoming|_http_outgoing|_http_server|_stream_duplex|_stream_passthrough|_stream_readable|_stream_transform|_stream_wrap|_stream_writable|_tls_common|_tls_wrap|assert|assert/strict|async_hooks|buffer|child_process|cluster|console|constants|crypto|dgram|diagnostics_channel|dns|dns/promises|domain|events|fs|fs/promises|http|http2|https|inspector|inspector/promises|module|net|os|path|path/posix|path/win32|perf_hooks|process|punycode|querystring|readline|readline/promises|repl|stream|stream/consumers|stream/promises|stream/web|string_decoder|sys|timers|timers/promises|tls|trace_events|tty|url|util|util/types|v8|vm|wasi|worker_threads|zlib|sea|sqlite|test|test/reporters)(?:/|$))",
+                "message": "Renderer cannot import Node/Electron or main implementation. Use window.electronAPI, a shared contract, or an approved browser-safe helper."
+              },
+              {
+                "regex": "(?:^|/)(?:preload/|workers/|utils/(?:process|serverUtils)(?:\\.[cm]?[jt]s)?$|localReasoningBridge(?:\\.[cm]?[jt]s)?$)|^(?:\\.\\./)+(?:main|preload)(?:\\.[cm]?[jt]s)?$",
+                "message": "Renderer cannot import Node/Electron or main implementation. Use window.electronAPI, a shared contract, or an approved browser-safe helper."
+              },
+              {
+                "group": [
+                  "**/helpers/**",
+                  "!**/helpers/activeMicRecovery",
+                  "!**/helpers/agentToolPresentation",
+                  "!**/helpers/builtinActions",
+                  "!**/helpers/calendarAvailability",
+                  "!**/helpers/calendarDescription",
+                  "!**/helpers/chatRouting",
+                  "!**/helpers/dictionaryImport",
+                  "!**/helpers/dictionaryStartup",
+                  "!**/helpers/geminiResponse",
+                  "!**/helpers/llmRequestTimeout",
+                  "!**/helpers/localASROrganization",
+                  "!**/helpers/localModelSelections",
+                  "!**/helpers/meetingAudioPipeline",
+                  "!**/helpers/meetingClockSync",
+                  "!**/helpers/meetingFileTranscription",
+                  "!**/helpers/meetingFollowUpPrompt",
+                  "!**/helpers/meetingJoinUrl",
+                  "!**/helpers/meetingRecordingConfigSnapshot",
+                  "!**/helpers/meetingRecordingRequest",
+                  "!**/helpers/meetingRecordingSession",
+                  "!**/helpers/micDeviceSelection",
+                  "!**/helpers/micSelectionRecovery",
+                  "!**/helpers/microphoneSelection",
+                  "!**/helpers/noteFormattingOverrides",
+                  "!**/helpers/reasoningRouting",
+                  "!**/helpers/selfHostedTranscription",
+                  "!**/helpers/speakerCount",
+                  "!**/helpers/stripThinking",
+                  "!**/helpers/transcriptionRoute",
+                  "!**/helpers/activeMicRecovery.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/agentToolPresentation.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/builtinActions.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/calendarAvailability.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/calendarDescription.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/chatRouting.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/dictionaryImport.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/dictionaryStartup.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/geminiResponse.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/llmRequestTimeout.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/localASROrganization.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/localModelSelections.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/meetingAudioPipeline.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/meetingClockSync.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/meetingFileTranscription.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/meetingFollowUpPrompt.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/meetingJoinUrl.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/meetingRecordingConfigSnapshot.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/meetingRecordingRequest.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/meetingRecordingSession.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/micDeviceSelection.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/micSelectionRecovery.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/microphoneSelection.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/noteFormattingOverrides.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/reasoningRouting.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/selfHostedTranscription.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/speakerCount.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/stripThinking.{js,jsx,ts,tsx,mjs,mts,cjs,cts}",
+                  "!**/helpers/transcriptionRoute.{js,jsx,ts,tsx,mjs,mts,cjs,cts}"
+                ],
+                "message": "Renderer cannot import Node/Electron or main implementation. Use window.electronAPI, a shared contract, or an approved browser-safe helper."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": [
+          "error",
+          "process",
+          "Buffer",
+          "require",
+          "module",
+          "exports",
+          "__dirname",
+          "__filename"
+        ],
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "error",
+        "react/only-export-components": [
+          "warn",
+          {
+            "allowConstantExport": true
+          }
+        ],
+        "gristmill/no-discarded-critical-write": "error"
+      }
+    },
+    {
+      "files": ["**/src/services/localReasoningBridge.ts", "**/src/eslint.config.js"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-globals": "off"
+      }
+    },
+    {
+      "files": ["**/extension/src/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^(?:node:|electron(?:/|$)|(?:_http_agent|_http_client|_http_common|_http_incoming|_http_outgoing|_http_server|_stream_duplex|_stream_passthrough|_stream_readable|_stream_transform|_stream_wrap|_stream_writable|_tls_common|_tls_wrap|assert|assert/strict|async_hooks|buffer|child_process|cluster|console|constants|crypto|dgram|diagnostics_channel|dns|dns/promises|domain|events|fs|fs/promises|http|http2|https|inspector|inspector/promises|module|net|os|path|path/posix|path/win32|perf_hooks|process|punycode|querystring|readline|readline/promises|repl|stream|stream/consumers|stream/promises|stream/web|string_decoder|sys|timers|timers/promises|tls|trace_events|tty|url|util|util/types|v8|vm|wasi|worker_threads|zlib|sea|sqlite|test|test/reporters)(?:/|$))",
+                "message": "Renderer cannot import Node/Electron or main implementation. Use window.electronAPI, a shared contract, or an approved browser-safe helper."
+              },
+              {
+                "group": ["**/helpers/**"],
+                "message": "Companion cannot load main-process helpers."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": ["error", "process", "Buffer", "require", "__dirname"]
+      }
+    }
+  ],
+  "options": {
+    "typeAware": true
+  }
+}

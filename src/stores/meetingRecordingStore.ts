@@ -385,27 +385,33 @@ export const getSystemAudioLevel = (): number =>
 
 export const getActiveRecordingSessionId = (): string | null => activeRecordingSessionId;
 
-async function commitMicIntent(sessionId: string, recordingId: string, manualMuted: boolean, platformMuted: boolean): Promise<boolean> {
+async function commitMicIntent(sessionId: string, recordingId: string, manualMuted: boolean, platformMuted: boolean, sourceGeneration = captureSourceGenerations.mic): Promise<boolean> {
   if (activeRecordingSessionId !== sessionId || !isRecordingFlag || !micProcessor) return false;
+  const processor = micProcessor;
   const sequence = micIntentSequence + 1;
   const effectiveMuted = manualMuted || platformMuted;
   let gate: Awaited<ReturnType<typeof setAudioPipelineGate>> | null = null;
   try {
-    gate = await setAudioPipelineGate(micProcessor, effectiveMuted, sequence);
+    gate = await setAudioPipelineGate(processor, effectiveMuted, sequence);
     if (activeRecordingSessionId !== sessionId) throw new Error("Microphone intent belongs to a stale recording");
     const response = await window.electronAPI?.meetingTranscriptionSetMicIntent?.({
       sessionId,
       recordingId,
       sequence,
-      sourceGeneration: captureSourceGenerations.mic,
+      sourceGeneration,
       manualMuted,
       platformMuted,
       boundaryFrame: gate.ack.boundaryFrame,
       boundaryAlignment: gate.ack.boundaryAlignment,
     });
-    if (!response?.success || response.sequence !== sequence || response.sourceGeneration !== captureSourceGenerations.mic || response.effectiveMuted !== effectiveMuted) {
+    if (!response?.success || response.sequence !== sequence || response.sourceGeneration !== sourceGeneration || response.effectiveMuted !== effectiveMuted) {
       throw new Error(response?.error || "Microphone intent was not acknowledged");
     }
+    if (activeRecordingSessionId !== sessionId || !isRecordingFlag || micProcessor !== processor) {
+      gate.commit();
+      return false;
+    }
+    captureSourceGenerations.mic = sourceGeneration;
     micIntentSequence = sequence;
     useMeetingRecordingStore.setState({ manualMicMuted: manualMuted, platformMicMuted: platformMuted });
     micRecovery?.setIntentionalMute(effectiveMuted);
@@ -413,6 +419,7 @@ async function commitMicIntent(sessionId: string, recordingId: string, manualMut
     return true;
   } catch (error) {
     gate?.commit();
+    if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return false;
     captureDrainErrorCode ??= "mic-intent-transition-failed";
     reportMeetingError((error as Error).message, { captureErrorCode: captureDrainErrorCode });
     if (isRecordingFlag) void stopRecording(sessionId);
@@ -1032,7 +1039,8 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         stream: MediaStream,
         context: AudioContext,
         source: "mic" | "system",
-        holdMicGate = false
+        holdMicGate = false,
+        sourceGeneration = captureSourceGenerations[source]
       ) => {
         const clockSync = captureClockSync;
         const clockOriginNs = captureClockOriginNs;
@@ -1043,7 +1051,6 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           captureRendererOrigins[source] = renderOrigin;
         }
         const localOriginFrame = renderOrigin.frame;
-        const sourceGeneration = captureSourceGenerations[source];
         return createAudioPipeline({
           stream,
           context,
@@ -1224,33 +1231,43 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
               }
               captureLastSequences.mic = lastSequence;
               micSource?.disconnect();
-              captureSourceGenerations.mic += 1;
-              const nextPipeline = await createCapturePipeline(replacement, context, "mic", true);
-              if (!isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
-                nextPipeline.source.disconnect();
-                await flushAndDisconnectProcessor(nextPipeline.processor);
-                throw new Error("Meeting recording stopped while switching microphones");
+              const nextGeneration = captureSourceGenerations.mic + 1;
+              const reservedEpoch = captureEpochIndices.mic;
+              try {
+                const nextPipeline = await createCapturePipeline(replacement, context, "mic", true, nextGeneration);
+                if (!isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
+                  nextPipeline.source.disconnect();
+                  await flushAndDisconnectProcessor(nextPipeline.processor);
+                  throw new Error("Meeting recording stopped while switching microphones");
+                }
+                const nextSource = nextPipeline.source;
+                micProcessor = nextPipeline.processor;
+                if (micAnalyser) nextPipeline.processor.connect(micAnalyser);
+                previous?.getTracks().forEach((track) => track.stop());
+                micSource = nextSource;
+                micStream = replacement;
+                const replacementTrack = replacement.getAudioTracks()[0];
+                if (!replacementTrack || replacementTrack.readyState === "ended") {
+                  throw new Error("Recovered microphone track ended during setup");
+                }
+                // Device mute belongs to this track. Manual and Meet mute remain
+                // independent and still hold the replacement gate closed.
+                deviceMicMuted = replacementTrack.muted;
+                requestedPlatformMicMuted = deviceMicMuted || meetMicMuted;
+                useMeetingRecordingStore.setState({ platformMicMuted: requestedPlatformMicMuted });
+                if (!await commitMicIntent(sessionId, recordingId, requestedManualMicMuted, requestedPlatformMicMuted, nextGeneration)) {
+                  throw new Error("Recovered microphone intent was not acknowledged");
+                }
+                useMeetingRecordingStore.setState({ micCaptureDeviceLabel: replacement.getAudioTracks()[0]?.label?.trim() || null });
+                logger.info("Meeting microphone capture recovered", {}, "meeting");
+              } catch (error) {
+                // A held replacement emits no packets before its intent ACK.
+                // Failed setup must not consume either identity in main.
+                if (activeRecordingSessionId === sessionId && captureSourceGenerations.mic !== nextGeneration) {
+                  captureEpochIndices.mic = reservedEpoch;
+                }
+                throw error;
               }
-              const nextSource = nextPipeline.source;
-              micProcessor = nextPipeline.processor;
-              if (micAnalyser) nextPipeline.processor.connect(micAnalyser);
-              previous?.getTracks().forEach((track) => track.stop());
-              micSource = nextSource;
-              micStream = replacement;
-              const replacementTrack = replacement.getAudioTracks()[0];
-              if (!replacementTrack || replacementTrack.readyState === "ended") {
-                throw new Error("Recovered microphone track ended during setup");
-              }
-              // Device mute belongs to this track. Manual and Meet mute remain
-              // independent and still hold the replacement gate closed.
-              deviceMicMuted = replacementTrack.muted;
-              requestedPlatformMicMuted = deviceMicMuted || meetMicMuted;
-              useMeetingRecordingStore.setState({ platformMicMuted: requestedPlatformMicMuted });
-              if (!await commitMicIntent(sessionId, recordingId, requestedManualMicMuted, requestedPlatformMicMuted)) {
-                throw new Error("Recovered microphone intent was not acknowledged");
-              }
-              useMeetingRecordingStore.setState({ micCaptureDeviceLabel: replacement.getAudioTracks()[0]?.label?.trim() || null });
-              logger.info("Meeting microphone capture recovered", {}, "meeting");
             });
             micIntentQueue = handoff.then(() => true, () => false);
             try {

@@ -1481,6 +1481,7 @@
       }
     },
     "editor": {
+      "saveFailed": "笔记未保存。您的编辑仍可用。",
       "untitled": "无标题",
       "noteTitle": "笔记标题",
       "stop": "停止",

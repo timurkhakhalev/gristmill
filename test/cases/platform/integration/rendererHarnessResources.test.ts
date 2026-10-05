@@ -1,7 +1,7 @@
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { createRendererServer, installMicCaptureGlobals } from "../../../lib/rendererTestHarness.ts";
+import { createRendererServer, installMicCaptureGlobals, installBrowserGlobals, installHookDom } from "../../../lib/rendererTestHarness.ts";
 
 function cleanupOwner(t: TestContext) {
   const hooks: Array<() => Promise<void>> = [];
@@ -54,5 +54,46 @@ test("mic globals restore original descriptors, including accessors, and remove 
     catch { await cleanup(); }
     for (const name of names) assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, name),
       existing ? { get: getter, set: undefined, enumerable: true, configurable: true } : undefined);
+  }
+});
+
+test("DOM constructors restore exact absent, value and accessor descriptors after failure", async t => {
+  const names = ["Element", "HTMLElement", "HTMLIFrameElement", "SVGElement"] as const;
+  const originals = names.map(name => Object.getOwnPropertyDescriptor(globalThis, name));
+  t.after(() => names.forEach((name, index) => {
+    if (originals[index]) Object.defineProperty(globalThis, name, originals[index]!);
+    else delete (globalThis as Record<string, unknown>)[name];
+  }));
+  const value = function Original() {};
+  const getter = () => value;
+  for (const kind of ["absent", "value", "accessor"] as const) {
+    for (const name of names) {
+      delete (globalThis as Record<string, unknown>)[name];
+      if (kind === "value") Object.defineProperty(globalThis, name, { value, writable: false, enumerable: false, configurable: true });
+      if (kind === "accessor") Object.defineProperty(globalThis, name, { get: getter, enumerable: false, configurable: true });
+    }
+    const expected = names.map(name => Object.getOwnPropertyDescriptor(globalThis, name));
+    const { owner, cleanup } = cleanupOwner(t);
+    t.after(cleanup);
+    installBrowserGlobals(owner);
+    installHookDom(owner);
+    for (const name of names) assert.notEqual((globalThis as Record<string, unknown>)[name], value);
+    try { assert.fail("consumer failed"); } catch { await cleanup(); }
+    assert.deepEqual(names.map(name => Object.getOwnPropertyDescriptor(globalThis, name)), expected);
+    const failed = cleanupOwner(t);
+    t.after(failed.cleanup);
+    installBrowserGlobals(failed.owner);
+    const define = Object.defineProperty;
+    let inject = true;
+    const mock = t.mock.method(Object, "defineProperty", (target: object, name: PropertyKey, descriptor: PropertyDescriptor) => {
+      if (inject && target === globalThis && name === "HTMLElement") {
+        inject = false;
+        throw new Error("setup failed after Element installation");
+      }
+      return define(target, name, descriptor);
+    });
+    try { assert.throws(() => installHookDom(failed.owner), /setup failed/); }
+    finally { mock.mock.restore(); await failed.cleanup(); }
+    assert.deepEqual(names.map(name => Object.getOwnPropertyDescriptor(globalThis, name)), expected);
   }
 });

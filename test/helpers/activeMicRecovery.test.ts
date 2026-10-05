@@ -1,7 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-interface FakeTrackOptions { deviceId?: string; groupId?: string; muted?: boolean }
+interface FakeTrackOptions {
+  deviceId?: string;
+  groupId?: string;
+  muted?: boolean;
+}
+
 class FakeTrack extends EventTarget {
   readyState: string;
   muted: boolean;
@@ -57,7 +63,10 @@ class FakeMediaDevices extends EventTarget {
   }
 }
 
-type PendingResolve = (v: import("../../src/helpers/activeMicRecovery.js").RecoverableAudioStream) => void;
+type PendingResolve = (
+  v: import("../../src/helpers/activeMicRecovery.js").RecoverableAudioStream
+) => void;
+
 const mic = (deviceId: string, groupId: string = deviceId, label: string = deviceId) => ({
   kind: "audioinput",
   deviceId,
@@ -71,6 +80,7 @@ const speaker = (deviceId: string) => ({
   groupId: deviceId,
   label: deviceId,
 });
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test("stopping before a track mute grace expires cannot reacquire the microphone", async (t) => {
@@ -78,11 +88,17 @@ test("stopping before a track mute grace expires cannot reacquire the microphone
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const track = new FakeTrack();
   let acquired = 0;
+
   const controller = new ActiveMicRecoveryController<FakeStream>({
     mediaDevices: new FakeMediaDevices([mic("mic-1")]),
-    acquire: async () => { acquired += 1; return new FakeStream(new FakeTrack()); },
+    acquire: async () => {
+      acquired += 1;
+
+      return new FakeStream(new FakeTrack());
+    },
     onRecovered: async () => {},
   });
+
   t.after(() => controller.stop());
   await controller.start(new FakeStream(track));
   track.muted = true;
@@ -98,11 +114,16 @@ test("stopping an unavailable microphone cancels its scheduled acquisition retry
   const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let acquired = 0;
+
   const controller = new ActiveMicRecoveryController<FakeStream>({
     mediaDevices: new FakeMediaDevices([mic("mic-1")]),
-    acquire: async () => { acquired += 1; throw new Error("Synthetic unavailable device"); },
+    acquire: async () => {
+      acquired += 1;
+      throw new Error("Synthetic unavailable device");
+    },
     onRecovered: async () => {},
   });
+
   t.after(() => controller.stop());
   await controller.start(new FakeStream(new FakeTrack()));
   assert.equal(await controller.recover("ended"), false);
@@ -117,11 +138,17 @@ test("intentional mic gate mute does not schedule track recovery", async (t) => 
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const track = new FakeTrack();
   let acquired = 0;
+
   const controller = new ActiveMicRecoveryController<FakeStream>({
     mediaDevices: new FakeMediaDevices([mic("mic-1")]),
-    acquire: async () => { acquired += 1; return new FakeStream(new FakeTrack()); },
+    acquire: async () => {
+      acquired += 1;
+
+      return new FakeStream(new FakeTrack());
+    },
     onRecovered: async () => {},
   });
+
   t.after(() => controller.stop());
   await controller.start(new FakeStream(track));
   controller.setIntentionalMute(true);
@@ -138,15 +165,24 @@ test("explicit selection waits for an in-flight recovery and then acquires the n
   let resolveFirst!: (stream: FakeStream) => void;
   const replacements: FakeStream[] = [];
   const reasons: string[] = [];
+
   const controller = new ActiveMicRecoveryController<FakeStream>({
     mediaDevices,
     acquire: async (reason) => {
       reasons.push(reason);
-      if (reasons.length === 1) return new Promise((resolve) => { resolveFirst = resolve; });
+
+      if (reasons.length === 1)
+        return new Promise((resolve) => {
+          resolveFirst = resolve;
+        });
+
       return new FakeStream(new FakeTrack({ deviceId: "mic-3" }));
     },
-    onRecovered: async (stream) => { replacements.push(stream); },
+    onRecovered: async (stream) => {
+      replacements.push(stream);
+    },
   });
+
   t.after(() => controller.stop());
   await controller.start(new FakeStream(new FakeTrack()));
   const recovery = controller.recover("ended");
@@ -162,11 +198,19 @@ test("stop cancels a selection waiting for an older recovery", async (t) => {
   const { ActiveMicRecoveryController } = await import("../../src/helpers/activeMicRecovery.ts");
   let resolveFirst!: (stream: FakeStream) => void;
   let acquired = 0;
+
   const controller = new ActiveMicRecoveryController<FakeStream>({
     mediaDevices: new FakeMediaDevices([mic("mic-1")]),
-    acquire: () => { acquired += 1; return new Promise((resolve) => { resolveFirst = resolve; }); },
+    acquire: () => {
+      acquired += 1;
+
+      return new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+    },
     onRecovered: async () => {},
   });
+
   t.after(() => controller.stop());
   await controller.start(new FakeStream(new FakeTrack()));
   const recovery = controller.recover("ended");
@@ -185,15 +229,18 @@ test("filters output-only changes and keeps a healthy pinned microphone", async 
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);
   const original = new FakeStream(new FakeTrack());
   let acquired = 0;
+
   const controller = new ActiveMicRecoveryController({
     mediaDevices,
     acquire: async () => {
       acquired += 1;
+
       return new FakeStream(new FakeTrack({ deviceId: "mic-2" }));
     },
     onRecovered: async () => {},
     debounceMs: 1,
   });
+
   await controller.start(original, { followDefault: false });
   mediaDevices.change([mic("mic-1"), speaker("speaker-2")]);
   await delay(10);
@@ -208,6 +255,7 @@ test("recovers when the system default input changes", async () => {
   const replacement = new FakeStream(new FakeTrack({ deviceId: "mic-2", groupId: "group-2" }));
   let recovered = null;
   const statuses: unknown[] = [];
+
   const controller = new ActiveMicRecoveryController({
     mediaDevices,
     acquire: async () => replacement,
@@ -217,6 +265,7 @@ test("recovers when the system default input changes", async () => {
     onStatusChange: (status) => statuses.push(status),
     debounceMs: 1,
   });
+
   await controller.start(original, { followDefault: true });
   mediaDevices.change([mic("default", "group-2", "Mic Two")]);
   await delay(10);
@@ -230,14 +279,17 @@ test("track ended triggers recovery without waiting for devicechange", async () 
   const mediaDevices = new FakeMediaDevices([mic("mic-1")]);
   const track = new FakeTrack();
   let acquired = 0;
+
   const controller = new ActiveMicRecoveryController({
     mediaDevices,
     acquire: async () => {
       acquired += 1;
+
       return new FakeStream(new FakeTrack({ deviceId: "mic-2" }));
     },
     onRecovered: async () => {},
   });
+
   await controller.start(new FakeStream(track));
   track.readyState = "ended";
   track.dispatchEvent(new Event("ended"));
@@ -252,17 +304,21 @@ test("an unavailable microphone retries and later recovers", async () => {
   const track = new FakeTrack();
   let attempts = 0;
   const statuses: unknown[] = [];
+
   const controller = new ActiveMicRecoveryController({
     mediaDevices,
     acquire: async () => {
       attempts += 1;
+
       if (attempts === 1) throw new Error("no mic");
+
       return new FakeStream(new FakeTrack({ deviceId: "mic-2" }));
     },
     onRecovered: async () => {},
     onStatusChange: (status) => statuses.push(status),
     retryMs: 5,
   });
+
   await controller.start(new FakeStream(track));
   track.readyState = "ended";
   track.dispatchEvent(new Event("ended"));
@@ -280,15 +336,18 @@ test("start() with an already-ended track recovers instead of reporting active",
   track.readyState = "ended";
   let acquired = 0;
   const statuses: unknown[] = [];
+
   const controller = new ActiveMicRecoveryController({
     mediaDevices,
     acquire: async () => {
       acquired += 1;
+
       return new FakeStream(new FakeTrack({ deviceId: "mic-2" }));
     },
     onRecovered: async () => {},
     onStatusChange: (status) => statuses.push(status),
   });
+
   await controller.start(new FakeStream(track));
   await delay(5);
   assert.equal(acquired, 1);
@@ -302,11 +361,13 @@ test("a stale recovery settling late cannot clobber a newer in-flight recovery",
   const track1 = new FakeTrack();
   const track2 = new FakeTrack({ deviceId: "mic-2" });
   const pendingAcquires: Array<PendingResolve> = [];
+
   const controller = new ActiveMicRecoveryController({
     mediaDevices,
     acquire: () => new Promise((resolve) => pendingAcquires.push(resolve)),
     onRecovered: async () => {},
   } as ConstructorParameters<typeof ActiveMicRecoveryController>[0]);
+
   await controller.start(new FakeStream(track1));
   track1.readyState = "ended";
   track1.dispatchEvent(new Event("ended"));
@@ -337,6 +398,7 @@ test("stop invalidates an in-flight acquisition and stops its late stream", asyn
   const replacementTrack = new FakeTrack({ deviceId: "mic-2" });
   let resolveAcquire!: PendingResolve;
   let recovered = false;
+
   const controller = new ActiveMicRecoveryController({
     mediaDevices,
     acquire: () => new Promise((resolve) => (resolveAcquire = resolve)),
@@ -344,6 +406,7 @@ test("stop invalidates an in-flight acquisition and stops its late stream", asyn
       recovered = true;
     },
   } as ConstructorParameters<typeof ActiveMicRecoveryController>[0]);
+
   await controller.start(new FakeStream(track));
   track.readyState = "ended";
   track.dispatchEvent(new Event("ended"));
@@ -361,21 +424,38 @@ for (const muted of [false, true]) {
     const statuses: string[] = [];
     const mutes: boolean[] = [];
     let release!: () => void;
-    const intent = new Promise<void>((resolve) => { release = resolve; });
+
+    const intent = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
     let signal!: () => void;
-    const published = new Promise<void>((resolve) => { signal = resolve; });
+
+    const published = new Promise<void>((resolve) => {
+      signal = resolve;
+    });
+
     let recovering = false;
+
     const controller = new ActiveMicRecoveryController<FakeStream>({
       mediaDevices: new FakeMediaDevices([mic("mic-1"), mic("mic-2")]),
       acquire: async () => replacement,
       onRecovered: async () => {},
       onPlatformMuteChange: async (value) => {
         mutes.push(value);
-        if (recovering) { signal(); await intent; }
+
+        if (recovering) {
+          signal();
+          await intent;
+        }
       },
       onStatusChange: (status) => statuses.push(status),
     });
-    t.after(() => { release(); controller.stop(); });
+
+    t.after(() => {
+      release();
+      controller.stop();
+    });
     await controller.start(new FakeStream(new FakeTrack({ muted: true })));
     recovering = true;
     const recovery = controller.recover("selection-change");
@@ -394,13 +474,25 @@ for (const when of ["acquire", "setup", "intent"] as const) {
     const replacement = new FakeStream(new FakeTrack({ deviceId: "mic-2" }));
     const statuses: string[] = [];
     let installed = 0;
+
     const controller = new ActiveMicRecoveryController<FakeStream>({
       mediaDevices: new FakeMediaDevices([mic("mic-1"), mic("mic-2")]),
-      acquire: async () => { if (when === "acquire") replacement.track!.stop(); return replacement; },
-      onRecovered: async () => { installed++; if (when === "setup") replacement.track!.stop(); },
-      onPlatformMuteChange: async () => { if (when === "intent") replacement.track!.stop(); },
+      acquire: async () => {
+        if (when === "acquire") replacement.track!.stop();
+
+        return replacement;
+      },
+      onRecovered: async () => {
+        installed++;
+
+        if (when === "setup") replacement.track!.stop();
+      },
+      onPlatformMuteChange: async () => {
+        if (when === "intent") replacement.track!.stop();
+      },
       onStatusChange: (status) => statuses.push(status),
     });
+
     t.after(() => controller.stop());
     await controller.start(new FakeStream(new FakeTrack()));
     statuses.length = 0;
@@ -416,14 +508,32 @@ test("stop during replacement enumeration cannot publish state into a restarted 
   const replacement = new FakeStream(new FakeTrack({ deviceId: "mic-2" }));
   let release!: (devices: Array<Record<string, string>>) => void;
   let signal!: () => void;
-  const enumeration = new Promise<Array<Record<string, string>>>((resolve) => { release = resolve; });
-  const enumerating = new Promise<void>((resolve) => { signal = resolve; });
+
+  const enumeration = new Promise<Array<Record<string, string>>>((resolve) => {
+    release = resolve;
+  });
+
+  const enumerating = new Promise<void>((resolve) => {
+    signal = resolve;
+  });
+
   const statuses: string[] = [];
-  const controller = new ActiveMicRecoveryController<FakeStream>({ mediaDevices: media, acquire: async () => replacement,
-    onRecovered: async () => {}, onStatusChange: (status) => statuses.push(status) });
+
+  const controller = new ActiveMicRecoveryController<FakeStream>({
+    mediaDevices: media,
+    acquire: async () => replacement,
+    onRecovered: async () => {},
+    onStatusChange: (status) => statuses.push(status),
+  });
+
   t.after(() => controller.stop());
   await controller.start(new FakeStream(new FakeTrack()));
-  media.enumerateDevices = () => { signal(); return enumeration; };
+  media.enumerateDevices = () => {
+    signal();
+
+    return enumeration;
+  };
+
   const recovery = controller.recover("selection-change");
   await enumerating;
   controller.stop();

@@ -1,35 +1,49 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const { spawnSync }: typeof import("node:child_process") = require("node:child_process");
 
 test("merges independent WebM recorder segments into one decodable timeline", async (t: import("node:test").TestContext) => {
   const originalLoad = Module._load;
   Module._load = function loadWithElectronStub(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") return { app: { isReady: () => false } };
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
   let ffmpeg;
+
   try {
     ffmpeg = require("../../src/helpers/ffmpegUtils");
   } finally {
     Module._load = originalLoad;
   }
+
   const ffmpegPath = ffmpeg.getFFmpegPath();
+
   if (!ffmpegPath) {
     t.skip("FFmpeg is not available");
+
     return;
   }
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-merge-test-"));
+
   try {
     const segments = [];
+
     for (let index = 0; index < 2; index += 1) {
       const segmentPath = path.join(tempDir, `segment-${index}.webm`);
+
       const generated = spawnSync(
         ffmpegPath,
         [
@@ -46,6 +60,7 @@ test("merges independent WebM recorder segments into one decodable timeline", as
         ],
         { windowsHide: true }
       );
+
       assert.equal(generated.status, 0, generated.stderr?.toString());
       segments.push({ buffer: fs.readFileSync(segmentPath), mimeType: "audio/webm" });
     }

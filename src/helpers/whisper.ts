@@ -1,9 +1,15 @@
 const { app } = require("electron");
+
 const fs = require("fs");
+
 const fsPromises = require("fs").promises;
+
 const path = require("path");
+
 const debugLogger = require("./debugLogger.js");
+
 const { ensureWhisperVadModel } = require("./whisperVadModel.js");
+
 const {
   downloadFile,
   createDownloadSignal,
@@ -12,8 +18,11 @@ const {
   cleanupStaleDownloads,
   checkDiskSpace,
 } = require("./downloadUtils.js");
+
 import { WhisperServerManager } from "./whisperServer.js";
+
 const { createAbortError } = require("./abortError.js");
+
 const { getModelsDirForService } = require("./modelDirUtils.js");
 
 const modelRegistryData = require("../models/modelRegistryData.json");
@@ -34,8 +43,12 @@ interface WhisperModelConfig {
 }
 
 function getWhisperModelConfig(modelName: string): WhisperModelConfig | null {
-  const modelInfo = (modelRegistryData.whisperModels as Record<string, WhisperModelRegistryEntry>)[modelName];
+  const modelInfo = (modelRegistryData.whisperModels as Record<string, WhisperModelRegistryEntry>)[
+    modelName
+  ];
+
   if (!modelInfo) return null;
+
   return {
     url: modelInfo.downloadUrl,
     size: modelInfo.expectedSizeBytes || (modelInfo.sizeMb as number) * 1_000_000,
@@ -109,15 +122,18 @@ export class WhisperManager {
   validateModelName(modelName: string): boolean {
     // Only allow known model names to prevent path traversal attacks
     const validModels = getValidModelNames();
+
     if (!validModels.includes(modelName)) {
       throw new Error(`Invalid model name: ${modelName}. Valid models: ${validModels.join(", ")}`);
     }
+
     return true;
   }
 
   getModelPath(modelName: string): string {
     this.validateModelName(modelName);
     const config = getWhisperModelConfig(modelName) as WhisperModelConfig;
+
     return path.join(this.getModelsDir(), config.fileName);
   }
 
@@ -134,10 +150,12 @@ export class WhisperManager {
     if (process.resourcesPath) {
       candidates.push(path.join(process.resourcesPath, "bin", "whisper-vad", fileName));
     }
+
     candidates.push(path.join(app.getAppPath(), "resources", "bin", "whisper-vad", fileName));
 
     const resolved = candidates.find((p) => fs.existsSync(p)) || null;
     this.cachedVadModelPath = resolved;
+
     return resolved;
   }
 
@@ -244,6 +262,7 @@ export class WhisperManager {
     // Check downloaded models
     for (const modelName of getValidModelNames()) {
       const modelPath = this.getModelPath(modelName);
+
       if (fs.existsSync(modelPath)) {
         try {
           const stats = fs.statSync(modelPath);
@@ -263,7 +282,9 @@ export class WhisperManager {
     const serverStatus = status.whisperServer.available
       ? `✓ ${status.whisperServer.path}`
       : "✗ Not found";
+
     const ffmpegStatus = status.ffmpeg.available ? `✓ ${status.ffmpeg.path}` : "✗ Not found";
+
     const modelsStatus =
       status.models.length > 0
         ? status.models.map((m) => `${m.name} (${m.size})`).join(", ")
@@ -274,8 +295,12 @@ export class WhisperManager {
     debugLogger.info(`[Dependencies] Models: ${modelsStatus}`);
   }
 
-  async startServer(modelName: string, options: Record<string, unknown> = {}): Promise<{ success: boolean; reason?: string; port?: number }> {
+  async startServer(
+    modelName: string,
+    options: Record<string, unknown> = {}
+  ): Promise<{ success: boolean; reason?: string; port?: number }> {
     const modelPath = this.getModelPath(modelName);
+
     if (!fs.existsSync(modelPath)) {
       return { success: false, reason: `Model "${modelName}" not downloaded` };
     }
@@ -287,9 +312,11 @@ export class WhisperManager {
         model: modelName,
         port: this.serverManager.port,
       });
+
       return { success: true, port: this.serverManager.port };
     } catch (error) {
       debugLogger.error("Failed to start whisper-server", { error: (error as Error).message });
+
       return { success: false, reason: (error as Error).message };
     }
   }
@@ -302,6 +329,7 @@ export class WhisperManager {
   async onWakeFromSleep(): Promise<boolean> {
     const sm = this.serverManager;
     const modelName = this.currentServerModel;
+
     if (
       !shouldRewarmOnWake({
         isRemote: sm.isRemote,
@@ -317,14 +345,18 @@ export class WhisperManager {
     // matches the signature the next dictation will use.
     const options = { ...sm.lastStartOptions };
     this._rewarmInFlight = true;
+
     try {
       debugLogger.info("Re-warming whisper-server after wake from sleep", { model: modelName });
       await this.stopServer();
       const result = await this.startServer(modelName as string, options);
+
       if (!result?.success) {
         debugLogger.warn("whisper-server wake re-warm failed", { reason: result?.reason });
+
         return false;
       }
+
       return true;
     } finally {
       this._rewarmInFlight = false;
@@ -335,8 +367,13 @@ export class WhisperManager {
     return this.serverManager.getStatus();
   }
 
-  async checkWhisperInstallation(): Promise<{ installed: boolean; working: boolean; path?: string }> {
+  async checkWhisperInstallation(): Promise<{
+    installed: boolean;
+    working: boolean;
+    path?: string;
+  }> {
     const serverPath = this.serverManager.getServerBinaryPath();
+
     if (!serverPath) {
       return { installed: false, working: false };
     }
@@ -348,7 +385,10 @@ export class WhisperManager {
     };
   }
 
-  async transcribeLocalWhisper(audioBlob: AudioInput, options: Record<string, unknown> = {}): Promise<unknown> {
+  async transcribeLocalWhisper(
+    audioBlob: AudioInput,
+    options: Record<string, unknown> = {}
+  ): Promise<unknown> {
     debugLogger.logWhisperPipeline("transcribeLocalWhisper - start", {
       options,
       audioBlobType: audioBlob?.constructor?.name,
@@ -384,10 +424,16 @@ export class WhisperManager {
     model: string,
     language: string | null,
     initialPrompt: string | null = null,
-    options: { signal?: AbortSignal; vadEnabled?: boolean; vadConfig?: unknown; skipDecoderThresholds?: boolean } = {}
+    options: {
+      signal?: AbortSignal;
+      vadEnabled?: boolean;
+      vadConfig?: unknown;
+      skipDecoderThresholds?: boolean;
+    } = {}
   ): Promise<unknown> {
     // Mark the server busy so a wake re-warm doesn't kill an in-flight dictation. See #766.
     this._transcribing = true;
+
     try {
       return await this._runServerTranscription(audioBlob, model, language, initialPrompt, options);
     } finally {
@@ -400,7 +446,12 @@ export class WhisperManager {
     model: string,
     language: string | null,
     initialPrompt: string | null = null,
-    options: { signal?: AbortSignal; vadEnabled?: boolean; vadConfig?: unknown; skipDecoderThresholds?: boolean } = {}
+    options: {
+      signal?: AbortSignal;
+      vadEnabled?: boolean;
+      vadConfig?: unknown;
+      skipDecoderThresholds?: boolean;
+    } = {}
   ): Promise<unknown> {
     // An already-cancelled upload skips the server boot entirely.
     if (options.signal?.aborted) {
@@ -412,13 +463,16 @@ export class WhisperManager {
 
     const vadEnabled = options.vadEnabled === true;
     let vadModelPath = vadEnabled ? this.getVadModelPath() : null;
+
     if (vadEnabled && !vadModelPath) {
       // Issue #89: the VAD model is no longer bundled; fetch it on first use.
       vadModelPath = await ensureWhisperVadModel().catch((error: Error) => {
         debugLogger.warn("VAD model download failed", { error: error.message }, "assets");
+
         return null;
       });
     }
+
     if (vadEnabled && !vadModelPath) {
       debugLogger.warn("VAD requested but ggml-silero model not found; running without VAD");
     }
@@ -432,6 +486,7 @@ export class WhisperManager {
 
     // Convert audioBlob to Buffer if needed
     let audioBuffer;
+
     if (Buffer.isBuffer(audioBlob)) {
       audioBuffer = audioBlob;
     } else if (ArrayBuffer.isView(audioBlob)) {
@@ -462,12 +517,14 @@ export class WhisperManager {
     });
 
     const startTime = Date.now();
+
     const result = await this.serverManager.transcribe(audioBuffer, {
       language,
       initialPrompt,
       signal: options.signal,
       skipDecoderThresholds: options.skipDecoderThresholds,
     });
+
     const elapsed = Date.now() - startTime;
 
     debugLogger.logWhisperPipeline("transcribeViaServer - completed", {
@@ -488,6 +545,7 @@ export class WhisperManager {
     await this.serverManager.connectRemote(url);
 
     let audioBuffer;
+
     if (Buffer.isBuffer(audioBlob)) {
       audioBuffer = audioBlob;
     } else if (ArrayBuffer.isView(audioBlob)) {
@@ -517,10 +575,12 @@ export class WhisperManager {
     });
 
     const startTime = Date.now();
+
     const result = await this.serverManager.transcribe(audioBuffer, {
       language: options.language || null,
       initialPrompt: options.initialPrompt || null,
     });
+
     const elapsed = Date.now() - startTime;
 
     debugLogger.logWhisperPipeline("transcribeViaLan - completed", {
@@ -537,19 +597,28 @@ export class WhisperManager {
     return text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   }
 
-  parseWhisperResult(output: unknown): { success: boolean; text?: string; message?: string; error?: string } {
+  parseWhisperResult(output: unknown): {
+    success: boolean;
+    text?: string;
+    message?: string;
+    error?: string;
+  } {
     // Handle both string (from CLI) and object (from server) inputs
     let result: Record<string, unknown>;
+
     if (typeof output === "string") {
       debugLogger.logWhisperPipeline("Parsing result (string)", { length: output.length });
+
       try {
         result = JSON.parse(output);
       } catch (parseError) {
         // Try parsing as plain text (non-JSON output)
         const text = this.normalizeWhitespace(output);
+
         if (text && !this.isBlankAudioMarker(text)) {
           return { success: true, text };
         }
+
         throw new Error(`Failed to parse Whisper output: ${(parseError as Error).message}`);
       }
     } else if (typeof output === "object" && output !== null) {
@@ -564,18 +633,22 @@ export class WhisperManager {
     // Handle whisper.cpp JSON format (CLI mode)
     if (result.transcription && Array.isArray(result.transcription)) {
       const text = this.normalizeWhitespace(result.transcription.map((seg) => seg.text).join(""));
+
       if (!text || this.isBlankAudioMarker(text)) {
         return { success: false, message: "No audio detected" };
       }
+
       return { success: true, text };
     }
 
     // Handle whisper-server format (has "text" field directly)
     if (result.text !== undefined) {
       const text = typeof result.text === "string" ? this.normalizeWhitespace(result.text) : "";
+
       if (!text || this.isBlankAudioMarker(text)) {
         return { success: false, message: "No audio detected" };
       }
+
       return { success: true, text };
     }
 
@@ -583,6 +656,7 @@ export class WhisperManager {
     // as "No audio detected" sends users chasing their microphone when the engine
     // is at fault, so surface it as the transcription failure it is.
     const serverError = typeof result.error === "string" && result.error.trim();
+
     return {
       success: false,
       error: "invalid_response",
@@ -596,6 +670,7 @@ export class WhisperManager {
   isBlankAudioMarker(text: string): boolean {
     // whisper.cpp outputs "[BLANK_AUDIO]" when there's silence or insufficient audio
     const normalized = text.trim().toLowerCase();
+
     return normalized === "[blank_audio]" || normalized === "[ blank_audio ]";
   }
 
@@ -611,6 +686,7 @@ export class WhisperManager {
 
     if (fs.existsSync(modelPath)) {
       const stats = await fsPromises.stat(modelPath);
+
       return {
         model: modelName,
         downloaded: true,
@@ -626,6 +702,7 @@ export class WhisperManager {
     }
 
     const { signal, abort } = createDownloadSignal();
+
     const downloadProcess: WhisperDownloadProcess = {
       abort,
       model: modelName,
@@ -634,12 +711,14 @@ export class WhisperManager {
       downloadedBytes: 0,
       totalBytes: 0,
     };
+
     this.currentDownloadProcess = downloadProcess;
 
     try {
       await fsPromises.mkdir(modelsDir, { recursive: true });
 
       const spaceCheck = await checkDiskSpace(modelsDir, modelConfig.size * 1.2);
+
       if (!spaceCheck.ok) {
         throw new Error(
           `Not enough disk space to download model. Need ~${Math.round((modelConfig.size * 1.2) / 1_000_000)}MB, ` +
@@ -656,6 +735,7 @@ export class WhisperManager {
             totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
           downloadProcess.downloadedBytes = downloadedBytes;
           downloadProcess.totalBytes = totalBytes;
+
           if (progressCallback) {
             progressCallback({
               type: "progress",
@@ -690,6 +770,7 @@ export class WhisperManager {
           code: "DOWNLOAD_CANCELLED",
         });
       }
+
       throw error;
     } finally {
       if (this.currentDownloadProcess === downloadProcess) {
@@ -701,24 +782,34 @@ export class WhisperManager {
   async cancelDownload(): Promise<{ success: boolean; message?: string; error?: string }> {
     if (this.currentDownloadProcess) {
       this.currentDownloadProcess.abort();
+
       return { success: true, message: "Download cancelled" };
     }
+
     return { success: false, error: "No active download to cancel" };
   }
 
   async checkModelStatus(modelName: string): Promise<Record<string, unknown>> {
     const modelPath = this.getModelPath(modelName);
     const activeDownload = this.currentDownloadProcess?.model === modelName;
+
     const downloadStatus = {
       isDownloading: activeDownload,
       isInstalling: false,
-      downloadProgress: activeDownload ? (this.currentDownloadProcess as WhisperDownloadProcess).percentage : 0,
-      downloadedBytes: activeDownload ? (this.currentDownloadProcess as WhisperDownloadProcess).downloadedBytes : 0,
-      totalBytes: activeDownload ? (this.currentDownloadProcess as WhisperDownloadProcess).totalBytes : 0,
+      downloadProgress: activeDownload
+        ? (this.currentDownloadProcess as WhisperDownloadProcess).percentage
+        : 0,
+      downloadedBytes: activeDownload
+        ? (this.currentDownloadProcess as WhisperDownloadProcess).downloadedBytes
+        : 0,
+      totalBytes: activeDownload
+        ? (this.currentDownloadProcess as WhisperDownloadProcess).totalBytes
+        : 0,
     };
 
     if (fs.existsSync(modelPath)) {
       const stats = await fsPromises.stat(modelPath);
+
       return {
         model: modelName,
         downloaded: true,
@@ -755,6 +846,7 @@ export class WhisperManager {
     if (fs.existsSync(modelPath)) {
       const stats = await fsPromises.stat(modelPath);
       await fsPromises.unlink(modelPath);
+
       return {
         model: modelName,
         deleted: true,
@@ -778,9 +870,11 @@ export class WhisperManager {
       }
 
       const files = await fsPromises.readdir(modelsDir);
+
       for (const file of files) {
         if (file.endsWith(".bin")) {
           const filePath = path.join(modelsDir, file);
+
           try {
             const stats = await fsPromises.stat(filePath);
             await fsPromises.unlink(filePath);
@@ -829,12 +923,14 @@ export class WhisperManager {
 
       if (unpackedPath) {
         debugLogger.debug("Checking unpacked ASAR path", { unpackedPath });
+
         if (fs.existsSync(unpackedPath)) {
           if (process.platform !== "win32") {
             try {
               fs.accessSync(unpackedPath, fs.constants.X_OK);
             } catch {
               debugLogger.debug("FFmpeg not executable, attempting chmod", { unpackedPath });
+
               try {
                 fs.chmodSync(unpackedPath, 0o755);
               } catch (chmodErr) {
@@ -842,8 +938,10 @@ export class WhisperManager {
               }
             }
           }
+
           debugLogger.debug("Found FFmpeg in unpacked ASAR", { path: unpackedPath });
           this.cachedFFmpegPath = unpackedPath;
+
           return unpackedPath;
         } else {
           debugLogger.warn("Unpacked ASAR path does not exist", { unpackedPath });
@@ -855,8 +953,10 @@ export class WhisperManager {
         if (process.platform !== "win32") {
           fs.accessSync(ffmpegPath, fs.constants.X_OK);
         }
+
         debugLogger.debug("Found FFmpeg at bundled path", { path: ffmpegPath });
         this.cachedFFmpegPath = ffmpegPath;
+
         return ffmpegPath;
       } else {
         debugLogger.warn("Bundled FFmpeg path does not exist", { ffmpegPath });
@@ -879,16 +979,23 @@ export class WhisperManager {
       if (fs.existsSync(candidate)) {
         debugLogger.debug("Found system FFmpeg", { path: candidate });
         this.cachedFFmpegPath = candidate;
+
         return candidate;
       }
     }
 
     debugLogger.error("FFmpeg not found anywhere");
+
     return null;
   }
 
-  async checkFFmpegAvailability(): Promise<{ available: boolean; path: string | null; error?: string }> {
+  async checkFFmpegAvailability(): Promise<{
+    available: boolean;
+    path: string | null;
+    error?: string;
+  }> {
     const now = Date.now();
+
     if (
       this.ffmpegAvailabilityCache.result !== null &&
       now < this.ffmpegAvailabilityCache.expiresAt
@@ -897,11 +1004,13 @@ export class WhisperManager {
     }
 
     const ffmpegPath = await this.getFFmpegPath();
+
     const result: { available: boolean; path: string | null; error?: string } = ffmpegPath
       ? { available: true, path: ffmpegPath }
       : { available: false, path: null, error: "FFmpeg not found" };
 
     this.ffmpegAvailabilityCache = { result, expiresAt: now + CACHE_TTL_MS };
+
     return result;
   }
 
@@ -930,6 +1039,7 @@ export class WhisperManager {
     try {
       this.cachedFFmpegPath = null; // Clear cache for fresh check
       const ffmpegPath = await this.getFFmpegPath();
+
       if (ffmpegPath) {
         diagnostics.ffmpeg = { available: true, path: ffmpegPath, error: null };
       } else {
@@ -951,6 +1061,7 @@ export class WhisperManager {
     // Check downloaded models
     try {
       const modelsDir = this.getModelsDir();
+
       if (fs.existsSync(modelsDir)) {
         const files = fs.readdirSync(modelsDir);
         diagnostics.models = files
@@ -965,10 +1076,10 @@ export class WhisperManager {
   }
 }
 
-
-
 // Dual export: main.js and legacy tests require this module as the class
 // itself, while the TS graph imports the named export.
 module.exports = WhisperManager;
+
 module.exports.WhisperManager = WhisperManager;
+
 module.exports.shouldRewarmOnWake = shouldRewarmOnWake;

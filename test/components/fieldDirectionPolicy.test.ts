@@ -1,10 +1,18 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 const repoRoot = path.join(__dirname, "../..");
 
@@ -13,16 +21,21 @@ function source(relativePath: string): string {
 }
 
 function componentFiles(directory: string) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry: import("node:fs").Dirent) => {
-    const absolutePath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return componentFiles(absolutePath);
-    return /\.(?:tsx|jsx)$/.test(entry.name) ? [absolutePath] : [];
-  });
+  return fs
+    .readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry: import("node:fs").Dirent) => {
+      const absolutePath = path.join(directory, entry.name);
+
+      if (entry.isDirectory()) return componentFiles(absolutePath);
+
+      return /\.(?:tsx|jsx)$/.test(entry.name) ? [absolutePath] : [];
+    });
 }
 
 function sharedFieldInventory() {
   return componentFiles(path.join(repoRoot, "src/components")).flatMap((absolutePath: string) => {
     const text = fs.readFileSync(absolutePath, "utf8");
+
     return [...text.matchAll(/<(Input|Textarea)\b[\s\S]*?\/>/g)].map((match) => ({
       file: path.relative(repoRoot, absolutePath).split(path.sep).join("/"),
       direction: match[0].match(/\bdir="([^"]+)"/)?.[1] ?? "inherit",
@@ -35,9 +48,11 @@ function nativeFieldInventory() {
 
   return componentFiles(path.join(repoRoot, "src/components")).flatMap((absolutePath: string) => {
     const file = path.relative(repoRoot, absolutePath).split(path.sep).join("/");
+
     if (primitiveFiles.has(file)) return [];
 
     const text = fs.readFileSync(absolutePath, "utf8");
+
     return [...text.matchAll(/<(input|textarea)\b[\s\S]*?\/>/g)].map((match) => ({
       file,
       direction: match[0].match(/\bdir="([^"]+)"/)?.[1] ?? "inherit",
@@ -45,10 +60,15 @@ function nativeFieldInventory() {
   });
 }
 
-interface DirectionField { file: string; direction: string; }
+interface DirectionField {
+  file: string;
+  direction: string;
+}
+
 function inventoryByFile(inventory: DirectionField[]) {
   return inventory.reduce((result: Record<string, string[]>, field: DirectionField) => {
     (result[field.file] ??= []).push(field.direction);
+
     return result;
   }, {});
 }
@@ -96,12 +116,14 @@ test("shared field primitives inherit unless a consumer declares its content dir
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-field-direction-primitives-",
   });
+
   const { Input } = await vite.ssrLoadModule("/components/ui/input.tsx");
   const { Textarea } = await vite.ssrLoadModule("/components/ui/textarea.tsx");
 
   const inherited = renderToStaticMarkup(
     React.createElement(Input, { value: "مرحبا OpenWhispr 2.0", readOnly: true })
   );
+
   assert.doesNotMatch(inherited, /\sdir=/);
   assert.match(inherited, /value="مرحبا OpenWhispr 2.0"/);
 
@@ -113,6 +135,7 @@ test("shared field primitives inherit unless a consumer declares its content dir
       readOnly: true,
     })
   );
+
   assert.match(technicalPassword, /\sdir="ltr"/);
   assert.match(technicalPassword, /value="سر-sk_ABC\/123"/);
 
@@ -123,6 +146,7 @@ test("shared field primitives inherit unless a consumer declares its content dir
       readOnly: true,
     })
   );
+
   assert.match(prose, /\sdir="auto"/);
   assert.match(prose, />مرحبا OpenWhispr 2.0<\/textarea>/);
 });
@@ -138,7 +162,6 @@ test("native text fields use the same reviewed direction policy", () => {
 });
 
 test("representative prose, identity, secret, and rich-editor surfaces keep their policy", () => {
-
   assert.match(
     source("src/components/onboarding/ProviderSetupStep.tsx"),
     /<Input\s+dir="ltr"\s+type="password"/

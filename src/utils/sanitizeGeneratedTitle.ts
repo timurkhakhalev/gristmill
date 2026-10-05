@@ -13,6 +13,7 @@ const hasQuoteBesides = (text: string, index: number): boolean => {
   for (let i = 0; i < text.length; i += 1) {
     if (i !== index && WRAPPING_QUOTES.has(text[i])) return true;
   }
+
   return false;
 };
 
@@ -21,6 +22,7 @@ const hasQuoteBesides = (text: string, index: number): boolean => {
 // a quoted phrase at one end — Feedback on “Project X” — stays intact.
 export function sanitizeGeneratedTitle(raw: string): string {
   let cleaned = raw.trim();
+
   while (
     cleaned.length >= 2 &&
     WRAPPING_QUOTES.has(cleaned[0]) &&
@@ -34,6 +36,7 @@ export function sanitizeGeneratedTitle(raw: string): string {
   if (cleaned.length > 1) {
     const first = cleaned[0];
     const last = cleaned[cleaned.length - 1];
+
     if (WRAPPING_QUOTES.has(first) && !APOSTROPHES.has(first) && !hasQuoteBesides(cleaned, 0)) {
       cleaned = cleaned.slice(1).trim();
     } else if (
@@ -46,5 +49,6 @@ export function sanitizeGeneratedTitle(raw: string): string {
   }
 
   if (cleaned.length === 1 && WRAPPING_QUOTES.has(cleaned)) return "";
+
   return cleaned.length > 0 && cleaned.length < 100 ? cleaned : "";
 }

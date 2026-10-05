@@ -38,6 +38,7 @@ export function useTheme() {
     // Listen for system preference changes (only when auto)
     if (theme === "auto") {
       const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
       const handler = (e: MediaQueryListEvent) => {
         if (e.matches) {
           htmlElement.classList.add("dark");
@@ -49,6 +50,7 @@ export function useTheme() {
       };
 
       mediaQuery.addEventListener("change", handler);
+
       return () => mediaQuery.removeEventListener("change", handler);
     }
   }, [theme]);

@@ -1,6 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const cp = require("node:child_process");
+
 const path: typeof import("node:path") = require("node:path");
 
 // A canary that skips every provider (no secrets configured, or the secrets
@@ -14,6 +17,7 @@ function runCanaryWithoutSecrets(scriptArgs: string | string[]) {
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([name]) => !name.includes("_CANARY_"))
   );
+
   return cp.spawnSync(process.execPath, scriptArgs, {
     cwd: repoRoot,
     env,
@@ -22,9 +26,7 @@ function runCanaryWithoutSecrets(scriptArgs: string | string[]) {
   });
 }
 
-for (const [name, scriptArgs] of [
-  ["llm-canary", ["--import", "tsx", "scripts/llm-canary.mts"]],
-]) {
+for (const [name, scriptArgs] of [["llm-canary", ["--import", "tsx", "scripts/llm-canary.mts"]]]) {
   test(`${name} exits non-zero when no secrets are configured`, () => {
     const result = runCanaryWithoutSecrets(scriptArgs);
     const output = `${result.stdout}\n${result.stderr}`;

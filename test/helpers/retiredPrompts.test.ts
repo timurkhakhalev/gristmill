@@ -1,33 +1,43 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const { createHash }: typeof import("node:crypto") = require("node:crypto");
 
 const load = () => import("../../src/config/retiredPrompts.ts");
+
 const loadRegistry = () => import("../../src/config/prompts/registry.ts");
 
 // Byte-exact copies of retired shipped defaults, extracted from git history.
 const fixtures = require("./retiredPromptFixtures.json");
 
 const LOCALES_DIR = path.join(__dirname, "..", "..", "src", "locales");
+
 const BUNDLE_KEYS = ["cleanupPrompt"];
 
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 
 const readLocaleBundles = () => {
   const bundles: Record<string, Record<string, string>> = {};
+
   for (const entry of fs.readdirSync(LOCALES_DIR, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const bundlePath = path.join(LOCALES_DIR, entry.name, "prompts.json");
+
     if (!fs.existsSync(bundlePath)) continue;
     bundles[entry.name] = JSON.parse(fs.readFileSync(bundlePath, "utf8")) as Record<string, string>;
   }
+
   return bundles;
 };
 
 const makeStorage = (initial: Record<string, string> = {}) => {
   const map = new Map<string, string>(Object.entries(initial));
+
   return {
     map,
     getItem(key: string) {
@@ -50,8 +60,12 @@ test("flags the retired pre-hardening English cleanup prompt", async () => {
 test("treats a one-character edit of a retired default as a user customization", async () => {
   const { isRetiredDefaultPrompt } = await load();
   const appended = fixtures.enPreHardeningCleanupPrompt + ".";
+
   const mutated =
-    fixtures.enPreHardeningCleanupPrompt.slice(0, 100) + "!" + fixtures.enPreHardeningCleanupPrompt.slice(101);
+    fixtures.enPreHardeningCleanupPrompt.slice(0, 100) +
+    "!" +
+    fixtures.enPreHardeningCleanupPrompt.slice(101);
+
   assert.equal(await isRetiredDefaultPrompt(appended), false);
   assert.equal(await isRetiredDefaultPrompt(mutated), false);
 });
@@ -60,6 +74,7 @@ test("never flags any currently shipped locale default", async () => {
   const { isRetiredDefaultPrompt } = await load();
   const bundles = readLocaleBundles();
   assert.ok(Object.keys(bundles).length >= 9, "expected locale bundles");
+
   for (const [locale, bundle] of Object.entries(bundles)) {
     for (const key of BUNDLE_KEYS) {
       assert.equal(
@@ -86,9 +101,11 @@ test("never flags user-authored text or degenerate values", async () => {
 
 test("registry entries are well-formed sha256 hex digests", async () => {
   const { RETIRED_DEFAULT_PROMPT_HASHES, CURRENT_DEFAULT_PROMPT_HASHES } = await load();
+
   for (const hash of RETIRED_DEFAULT_PROMPT_HASHES) {
     assert.match(hash, /^[0-9a-f]{64}$/);
   }
+
   for (const hash of Object.values(CURRENT_DEFAULT_PROMPT_HASHES)) {
     assert.match(hash, /^[0-9a-f]{64}$/);
   }
@@ -97,12 +114,14 @@ test("registry entries are well-formed sha256 hex digests", async () => {
 test("current-hash snapshot matches the live locale bundles (ratchet)", async () => {
   const { CURRENT_DEFAULT_PROMPT_HASHES } = await load();
   const bundles = readLocaleBundles();
-  const expected : any = {};
+  const expected: any = {};
+
   for (const [locale, bundle] of Object.entries(bundles)) {
     for (const key of BUNDLE_KEYS) {
       if (typeof bundle[key] === "string") expected[`${locale}/${key}`] = sha256(bundle[key]);
     }
   }
+
   const { PROMPT_KINDS } = await loadRegistry();
   expected.chatAgent = sha256(PROMPT_KINDS.chatAgent.fallback);
 
@@ -116,6 +135,7 @@ test("current-hash snapshot matches the live locale bundles (ratchet)", async ()
 
 test("retired and current hash sets are disjoint", async () => {
   const { RETIRED_DEFAULT_PROMPT_HASHES, CURRENT_DEFAULT_PROMPT_HASHES } = await load();
+
   for (const [key, hash] of Object.entries(CURRENT_DEFAULT_PROMPT_HASHES)) {
     assert.equal(
       RETIRED_DEFAULT_PROMPT_HASHES.has(hash),
@@ -127,13 +147,18 @@ test("retired and current hash sets are disjoint", async () => {
 
 test("sweep clears an override matching a retired default and archives it", async () => {
   const { sweepRetiredPromptOverrides } = await load();
+
   const storage = makeStorage({
     "customPrompt.cleanup": fixtures.enPreHardeningCleanupPrompt,
   });
+
   const swept = await sweepRetiredPromptOverrides(storage, ["cleanup"]);
   assert.deepEqual(swept, ["cleanup"]);
   assert.equal(storage.getItem("customPrompt.cleanup"), null);
-  assert.equal(storage.getItem("customPrompt.cleanup.retired"), fixtures.enPreHardeningCleanupPrompt);
+  assert.equal(
+    storage.getItem("customPrompt.cleanup.retired"),
+    fixtures.enPreHardeningCleanupPrompt
+  );
 });
 
 test("sweep never touches a prompt the user edited, even by one character", async () => {
@@ -174,17 +199,21 @@ test("sweep skips removal when the value changes while hashing", async () => {
   const storage = makeStorage({ "customPrompt.cleanup": fixtures.enPreHardeningCleanupPrompt });
   const userSaved = "My own prompt, saved mid-sweep.";
   let reads = 0;
+
   const racy = {
     getItem(key: string) {
       if (key === "customPrompt.cleanup") {
         reads += 1;
+
         return reads === 1 ? fixtures.enPreHardeningCleanupPrompt : userSaved;
       }
+
       return storage.getItem(key);
     },
     setItem: (key: string, value: unknown) => storage.setItem(key, value),
     removeItem: (key: string) => storage.removeItem(key),
   };
+
   const swept = await sweepRetiredPromptOverrides(racy, ["cleanup"]);
   assert.deepEqual(swept, []);
   assert.equal(storage.getItem("customPrompt.cleanup"), fixtures.enPreHardeningCleanupPrompt);
@@ -194,14 +223,17 @@ test("sweep skips removal when the value changes while hashing", async () => {
 test("a storage failure on one kind does not stop the sweep of the others", async () => {
   const { sweepRetiredPromptOverrides } = await load();
   const storage = makeStorage({ "customPrompt.cleanup": fixtures.enPreHardeningCleanupPrompt });
+
   const failing = {
     getItem(key: string) {
       if (key === "customPrompt.cleanup") throw new Error("storage unavailable");
+
       return storage.getItem(key);
     },
     setItem: (key: string, value: unknown) => storage.setItem(key, value),
     removeItem: (key: string) => storage.removeItem(key),
   };
+
   const swept = await sweepRetiredPromptOverrides(failing, ["cleanup", "chatAgent"]);
   assert.deepEqual(swept, []);
   assert.equal(storage.getItem("customPrompt.cleanup.retired"), null);

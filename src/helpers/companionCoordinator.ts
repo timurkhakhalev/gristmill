@@ -9,9 +9,12 @@ import type {
 } from "../contracts/companion.js";
 
 export const COMPANION_CONTEXT_TTL_MS = 5_000;
+
 export const COMPANION_REMINDER_MS = 5 * 60_000;
+
 const sameScope = (a: CompanionRecordingScope | null, b: CompanionRecordingScope) =>
   a?.recordingId === b.recordingId && a.sessionId === b.sessionId;
+
 const sameCandidate = (a: CompanionCandidateKey, b: CompanionCandidateKey) =>
   a.connectionId === b.connectionId &&
   a.ref.installationId === b.ref.installationId &&
@@ -20,6 +23,7 @@ const sameCandidate = (a: CompanionCandidateKey, b: CompanionCandidateKey) =>
   a.ref.documentId === b.ref.documentId &&
   a.ref.platform === b.ref.platform &&
   a.ref.callId === b.ref.callId;
+
 const keyFor = (key: CompanionCandidateKey) =>
   JSON.stringify([
     key.connectionId,
@@ -68,6 +72,7 @@ export class CompanionCoordinator {
   private freshCandidates(): CompanionCandidate[] {
     if (!this.enabled) return [];
     const now = this.deps.now();
+
     return [...this.candidates.values()].filter(
       (candidate) =>
         now - candidate.receivedAt <= COMPANION_CONTEXT_TTL_MS &&
@@ -86,7 +91,9 @@ export class CompanionCoordinator {
     if (!this.enabled || this.retiredDocuments.has(`${key.connectionId}/${key.ref.documentId}`))
       return;
     const previous = this.candidates.get(keyFor(key));
+
     if (previous && BigInt(context.sourceNs) <= BigInt(previous.context.sourceNs)) return;
+
     if (
       previous &&
       this.currentBinding() &&
@@ -95,6 +102,7 @@ export class CompanionCoordinator {
     )
       this.markUnavailable();
     const candidate = { ...key, context, receivedAt: this.deps.now() };
+
     // A tab has one current document/call. Do not leave stale selectable documents.
     for (const [id, previous] of this.candidates) {
       if (previous.connectionId === key.connectionId && previous.ref.tabId === key.ref.tabId) {
@@ -103,11 +111,14 @@ export class CompanionCoordinator {
         this.candidates.delete(id);
       }
     }
+
     if (this.retiredDocuments.size > 256)
       this.retiredDocuments.delete(this.retiredDocuments.values().next().value!);
+
     if (this.candidates.size >= 128) this.candidates.delete(this.candidates.keys().next().value!);
     this.candidates.set(keyFor(key), candidate);
     const binding = this.currentBinding();
+
     if (
       binding &&
       !sameCandidate(binding, key) &&
@@ -131,6 +142,7 @@ export class CompanionCoordinator {
       this.contextReason = null;
       this.reminderShown = false;
     }
+
     if (this.currentBinding() && sameCandidate(this.currentBinding()!, key)) this.apply(candidate);
     this.publish();
   }
@@ -141,6 +153,7 @@ export class CompanionCoordinator {
     this.reminderShown = false;
     this.leaveClaimed = false;
     const candidates = this.freshCandidates();
+
     // Explicit null marks Restart without a former call: never pick a different call.
     const eligible =
       restartCall === undefined
@@ -148,6 +161,7 @@ export class CompanionCoordinator {
         : restartCall === null
           ? []
           : candidates.filter((candidate) => sameCandidate(candidate, restartCall));
+
     if (eligible.length === 1) this.bind(scope, eligible[0]);
     this.publish();
   }
@@ -160,9 +174,11 @@ export class CompanionCoordinator {
     )
       return false;
     const candidate = this.freshCandidates().find((value) => sameCandidate(value, key));
+
     if (!candidate) return false;
     this.bind(scope, candidate);
     this.publish();
+
     return true;
   }
   private bind(scope: CompanionRecordingScope, candidate: CompanionCandidate): void {
@@ -183,46 +199,61 @@ export class CompanionCoordinator {
   }
   private apply(candidate: CompanionCandidate): void {
     const binding = this.currentBinding();
+
     if (!binding || this.leaveClaimed) return;
+
     if (candidate.context.health !== "recognized") {
       this.markUnavailable(candidate.context.reason ?? "meet-ui-unrecognized");
+
       return;
     }
+
     if (candidate.context.confirmedLeave && candidate.context.presence === "not-in-call") {
       this.leaveClaimed = true;
       this.deps.leave(binding);
+
       return;
     }
+
     if (candidate.context.presence !== "in-call") {
       this.markUnavailable();
+
       return;
     }
+
     if (this.unavailableSince !== null)
       this.binding = { ...binding, generation: binding.generation + 1 };
     this.unavailableSince = null;
     this.contextReason = null;
     this.reminderShown = false;
+
     if (candidate.context.mode === "standard" && candidate.context.micMuted !== null) {
       this.deps.setPlatformMuted(binding, candidate.context.micMuted);
     }
+
     this.deps.observe?.(this.binding!, candidate.context);
   }
   private markUnavailable(reason = "meet-context-unavailable"): void {
     this.contextReason = reason;
+
     if (this.unavailableSince === null) this.unavailableSince = this.deps.now();
   }
   disconnect(connectionId: string): void {
     for (const [id, candidate] of this.candidates)
       if (candidate.connectionId === connectionId) this.candidates.delete(id);
+
     if (this.currentBinding()?.connectionId === connectionId) this.markUnavailable();
     this.publish();
   }
   tick(): void {
     const binding = this.currentBinding();
+
     if (!binding || !this.enabled || this.leaveClaimed) return;
     const candidate = this.candidates.get(keyFor(binding));
+
     if (!candidate || this.deps.now() - candidate.receivedAt > COMPANION_CONTEXT_TTL_MS)
       this.markUnavailable();
+
     if (
       this.unavailableSince !== null &&
       !this.reminderShown &&
@@ -231,6 +262,7 @@ export class CompanionCoordinator {
       this.reminderShown = true;
       this.deps.remind(binding);
     }
+
     this.publish();
   }
   setEnabled(enabled: boolean): void {
@@ -238,6 +270,7 @@ export class CompanionCoordinator {
     this.enabled = enabled;
     this.candidates.clear();
     const binding = this.currentBinding();
+
     if (!enabled) {
       if (binding) this.deps.setPlatformMuted(binding, false);
       this.unavailableSince = null;

@@ -20,6 +20,7 @@ export function parseDictionaryImportText(text: unknown): string[] {
   // An unbalanced quote is not the export shape; fall back to the plain split
   // rather than silently swallowing the rest of the paste.
   const quoted = parseFields(raw);
+
   return normalizeFields(quoted === null ? raw.split(/[,\n]/) : quoted);
 }
 
@@ -34,6 +35,7 @@ function normalizeFields(fields: readonly string[]): string[] {
 
 function quoteField(word: string): string {
   if (!/[",\n\r]/.test(word)) return word;
+
   return `"${word.replace(/"/g, '""')}"`;
 }
 
@@ -66,8 +68,10 @@ function parseFields(text: string): string[] | null {
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
+
     if (inQuotes) {
       literal += char;
+
       if (char === '"') {
         if (text[i + 1] === '"') {
           literal += '"';
@@ -81,8 +85,10 @@ function parseFields(text: string): string[] | null {
       } else {
         decoded += char;
       }
+
       continue;
     }
+
     if (char === '"' && quoteMayOpen) {
       inQuotes = true;
       quoteOpened = true;
@@ -90,17 +96,22 @@ function parseFields(text: string): string[] | null {
       quoteMayOpen = false;
       continue;
     }
+
     if (char === "," || char === "\n" || char === "\r") {
       endField();
       continue;
     }
+
     literal += char;
+
     if (char !== " " && char !== "\t") {
       quoteMayOpen = false;
       closed = false;
     }
   }
+
   if (inQuotes) return null;
   endField();
+
   return fields;
 }

@@ -10,8 +10,11 @@
 import { z } from "zod";
 
 const nonNegativeInt = z.number().int();
+
 const idArg = nonNegativeInt;
+
 const optionalId = nonNegativeInt.nullable().optional();
+
 const optionalLimit = nonNegativeInt.optional();
 
 // SELECT * rows: note-scoped and plain lists carry no computed columns.
@@ -25,9 +28,11 @@ export const conversationRowSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
 });
+
 export type ConversationRow = z.infer<typeof conversationRowSchema>;
 
 export const messageRoleSchema = z.enum(["user", "assistant", "system"]);
+
 export type MessageRole = z.infer<typeof messageRoleSchema>;
 
 // Metadata is stored as the serialized JSON string on read; on write the
@@ -42,18 +47,21 @@ export const messageRowSchema = z.object({
   metadata: z.string().nullable(),
   created_at: z.string(),
 });
+
 export type MessageRow = z.infer<typeof messageRowSchema>;
 
 // getAgentConversation: the row plus its messages, null when missing.
 export const conversationDetailSchema = conversationRowSchema.extend({
   messages: z.array(messageRowSchema),
 });
+
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
 
 // getConversationsForContainer: the row plus a message count.
 export const containerConversationSchema = conversationRowSchema.extend({
   message_count: nonNegativeInt,
 });
+
 export type ContainerConversation = z.infer<typeof containerConversationSchema>;
 
 // getAgentConversationsWithPreview: the row plus the last message content,
@@ -61,6 +69,7 @@ export type ContainerConversation = z.infer<typeof containerConversationSchema>;
 export const previewConversationSchema = conversationRowSchema.extend({
   preview: z.string().nullable(),
 });
+
 export type PreviewConversation = z.infer<typeof previewConversationSchema>;
 
 // Positional arguments are frozen API: renderer preload and main handlers
@@ -73,38 +82,52 @@ export const createConversationArgsSchema = z.tuple([
   optionalId,
   optionalId,
 ]);
+
 export const getConversationsForNoteArgsSchema = z.tuple([idArg, optionalLimit]);
-export const getConversationsForContainerArgsSchema = z.tuple([
-  idArg,
-  optionalId,
-  optionalLimit,
-]);
+
+export const getConversationsForContainerArgsSchema = z.tuple([idArg, optionalId, optionalLimit]);
+
 export const getConversationsArgsSchema = z.tuple([optionalLimit]);
+
 export const getConversationArgsSchema = z.tuple([idArg]);
+
 export const deleteConversationArgsSchema = z.tuple([idArg]);
+
 export const updateConversationTitleArgsSchema = z.tuple([idArg, z.unknown()]);
+
 export const addMessageArgsSchema = z.tuple([
   idArg,
   messageRoleSchema,
   z.unknown(),
   z.unknown().optional(),
 ]);
+
 export const getMessagesArgsSchema = z.tuple([idArg]);
+
 export const getConversationsWithPreviewArgsSchema = z.tuple([
   optionalLimit,
   nonNegativeInt.optional(),
   z.boolean().optional(),
 ]);
+
 export const searchConversationsArgsSchema = z.tuple([z.unknown(), optionalLimit]);
+
 export const archiveUnarchiveArgsSchema = z.tuple([idArg]);
 
 export const conversationDetailResultSchema = conversationDetailSchema.nullable();
+
 export const conversationRowListResultSchema = z.array(conversationRowSchema);
+
 export const containerConversationListResultSchema = z.array(containerConversationSchema);
+
 export const previewConversationListResultSchema = z.array(previewConversationSchema);
+
 export const messageRowListResultSchema = z.array(messageRowSchema);
+
 export const messageRowResultSchema = messageRowSchema.nullable();
+
 export const successResultSchema = z.object({ success: z.boolean() });
+
 // createAgentConversation delegates to getAgentConversation: null when the
 // insert fails (e.g. a dangling scope id), the full detail on success.
 export const conversationCreateResultSchema = conversationDetailSchema.nullable();

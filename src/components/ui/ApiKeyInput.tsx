@@ -17,6 +17,7 @@ interface ApiKeyInputProps {
 
 function maskKey(key: string): string {
   if (key.length <= 8) return "••••••••";
+
   return key.slice(0, 3) + "..." + key.slice(-4);
 }
 
@@ -62,12 +63,21 @@ export default function ApiKeyInput({
     saveInFlight.current = true;
     setIsSaving(true);
     setSaveError(false);
+
     try {
       const result = await setApiKey(draft.trim());
-      if (!result || typeof result !== "object" || !("success" in result) || result.success !== true) {
+
+      if (
+        !result ||
+        typeof result !== "object" ||
+        !("success" in result) ||
+        result.success !== true
+      ) {
         setSaveError(true);
+
         return;
       }
+
       setIsEditing(false);
     } catch {
       logger.warn("Failed to save API key securely", {}, "settings");
@@ -89,6 +99,7 @@ export default function ApiKeyInput({
       e.preventDefault();
       save();
     }
+
     if (e.key === "Escape") {
       e.preventDefault();
       cancel();
@@ -99,11 +110,14 @@ export default function ApiKeyInput({
   // the next field expecting it to stick (Escape or ✕ still cancels).
   useEffect(() => {
     if (!isEditing) return;
+
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current?.contains(e.target as Node)) return;
       save();
     };
+
     document.addEventListener("mousedown", handleClickOutside);
+
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isEditing, save]);
 

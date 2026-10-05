@@ -21,19 +21,24 @@ export function waitForVisualFrames(
     const wait = (remaining: number) => {
       if (remaining <= 0) {
         resolve();
+
         return;
       }
+
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
+
       const advance = () => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         wait(remaining - 1);
       };
+
       timer = setTimeout(advance, frameTimeoutMs);
       scheduleFrame(advance);
     };
+
     wait(Math.max(0, frameCount));
   });
 }

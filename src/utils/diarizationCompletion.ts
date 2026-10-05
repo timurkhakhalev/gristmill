@@ -46,8 +46,10 @@ export function selectBaseSegments<Segment>(params: {
   const { persistedSegments, liveSegments, recordingNoteId, targetNoteId } = params;
 
   if (persistedSegments) return persistedSegments;
+
   // Live segments belong to the recording note; merging them into any other
   // note would cross-contaminate transcripts.
   if (recordingNoteId === targetNoteId && liveSegments.length > 0) return liveSegments;
+
   return [];
 }

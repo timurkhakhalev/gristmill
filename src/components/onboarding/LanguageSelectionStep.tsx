@@ -57,7 +57,9 @@ export default function LanguageSelectionStep({
         <div className="flex min-h-8 flex-wrap gap-2" aria-label={selectedLabel}>
           {selected.map((code) => {
             const language = getOnboardingLanguageByCode(code);
+
             if (!language) return null;
+
             return (
               // Figma: Onboarding / Frame 38 — gap 7, pad 10 20, radius 38,
               // 14/140% medium, 20px close glyph at 1.667 stroke.
@@ -86,6 +88,7 @@ export default function LanguageSelectionStep({
         ) : (
           languages.map((language) => {
             const checked = selected.includes(language.code);
+
             return (
               <button
                 key={language.code}

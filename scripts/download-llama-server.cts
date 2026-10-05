@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 const fs: typeof import("fs") = require("fs");
+
 const path: typeof import("path") = require("path");
+
 const {
   copyLibraries,
   downloadFile,
@@ -26,6 +28,7 @@ type BinaryConfig = {
   outputName: string;
   libPattern: string;
 };
+
 const BINARIES: Record<string, BinaryConfig> = {
   "darwin-arm64": {
     platformArch: "darwin-arm64",
@@ -44,6 +47,7 @@ let cachedRelease: import("./lib/download-utils.cts").Release | null = null;
 async function getRelease() {
   if (cachedRelease) return cachedRelease;
   cachedRelease = await fetchLatestRelease(LLAMA_CPP_REPO, { tag: LLAMA_CPP_TAG });
+
   return cachedRelease;
 }
 
@@ -59,6 +63,7 @@ async function downloadBinary(
 ) {
   if (!config) {
     console.log(`  ${key}: Not supported`);
+
     return false;
   }
 
@@ -70,6 +75,7 @@ async function downloadBinary(
   const requiredLibs = config.libPattern
     ? findLibrariesInDir(BIN_DIR, config.libPattern, { maxDepth: 1 })
     : [];
+
   // Completeness stamp: written after the atomic rename by a successful
   // install. Kits without it (or without an executable binary + libraries)
   // re-download once and self-heal — this covers every partial-content hole,
@@ -77,29 +83,36 @@ async function downloadBinary(
   // Executability is still checked so older-revision kits with a missed
   // chmod are also repaired.
   let executable = false;
+
   try {
     fs.accessSync(outputPath, fs.constants.X_OK);
     executable = true;
   } catch {
     executable = false;
   }
+
   // Completeness stamp: written after the atomic rename by a successful
   // install. Kits without it (or without an executable binary + libraries)
   // re-download once and self-heal — this covers every partial-content hole,
   // including 0755 truncation that the X_OK check cannot see (#160).
   const stamped = fs.existsSync(path.join(BIN_DIR, `${config.outputName}.complete`));
   const complete = stamped && fs.existsSync(outputPath) && executable && requiredLibs.length > 0;
+
   if (complete && !isForce) {
     console.log(`  ${key}: Already exists (use --force to re-download)`);
+
     return true;
   }
+
   if (fs.existsSync(outputPath) && !complete) {
     console.log(`  ${key}: Partial install found — reinstalling`);
   }
 
   const asset = findAsset(release, config.assetPattern);
+
   if (!asset) {
     console.error(`  ${key}: No matching asset found for pattern ${config.assetPattern}`);
+
     return false;
   }
 
@@ -132,6 +145,7 @@ async function downloadBinary(
           console.log(`  ${key}: Published library ${libName}`);
         }
       }
+
       // Copy + chmod in the staging directory, then a single rename: the
       // commit is atomic, so a kill can never leave a truncated or
       // non-executable binary at the published path (#160).
@@ -147,14 +161,18 @@ async function downloadBinary(
       console.log(`  ${key}: Installed to ${config.outputName}`);
     } else {
       console.error(`  ${key}: Binary '${binaryName}' not found in archive`);
+
       return false;
     }
 
     fs.rmSync(extractDir, { recursive: true, force: true });
+
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+
     return true;
   } catch (error) {
     console.error(`  ${key}: Failed - ${error instanceof Error ? error.message : String(error)}`);
+
     // Clean up everything this attempt published: a partial install
     // (executable without libraries) blocks normal recovery otherwise.
     // Orphaned libraries are left — the next successful run overwrites them.
@@ -162,7 +180,9 @@ async function downloadBinary(
     // A failed attempt leaves no stamp: the next run re-downloads.
     fs.rmSync(path.join(BIN_DIR, `${config.outputName}.complete`), { force: true });
     fs.rmSync(extractDir, { recursive: true, force: true });
+
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+
     return false;
   }
 }
@@ -182,6 +202,7 @@ async function main() {
     if (entries.length === 0) {
       console.error(`Unsupported platform/arch: ${args.platformArch}`);
       process.exitCode = 1;
+
       return;
     }
 
@@ -192,22 +213,28 @@ async function main() {
       // The completeness stamp certifies the whole kit (issue #160).
       if (!fs.existsSync(path.join(BIN_DIR, `${config.outputName}.complete`))) return false;
       const outputPath = path.join(BIN_DIR, config.outputName);
+
       if (!fs.existsSync(outputPath)) return false;
+
       // Executability self-heals kits left by older revisions (#160).
       try {
         fs.accessSync(outputPath, fs.constants.X_OK);
       } catch {
         return false;
       }
+
       const libs = config.libPattern
         ? findLibrariesInDir(BIN_DIR, config.libPattern, { maxDepth: 1 })
         : [outputPath];
+
       return libs.length > 0;
     });
+
     if (allInstalled && !args.isForce) {
       for (const [key] of entries) {
         console.log(`  ${key}: Already exists (use --force to re-download)`);
       }
+
       return;
     }
 
@@ -218,6 +245,7 @@ async function main() {
       console.error(`[llama-server] Could not fetch release from ${LLAMA_CPP_REPO}`);
       console.log(`\nMake sure release exists: https://github.com/${LLAMA_CPP_REPO}/releases`);
       process.exitCode = 1;
+
       return;
     }
 
@@ -225,9 +253,11 @@ async function main() {
 
     for (const [key, config] of entries) {
       const ok = await downloadBinary(key, config, release, args.isForce);
+
       if (!ok) {
         console.error(`Failed to download binaries for ${key}`);
         process.exitCode = 1;
+
         return;
       }
     }
@@ -243,12 +273,15 @@ async function main() {
       console.error(`[llama-server] Could not fetch release from ${LLAMA_CPP_REPO}`);
       console.log(`\nMake sure release exists: https://github.com/${LLAMA_CPP_REPO}/releases`);
       process.exitCode = 1;
+
       return;
     }
 
     console.log(`\nDownloading llama-server binaries (${release.tag})...`);
+
     for (const [key, config] of Object.entries(BINARIES)) {
       const ok = await downloadBinary(key, config, release, args.isForce);
+
       if (!ok) process.exitCode = 1;
     }
   }
@@ -256,6 +289,7 @@ async function main() {
   console.log("\n---");
 
   const files = fs.readdirSync(BIN_DIR).filter((f) => f.startsWith("llama-server"));
+
   if (files.length > 0) {
     console.log("Available llama-server binaries:\n");
     files.forEach((f) => {
@@ -278,4 +312,5 @@ if (require.main === module) {
 const api = { BINARIES, LLAMA_CPP_TAG };
 
 module.exports = api;
+
 export type API = typeof api;

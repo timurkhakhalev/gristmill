@@ -3,8 +3,13 @@
 // route), and cancelBatch hard-cancels the current batch item's execution
 // instead of only discarding its late result.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
@@ -34,15 +39,22 @@ const cfg = (overrides = {}) => ({
 });
 
 test("transcribeFile passes the requestId to the BYOK handler", async (t: TestContext) => {
-  const { window } = installBrowserGlobals(t) as { window: { electronAPI: Record<string, unknown> } };
+  const { window } = installBrowserGlobals(t) as {
+    window: { electronAPI: Record<string, unknown> };
+  };
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openh-file-byok-request-id-",
   });
-  const { transcribeFile } = (await vite.ssrLoadModule("/services/fileTranscription.ts") as typeof import("../../src/services/fileTranscription.ts"));
+
+  const { transcribeFile } = (await vite.ssrLoadModule(
+    "/services/fileTranscription.ts"
+  )) as typeof import("../../src/services/fileTranscription.ts");
 
   let byokOptions: Record<string, unknown> | undefined;
   window.electronAPI.transcribeAudioFileByok = async (options: Record<string, unknown>) => {
     byokOptions = options;
+
     return { success: true, text: "direct" };
   };
 
@@ -56,13 +68,17 @@ test("transcribeFile passes the requestId to the BYOK handler", async (t: TestCo
 });
 
 test("cancelBatch hard-cancels the current item and discards its late result", async (t: TestContext) => {
-  const { window } = installBrowserGlobals(t) as { window: { electronAPI: Record<string, unknown> } };
+  const { window } = installBrowserGlobals(t) as {
+    window: { electronAPI: Record<string, unknown> };
+  };
 
   const cancels: string[] = [];
   window.electronAPI.cancelUrlDownload = async () => ({ success: true });
   window.electronAPI.deleteTempFile = () => {};
+
   window.electronAPI.cancelUploadTranscription = async ({ requestId }: { requestId: string }) => {
     cancels.push(requestId);
+
     return { success: true, cancelled: 1 };
   };
 
@@ -71,6 +87,7 @@ test("cancelBatch hard-cancels the current item and discards its late result", a
   (globalThis as GlobalWithMocks).__hangTranscription = {
     start: (requestId: string) => {
       capturedRequestId = requestId;
+
       return new Promise((resolve) => {
         resolveTranscription = resolve;
       });
@@ -106,9 +123,11 @@ test("cancelBatch hard-cancels the current item and discards its late result", a
       `,
     },
   });
-  const { addFiles, processBatchQueue, cancelBatch, useBatchQueueStore } = (await vite.ssrLoadModule(
-    "/stores/batchQueueStore.ts"
-  ) as typeof import("../../src/stores/batchQueueStore.ts"));
+
+  const { addFiles, processBatchQueue, cancelBatch, useBatchQueueStore } =
+    (await vite.ssrLoadModule(
+      "/stores/batchQueueStore.ts"
+    )) as typeof import("../../src/stores/batchQueueStore.ts");
 
   addFiles([{ name: "interview.wav", path: "/tmp/interview.wav", sizeBytes: 1024 }]);
   processBatchQueue(
@@ -146,13 +165,17 @@ test("cancelBatch hard-cancels the current item and discards its late result", a
 test("an old cancelled batch settling cannot steal the new batch's cancel slot", async (t: TestContext) => {
   // A-cancel → B-start → A-settles → B-cancel: B must still be hard-cancellable
   // after the cancelled A settles late; late A must not save a note either.
-  const { window } = installBrowserGlobals(t) as { window: { electronAPI: Record<string, unknown> } };
+  const { window } = installBrowserGlobals(t) as {
+    window: { electronAPI: Record<string, unknown> };
+  };
 
   const cancels: string[] = [];
   window.electronAPI.cancelUrlDownload = async () => ({ success: true });
   window.electronAPI.deleteTempFile = () => {};
+
   window.electronAPI.cancelUploadTranscription = async ({ requestId }: { requestId: string }) => {
     cancels.push(requestId);
+
     return { success: true, cancelled: 1 };
   };
 
@@ -161,10 +184,13 @@ test("an old cancelled batch settling cannot steal the new batch's cancel slot",
     // Returns the deferred itself so the test settles each execution explicitly.
     start(requestId: string) {
       let resolve!: (value: unknown) => void;
+
       const settled = new Promise((r) => {
         resolve = r;
       });
+
       calls.push({ id: requestId, resolve });
+
       return settled;
     },
   };
@@ -198,14 +224,16 @@ test("an old cancelled batch settling cannot steal the new batch's cancel slot",
       `,
     },
   });
+
   const { addFiles, processBatchQueue, cancelBatch } = (await vite.ssrLoadModule(
     "/stores/batchQueueStore.ts"
-  ) as typeof import("../../src/stores/batchQueueStore.ts"));
+  )) as typeof import("../../src/stores/batchQueueStore.ts");
 
   const opts = {
     transcription: cfg(),
     folderId: null,
   };
+
   const diarization = { enabled: false, localModelsReady: false, numSpeakers: null };
 
   addFiles([{ name: "first.wav", path: "/tmp/first.wav", sizeBytes: 100 }]);
@@ -227,6 +255,13 @@ test("an old cancelled batch settling cannot steal the new batch's cancel slot",
   // B's cancel must reach the transport: the late A settlement above must not
   // have cleared the slot B claimed.
   cancelBatch();
-  assert.deepEqual(cancels, calls.map((call) => call.id));
-  assert.equal((globalThis as GlobalWithMocks).__twoBatchTranscription!.savedNote, undefined, "late A saves no note");
+  assert.deepEqual(
+    cancels,
+    calls.map((call) => call.id)
+  );
+  assert.equal(
+    (globalThis as GlobalWithMocks).__twoBatchTranscription!.savedNote,
+    undefined,
+    "late A saves no note"
+  );
 });

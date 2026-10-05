@@ -1,6 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
 
 // The cleanup-app handler lives in the typed desktop settings module; the
@@ -10,6 +13,7 @@ const desktopSettingsSource = fs.readFileSync(
   path.join(__dirname, "../../src/helpers/desktopSettingsIpcHandlers.ts"),
   "utf8"
 );
+
 const ipcHandlersSource = fs.readFileSync(
   path.join(__dirname, "../../src/helpers/ipcHandlers.ts"),
   "utf8"
@@ -48,9 +52,6 @@ test("the cleanup seams wire every manager-owned step from the composition root"
     "googleCalendarManager.revokeAllTokens",
     "databaseManager.db.close",
   ]) {
-    assert.ok(
-      ipcHandlersSource.includes(seam),
-      `cleanup seam wired: ${seam}`
-    );
+    assert.ok(ipcHandlersSource.includes(seam), `cleanup seam wired: ${seam}`);
   }
 });

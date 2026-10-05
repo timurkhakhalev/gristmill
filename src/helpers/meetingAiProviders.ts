@@ -4,6 +4,7 @@ import { createAIModel } from "../services/ai/providerModelFactory.js";
 async function createTinfoilModel(apiKey: string, model: string): Promise<LanguageModel> {
   const { createTinfoilAI } = await import("tinfoil");
   const provider = await createTinfoilAI(apiKey);
+
   return provider(model) as LanguageModel;
 }
 

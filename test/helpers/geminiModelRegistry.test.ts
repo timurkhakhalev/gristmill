@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const modelData: typeof import("../../src/models/modelRegistryData.json") = require("../../src/models/modelRegistryData.json");
@@ -24,6 +25,7 @@ const EXPECTED = {
 function geminiModels() {
   const provider = modelData.cloudProviders.find((p) => p.id === "gemini");
   assert.ok(provider, "gemini provider missing from registry");
+
   return provider.models;
 }
 
@@ -35,8 +37,16 @@ test("the Flash Lite entries carry the exact ids, names, and capability flags", 
     assert.ok(model, `missing Gemini entry ${id}`);
     assert.equal(model.name, expected.name, `${id} name`);
     assert.equal(model.descriptionKey, expected.descriptionKey, `${id} descriptionKey`);
-    assert.equal("supportsThinking" in model ? model.supportsThinking : undefined, expected.supportsThinking, `${id} supportsThinking`);
-    assert.equal("supportsVision" in model ? model.supportsVision : undefined, expected.supportsVision, `${id} supportsVision`);
+    assert.equal(
+      "supportsThinking" in model ? model.supportsThinking : undefined,
+      expected.supportsThinking,
+      `${id} supportsThinking`
+    );
+    assert.equal(
+      "supportsVision" in model ? model.supportsVision : undefined,
+      expected.supportsVision,
+      `${id} supportsVision`
+    );
   }
 });
 

@@ -1,6 +1,9 @@
 const { app } = require("electron");
+
 const os = require("os");
+
 const fs = require("fs");
+
 const path = require("path");
 
 // Same rule as safeTempDir: native whisper/parakeet binaries crash on Windows
@@ -11,6 +14,7 @@ export function pathHasProblematicChars(candidate: string): boolean {
 
 function ensureDir(dir: string): string {
   fs.mkdirSync(dir, { recursive: true });
+
   return dir;
 }
 
@@ -22,6 +26,7 @@ function getAsciiSafeFallbackRoot(): string | null {
 
   for (const candidate of candidates) {
     if (pathHasProblematicChars(candidate)) continue;
+
     try {
       return ensureDir(candidate);
     } catch {}
@@ -32,12 +37,14 @@ function getAsciiSafeFallbackRoot(): string | null {
 
 function getPreferredCacheRoot(homeCache: string): string {
   const cacheRootEnv = process.env.GRISTMILL_CACHE_ROOT;
+
   if (cacheRootEnv) {
     return cacheRootEnv;
   }
 
   if (process.platform === "win32") {
     const redirectedProfile = process.env.USERPROFILE;
+
     if (redirectedProfile && path.isAbsolute(redirectedProfile)) {
       return path.join(redirectedProfile, ".cache", "gristmill");
     }
@@ -45,6 +52,7 @@ function getPreferredCacheRoot(homeCache: string): string {
 
   if (process.platform === "linux") {
     const xdgCacheHome = process.env.XDG_CACHE_HOME;
+
     if (xdgCacheHome && path.isAbsolute(xdgCacheHome)) {
       return path.join(xdgCacheHome, "gristmill");
     }
@@ -88,16 +96,19 @@ function rollbackMigration(completedMoves: CompletedMove[]): void {
 
 function migrateLegacyModelDirs(legacyRoot: string, targetRoot: string): boolean {
   const rootPair = `${legacyRoot}\0${targetRoot}`;
+
   if (migratedRootPair === rootPair) return true;
 
   const completedMoves: CompletedMove[] = [];
   let staging: string | null = null;
+
   try {
     ensureDir(targetRoot);
 
     for (const subdir of RELOCATED_SUBDIRS) {
       const from = path.join(legacyRoot, subdir);
       const to = path.join(targetRoot, subdir);
+
       if (!fs.existsSync(from) || fs.existsSync(to)) continue;
 
       try {
@@ -120,6 +131,7 @@ function migrateLegacyModelDirs(legacyRoot: string, targetRoot: string): boolean
     }
 
     migratedRootPair = rootPair;
+
     return true;
   } catch {
     if (staging) {
@@ -127,7 +139,9 @@ function migrateLegacyModelDirs(legacyRoot: string, targetRoot: string): boolean
         fs.rmSync(staging, { recursive: true, force: true });
       } catch {}
     }
+
     rollbackMigration(completedMoves);
+
     return false;
   }
 }
@@ -142,6 +156,7 @@ export function getCacheRoot(): string {
   }
 
   if (targetRoot === homeCache) return homeCache;
+
   return migrateLegacyModelDirs(homeCache, targetRoot) ? targetRoot : homeCache;
 }
 

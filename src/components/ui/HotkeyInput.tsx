@@ -224,6 +224,7 @@ function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
   }
 
   const baseKey = CODE_TO_KEY[e.code];
+
   if (!baseKey) {
     return null;
   }
@@ -233,13 +234,16 @@ function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
 
   if (platform === "darwin") {
     if (e.ctrlKey) modifiers.push("Control");
+
     if (e.metaKey) modifiers.push("Command");
   } else {
     if (e.ctrlKey) modifiers.push("Control");
+
     if (e.metaKey) modifiers.push("Super");
   }
 
   if (e.altKey) modifiers.push("Alt");
+
   if (e.shiftKey) modifiers.push("Shift");
 
   return modifiers.length > 0 ? [...modifiers, baseKey].join("+") : baseKey;
@@ -271,12 +275,14 @@ export function HotkeyInput({
   const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fnHeldRef = useRef(false);
   const fnCapturedKeyRef = useRef(false);
+
   const heldModifiersRef = useRef<Record<ModifierKind, boolean>>({
     ctrl: false,
     meta: false,
     alt: false,
     shift: false,
   });
+
   const modifierCodesRef = useRef<Partial<Record<ModifierKind, string>>>({});
   const platform = getPlatform();
   const isMac = platform === "darwin";
@@ -294,11 +300,14 @@ export function HotkeyInput({
       if (heldKinds.length === 1) {
         const kind = heldKinds[0];
         const token = heldModifierToken(kind, codes[kind], platform);
+
         if (token.startsWith("Right")) {
           return { kind: "hotkey", hotkey: token };
         }
+
         const rightSideToken =
           sidedModifierToken(`${MODIFIER_CODE_STEM[kind]}Right`, platform) ?? token;
+
         return {
           kind: "needsRightSide",
           held: formatHotkeyLabelForPlatform(token, platform),
@@ -329,6 +338,7 @@ export function HotkeyInput({
       if (warningTimeoutRef.current) {
         clearTimeout(warningTimeoutRef.current);
       }
+
       setValidationWarning(message);
       onValidationError?.(message);
       warningTimeoutRef.current = setTimeout(() => setValidationWarning(null), 4000);
@@ -350,8 +360,10 @@ export function HotkeyInput({
 
       if (validate) {
         const errorMsg = validate(hotkey);
+
         if (errorMsg) {
           rejectCapture(errorMsg);
+
           return;
         }
       }
@@ -387,6 +399,7 @@ export function HotkeyInput({
 
       // Track which specific keys are pressed (for left/right detection)
       const code = e.nativeEvent.code;
+
       if (code === "ControlLeft" || code === "ControlRight") {
         modifierCodesRef.current.ctrl = code;
       } else if (code === "MetaLeft" || code === "MetaRight") {
@@ -404,24 +417,33 @@ export function HotkeyInput({
 
       const codes = modifierCodesRef.current;
       const held: string[] = [];
+
       const holdKind = (kind: ModifierKind) =>
         held.push(heldModifierToken(kind, codes[kind], platform));
+
       if (isMac) {
         if (e.metaKey) holdKind("meta");
+
         if (e.ctrlKey) holdKind("ctrl");
       } else {
         if (e.ctrlKey) holdKind("ctrl");
+
         if (e.metaKey) holdKind("meta");
       }
+
       if (e.altKey) holdKind("alt");
+
       if (e.shiftKey) holdKind("shift");
+
       if (fnHeldRef.current) held.push("Fn");
       setActiveModifiers(held);
 
       // Try to get non-modifier hotkey first
       const hotkey = mapKeyboardEventToHotkey(e.nativeEvent);
+
       if (hotkey) {
         keyDownTimeRef.current = 0;
+
         if (fnHeldRef.current) {
           fnCapturedKeyRef.current = true;
           finalizeCapture(`Fn+${hotkey}`);
@@ -449,6 +471,7 @@ export function HotkeyInput({
 
       if (wasHoldingModifiers && MODIFIER_CODES.has(e.nativeEvent.code)) {
         const holdDuration = Date.now() - keyDownTimeRef.current;
+
         const capture = resolveModifierOnlyCapture(
           heldModifiersRef.current,
           modifierCodesRef.current
@@ -459,6 +482,7 @@ export function HotkeyInput({
           shouldAcceptModifierOnlyCapture(capture.hotkey, holdDuration)
         ) {
           attempted = true;
+
           if (fnHeldRef.current) {
             fnCapturedKeyRef.current = true;
             finalizeCapture(`Fn+${capture.hotkey}`);
@@ -495,12 +519,15 @@ export function HotkeyInput({
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (disabled) return;
+
       if (!isCapturing) {
         containerRef.current?.focus({ preventScroll: true });
+
         return;
       }
 
       const mouseHotkey = e.button === 3 ? "MouseButton4" : e.button === 4 ? "MouseButton5" : null;
+
       if (!mouseHotkey) return;
 
       e.preventDefault();
@@ -542,34 +569,42 @@ export function HotkeyInput({
         // window to the foreground. Main restores/focuses the BrowserWindow as
         // part of this handshake; waiting for it makes the first chord reliable.
         const listening = window.electronAPI?.setHotkeyListeningMode?.(true);
+
         if (listening) await listening.catch(() => undefined);
       }
+
       if (cancelled) return;
 
       if (frame !== null) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         frame = null;
+
         if (
           onlyIfPageFocusIsUnclaimed &&
           !shouldRestoreCaptureFocus(document.activeElement, document.body)
         ) {
           return;
         }
+
         containerRef.current?.focus({ preventScroll: true });
       });
     };
 
     void focusCaptureSurface();
     const handleWindowFocus = () => void focusCaptureSurface(true);
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") void focusCaptureSurface(true);
     };
+
     window.addEventListener("focus", handleWindowFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       cancelled = true;
       window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+
       if (frame !== null) cancelAnimationFrame(frame);
     };
   }, [autoFocus, platform]);
@@ -581,6 +616,7 @@ export function HotkeyInput({
   useEffect(() => {
     return () => {
       window.electronAPI?.setHotkeyListeningMode?.(false);
+
       if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
     };
   }, []);
@@ -600,6 +636,7 @@ export function HotkeyInput({
       if (fnHeldRef.current && !fnCapturedKeyRef.current) {
         finalizeCapture("GLOBE");
       }
+
       setIsFnHeld(false);
       fnHeldRef.current = false;
       fnCapturedKeyRef.current = false;
@@ -723,9 +760,7 @@ export function HotkeyInput({
             {validationWarning && (
               <div className="flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-md bg-warning/8 border border-warning/20 dark:bg-warning/12 dark:border-warning/25">
                 <AlertTriangle className="w-3 h-3 text-warning shrink-0" />
-                <span className="text-xs text-warning">
-                  {validationWarning}
-                </span>
+                <span className="text-xs text-warning">{validationWarning}</span>
               </div>
             )}
           </div>
@@ -736,9 +771,7 @@ export function HotkeyInput({
               {hotkeyParts.length > 0 ? (
                 hotkeyParts.map((part, i) => (
                   <React.Fragment key={part}>
-                    {i > 0 && (
-                      <span className="text-muted text-lg font-light">+</span>
-                    )}
+                    {i > 0 && <span className="text-muted text-lg font-light">+</span>}
                     <kbd className="px-3 py-1.5 bg-surface-raised border border-border rounded-sm text-sm font-semibold text-foreground shadow-sm">
                       {part}
                     </kbd>
@@ -839,9 +872,7 @@ export function HotkeyInput({
             {validationWarning && (
               <div className="flex items-center gap-1.5 mt-1.5 px-3 py-1.5 rounded-md bg-warning/8 border border-warning/20 dark:bg-warning/12 dark:border-warning/25">
                 <AlertTriangle className="w-3 h-3 text-warning shrink-0" />
-                <span className="text-xs text-warning">
-                  {validationWarning}
-                </span>
+                <span className="text-xs text-warning">{validationWarning}</span>
               </div>
             )}
           </>
@@ -880,9 +911,7 @@ export function HotkeyInput({
                   {displayValue}
                 </kbd>
               )}
-              <span className="text-xs text-muted">
-                {t("hotkeyInput.clickToChangeLower")}
-              </span>
+              <span className="text-xs text-muted">{t("hotkeyInput.clickToChangeLower")}</span>
               {clearButton}
             </div>
           </div>

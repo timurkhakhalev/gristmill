@@ -1,8 +1,15 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const { createElement } = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
@@ -40,6 +47,7 @@ async function renderCard(t: TestContext, props: Record<string, unknown>) {
   installBrowserGlobals(t, {
     window: { electronAPI: { searchContacts: async () => ({ success: true, contacts: [] }) } },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-note-participants-",
     noExternal: ["@heroui/react"],
@@ -51,7 +59,9 @@ async function renderCard(t: TestContext, props: Record<string, unknown>) {
       "/hooks/useDateTimePreferences": `export function useDateTimePreferences() { return { dateFormat: "locale", timeFormat: "locale" }; }`,
     },
   });
+
   const mod = await vite.ssrLoadModule("/components/notes/NoteParticipants.tsx");
+
   return renderToStaticMarkup(
     createElement(mod.default, { noteId: 1, participants: [], ...props })
   );
@@ -77,11 +87,18 @@ test("a missing event_url hides the calendar button but keeps the join link", as
   const html = await renderCard(t, { event: makeEvent({ event_url: null }) });
 
   assert.match(html, /meet\.google\.com\/xng-tmak-ich/, "join link survives");
-  assert.doesNotMatch(html, /notes\.participants\.calendar/, "calendar button hidden without event_url");
+  assert.doesNotMatch(
+    html,
+    /notes\.participants\.calendar/,
+    "calendar button hidden without event_url"
+  );
 });
 
 test("an event description shows as a preview and stays hidden when absent", async (t: TestContext) => {
-  const withDescription = await renderCard(t, { event: makeEvent({ description: "Agenda: roadmap review" }) });
+  const withDescription = await renderCard(t, {
+    event: makeEvent({ description: "Agenda: roadmap review" }),
+  });
+
   assert.match(withDescription, /Agenda: roadmap review/, "description preview");
 
   const without = await renderCard(t, { event: makeEvent() });

@@ -7,11 +7,13 @@ import test from "node:test";
 import { installElectronStub, setUserDataDir, setAppDataDir } from "./harness/electronStub.js";
 
 installElectronStub();
-const { snapshotProductionProfileForDev, suppressDevSnapshotAfterReset, devProfileHasUnsafePaths } = require("../../src/helpers/devSnapshot.ts") as {
-  snapshotProductionProfileForDev: () => boolean;
-  suppressDevSnapshotAfterReset: () => void;
-  devProfileHasUnsafePaths: (path?: string) => boolean;
-};
+
+const { snapshotProductionProfileForDev, suppressDevSnapshotAfterReset, devProfileHasUnsafePaths } =
+  require("../../src/helpers/devSnapshot.ts") as {
+    snapshotProductionProfileForDev: () => boolean;
+    suppressDevSnapshotAfterReset: () => void;
+    devProfileHasUnsafePaths: (path?: string) => boolean;
+  };
 
 function makeProfiles() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "oh-dev-snapshot-"));
@@ -19,6 +21,7 @@ function makeProfiles() {
   const development = path.join(root, "Gristmill-development");
   fs.mkdirSync(path.join(production, "audio", "meetings", "rec-1"), { recursive: true });
   fs.mkdirSync(path.join(production, "meeting-results"), { recursive: true });
+
   // A minimal real SQLite database: VACUUM INTO requires a valid db and its
   // output must be a readable database with the same rows.
   const Database = require("better-sqlite3") as new (path: string) => {
@@ -29,6 +32,7 @@ function makeProfiles() {
     };
     close: () => void;
   };
+
   const prodDb = new Database(path.join(production, "transcriptions.db"));
   prodDb.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT)");
   prodDb.exec("INSERT INTO notes (title) VALUES ('prod-note')");
@@ -39,6 +43,7 @@ function makeProfiles() {
   );
   fs.writeFileSync(path.join(production, "audio", "meetings", "rec-1", "audio.pcm"), "pcm");
   fs.writeFileSync(path.join(production, "meeting-results", "run-1.json"), "{}");
+
   return { root, production, development, Database };
 }
 
@@ -52,6 +57,7 @@ function openDevDb(dir: string) {
     };
     close: () => void;
   };
+
   return new Database(path.join(dir, DEV_DB));
 }
 
@@ -91,24 +97,33 @@ test("snapshot strips legacy plaintext calendar tokens from the dev database", (
       microsoft_email TEXT, access_token TEXT, refresh_token TEXT, expires_at INTEGER, scope TEXT
     );
   `);
-  prodDb.prepare(
-    "INSERT INTO google_calendar_tokens VALUES (?, ?, ?, ?, ?)"
-  ).run("google@example.com", "legacy-google-access", "legacy-google-refresh", 1, "calendar");
-  prodDb.prepare(
-    "INSERT INTO microsoft_calendar_tokens VALUES (?, ?, ?, ?, ?)"
-  ).run("microsoft@example.com", "legacy-ms-access", "legacy-ms-refresh", 1, "calendar");
+  prodDb
+    .prepare("INSERT INTO google_calendar_tokens VALUES (?, ?, ?, ?, ?)")
+    .run("google@example.com", "legacy-google-access", "legacy-google-refresh", 1, "calendar");
+  prodDb
+    .prepare("INSERT INTO microsoft_calendar_tokens VALUES (?, ?, ?, ?, ?)")
+    .run("microsoft@example.com", "legacy-ms-access", "legacy-ms-refresh", 1, "calendar");
   prodDb.close();
 
   setUserDataDir(development);
   assert.equal(snapshotProductionProfileForDev(), true);
 
   const devDb = new Database(path.join(development, DEV_DB));
-  assert.equal(devDb.prepare("SELECT COUNT(*) AS count FROM google_calendar_tokens").get().count, 0);
-  assert.equal(devDb.prepare("SELECT COUNT(*) AS count FROM microsoft_calendar_tokens").get().count, 0);
+  assert.equal(
+    devDb.prepare("SELECT COUNT(*) AS count FROM google_calendar_tokens").get().count,
+    0
+  );
+  assert.equal(
+    devDb.prepare("SELECT COUNT(*) AS count FROM microsoft_calendar_tokens").get().count,
+    0
+  );
   devDb.close();
 
   const source = fs.readFileSync(path.join(production, "transcriptions.db"));
-  assert.ok(source.includes(Buffer.from("legacy-google-access")), "the production database is unchanged");
+  assert.ok(
+    source.includes(Buffer.from("legacy-google-access")),
+    "the production database is unchanged"
+  );
 });
 
 test("does not re-snapshot a completed dev profile", () => {
@@ -139,11 +154,13 @@ test("reset before the first marker prevents a retry unless refresh is requested
   assert.equal(snapshotProductionProfileForDev(), true);
   assert.equal(fs.existsSync(path.join(development, DEV_DB)), false);
   process.env.GRISTMILL_REFRESH_SNAPSHOT = "1";
+
   try {
     assert.equal(snapshotProductionProfileForDev(), true);
   } finally {
     delete process.env.GRISTMILL_REFRESH_SNAPSHOT;
   }
+
   const db = openDevDb(development);
   assert.equal(db.prepare("SELECT title FROM notes").get().title, "prod-note");
   db.close();
@@ -152,15 +169,25 @@ test("reset before the first marker prevents a retry unless refresh is requested
 test("snapshots a surviving WAL without checkpointing or changing production files", () => {
   const { production, development } = makeProfiles();
   const source = path.join(production, "transcriptions.db");
+
   // A process exiting without close leaves WAL data behind. With no other
   // connection open, the old writable source handle checkpointed on close.
-  const child = spawnSync(process.execPath, ["-e", `
+  const child = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `
     const Database = require("better-sqlite3");
     const db = new Database(process.argv[1]);
     db.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0");
     db.exec("INSERT INTO notes (title) VALUES ('wal-note')");
     process.exit(0);
-  `, source], { encoding: "utf8" });
+  `,
+      source,
+    ],
+    { encoding: "utf8" }
+  );
+
   assert.equal(child.status, 0, child.stderr);
   assert.equal(fs.existsSync(`${source}-wal`), true);
   const beforeDb = fs.readFileSync(source);
@@ -217,11 +244,13 @@ test("refresh re-copies missing files but keeps dev-only ones", () => {
   fs.rmSync(path.join(development, ".env"));
   fs.writeFileSync(path.join(development, "dev-only.txt"), "keep");
   process.env.GRISTMILL_REFRESH_SNAPSHOT = "1";
+
   try {
     snapshotProductionProfileForDev();
   } finally {
     delete process.env.GRISTMILL_REFRESH_SNAPSHOT;
   }
+
   assert.ok(fs.readFileSync(path.join(development, ".env"), "utf8").includes('KEY="1"'));
   assert.equal(fs.readFileSync(path.join(development, "dev-only.txt"), "utf8"), "keep");
 });
@@ -260,10 +289,7 @@ test("refuses to start into a profile nested inside the production profile", () 
 test("refuses to start when the dev database symlinks into production", () => {
   const { production, development } = makeProfiles();
   fs.mkdirSync(development, { recursive: true });
-  fs.symlinkSync(
-    path.join(production, "transcriptions.db"),
-    path.join(development, DEV_DB)
-  );
+  fs.symlinkSync(path.join(production, "transcriptions.db"), path.join(development, DEV_DB));
   setUserDataDir(development);
   const ok = snapshotProductionProfileForDev();
   assert.equal(ok, false, "a dev database pointing into production must refuse to start");
@@ -279,7 +305,8 @@ test("refuses to start when a legacy database symlinks into production", () => {
   setUserDataDir(development);
   const ok = snapshotProductionProfileForDev();
   assert.equal(
-    ok, false,
+    ok,
+    false,
     "a legacy database pointing into production must refuse before adoption opens it"
   );
 });
@@ -312,16 +339,19 @@ test("refuses to start when a nested link inside a storage tree reaches producti
   setUserDataDir(development);
   const ok = snapshotProductionProfileForDev();
   assert.equal(
-    ok, false,
+    ok,
+    false,
     "a link nested inside a copied tree must refuse before the snapshot writes through it"
   );
 });
 
 test("refuses a not-yet-existing profile path inside production", () => {
   const { production, root } = makeProfiles();
+
   const { profilePathAliasesProduction } = require("../../src/helpers/devSnapshot.ts") as {
     profilePathAliasesProduction: (p: string) => boolean;
   };
+
   // Point the stub's appData at this pair's root so sourceProfileDir matches.
   setUserDataDir(path.join(root, "Gristmill-development"));
   const planned = path.join(production, "smoke-inside-prod");
@@ -367,11 +397,13 @@ test("a profile with both pre-cutover databases keeps the legacy set as a backup
   const check = openDevDb(development);
   assert.equal(check.prepare("SELECT title FROM notes").get().title, "pnpm-dev-note");
   check.close();
+
   // The packaged-Dev set survives as a visible backup, never merged or lost.
   // The name carries a timestamp; find it instead of pinning it.
   const backupName = fs
     .readdirSync(development)
     .find((name) => /^transcriptions-legacy-dev-backup.*\.db$/.test(name));
+
   assert.ok(backupName, "a legacy backup database must exist");
   const backup = new Database(path.join(development, backupName as string));
   assert.equal(backup.prepare("SELECT title FROM notes").get().title, "packaged-dev-note");

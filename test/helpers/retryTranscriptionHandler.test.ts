@@ -1,13 +1,23 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const https = require("node:https");
+
 import type { TranscriptionExecutionDeps } from "../../src/helpers/transcriptionExecutionIpcHandlers.ts";
 
 const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
+
 const execModuleSpecifier = "../../src/helpers/transcriptionExecutionIpcHandlers";
-const { createUploadCancelRegistry }: typeof import("../../src/helpers/uploadCancelRegistry") = require("../../src/helpers/uploadCancelRegistry");
+
+const {
+  createUploadCancelRegistry,
+}: typeof import("../../src/helpers/uploadCancelRegistry") = require("../../src/helpers/uploadCancelRegistry");
+
 const originalLoad = Module._load;
+
 const originalHttpsRequest = https.request;
 
 // Captures every ipcMain.handle registration and every net.fetch request so the
@@ -15,15 +25,26 @@ const originalHttpsRequest = https.request;
 // channels still registered from ipcHandlers.js (the BYOK upload path);
 // `execHandlers` holds the typed transcription execution module's channels.
 const handlers = new Map();
+
 const execHandlers = new Map();
+
 const fetches: { url: string; init: { headers: Record<string, string>; body: unknown } }[] = [];
+
 function fetchBody(index = 0): Buffer {
   const body = fetches[index]?.init.body;
   assert.ok(Buffer.isBuffer(body));
+
   return body;
 }
-const geminiFileCalls: (Parameters<TranscriptionExecutionDeps["transcribeGeminiFile"]>[0] & { bytes: Buffer })[] = [];
-let fetchResponse: (url: string, init: unknown) => {
+
+const geminiFileCalls: (Parameters<TranscriptionExecutionDeps["transcribeGeminiFile"]>[0] & {
+  bytes: Buffer;
+})[] = [];
+
+let fetchResponse: (
+  url: string,
+  init: unknown
+) => {
   ok: boolean;
   status: number;
   json: () => Promise<unknown>;
@@ -53,6 +74,7 @@ const electronStub = {
   net: {
     fetch: async (url: string, init: { headers: Record<string, string>; body: Buffer }) => {
       fetches.push({ url: String(url), init });
+
       return fetchResponse(String(url), init);
     },
   },
@@ -77,35 +99,51 @@ const electronStub = {
 };
 
 const cortiCalls: Parameters<TranscriptionExecutionDeps["transcribeWithCorti"]>[0][] = [];
+
 const tinfoilCalls = [];
-let cortiBehavior: (options: unknown) => Promise<{ text: string }> = async () => ({ text: "corti text" });
+
+let cortiBehavior: (options: unknown) => Promise<{ text: string }> = async () => ({
+  text: "corti text",
+});
 
 // Kept installed for the whole file: the corti client is require()d lazily at
 // handler invocation time, not at module load.
-Module._load = function loadWithMocks(request: string, parent: { filename?: string } | undefined, isMain: boolean) {
+Module._load = function loadWithMocks(
+  request: string,
+  parent: { filename?: string } | undefined,
+  isMain: boolean
+) {
   if (request === "electron") return electronStub;
+
   if (parent?.filename === handlersModulePath) {
     if (request === "./cortiTranscription") {
       return {
-        transcribeAudio: async (opts: Parameters<TranscriptionExecutionDeps["transcribeWithCorti"]>[0]) => {
+        transcribeAudio: async (
+          opts: Parameters<TranscriptionExecutionDeps["transcribeWithCorti"]>[0]
+        ) => {
           cortiCalls.push(opts);
+
           return cortiBehavior(opts);
         },
       };
     }
+
     if (request === "./tinfoilTranscription") {
       return {
         transcribeWithTinfoil: async (opts: unknown) => {
           tinfoilCalls.push(opts);
+
           return { text: "tinfoil text", model: "tinfoil-model" };
         },
         getTinfoilChatModels: () => [],
       };
     }
+
     if (request === "./windowBroadcast") {
       return { broadcastToWindows: () => {} };
     }
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -115,7 +153,9 @@ function anything(): unknown {
   return new Proxy(function () {}, {
     get: (t, prop) => {
       if (prop === Symbol.toPrimitive || prop === "toString") return () => "";
+
       if (prop === "then") return undefined;
+
       return anything();
     },
     apply: () => anything(),
@@ -125,21 +165,27 @@ function anything(): unknown {
 // The typed transcription execution module's deps: the same key fixtures the
 // old fake-this carried, now passed explicitly to the register function.
 function buildExecutionDeps() {
-  const dbRows = new Map<number, import("../../src/helpers/database.ts").TranscriptionRow>([[7, {
-    id: 7,
-    text: "",
-    raw_text: null,
-    timestamp: "2026-09-28T00:00:00.000Z",
-    created_at: "2026-09-28T00:00:00.000Z",
-    has_audio: 1,
-    audio_duration_ms: 1200,
-    provider: null,
-    model: null,
-    status: "pending",
-    error_message: null,
-    error_code: null,
-    route_kind: null,
-  }]]);
+  const dbRows = new Map<number, import("../../src/helpers/database.ts").TranscriptionRow>([
+    [
+      7,
+      {
+        id: 7,
+        text: "",
+        raw_text: null,
+        timestamp: "2026-09-28T00:00:00.000Z",
+        created_at: "2026-09-28T00:00:00.000Z",
+        has_audio: 1,
+        audio_duration_ms: 1200,
+        provider: null,
+        model: null,
+        status: "pending",
+        error_message: null,
+        error_code: null,
+        route_kind: null,
+      },
+    ],
+  ]);
+
   return {
     whisperManager: { transcribeLocalWhisper: async () => ({ success: true, text: "" }) },
     parakeetManager: { transcribeLocalParakeet: async () => ({ success: true, text: "" }) },
@@ -157,22 +203,32 @@ function buildExecutionDeps() {
       getCortiClientId: () => "corti-id",
       getCortiClientSecret: () => "corti-secret",
     },
-    proxyFetch: async (url: string | URL, init?: { method?: string; headers?: Record<string, string>; body?: unknown }) => {
+    proxyFetch: async (
+      url: string | URL,
+      init?: { method?: string; headers?: Record<string, string>; body?: unknown }
+    ) => {
       const headers = init?.headers;
       const body = init?.body;
       assert.ok(headers);
       fetches.push({ url: String(url), init: { headers, body } });
+
       return fetchResponse(String(url), init);
     },
-    transcribeGeminiFile: async (args: Parameters<TranscriptionExecutionDeps["transcribeGeminiFile"]>[0]) => {
+    transcribeGeminiFile: async (
+      args: Parameters<TranscriptionExecutionDeps["transcribeGeminiFile"]>[0]
+    ) => {
       geminiFileCalls.push({
         ...args,
         bytes: require("node:fs").readFileSync(args.filePath),
       });
+
       return { success: true, text: "Gemini retry text" };
     },
-    transcribeWithCorti: async (opts: Parameters<TranscriptionExecutionDeps["transcribeWithCorti"]>[0]) => {
+    transcribeWithCorti: async (
+      opts: Parameters<TranscriptionExecutionDeps["transcribeWithCorti"]>[0]
+    ) => {
       cortiCalls.push(opts);
+
       return cortiBehavior(opts);
     },
     mintStoredCortiToken: async () => ({ token: "test-token" }),
@@ -205,6 +261,7 @@ function buildUploadFakeThis() {
     // here, and a proxy stub would fake a permanently-aborted signal.
     _uploadCancelRegistry: createUploadCancelRegistry(),
   };
+
   return new Proxy(target, {
     get: (t, prop) => (prop in t ? t[prop] : anything()),
   });
@@ -212,14 +269,28 @@ function buildUploadFakeThis() {
 
 test.before(() => {
   delete require.cache[handlersModulePath];
-  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
+
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(
+    handlersModulePath
+  );
+
   Ctor.prototype.setupHandlers.call(buildUploadFakeThis());
 });
 
 // The retry/proxy/model-discovery channels register through the typed module.
-let retryHandler: (event: unknown, id: number, settings: Record<string, unknown>) => Promise<{ success: boolean; code?: string; error?: string }>;
+let retryHandler: (
+  event: unknown,
+  id: number,
+  settings: Record<string, unknown>
+) => Promise<{ success: boolean; code?: string; error?: string }>;
+
 test.before(() => {
-  const { registerTranscriptionExecutionHandlers }: typeof import("../../src/helpers/transcriptionExecutionIpcHandlers.ts") = require(execModuleSpecifier);
+  const {
+    registerTranscriptionExecutionHandlers,
+  }: typeof import("../../src/helpers/transcriptionExecutionIpcHandlers.ts") = require(
+    execModuleSpecifier
+  );
+
   registerTranscriptionExecutionHandlers(
     { handle: (channel: string, fn: unknown) => execHandlers.set(channel, fn) },
     buildExecutionDeps()
@@ -232,10 +303,12 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-const invoke = (settings: Record<string, unknown>, id = 7) => retryHandler({ sender: {} }, id, settings);
+const invoke = (settings: Record<string, unknown>, id = 7) =>
+  retryHandler({ sender: {} }, id, settings);
 
 test("retry: corti routes to the corti client, never OpenAI", async () => {
   fetches.length = 0;
+
   const result = await invoke({
     cloudTranscriptionProvider: "corti",
     cloudTranscriptionMode: "byok",
@@ -244,6 +317,7 @@ test("retry: corti routes to the corti client, never OpenAI", async () => {
     cortiTenant: "acme",
     preferredLanguage: "auto",
   });
+
   assert.equal(result.success, true);
   assert.equal(cortiCalls.length, 1);
   assert.equal(cortiCalls[0].environment, "eu");
@@ -254,6 +328,7 @@ test("retry: corti routes to the corti client, never OpenAI", async () => {
 
 test("retry: custom misconfiguration fails closed with a coded error", async () => {
   fetches.length = 0;
+
   for (const cloudTranscriptionBaseUrl of ["", "https://api.openai.com/v1", "not a url"]) {
     const result = await invoke({
       cloudTranscriptionProvider: "custom",
@@ -261,14 +336,17 @@ test("retry: custom misconfiguration fails closed with a coded error", async () 
       transcriptionMode: "providers",
       cloudTranscriptionBaseUrl,
     });
+
     assert.equal(result.success, false, cloudTranscriptionBaseUrl);
     assert.equal(result.code, "CUSTOM_ENDPOINT_INVALID", cloudTranscriptionBaseUrl);
   }
+
   assert.equal(fetches.length, 0);
 });
 
 test("retry: Azure custom endpoints get deployment URLs and api-key auth", async () => {
   fetches.length = 0;
+
   const result = await invoke({
     cloudTranscriptionProvider: "custom",
     cloudTranscriptionMode: "byok",
@@ -276,6 +354,7 @@ test("retry: Azure custom endpoints get deployment URLs and api-key auth", async
     cloudTranscriptionBaseUrl: "https://myres.openai.azure.com",
     cloudTranscriptionModel: "my-deployment",
   });
+
   assert.equal(result.success, true);
   assert.equal(fetches.length, 1);
   assert.match(fetches[0].url, /myres\.openai\.azure\.com\/openai\/deployments\/my-deployment/);
@@ -285,6 +364,7 @@ test("retry: Azure custom endpoints get deployment URLs and api-key auth", async
 
 test("retry: plain custom endpoints use Bearer auth at the configured URL", async () => {
   fetches.length = 0;
+
   const result = await invoke({
     cloudTranscriptionProvider: "custom",
     cloudTranscriptionMode: "byok",
@@ -292,6 +372,7 @@ test("retry: plain custom endpoints use Bearer auth at the configured URL", asyn
     cloudTranscriptionBaseUrl: "https://stt.parasail.example.com/v1",
     cloudTranscriptionModel: "parasail-model",
   });
+
   assert.equal(result.success, true);
   assert.equal(fetches[0].url, "https://stt.parasail.example.com/v1/audio/transcriptions");
   assert.equal(fetches[0].init.headers.Authorization, "Bearer ck-custom");
@@ -299,12 +380,14 @@ test("retry: plain custom endpoints use Bearer auth at the configured URL", asyn
 
 test("retry: a custom URL on Tinfoil's host is refused in the main process", async () => {
   fetches.length = 0;
+
   const result = await invoke({
     cloudTranscriptionProvider: "custom",
     cloudTranscriptionMode: "byok",
     transcriptionMode: "providers",
     cloudTranscriptionBaseUrl: "https://inference.tinfoil.sh/v1",
   });
+
   assert.equal(result.success, false);
   assert.ok(result.error);
   assert.match(result.error, /attested main-process proxy/);
@@ -314,11 +397,13 @@ test("retry: a custom URL on Tinfoil's host is refused in the main process", asy
 
 test("retry: mistral goes to Mistral with x-api-key", async () => {
   fetches.length = 0;
+
   const result = await invoke({
     cloudTranscriptionProvider: "mistral",
     cloudTranscriptionMode: "byok",
     transcriptionMode: "providers",
   });
+
   assert.equal(result.success, true);
   assert.match(fetches[0].url, /api\.mistral\.ai/);
   assert.equal(fetches[0].init.headers["x-api-key"], "mk-mistral");
@@ -337,6 +422,7 @@ test("retry: Deepgram sends raw audio to its own file endpoint", async () => {
     }),
     text: async () => "",
   });
+
   try {
     const result = await invoke({
       cloudTranscriptionProvider: "deepgram",
@@ -344,6 +430,7 @@ test("retry: Deepgram sends raw audio to its own file endpoint", async () => {
       transcriptionMode: "providers",
       preferredLanguage: "auto",
     });
+
     assert.equal(result.success, true);
     assert.equal(new URL(fetches[0].url).origin, "https://api.deepgram.com");
     assert.equal(new URL(fetches[0].url).searchParams.get("detect_language"), "true");
@@ -362,11 +449,13 @@ test("retry: Deepgram sends raw audio to its own file endpoint", async () => {
 
 test("retry: Gemini uses the file transcription path and removes its temp file", async () => {
   geminiFileCalls.length = 0;
+
   const result = await invoke({
     cloudTranscriptionProvider: "gemini",
     cloudTranscriptionModel: "gemini-3.5-transcribe",
     transcriptionMode: "providers",
   });
+
   assert.equal(result.success, true);
   assert.equal(geminiFileCalls.length, 1);
   assert.equal(geminiFileCalls[0].model, "gemini-3.5-transcribe");
@@ -377,12 +466,14 @@ test("retry: Gemini uses the file transcription path and removes its temp file",
 
 test("retry: ElevenLabs sends Scribe multipart audio with its own key", async () => {
   fetches.length = 0;
+
   const result = await invoke({
     cloudTranscriptionProvider: "elevenlabs",
     cloudTranscriptionModel: "scribe_v2",
     transcriptionMode: "providers",
     preferredLanguage: "auto",
   });
+
   assert.equal(result.success, true);
   assert.equal(fetches[0].url, "https://api.elevenlabs.io/v1/speech-to-text");
   assert.equal(fetches[0].init.headers["xi-api-key"], "ek-elevenlabs");
@@ -401,6 +492,7 @@ test("proxy transcription handlers resolve to structured errors instead of rejec
   cortiBehavior = async () => {
     throw Object.assign(new Error("Corti API Error: 401"), { code: "INVALID_KEY" });
   };
+
   try {
     for (const channel of [
       "proxy-mistral-transcription",
@@ -424,7 +516,9 @@ test("proxy transcription handlers resolve to structured errors instead of rejec
 });
 
 const fsNode: typeof import("node:fs") = require("node:fs");
+
 const osNode: typeof import("node:os") = require("node:os");
+
 const pathNode: typeof import("node:path") = require("node:path");
 
 const uploadTempFile = pathNode.join(osNode.tmpdir(), "openwhispr-upload-handler-test.webm");
@@ -433,6 +527,7 @@ const invokeUpload = (payload: Record<string, unknown>) => {
   const uploadHandler = handlers.get("transcribe-audio-file-byok");
   assert.ok(uploadHandler, "transcribe-audio-file-byok must be registered");
   fsNode.writeFileSync(uploadTempFile, Buffer.from([1, 2, 3, 4]));
+
   return uploadHandler({ sender: {} }, { filePath: uploadTempFile, ...payload });
 };
 
@@ -441,10 +536,20 @@ const invokeUpload = (payload: Record<string, unknown>) => {
 // headers and the streamed body, then answers like the real provider. The
 // response must fully arrive before "close": the production code treats a
 // close without a settled response as a transport failure.
-function mockHttpsUpload({ onRequest }: {
-  onRequest: (url: URL, options: { headers: Record<string, string> }, body: Buffer) => { response: unknown };
+function mockHttpsUpload({
+  onRequest,
+}: {
+  onRequest: (
+    url: URL,
+    options: { headers: Record<string, string> },
+    body: Buffer
+  ) => { response: unknown };
 }) {
-  https.request = (url: URL | string, options: { headers: Record<string, string> }, callback: unknown) => {
+  https.request = (
+    url: URL | string,
+    options: { headers: Record<string, string> },
+    callback: unknown
+  ) => {
     const { EventEmitter } = require("node:events");
     const request = new EventEmitter();
     const uploaded: Buffer[] = [];
@@ -452,18 +557,17 @@ function mockHttpsUpload({ onRequest }: {
       uploaded.push(Buffer.from(chunk));
       cb?.();
     };
+
     request.end = (tail: string | Buffer | Uint8Array | undefined, _cb: unknown) => {
       // The multipart footer rides on end() in postRawAudioFile.
       if (tail) uploaded.push(Buffer.from(tail));
       queueMicrotask(() => {
         try {
-          const { response } = onRequest(
-            new URL(url),
-            options,
-            Buffer.concat(uploaded)
-          );
+          const { response } = onRequest(new URL(url), options, Buffer.concat(uploaded));
+
           const res = new EventEmitter();
           res.statusCode = 200;
+
           if (typeof callback === "function") callback(res);
           request.emit("response", res);
           res.emit("data", Buffer.from(JSON.stringify(response)));
@@ -473,9 +577,12 @@ function mockHttpsUpload({ onRequest }: {
         }
       });
     };
+
     request.destroy = () => {};
+
     request.abort = () => request.emit("error", new Error("aborted"));
     request.on("error", () => {});
+
     return request;
   };
 }
@@ -489,6 +596,7 @@ test("upload: Deepgram streams raw file bytes through Node https", async () => {
       assert.equal(options.headers.Authorization, "Token dg-key");
       assert.equal(options.headers["Content-Type"], "audio/webm");
       uploaded.push(body);
+
       return {
         body,
         response: {
@@ -500,6 +608,7 @@ test("upload: Deepgram streams raw file bytes through Node https", async () => {
       };
     },
   });
+
   try {
     const result = await invokeUpload({ provider: "deepgram", apiKey: "dg-key", diarize: true });
     assert.equal(result.success, true);
@@ -519,9 +628,11 @@ test("upload: ElevenLabs streams a complete multipart file with Scribe fields", 
       assert.equal(options.headers["xi-api-key"], "el-key");
       assert.match(options.headers["Content-Type"], /multipart\/form-data; boundary=/);
       uploaded.push(body);
+
       return { response: { text: "done" } };
     },
   });
+
   try {
     const result = await invokeUpload({ provider: "elevenlabs", apiKey: "el-key" });
     assert.equal(result.success, true);
@@ -537,6 +648,7 @@ test("upload: ElevenLabs streams a complete multipart file with Scribe fields", 
 
 test("upload: mistral sends x-api-key with a provider-validated model and no language on auto", async () => {
   fetches.length = 0;
+
   const result = await invokeUpload({
     apiKey: "mk-mistral",
     baseUrl: "https://api.mistral.ai/v1",
@@ -545,6 +657,7 @@ test("upload: mistral sends x-api-key with a provider-validated model and no lan
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(result.success, true);
   assert.match(fetches[0].url, /api\.mistral\.ai/);
   assert.equal(fetches[0].init.headers["x-api-key"], "mk-mistral");
@@ -556,6 +669,7 @@ test("upload: mistral sends x-api-key with a provider-validated model and no lan
 
 test("upload: openai diarization fields ride the route, Bearer auth", async () => {
   fetches.length = 0;
+
   const result = await invokeUpload({
     apiKey: "sk-openai",
     baseUrl: "https://api.openai.com/v1",
@@ -565,6 +679,7 @@ test("upload: openai diarization fields ride the route, Bearer auth", async () =
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(result.success, true);
   assert.equal(fetches[0].init.headers.Authorization, "Bearer sk-openai");
   const body = fetchBody().toString();
@@ -574,6 +689,7 @@ test("upload: openai diarization fields ride the route, Bearer auth", async () =
 
 test("upload: sentinel custom URL fails closed before any request", async () => {
   fetches.length = 0;
+
   const result = await invokeUpload({
     apiKey: "ck-custom",
     baseUrl: "https://api.openai.com/v1",
@@ -582,6 +698,7 @@ test("upload: sentinel custom URL fails closed before any request", async () => 
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(result.success, false);
   assert.equal(result.code, "CUSTOM_ENDPOINT_INVALID");
   assert.equal(fetches.length, 0);
@@ -589,6 +706,7 @@ test("upload: sentinel custom URL fails closed before any request", async () => 
 
 test("upload: a custom URL on Tinfoil's host is refused in the main process", async () => {
   fetches.length = 0;
+
   const result = await invokeUpload({
     apiKey: "ck-custom",
     baseUrl: "https://inference.tinfoil.sh/v1",
@@ -597,6 +715,7 @@ test("upload: a custom URL on Tinfoil's host is refused in the main process", as
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(result.success, false);
   assert.match(result.error, /attested main-process proxy/);
   assert.equal(fetches.length, 0);
@@ -608,6 +727,7 @@ test("upload: a custom URL on Tinfoil's host is refused in the main process", as
 test("upload: a preferred language never constrains a BYOK cloud upload", async () => {
   for (const provider of ["openai", "groq", "custom"]) {
     fetches.length = 0;
+
     const result = await invokeUpload({
       apiKey: "sk-key",
       baseUrl: provider === "custom" ? "https://gateway.example.com/v1" : "",
@@ -616,6 +736,7 @@ test("upload: a preferred language never constrains a BYOK cloud upload", async 
       language: "de",
       transcriptionMode: "providers",
     });
+
     assert.equal(result.success, true, provider);
     assert.doesNotMatch(fetchBody().toString(), /name="language"/, provider);
   }
@@ -624,6 +745,7 @@ test("upload: a preferred language never constrains a BYOK cloud upload", async 
 // Providers that require a concrete language still receive one.
 test("upload: corti and xai still get their language", async () => {
   fetches.length = 0;
+
   const xai = await invokeUpload({
     apiKey: "xk-key",
     baseUrl: "",
@@ -632,6 +754,7 @@ test("upload: corti and xai still get their language", async () => {
     language: "de",
     transcriptionMode: "providers",
   });
+
   assert.equal(xai.success, true);
   assert.match(fetches[0].url, /api\.x\.ai/);
   const xaiBody = fetchBody().toString();
@@ -648,6 +771,7 @@ test("upload: corti and xai still get their language", async () => {
     tenant: " acme ",
     transcriptionMode: "providers",
   });
+
   assert.equal(corti.success, true);
   const lastCortiCall = cortiCalls.at(-1);
   assert.ok(lastCortiCall);
@@ -660,6 +784,7 @@ test("upload: corti and xai still get their language", async () => {
 // longer tell whether a Custom endpoint fronts a diarization-capable API.
 test("upload: a Custom endpoint fronting OpenAI or Mistral keeps diarization", async () => {
   fetches.length = 0;
+
   const openaiFronted = await invokeUpload({
     apiKey: "ck-custom",
     baseUrl: "https://api.openai.com/v1/audio/transcriptions",
@@ -669,10 +794,12 @@ test("upload: a Custom endpoint fronting OpenAI or Mistral keeps diarization", a
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(openaiFronted.success, true);
   assert.match(fetchBody().toString(), /gpt-4o-transcribe-diarize/);
 
   fetches.length = 0;
+
   const mistralFronted = await invokeUpload({
     apiKey: "ck-custom",
     baseUrl: "https://api.mistral.ai/v1/audio/transcriptions",
@@ -682,10 +809,12 @@ test("upload: a Custom endpoint fronting OpenAI or Mistral keeps diarization", a
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(mistralFronted.success, true);
   assert.match(fetchBody().toString(), /name="diarize"/);
 
   fetches.length = 0;
+
   const unknownGateway = await invokeUpload({
     apiKey: "ck-custom",
     baseUrl: "https://gateway.example.com/v1",
@@ -695,12 +824,14 @@ test("upload: a Custom endpoint fronting OpenAI or Mistral keeps diarization", a
     language: "",
     transcriptionMode: "providers",
   });
+
   assert.equal(unknownGateway.success, true, "an unknown gateway degrades, never fails");
   assert.doesNotMatch(fetchBody().toString(), /diarized_json/);
 });
 
 test("upload: a self-hosted Azure endpoint keeps its deployment URL", async () => {
   fetches.length = 0;
+
   const result = await invokeUpload({
     apiKey: "",
     baseUrl: "",
@@ -711,6 +842,7 @@ test("upload: a self-hosted Azure endpoint keeps its deployment URL", async () =
     remoteTranscriptionUrl: "https://myorg.openai.azure.com",
     remoteTranscriptionModel: "my-deployment",
   });
+
   assert.equal(result.success, true);
   assert.equal(
     fetches[0].url,

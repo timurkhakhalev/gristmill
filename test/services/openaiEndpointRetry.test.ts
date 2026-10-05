@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/services/ai/inferenceProviders/openai.js");
@@ -27,6 +28,7 @@ test("Responses retries when a permanent Chat fallback follows a transient failu
 
     if (endpoint.endsWith("/responses")) {
       responsesAttempts += 1;
+
       if (responsesAttempts === 1) {
         return new Response(JSON.stringify({ error: { message: "request timeout" } }), {
           status: 408,
@@ -58,6 +60,7 @@ test("Responses retries when a permanent Chat fallback follows a transient failu
   };
 
   const { openaiProvider } = await load();
+
   const resultPromise = openaiProvider.call({
     text: "Clean this transcript",
     model: "responses-only-model",
@@ -80,6 +83,7 @@ test("Responses retries when a permanent Chat fallback follows a transient failu
       calculateMaxTokens: () => 4096,
     },
   });
+
   await new Promise((resolve) => setImmediate(resolve));
   t.mock.timers.tick(1000);
   const result = await resultPromise;

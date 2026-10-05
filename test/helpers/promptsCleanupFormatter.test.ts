@@ -1,5 +1,7 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const {
   appendDictionarySuffix,
   decodeCleanupTranscriptEntities,
@@ -15,7 +17,12 @@ test("cleanup transcript delimiters escape data once and entity interpretation i
 });
 
 test("cleanup appends one transcription-language instruction independent of UI locale", () => {
-  const automatic = resolvePrompt("cleanup", { agentName: null, uiLanguage: "ru", language: "auto" });
+  const automatic = resolvePrompt("cleanup", {
+    agentName: null,
+    uiLanguage: "ru",
+    language: "auto",
+  });
+
   assert.match(automatic, /Detect the actual language or language mix/);
   assert.doesNotMatch(automatic, /write your entire output in Arabic|entire output in English/i);
 

@@ -1,33 +1,40 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 // Stub electron's globalShortcut before hotkeyManager loads so slot
 // registration can run outside Electron. `unregisterCalls` records every
 // accelerator teardown attempts, including ones that were never registered.
 const registered = new Map();
+
 const unregisterCalls: unknown[] = [];
-require.cache[require.resolve("electron")] = Object.assign(new (require("node:module").Module)(require.resolve("electron")), {
-  exports: {
-    globalShortcut: {
-      register(accelerator: string, callback: unknown) {
-        if (registered.has(accelerator)) return false;
-        registered.set(accelerator, callback);
-        return true;
+
+require.cache[require.resolve("electron")] = Object.assign(
+  new (require("node:module").Module)(require.resolve("electron")),
+  {
+    exports: {
+      globalShortcut: {
+        register(accelerator: string, callback: unknown) {
+          if (registered.has(accelerator)) return false;
+          registered.set(accelerator, callback);
+
+          return true;
+        },
+        unregister(accelerator: string) {
+          unregisterCalls.push(accelerator);
+          registered.delete(accelerator);
+        },
+        isRegistered(accelerator: string) {
+          return registered.has(accelerator);
+        },
+        unregisterAll() {
+          registered.clear();
+        },
       },
-      unregister(accelerator: string) {
-        unregisterCalls.push(accelerator);
-        registered.delete(accelerator);
-      },
-      isRegistered(accelerator: string) {
-        return registered.has(accelerator);
-      },
-      unregisterAll() {
-        registered.clear();
-      },
+      BrowserWindow: class {},
     },
-    BrowserWindow: class {},
-  },
-});
+  }
+);
 
 const HotkeyManager: typeof import("../../src/helpers/hotkeyManager.ts").HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
 

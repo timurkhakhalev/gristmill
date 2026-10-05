@@ -30,6 +30,7 @@ const METRICS = "ascent-override:96.5%;descent-override:21.5%;line-gap-override:
 
 const rules = Object.entries(fontUrls).flatMap(([file, url]) => {
   const face = FACES[file.slice(file.lastIndexOf("/") + 1, -".otf".length)];
+
   return face
     ? [
         `@font-face{font-family:"${face.family}";font-style:normal;font-weight:${face.weight};font-display:swap;${METRICS};src:url("${url}") format("opentype")}`,

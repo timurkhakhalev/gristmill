@@ -6,16 +6,20 @@
 // explicit cancel, duplicate ids, navigation/destroy, sender isolation,
 // replacement protection and the structured-clone part adapter.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 import type { ReasoningHandlerDeps } from "../../src/helpers/reasoningIpcHandlers.ts";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 
 let registerReasoningHandlers: typeof import("../../src/helpers/reasoningIpcHandlers.ts").registerReasoningHandlers;
+
 let AgentStreamRequestRegistry: typeof import("../../src/helpers/agentStreamRequestRegistry.ts").AgentStreamRequestRegistry;
 
 test.before(async () => {
   ({ registerReasoningHandlers } = await import("../../src/helpers/reasoningIpcHandlers.ts"));
-  ({ AgentStreamRequestRegistry } = await import("../../src/helpers/agentStreamRequestRegistry.ts"));
+  ({ AgentStreamRequestRegistry } =
+    await import("../../src/helpers/agentStreamRequestRegistry.ts"));
 });
 
 const REAL_ERRORS: typeof import("../../src/helpers/enterpriseProviderErrors") = require("../../src/helpers/enterpriseProviderErrors");
@@ -30,6 +34,7 @@ function fakeSender(id: number) {
   const listeners = new Map<string, (...args: unknown[]) => void>();
   const sent: { channel: string; payload: unknown }[] = [];
   let destroyed = false;
+
   return {
     id,
     sent,
@@ -56,11 +61,13 @@ function fakeSender(id: number) {
 
 function record(value: unknown): Record<string, unknown> {
   assert.ok(value && typeof value === "object" && !Array.isArray(value));
+
   return value as Record<string, unknown>;
 }
 
 function makeDeps(overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}) {
   const generateCalls: Record<string, unknown>[] = [];
+
   const deps: ReasoningHandlerDeps = {
     localService: {
       isAvailable: async () => true,
@@ -75,17 +82,23 @@ function makeDeps(overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}) {
       json: async () => ({ content: [{ type: "text", text: "anthropic text" }] }),
     }),
     extractAnthropicText: (data) => {
-      const content = typeof data === "object" && data !== null && "content" in data ? data.content : null;
-      return Array.isArray(content) && typeof content[0]?.text === "string" ? content[0].text : null;
+      const content =
+        typeof data === "object" && data !== null && "content" in data ? data.content : null;
+
+      return Array.isArray(content) && typeof content[0]?.text === "string"
+        ? content[0].text
+        : null;
     },
     describeMissingAnthropicText: () => "no text",
-    isEnterpriseProvider: (value) => typeof value === "string" && ["bedrock", "azure", "vertex"].includes(value),
+    isEnterpriseProvider: (value) =>
+      typeof value === "string" && ["bedrock", "azure", "vertex"].includes(value),
     mapEnterpriseError: realMapper,
     runAbortableOperation: REAL_ERRORS.runAbortableOperation,
     runBedrockRequest: REAL_ERRORS.runBedrockRequest,
     validateEnterpriseEndpoint: () => {},
     generateText: async (options) => {
       generateCalls.push(options);
+
       return { text: "enterprise text", finishReason: "stop" };
     },
     getEnterpriseAIModel: async () => {
@@ -96,6 +109,7 @@ function makeDeps(overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}) {
     logError: () => {},
     ...overrides.deps,
   };
+
   return { deps, generateCalls };
 }
 
@@ -110,6 +124,7 @@ function setup(overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}) {
     },
     deps
   );
+
   return { deps, handlers, listeners, generateCalls };
 }
 
@@ -137,6 +152,7 @@ test("local one-shot: success and code/details failure shapes", async () => {
       },
     },
   });
+
   assert.deepEqual(
     await failing.handlers.get("process-local-reasoning")(null, "x", "m", null, {}),
     { success: false, error: "llama error", code: "NO_API", details: { port: 8080 } }
@@ -145,17 +161,20 @@ test("local one-shot: success and code/details failure shapes", async () => {
 
 test("local one-shot: malformed args are rejected before the service runs", async () => {
   const calls = [];
+
   const { handlers } = setup({
     deps: {
       localService: {
         isAvailable: async () => true,
         processText: async (...args: unknown[]) => {
           calls.push(args);
+
           return "x";
         },
       },
     },
   });
+
   assert.deepEqual(await handlers.get("process-local-reasoning")(null, 5, "m", null, {}), {
     success: false,
     error: "Invalid local reasoning request",
@@ -174,10 +193,12 @@ test("anthropic one-shot: key check, screenContext, complete-output and error di
   );
 
   const fetches: { url: string; init?: Record<string, unknown> }[] = [];
+
   const ctx = setup({
     deps: {
       proxyFetch: async (url, init) => {
         fetches.push({ url, init });
+
         return {
           ok: true,
           status: 200,
@@ -188,6 +209,7 @@ test("anthropic one-shot: key check, screenContext, complete-output and error di
       },
     },
   });
+
   const result = await ctx.handlers.get("process-anthropic-reasoning")(
     null,
     "describe this",
@@ -200,6 +222,7 @@ test("anthropic one-shot: key check, screenContext, complete-output and error di
       requireCompleteOutput: true,
     }
   );
+
   assert.deepEqual(result, { success: true, text: "hi" });
   const bodySource = fetches[0].init?.body;
   assert.ok(typeof bodySource === "string");
@@ -219,6 +242,7 @@ test("anthropic one-shot: key check, screenContext, complete-output and error di
       }),
     },
   });
+
   assert.deepEqual(
     await unauthorized.handlers.get("process-anthropic-reasoning")(null, "t", "claude-x", null, {}),
     { success: false, error: "bad key" }
@@ -231,10 +255,14 @@ test("anthropic one-shot: key check, screenContext, complete-output and error di
         status: 200,
         statusText: "OK",
         text: async () => "",
-        json: async () => ({ content: [{ type: "text", text: "partial" }], stop_reason: "max_tokens" }),
+        json: async () => ({
+          content: [{ type: "text", text: "partial" }],
+          stop_reason: "max_tokens",
+        }),
       }),
     },
   });
+
   assert.deepEqual(
     await truncated.handlers.get("process-anthropic-reasoning")(null, "t", "claude-x", null, {
       requireCompleteOutput: true,
@@ -260,16 +288,26 @@ test("enterprise one-shot: unsupported provider and happy path", async () => {
     provider: "azure",
     azureEndpoint: "https://acme.openai.azure.com",
   });
+
   assert.equal(result.success, false);
   assert.match(result.error, /no model expected in this fixture/);
 });
 
 test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
   let releaseRequest!: () => void;
-  const started = new Promise<void>((resolve) => { releaseRequest = resolve; });
+
+  const started = new Promise<void>((resolve) => {
+    releaseRequest = resolve;
+  });
+
   const { handlers, listeners } = setup({
     deps: {
-      getEnterpriseAIModel: async () => ({ __fixtureModel: true, doStream: async () => { throw new Error("stream not used"); } }),
+      getEnterpriseAIModel: async () => ({
+        __fixtureModel: true,
+        doStream: async () => {
+          throw new Error("stream not used");
+        },
+      }),
       generateText: async (options) => {
         releaseRequest();
         const abortSignal = options.abortSignal;
@@ -277,8 +315,9 @@ test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
         await new Promise((resolve, reject) => {
           abortSignal.addEventListener("abort", () => reject(abortSignal.reason), {
             once: true,
+          });
         });
-        });
+
         return { text: "never", finishReason: "stop" };
       },
     },
@@ -286,6 +325,7 @@ test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
 
   const requesting = fakeSender(10);
   const other = fakeSender(11);
+
   const request = handlers
     .get("process-enterprise-reasoning")({ sender: requesting }, "raw", "m", null, {
       provider: "bedrock",
@@ -294,6 +334,7 @@ test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
       systemPrompt: "Clean",
     })
     .catch(() => ({ success: false }));
+
   await started;
   listeners.get("enterprise-reasoning-cancel")({ sender: other });
   await new Promise((resolve) => setImmediate(resolve));
@@ -306,10 +347,19 @@ test("bedrock cleanup: cancel is scoped to the requesting sender", async () => {
 test("bedrock cleanup: sender destroy aborts the request and removes the listener", async () => {
   let signal: AbortSignal | undefined;
   let releaseRequest!: () => void;
-  const started = new Promise<void>((resolve) => { releaseRequest = resolve; });
+
+  const started = new Promise<void>((resolve) => {
+    releaseRequest = resolve;
+  });
+
   const { deps, handlers } = setup({
     deps: {
-      getEnterpriseAIModel: async () => ({ __fixtureModel: true, doStream: async () => { throw new Error("stream not used"); } }),
+      getEnterpriseAIModel: async () => ({
+        __fixtureModel: true,
+        doStream: async () => {
+          throw new Error("stream not used");
+        },
+      }),
       generateText: async (options) => {
         const abortSignal = options.abortSignal;
         assert.ok(abortSignal instanceof AbortSignal);
@@ -320,16 +370,20 @@ test("bedrock cleanup: sender destroy aborts the request and removes the listene
             once: true,
           });
         });
+
         return { text: "never", finishReason: "stop" };
       },
     },
   });
+
   const sender = fakeSender(3);
+
   const request = handlers.get("process-enterprise-reasoning")({ sender }, "raw", "m", null, {
     provider: "bedrock",
     inferenceScope: "cleanup",
     bedrockRegion: "eu-west-1",
   });
+
   await started;
   sender.destroy();
   await request;
@@ -342,12 +396,19 @@ test("bedrock cleanup: sender destroy aborts the request and removes the listene
 
 test("bedrock cleanup keeps the retry policy with nested retries disabled", async () => {
   const attempts = [];
+
   const { handlers, generateCalls } = setup({
     deps: {
-      getEnterpriseAIModel: async () => ({ __fixtureModel: true, doStream: async () => { throw new Error("stream not used"); } }),
+      getEnterpriseAIModel: async () => ({
+        __fixtureModel: true,
+        doStream: async () => {
+          throw new Error("stream not used");
+        },
+      }),
       generateText: async (options) => {
         attempts.push(1);
         generateCalls.push(options);
+
         if (attempts.length === 1) {
           throw Object.assign(new Error("Bedrock overloaded"), {
             name: "ServiceUnavailableException",
@@ -355,12 +416,15 @@ test("bedrock cleanup keeps the retry policy with nested retries disabled", asyn
             responseHeaders: {},
           });
         }
+
         return { text: "cleaned", finishReason: "stop" };
       },
     },
   });
+
   const originalRandom = Math.random;
   Math.random = () => 0;
+
   try {
     const result = await handlers.get("process-enterprise-reasoning")(
       { sender: fakeSender(4) },
@@ -369,6 +433,7 @@ test("bedrock cleanup keeps the retry policy with nested retries disabled", asyn
       null,
       { provider: "bedrock", inferenceScope: "cleanup", bedrockRegion: "eu-west-1" }
     );
+
     assert.deepEqual(result, { success: true, text: "cleaned" });
     assert.equal(generateCalls.length, 2);
     assert.ok(generateCalls.every((call) => call.maxRetries === 0));
@@ -379,19 +444,25 @@ test("bedrock cleanup keeps the retry policy with nested retries disabled", asyn
 
 // --- Enterprise streams ------------------------------------------------------
 
-function streamSetup(modelParts: unknown[], overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}) {
+function streamSetup(
+  modelParts: unknown[],
+  overrides: { deps?: Partial<ReasoningHandlerDeps> } = {}
+) {
   const { deps, handlers, listeners } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
         doStream: async (options) => {
           streamSetup.lastDoStreamOptions = options;
+
           return {
             stream: {
               getReader: () => ({
                 read: async () => {
                   if (modelParts.length === 0) return { done: true };
                   const value = modelParts.shift();
+
                   if (value instanceof Error) throw value;
+
                   return { done: false, value: value as LanguageModelV3StreamPart };
                 },
                 releaseLock: () => {},
@@ -403,25 +474,33 @@ function streamSetup(modelParts: unknown[], overrides: { deps?: Partial<Reasonin
       ...overrides.deps,
     },
   });
+
   return { deps, handlers, listeners };
 }
+
 streamSetup.lastDoStreamOptions = null as { abortSignal?: AbortSignal; prompt?: unknown } | null;
 
 const PART = { type: "text-delta", id: "t", providerMetadata: null, text: "hello" };
 
 test("stream: start relays parts verbatim and ends with done", async () => {
   const sender = fakeSender(1);
+
   const { handlers } = streamSetup([
     PART,
     { type: "tool-call", toolCallId: "c1", toolName: "search", input: { q: "x" } },
   ]);
-  const result = await handlers.get("enterprise-stream-start")({ sender }, {
-    streamId: "s1",
-    provider: "bedrock",
-    modelId: "m",
-    config: { bedrockRegion: "eu-west-1" },
-    options: { prompt: [] },
-  });
+
+  const result = await handlers.get("enterprise-stream-start")(
+    { sender },
+    {
+      streamId: "s1",
+      provider: "bedrock",
+      modelId: "m",
+      config: { bedrockRegion: "eu-west-1" },
+      options: { prompt: [] },
+    }
+  );
+
   assert.deepEqual(result, { success: true });
   assert.deepEqual(
     sender.sent.map((m) => m.payload),
@@ -442,16 +521,19 @@ test("stream: start relays parts verbatim and ends with done", async () => {
 test("stream: binary parts roundtrip through structured clone", async () => {
   const sender = fakeSender(1);
   const binary = new Uint8Array([1, 2, 250]);
-  const { handlers } = streamSetup([
-    { type: "file", mediaType: "image/png", data: binary },
-  ]);
-  await handlers.get("enterprise-stream-start")({ sender }, {
-    streamId: "s-bin",
-    provider: "azure",
-    modelId: "m",
-    config: { azureEndpoint: "https://acme.openai.azure.com" },
-    options: {},
-  });
+
+  const { handlers } = streamSetup([{ type: "file", mediaType: "image/png", data: binary }]);
+
+  await handlers.get("enterprise-stream-start")(
+    { sender },
+    {
+      streamId: "s-bin",
+      provider: "azure",
+      modelId: "m",
+      config: { azureEndpoint: "https://acme.openai.azure.com" },
+      options: {},
+    }
+  );
   const part = record(record(sender.sent[0].payload).part);
   // The adapter clones, so the bytes are equal rather than identical.
   assert.deepEqual(part.data, binary);
@@ -462,20 +544,28 @@ test("stream: binary parts roundtrip through structured clone", async () => {
 test("stream: non-cloneable raw and error payloads degrade narrowly", async () => {
   const sender = fakeSender(1);
   const uncloneable = { fn: () => {} };
+
   const { handlers } = streamSetup([
     { type: "raw", rawValue: uncloneable },
     { type: "error", error: Object.assign(new Error("boom"), { fn: () => {} }) },
   ]);
-  await handlers.get("enterprise-stream-start")({ sender }, {
-    streamId: "s-raw",
-    provider: "bedrock",
-    modelId: "m",
-    options: {},
-  });
+
+  await handlers.get("enterprise-stream-start")(
+    { sender },
+    {
+      streamId: "s-raw",
+      provider: "bedrock",
+      modelId: "m",
+      options: {},
+    }
+  );
+
   const parts = sender.sent.flatMap((message) => {
     const envelope = record(message.payload);
+
     return "part" in envelope ? [record(envelope.part)] : [];
   });
+
   // The raw payload degrades to a description instead of failing the send.
   assert.equal(parts[0].type, "raw");
   assert.equal(typeof parts[0].rawValue, "string");
@@ -484,6 +574,7 @@ test("stream: non-cloneable raw and error payloads degrade narrowly", async () =
   assert.ok(parts[1].error instanceof Error);
   assert.equal(parts[1].error.message, "boom");
   assert.equal(parts[1].error instanceof Error, true);
+
   // Everything sent is cloneable.
   for (const envelope of sender.sent) assert.doesNotThrow(() => structuredClone(envelope.payload));
   // done still terminated the stream.
@@ -495,13 +586,18 @@ test("stream: non-cloneable raw and error payloads degrade narrowly", async () =
 test("stream: a provider failure maps to an error envelope and failure result", async () => {
   const sender = fakeSender(2);
   const { handlers } = streamSetup([new Error("model exploded")]);
-  const result = await handlers.get("enterprise-stream-start")({ sender }, {
-    streamId: "s-err",
-    provider: "bedrock",
-    modelId: "m",
-    config: { bedrockRegion: "eu-west-1" },
-    options: {},
-  });
+
+  const result = await handlers.get("enterprise-stream-start")(
+    { sender },
+    {
+      streamId: "s-err",
+      provider: "bedrock",
+      modelId: "m",
+      config: { bedrockRegion: "eu-west-1" },
+      options: {},
+    }
+  );
+
   assert.equal(result.success, false);
   assert.match(result.error, /model exploded/);
   const last = sender.sent.at(-1);
@@ -514,6 +610,7 @@ test("stream: a provider failure maps to an error envelope and failure result", 
 test("stream: explicit cancel aborts the provider read and skips its terminal event", async () => {
   const sender = fakeSender(3);
   let sawAbort = false;
+
   const { deps, handlers } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
@@ -523,6 +620,7 @@ test("stream: explicit cancel aborts the provider read and skips its terminal ev
               read: () => {
                 const abortSignal = options.abortSignal;
                 assert.ok(abortSignal instanceof AbortSignal);
+
                 return new Promise((_resolve, reject) => {
                   abortSignal.addEventListener(
                     "abort",
@@ -541,12 +639,17 @@ test("stream: explicit cancel aborts the provider read and skips its terminal ev
       }),
     },
   });
-  const request = handlers.get("enterprise-stream-start")({ sender }, {
-    streamId: "s-cancel",
-    provider: "bedrock",
-    modelId: "m",
-    options: {},
-  });
+
+  const request = handlers.get("enterprise-stream-start")(
+    { sender },
+    {
+      streamId: "s-cancel",
+      provider: "bedrock",
+      modelId: "m",
+      options: {},
+    }
+  );
+
   await new Promise((resolve) => setImmediate(resolve));
   await handlers.get("enterprise-stream-cancel")({ sender }, "s-cancel");
   const result = await request;
@@ -562,6 +665,7 @@ test("stream: same streamId in two senders is independent; cancel touches only i
   const senderA = fakeSender(4);
   const senderB = fakeSender(5);
   const signals: AbortSignal[] = [];
+
   const { handlers } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
@@ -571,13 +675,12 @@ test("stream: same streamId in two senders is independent; cancel touches only i
               read: () => {
                 const abortSignal = options.abortSignal;
                 assert.ok(abortSignal instanceof AbortSignal);
+
                 return new Promise((_resolve, reject) => {
                   signals.push(abortSignal);
-                  abortSignal.addEventListener(
-                    "abort",
-                    () => reject(abortSignal.reason),
-                    { once: true }
-                  );
+                  abortSignal.addEventListener("abort", () => reject(abortSignal.reason), {
+                    once: true,
+                  });
                 });
               },
               releaseLock: () => {},
@@ -587,18 +690,27 @@ test("stream: same streamId in two senders is independent; cancel touches only i
       }),
     },
   });
-  const requestA = handlers.get("enterprise-stream-start")({ sender: senderA }, {
-    streamId: "shared",
-    provider: "bedrock",
-    modelId: "m",
-    options: {},
-  });
-  const requestB = handlers.get("enterprise-stream-start")({ sender: senderB }, {
-    streamId: "shared",
-    provider: "bedrock",
-    modelId: "m",
-    options: {},
-  });
+
+  const requestA = handlers.get("enterprise-stream-start")(
+    { sender: senderA },
+    {
+      streamId: "shared",
+      provider: "bedrock",
+      modelId: "m",
+      options: {},
+    }
+  );
+
+  const requestB = handlers.get("enterprise-stream-start")(
+    { sender: senderB },
+    {
+      streamId: "shared",
+      provider: "bedrock",
+      modelId: "m",
+      options: {},
+    }
+  );
+
   await new Promise((resolve) => setImmediate(resolve));
 
   await handlers.get("enterprise-stream-cancel")({ sender: senderA }, "shared");
@@ -615,6 +727,7 @@ test("stream: same streamId in two senders is independent; cancel touches only i
 test("stream: a duplicate id of one sender aborts the old stream and shields the replacement", async () => {
   const sender = fakeSender(6);
   const signals: AbortSignal[] = [];
+
   const { deps, handlers } = setup({
     deps: {
       getEnterpriseAIModel: async () => ({
@@ -624,13 +737,12 @@ test("stream: a duplicate id of one sender aborts the old stream and shields the
               read: () => {
                 const abortSignal = options.abortSignal;
                 assert.ok(abortSignal instanceof AbortSignal);
+
                 return new Promise((_resolve, reject) => {
                   signals.push(abortSignal);
-                  abortSignal.addEventListener(
-                    "abort",
-                    () => reject(abortSignal.reason),
-                    { once: true }
-                  );
+                  abortSignal.addEventListener("abort", () => reject(abortSignal.reason), {
+                    once: true,
+                  });
                 });
               },
               releaseLock: () => {},
@@ -640,19 +752,29 @@ test("stream: a duplicate id of one sender aborts the old stream and shields the
       }),
     },
   });
-  const first = handlers.get("enterprise-stream-start")({ sender }, {
-    streamId: "dup",
-    provider: "bedrock",
-    modelId: "m",
-    options: {},
-  });
+
+  const first = handlers.get("enterprise-stream-start")(
+    { sender },
+    {
+      streamId: "dup",
+      provider: "bedrock",
+      modelId: "m",
+      options: {},
+    }
+  );
+
   await new Promise((resolve) => setImmediate(resolve));
-  const second = handlers.get("enterprise-stream-start")({ sender }, {
-    streamId: "dup",
-    provider: "bedrock",
-    modelId: "m",
-    options: {},
-  });
+
+  const second = handlers.get("enterprise-stream-start")(
+    { sender },
+    {
+      streamId: "dup",
+      provider: "bedrock",
+      modelId: "m",
+      options: {},
+    }
+  );
+
   await new Promise((resolve) => setImmediate(resolve));
 
   // begin() aborted the first stream; its late terminal must not reach the
@@ -674,6 +796,7 @@ test("stream: navigation and destroy abort the provider request", async () => {
   for (const trigger of ["navigate", "destroy"]) {
     const sender = fakeSender(7);
     let aborted = false;
+
     const { handlers } = setup({
       deps: {
         getEnterpriseAIModel: async () => ({
@@ -683,6 +806,7 @@ test("stream: navigation and destroy abort the provider request", async () => {
                 read: () => {
                   const abortSignal = options.abortSignal;
                   assert.ok(abortSignal instanceof AbortSignal);
+
                   return new Promise((_resolve, reject) => {
                     abortSignal.addEventListener(
                       "abort",
@@ -701,13 +825,19 @@ test("stream: navigation and destroy abort the provider request", async () => {
         }),
       },
     });
-    const request = handlers.get("enterprise-stream-start")({ sender }, {
-      streamId: `s-${trigger}`,
-      provider: "bedrock",
-      modelId: "m",
-      options: {},
-    });
+
+    const request = handlers.get("enterprise-stream-start")(
+      { sender },
+      {
+        streamId: `s-${trigger}`,
+        provider: "bedrock",
+        modelId: "m",
+        options: {},
+      }
+    );
+
     await new Promise((resolve) => setImmediate(resolve));
+
     if (trigger === "navigate") sender.navigate();
     else sender.destroy();
     await request;
@@ -718,9 +848,15 @@ test("stream: navigation and destroy abort the provider request", async () => {
 test("stream: malformed start payloads are rejected before anything registers", async () => {
   const { handlers } = setup();
   const sender = fakeSender(8);
-  for (const payload of [null, {}, { streamId: "", provider: "bedrock", modelId: "m", options: {} }]) {
+
+  for (const payload of [
+    null,
+    {},
+    { streamId: "", provider: "bedrock", modelId: "m", options: {} },
+  ]) {
     const result = await handlers.get("enterprise-stream-start")({ sender }, payload);
     assert.deepEqual(result, { success: false, error: "Invalid stream request" });
   }
+
   assert.equal(sender.sent.length, 0);
 });

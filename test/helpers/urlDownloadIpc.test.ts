@@ -1,8 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 import type { UrlDownloadProgress, UrlDownloadSuccess } from "../../src/contracts/urlDownload.js";
 
 const handlers = new Map();
@@ -10,20 +15,24 @@ const handlers = new Map();
 // Fake downloader injected as a dependency; every call is recorded and can be
 // held open or failed from the test. No network, no real temp writes.
 const downloadCalls: any[] = [];
+
 let downloadBehavior: (...args: unknown[]) => unknown = () => {
   throw new Error("fake download has no behavior set");
 };
-const sweepCalls = [];
-let safeTempRoot = "";
 
+const sweepCalls = [];
+
+let safeTempRoot = "";
 
 function deferred<T = unknown>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
+
   const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
   });
+
   return { promise, resolve, reject };
 }
 
@@ -33,10 +42,10 @@ function resetDownloader() {
 }
 
 let register: any;
+
 test.before(async () => {
-  ({ registerUrlDownloadHandlers: register } = await import(
-    "../../src/helpers/urlDownloadIpcHandlers.ts"
-  ));
+  ({ registerUrlDownloadHandlers: register } =
+    await import("../../src/helpers/urlDownloadIpcHandlers.ts"));
 });
 
 function registration() {
@@ -49,6 +58,7 @@ function registration() {
       download: (url: string, onProgress: unknown, signal: unknown) => {
         const call = { url, onProgress, signal, deferred: deferred() };
         downloadCalls.push(call);
+
         return downloadBehavior(call);
       },
       sweepStaleTempArtifacts: () => sweepCalls.push(1),
@@ -60,6 +70,7 @@ function registration() {
 
 function sender() {
   const sent: Array<[string, UrlDownloadProgress]> = [];
+
   return {
     sent,
     send: (channel: string, payload: UrlDownloadProgress) => sent.push([channel, payload]),
@@ -81,11 +92,18 @@ test("success resolves with the downloader result spread under success:true", as
   registration();
   resetDownloader();
   downloadBehavior = () =>
-    Promise.resolve({ tempPath: "/t/ow-url-a", title: "Song", durationSeconds: null, sizeBytes: 12 });
+    Promise.resolve({
+      tempPath: "/t/ow-url-a",
+      title: "Song",
+      durationSeconds: null,
+      sizeBytes: 12,
+    });
+
   const result = await handlers.get("download-url-audio")(
     eventFrom(sender()),
     "https://example.com/a.mp3"
   );
+
   assert.deepEqual(result, {
     success: true,
     tempPath: "/t/ow-url-a",
@@ -100,11 +118,13 @@ test("progress goes only to the initiating sender and carries the assigned id", 
   resetDownloader();
   const s1 = sender();
   const s2 = sender();
+
   const pending = handlers.get("download-url-audio")(
     eventFrom(s1),
     "https://example.com/a.mp3",
     "job-p"
   );
+
   const call = downloadCalls[0];
   call.onProgress({ stage: "downloading", percent: 40 });
   call.deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
@@ -119,14 +139,21 @@ test("malformed progress from the downloader is dropped without breaking the dow
   registration();
   resetDownloader();
   const s = sender();
+
   const pending = handlers.get("download-url-audio")(
     eventFrom(s),
     "https://example.com/a.mp3",
     "job-m"
   );
+
   downloadCalls[0].onProgress({ stage: "sideways", percent: "many" });
   downloadCalls[0].onProgress({ stage: "downloading", percent: 90 });
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await pending;
   assert.deepEqual(s.sent, [
     ["url-download-progress", { stage: "downloading", percent: 90, downloadId: "job-m" }],
@@ -137,21 +164,29 @@ test("a malformed downloader result is not reported as success", async () => {
   registration();
   resetDownloader();
   downloadBehavior = () => Promise.resolve({ tempPath: 42 });
+
   const result = await handlers.get("download-url-audio")(
     eventFrom(sender()),
     "https://example.com/a.mp3",
     "job-bad"
   );
+
   assert.equal(result.success, false);
 });
 
 test("wrong-type or overlong urls are rejected before the downloader is touched", async () => {
   registration();
   resetDownloader();
+
   for (const url of [null, 5, undefined, "x".repeat(2049)]) {
     const result = await handlers.get("download-url-audio")(eventFrom(sender()), url);
-    assert.deepEqual(result, { success: false, error: "Invalid URL", code: "INVALID_URL" }, String(url).slice(0, 20));
+    assert.deepEqual(
+      result,
+      { success: false, error: "Invalid URL", code: "INVALID_URL" },
+      String(url).slice(0, 20)
+    );
   }
+
   assert.equal(downloadCalls.length, 0);
 });
 
@@ -173,7 +208,12 @@ test("a url of exactly 2048 chars is accepted by the boundary", async () => {
   const url = `https://example.com/${filler}`;
   assert.equal(url.length, 2048);
   const pending = handlers.get("download-url-audio")(eventFrom(sender()), url);
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await pending;
   assert.equal(downloadCalls[0].url, url);
 });
@@ -182,23 +222,32 @@ test("missing, empty or non-string downloadId gets a generated dl-N id", async (
   registration();
   resetDownloader();
   const seen: Array<{ s: ReturnType<typeof sender>; url: string }> = [];
+
   const pendings = ["https://example.com/1", "https://example.com/2", "https://example.com/3"].map(
     (url) => {
       const s = sender();
       const p = handlers.get("download-url-audio")(eventFrom(s), url);
       seen.push({ s, url });
+
       return p;
     }
   );
+
   for (const call of downloadCalls) {
     call.onProgress({ stage: "resolving", percent: 0 });
     call.deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
   }
+
   await Promise.all(pendings);
-  const ids = seen.flatMap((c) => c.s.sent.map(([, payload]) => {
-    assert.ok(payload.downloadId);
-    return payload.downloadId;
-  }));
+
+  const ids = seen.flatMap((c) =>
+    c.s.sent.map(([, payload]) => {
+      assert.ok(payload.downloadId);
+
+      return payload.downloadId;
+    })
+  );
+
   assert.match(ids[0], /^dl-\d+$/);
   assert.match(ids[1], /^dl-\d+$/);
   assert.match(ids[2], /^dl-\d+$/);
@@ -209,35 +258,71 @@ test("missing, empty or non-string downloadId gets a generated dl-N id", async (
 test("cancel with a string id aborts only that download", async () => {
   registration();
   resetDownloader();
-  const pending = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "job-a");
-  const pendingB = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "job-b");
+
+  const pending = handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/1",
+    "job-a"
+  );
+
+  const pendingB = handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/2",
+    "job-b"
+  );
+
   const cancelled = await handlers.get("cancel-url-download")({ sender: sender() }, "job-a");
   assert.deepEqual(cancelled, { success: true });
   assert.equal(downloadCalls[0].signal.aborted, true);
   assert.equal(downloadCalls[1].signal.aborted, false);
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
-  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
+  downloadCalls[1].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await Promise.all([pending, pendingB]);
 });
 
 test("cancel without an id, with empty string or a non-string cancels everything", async () => {
   registration();
   resetDownloader();
+
   const pendings = [
     handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "job-a"),
     handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "job-b"),
   ];
+
   // The first cancel-all aborts both; subsequent ones find an empty map and
   // quietly fail instead of pretending to cancel.
   const first = await handlers.get("cancel-url-download")({ sender: sender() });
   assert.deepEqual(first, { success: true });
+
   for (const call of downloadCalls) assert.equal(call.signal.aborted, true);
+
   for (const arg of ["", 7, undefined]) {
     const result = await handlers.get("cancel-url-download")({ sender: sender() }, arg);
     assert.deepEqual(result, { success: false }, String(arg));
   }
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
-  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
+  downloadCalls[1].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await Promise.all(pendings);
 });
 
@@ -247,29 +332,55 @@ test("cancel without an id, with empty string or a non-string cancels everything
 test("cancel(null/7) with active downloads still cancels them all", async () => {
   registration();
   resetDownloader();
+
   const pendings = [
     handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "job-a"),
     handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "job-b"),
   ];
+
   assert.deepEqual(await handlers.get("cancel-url-download")({ sender: sender() }, 7), {
     success: true,
   });
+
   for (const call of downloadCalls) assert.equal(call.signal.aborted, true);
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
-  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
+  downloadCalls[1].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await Promise.all(pendings);
 
   resetDownloader();
+
   const pendings2 = [
     handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/3", "job-c"),
     handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/4", "job-d"),
   ];
+
   assert.deepEqual(await handlers.get("cancel-url-download")({ sender: sender() }, null), {
     success: true,
   });
+
   for (const call of downloadCalls) assert.equal(call.signal.aborted, true);
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
-  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
+  downloadCalls[1].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await Promise.all(pendings2);
 });
 
@@ -278,17 +389,25 @@ test("cancel(null/7) with active downloads still cancels them all", async () => 
 test("download with a null or non-string id still starts", async () => {
   registration();
   resetDownloader();
+
   for (const [i, id] of [7, null, true].entries()) {
     const pending = handlers.get("download-url-audio")(
       eventFrom(sender()),
       `https://example.com/gen-${i}`,
       id
     );
+
     downloadCalls[i].onProgress({ stage: "ready", percent: 100 });
-    downloadCalls[i].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+    downloadCalls[i].deferred.resolve({
+      tempPath: "/t/x",
+      title: "t",
+      durationSeconds: null,
+      sizeBytes: 1,
+    });
     const result = await pending;
     assert.equal(result.success, true, String(id));
   }
+
   // Every non-string id generated a dl-N instead of failing.
   assert.equal(downloadCalls.length, 3);
 });
@@ -306,15 +425,36 @@ test("cancel of unknown or completed id and cancel-all with nothing running fail
 test("same-id reuse replaces the entry; the finished job's cleanup keeps the new controller", async () => {
   registration();
   resetDownloader();
-  const first = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "same");
-  const second = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "same");
+
+  const first = handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/1",
+    "same"
+  );
+
+  const second = handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/2",
+    "same"
+  );
+
   // First job finishes; its finally must not evict the replacement.
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await first;
   const cancelled = await handlers.get("cancel-url-download")({ sender: sender() }, "same");
   assert.deepEqual(cancelled, { success: true });
   assert.equal(downloadCalls[1].signal.aborted, true);
-  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[1].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   await second;
 });
 
@@ -323,11 +463,23 @@ test("downloader errors keep message and code; a missing code becomes DOWNLOAD_F
   resetDownloader();
   downloadBehavior = () =>
     Promise.reject(Object.assign(new Error("quota blown"), { code: "QUOTA" }));
-  const withCode = await handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "e1");
+
+  const withCode = await handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/1",
+    "e1"
+  );
+
   assert.deepEqual(withCode, { success: false, error: "quota blown", code: "QUOTA" });
 
   downloadBehavior = () => Promise.reject(new Error("boom"));
-  const noCode = await handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "e2");
+
+  const noCode = await handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/2",
+    "e2"
+  );
+
   assert.deepEqual(noCode, { success: false, error: "boom", code: "DOWNLOAD_FAILED" });
 });
 
@@ -338,9 +490,16 @@ test("an aborted download keeps the downloader's own cancellation code", async (
     call.signal.addEventListener("abort", () =>
       call.deferred.reject(Object.assign(new Error("Aborted"), { code: "DOWNLOAD_CANCELLED" }))
     );
+
     return call.deferred.promise;
   };
-  const pending = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/1", "ab");
+
+  const pending = handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/1",
+    "ab"
+  );
+
   await handlers.get("cancel-url-download")({ sender: sender() }, "ab");
   const result = await pending;
   assert.deepEqual(result, { success: false, error: "Aborted", code: "DOWNLOAD_CANCELLED" });
@@ -353,25 +512,42 @@ test("progress is not sent to a destroyed sender and later downloads still work"
   s.isDestroyed = () => true;
   const pending = handlers.get("download-url-audio")(eventFrom(s), "https://example.com/1", "dead");
   downloadCalls[0].onProgress({ stage: "downloading", percent: 10 });
-  downloadCalls[0].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  downloadCalls[0].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   const result = await pending;
   assert.deepEqual(s.sent, []);
   assert.equal(result.success, true);
 
-  const next = handlers.get("download-url-audio")(eventFrom(sender()), "https://example.com/2", "alive");
-  downloadCalls[1].deferred.resolve({ tempPath: "/t/x", title: "t", durationSeconds: null, sizeBytes: 1 });
+  const next = handlers.get("download-url-audio")(
+    eventFrom(sender()),
+    "https://example.com/2",
+    "alive"
+  );
+
+  downloadCalls[1].deferred.resolve({
+    tempPath: "/t/x",
+    title: "t",
+    durationSeconds: null,
+    sizeBytes: 1,
+  });
   assert.equal((await next).success, true);
 });
 
 // delete-temp-file: real filesystem against the injected safe temp root.
 function setupTempRoot() {
   safeTempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ow-urltest-"));
+
   return safeTempRoot;
 }
 
 test("delete-temp-file rejects non-string paths without touching the disk", async () => {
   registration();
   setupTempRoot();
+
   for (const value of [undefined, null, 12, {}]) {
     const result = await handlers.get("delete-temp-file")({ sender: sender() }, value);
     assert.equal(result.success, false, String(value));
@@ -418,10 +594,12 @@ test("delete-temp-file refuses a symlink that points outside the temp root", asy
 test("delete-temp-file reports failure for a missing file", async () => {
   registration();
   const root = setupTempRoot();
+
   const result = await handlers.get("delete-temp-file")(
     { sender: sender() },
     path.join(root, "ow-url-gone.tmp")
   );
+
   assert.equal(result.success, false);
 });
 
@@ -455,25 +633,48 @@ test("each registration owns its pending downloads", async (t: import("node:test
   let firstSignal: AbortSignal | undefined;
   let secondSignal: AbortSignal | undefined;
   register(a, {
-    download: (_url: string, _progress: unknown, signal: any) => { firstSignal = signal; return first.promise; },
+    download: (_url: string, _progress: unknown, signal: any) => {
+      firstSignal = signal;
+
+      return first.promise;
+    },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },
   });
   register(b, {
-    download: (_url: string, _progress: unknown, signal: any) => { secondSignal = signal; return second.promise; },
+    download: (_url: string, _progress: unknown, signal: any) => {
+      secondSignal = signal;
+
+      return second.promise;
+    },
     sweepStaleTempArtifacts: () => {},
     getSafeTempDir: () => safeTempRoot,
     debugLogger: { error() {}, warn() {} },
   });
-  const firstResult = handlers.get("a-download-url-audio")({ sender: sender() }, "https://example.com/1", "shared-id");
-  const secondResult = handlers.get("b-download-url-audio")({ sender: sender() }, "https://example.com/2", "shared-id");
-  assert.deepEqual(await handlers.get("b-cancel-url-download")({ sender: sender() }, "shared-id"), { success: true });
+
+  const firstResult = handlers.get("a-download-url-audio")(
+    { sender: sender() },
+    "https://example.com/1",
+    "shared-id"
+  );
+
+  const secondResult = handlers.get("b-download-url-audio")(
+    { sender: sender() },
+    "https://example.com/2",
+    "shared-id"
+  );
+
+  assert.deepEqual(await handlers.get("b-cancel-url-download")({ sender: sender() }, "shared-id"), {
+    success: true,
+  });
   assert.ok(secondSignal);
   assert.ok(firstSignal);
   assert.equal(secondSignal.aborted, true);
   assert.equal(firstSignal.aborted, false);
-  assert.deepEqual(await handlers.get("a-cancel-url-download")({ sender: sender() }, "shared-id"), { success: true });
+  assert.deepEqual(await handlers.get("a-cancel-url-download")({ sender: sender() }, "shared-id"), {
+    success: true,
+  });
   assert.equal(firstSignal.aborted, true);
   first.resolve({ tempPath: "/t/a", title: "a", durationSeconds: null, sizeBytes: 1 });
   second.resolve({ tempPath: "/t/b", title: "b", durationSeconds: null, sizeBytes: 1 });

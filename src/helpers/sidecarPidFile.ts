@@ -19,6 +19,7 @@ function pidPath(name: string): string {
 
 export function write(name: string, pid: number): void {
   if (!Number.isInteger(pid)) return;
+
   try {
     fs.mkdirSync(pidDir(), { recursive: true });
     fs.writeFileSync(pidPath(name), String(pid), "utf-8");
@@ -40,6 +41,7 @@ export function clear(name: string): void {
 export function readAll(): SidecarPidEntry[] {
   const dir = pidDir();
   let files: string[];
+
   try {
     files = fs.readdirSync(dir);
   } catch {
@@ -47,17 +49,21 @@ export function readAll(): SidecarPidEntry[] {
   }
 
   const entries: SidecarPidEntry[] = [];
+
   for (const file of files) {
     if (!file.endsWith(".pid")) continue;
+
     try {
       const name = path.basename(file, ".pid");
       const raw: unknown = fs.readFileSync(path.join(dir, file), "utf-8");
       const pid = typeof raw === "string" ? Number(raw.trim()) : NaN;
+
       if (!Number.isInteger(pid) || pid <= 0) continue;
       entries.push({ name, pid });
     } catch {
       // Best-effort recovery metadata; skip entries that vanished or cannot be read.
     }
   }
+
   return entries;
 }

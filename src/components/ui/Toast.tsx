@@ -3,11 +3,7 @@ import { createPortal } from "react-dom";
 import { X, Copy, Check } from "../icons";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
-import {
-  ToastContext,
-  type ToastPresentation,
-  type ToastProps,
-} from "./useToast";
+import { ToastContext, type ToastPresentation, type ToastProps } from "./useToast";
 import { useCopyFeedback } from "../../hooks/useCopyFeedback";
 import { TechnicalErrorDetails } from "./TechnicalErrorDetails";
 
@@ -28,6 +24,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const clearTimer = React.useCallback((id: string) => {
     const timer = timersRef.current[id];
+
     if (timer) {
       clearTimeout(timer);
       delete timersRef.current[id];
@@ -45,9 +42,9 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     (props: Omit<ToastProps, "id">): string => {
       const id = Math.random().toString(36).substring(2, 11);
       const presentation = "standard" as const;
-      const duration =
-        props.duration ??
-        (props.variant === "destructive" ? 6000 : 3500);
+
+      const duration = props.duration ?? (props.variant === "destructive" ? 6000 : 3500);
+
       const newToast: ToastState = {
         ...props,
         presentation,
@@ -66,6 +63,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const timer = setTimeout(() => {
           startExitAnimation(id);
         }, duration);
+
         timersRef.current[id] = timer;
       }
 
@@ -92,6 +90,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         startExitAnimation(id);
       } else {
         const lastToast = toasts[toasts.length - 1];
+
         if (lastToast) {
           clearTimer(lastToast.id);
           startExitAnimation(lastToast.id);
@@ -114,6 +113,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const timer = setTimeout(() => {
           startExitAnimation(id);
         }, remainingTime);
+
         timersRef.current[id] = timer;
       }
     },
@@ -122,6 +122,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   React.useEffect(() => {
     const timers = timersRef.current;
+
     return () => {
       for (const id in timers) {
         clearTimeout(timers[id]);
@@ -225,9 +226,11 @@ const Toast: React.FC<
   const remainingDurationRef = React.useRef(duration);
   const timerStartedAtRef = React.useRef(createdAt);
   const { copied, copy } = useCopyFeedback(description ?? "", { resetMs: 2000 });
+
   const { copied: commandCopied, copy: copyRecoveryCommand } = useCopyFeedback(copyCommand ?? "", {
     resetMs: 2000,
   });
+
   const { t } = useTranslation();
   const [timerPaused, setTimerPaused] = React.useState(false);
   const isDestructive = variant === "destructive";
@@ -251,6 +254,7 @@ const Toast: React.FC<
       setTimerPaused(false);
       onResumeTimer(remaining);
     }
+
     pausedAtRef.current = null;
   };
 

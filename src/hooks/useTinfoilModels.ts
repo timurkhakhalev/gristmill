@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getTinfoilModels, type CloudModelDefinition } from "../models/ModelRegistry";
-import { isTinfoilListFresh, refreshTinfoilCatalogAndReconcileSelections } from "../models/tinfoilModels";
+import {
+  isTinfoilListFresh,
+  refreshTinfoilCatalogAndReconcileSelections,
+} from "../models/tinfoilModels";
 import logger from "../utils/logger";
 
 interface UseTinfoilModelsResult {
@@ -24,6 +27,7 @@ export function useTinfoilModels(enabled: boolean): UseTinfoilModelsResult {
 
   useEffect(() => {
     isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
     };
@@ -41,6 +45,7 @@ export function useTinfoilModels(enabled: boolean): UseTinfoilModelsResult {
 
     try {
       const fresh = await refreshTinfoilCatalogAndReconcileSelections();
+
       if (isMountedRef.current) {
         setModels(fresh);
       }
@@ -48,6 +53,7 @@ export function useTinfoilModels(enabled: boolean): UseTinfoilModelsResult {
       // Leave the known list in place: without an answer we can't tell a
       // retired model from an unreachable endpoint.
       logger.error("Failed to load Tinfoil models", { error: err }, "models");
+
       if (isMountedRef.current) {
         setError((err as Error).message || "Unable to load models");
       }

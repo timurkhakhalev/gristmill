@@ -1,23 +1,39 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 const modelRegistryData = require("../../src/models/modelRegistryData.json");
+
 const english = require("../../src/locales/en/translation.json");
 
 let vitePromise;
+
 const cleanup: (() => Promise<unknown> | unknown)[] = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
+
 async function getVite() {
-  const vite = await (vitePromise ??= createRendererServer({ after: (close: any) => cleanup.push(close) }, {
-    cachePrefix: "openwhispr-tinfoil-default-model-test-",
-  }));
-  for (const url of ["/models/ModelRegistry.ts", "/stores/settingsStore.ts", "/stores/tinfoilModelSwitchStore.ts"]) {
+  const vite = await (vitePromise ??= createRendererServer(
+    { after: (close: any) => cleanup.push(close) },
+    {
+      cachePrefix: "openwhispr-tinfoil-default-model-test-",
+    }
+  ));
+
+  for (const url of [
+    "/models/ModelRegistry.ts",
+    "/stores/settingsStore.ts",
+    "/stores/tinfoilModelSwitchStore.ts",
+  ]) {
     const module = await vite.moduleGraph.getModuleByUrl(url);
+
     if (module) vite.moduleGraph.invalidateModule(module);
   }
+
   return vite;
 }
 
@@ -32,9 +48,9 @@ const LIVE_CATALOG = [
 
 test("tinfoil default model follows the glm-5-3 replacement", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t);
-  const { pickDefaultTinfoilModel, DESCRIPTION_KEYS } = await import(
-    "../../src/models/tinfoilModels.ts"
-  );
+
+  const { pickDefaultTinfoilModel, DESCRIPTION_KEYS } =
+    await import("../../src/models/tinfoilModels.ts");
 
   await t.test("picks glm-5-3 even when Tinfoil lists another model first", () => {
     assert.equal(pickDefaultTinfoilModel(LIVE_CATALOG)?.id, "glm-5-3");
@@ -45,7 +61,11 @@ test("tinfoil default model follows the glm-5-3 replacement", async (t: import("
   });
 
   await t.test("registry names the default and no longer ships glm-5-2", () => {
-    const tinfoil = modelRegistryData.cloudProviders.find((provider: { id: string; defaultModel?: string; models: { id: string }[] }) => provider.id === "tinfoil");
+    const tinfoil = modelRegistryData.cloudProviders.find(
+      (provider: { id: string; defaultModel?: string; models: { id: string }[] }) =>
+        provider.id === "tinfoil"
+    );
+
     assert.equal(tinfoil.defaultModel, "glm-5-3");
     assert.ok(
       !tinfoil.models.some((model: { id: string }) => model.id === "glm-5-2"),
@@ -56,7 +76,13 @@ test("tinfoil default model follows the glm-5-3 replacement", async (t: import("
   await t.test("every curated description key resolves in English", () => {
     for (const key of Object.values(DESCRIPTION_KEYS)) {
       const path = key.split(".");
-      const value = path.reduce<unknown>((node, segment) => node && typeof node === "object" ? Reflect.get(node, segment) : undefined, english);
+
+      const value = path.reduce<unknown>(
+        (node, segment) =>
+          node && typeof node === "object" ? Reflect.get(node, segment) : undefined,
+        english
+      );
+
       assert.ok(typeof value === "string", `${key} is missing from en`);
       assert.ok(value.length > 0, `${key} is empty in en`);
     }
@@ -78,10 +104,13 @@ test("a cached catalog does not displace the named Tinfoil default", async (t: i
   });
   const vite = await getVite();
   // Loading the registry applies the cached list, exactly as app startup does.
-  (await vite.ssrLoadModule("/models/ModelRegistry.ts") as typeof import("../../src/models/ModelRegistry.ts"));
+  (await vite.ssrLoadModule(
+    "/models/ModelRegistry.ts"
+  )) as typeof import("../../src/models/ModelRegistry.ts");
+
   const { useSettingsStore } = (await vite.ssrLoadModule(
     "/stores/settingsStore.ts"
-  ) as typeof import("../../src/stores/settingsStore.ts"));
+  )) as typeof import("../../src/stores/settingsStore.ts");
 
   const effective = useSettingsStore.getState();
 
@@ -99,7 +128,10 @@ test("a persisted glm-5-2 selection is repointed before any request", async (t: 
     },
   });
   const vite = await getVite();
-  const { useSettingsStore } = (await vite.ssrLoadModule("/stores/settingsStore.ts") as typeof import("../../src/stores/settingsStore.ts"));
+
+  const { useSettingsStore } = (await vite.ssrLoadModule(
+    "/stores/settingsStore.ts"
+  )) as typeof import("../../src/stores/settingsStore.ts");
 
   // No catalog fetch and no network: the store repairs the selection on load,
   // so the first request of the session already carries a served model.
@@ -127,10 +159,14 @@ test("the retirement notice fires when the startup sweep is what moved the user"
     },
   });
   const vite = await getVite();
-  const { useSettingsStore } = (await vite.ssrLoadModule("/stores/settingsStore.ts") as typeof import("../../src/stores/settingsStore.ts"));
+
+  const { useSettingsStore } = (await vite.ssrLoadModule(
+    "/stores/settingsStore.ts"
+  )) as typeof import("../../src/stores/settingsStore.ts");
+
   const { consumeTinfoilModelSwitches } = (await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"
-  ) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts"));
+  )) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts");
 
   assert.equal(useSettingsStore.getState().cleanupModel, "glm-5-3");
   // Two scopes moved, but the user is told about the model once.
@@ -147,10 +183,14 @@ test("a Groq remap is not announced as a Tinfoil retirement", async (t: import("
     },
   });
   const vite = await getVite();
-  const { useSettingsStore } = (await vite.ssrLoadModule("/stores/settingsStore.ts") as typeof import("../../src/stores/settingsStore.ts"));
+
+  const { useSettingsStore } = (await vite.ssrLoadModule(
+    "/stores/settingsStore.ts"
+  )) as typeof import("../../src/stores/settingsStore.ts");
+
   const { consumeTinfoilModelSwitches } = (await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"
-  ) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts"));
+  )) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts");
 
   assert.equal(useSettingsStore.getState().cleanupModel, "openai/gpt-oss-120b");
   assert.deepEqual(consumeTinfoilModelSwitches(), []);
@@ -169,7 +209,10 @@ test("a provider's named default beats its list position", async (t: import("nod
     // The seed leads with its own default, so only a list that doesn't can
     // tell the two rules apart.
     assert.equal(
-      pickDefaultModelId({ models: [{ id: "listed-first" }, { id: "named" }], defaultModel: "named" }),
+      pickDefaultModelId({
+        models: [{ id: "listed-first" }, { id: "named" }],
+        defaultModel: "named",
+      }),
       "named"
     );
     assert.equal(pickDefaultModelId(byId.tinfoil), "glm-5-3");
@@ -198,10 +241,14 @@ test("a replacement with no curated name is still announced, by id", async (t: i
     },
   });
   const vite = await getVite();
-  const { useSettingsStore } = (await vite.ssrLoadModule("/stores/settingsStore.ts") as typeof import("../../src/stores/settingsStore.ts"));
+
+  const { useSettingsStore } = (await vite.ssrLoadModule(
+    "/stores/settingsStore.ts"
+  )) as typeof import("../../src/stores/settingsStore.ts");
+
   const { consumeTinfoilModelSwitches } = (await vite.ssrLoadModule(
     "/stores/tinfoilModelSwitchStore.ts"
-  ) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts"));
+  )) as typeof import("../../src/stores/tinfoilModelSwitchStore.ts");
 
   assert.equal(useSettingsStore.getState().cleanupModel, "kimi-k3");
   assert.deepEqual(consumeTinfoilModelSwitches(), [{ from: "Kimi K2.6", to: "kimi-k3" }]);

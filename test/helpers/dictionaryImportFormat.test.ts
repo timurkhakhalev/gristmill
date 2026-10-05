@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/dictionaryImport.ts");
@@ -15,11 +16,7 @@ test("import accepts one word per line", async () => {
 
 test("import accepts mixed commas and new lines and skips blanks", async () => {
   const { parseDictionaryImportText } = await load();
-  assert.deepEqual(parseDictionaryImportText("Alice,\n Bob\n\nCarol, "), [
-    "Alice",
-    "Bob",
-    "Carol",
-  ]);
+  assert.deepEqual(parseDictionaryImportText("Alice,\n Bob\n\nCarol, "), ["Alice", "Bob", "Carol"]);
 });
 
 // Issue #184: the exporter quotes entries a plain split would corrupt, and the
@@ -79,7 +76,11 @@ test('a plain paste of "" survives as the literal entry ""', async () => {
 // unwrap, next to plain comma words.
 test("a mixed paste decodes the exported field and keeps plain words split", async () => {
   const { parseDictionaryImportText } = await load();
-  assert.deepEqual(parseDictionaryImportText('"Acme, Inc.", Bob, Carol'), ["Acme, Inc.", "Bob", "Carol"]);
+  assert.deepEqual(parseDictionaryImportText('"Acme, Inc.", Bob, Carol'), [
+    "Acme, Inc.",
+    "Bob",
+    "Carol",
+  ]);
 });
 
 test("an unbalanced quote falls back to the plain comma/newline split", async () => {

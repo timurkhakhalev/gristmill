@@ -15,12 +15,18 @@ export function registerUploadCancelHandler(
   ipcMain: { handle(channel: string, listener: IpcEventListener): void },
   deps: { uploadCancelRegistry: UploadCancelRegistry }
 ): void {
-  ipcMain.handle(uploadTranscriptionChannels.cancelUploadTranscription, async (_event, ...args: unknown[]) => {
-    const parsed = uploadCancelRequestSchema.safeParse(args[0]);
-    if (!parsed.success) {
-      return { success: false, error: "Invalid cancel request" };
+  ipcMain.handle(
+    uploadTranscriptionChannels.cancelUploadTranscription,
+    async (_event, ...args: unknown[]) => {
+      const parsed = uploadCancelRequestSchema.safeParse(args[0]);
+
+      if (!parsed.success) {
+        return { success: false, error: "Invalid cancel request" };
+      }
+
+      const cancelled = deps.uploadCancelRegistry.cancel(parsed.data.requestId);
+
+      return { success: true, cancelled };
     }
-    const cancelled = deps.uploadCancelRegistry.cancel(parsed.data.requestId);
-    return { success: true, cancelled };
-  });
+  );
 }

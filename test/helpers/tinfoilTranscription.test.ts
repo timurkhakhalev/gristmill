@@ -1,9 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const transcriptionModulePath = require.resolve("../../src/helpers/tinfoilTranscription.ts");
+
 const originalLoad = Module._load;
+
 type FetchInit = NonNullable<Parameters<typeof fetch>[1]>;
 
 function loadTranscription(fetchImpl: unknown) {
@@ -13,9 +17,11 @@ function loadTranscription(fetchImpl: unknown) {
     if (request === "./tinfoilSecureClient" || request === "./tinfoilSecureClient.js") {
       return { tinfoilSecureFetch: fetchImpl };
     }
+
     if (request === "./debugLogger") {
       return { debug() {} };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
@@ -39,8 +45,10 @@ const AUDIO = {
 
 test("posts to the attested transcriptions path with the registry's batch model", async () => {
   const calls: { path: string; init: FetchInit }[] = [];
+
   const { transcribeWithTinfoil } = loadTranscription(async (path: string, init: FetchInit) => {
     calls.push({ path, init });
+
     return okResponse("hello world");
   });
 
@@ -61,9 +69,11 @@ test("posts to the attested transcriptions path with the registry's batch model"
 
 test("never sends the realtime model, which only serves /v1/realtime", async () => {
   let sentModel;
+
   const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: FetchInit) => {
     assert.ok(init.body instanceof FormData);
     sentModel = init.body.get("model");
+
     return okResponse("x");
   });
 
@@ -74,9 +84,11 @@ test("never sends the realtime model, which only serves /v1/realtime", async () 
 
 test("omits language when auto-detecting", async () => {
   let form: FormData | undefined;
+
   const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: FetchInit) => {
     assert.ok(init.body instanceof FormData);
     form = init.body;
+
     return okResponse("x");
   });
 
@@ -88,8 +100,10 @@ test("omits language when auto-detecting", async () => {
 
 test("a missing key fails before any request is made", async () => {
   let called = false;
+
   const { transcribeWithTinfoil } = loadTranscription(async () => {
     called = true;
+
     return okResponse("x");
   });
 
@@ -127,6 +141,7 @@ test("429 surfaces as PROVIDER_RATE_LIMITED, 5xx as SERVER_ERROR", async () => {
     status: 429,
     text: async () => "slow down",
   }));
+
   await assert.rejects(() => rateLimited.transcribeWithTinfoil(AUDIO), {
     code: "PROVIDER_RATE_LIMITED",
   });
@@ -136,14 +151,17 @@ test("429 surfaces as PROVIDER_RATE_LIMITED, 5xx as SERVER_ERROR", async () => {
     status: 503,
     text: async () => "unavailable",
   }));
+
   await assert.rejects(() => serverError.transcribeWithTinfoil(AUDIO), { code: "SERVER_ERROR" });
 });
 
 test("forwards the dictionary prompt, and omits it when blank", async () => {
   let form: FormData | undefined;
+
   const { transcribeWithTinfoil } = loadTranscription(async (_path: string, init: FetchInit) => {
     assert.ok(init.body instanceof FormData);
     form = init.body;
+
     return okResponse("x");
   });
 

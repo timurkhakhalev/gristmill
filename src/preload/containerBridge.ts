@@ -25,17 +25,16 @@ import type { ZodType } from "zod";
 interface IpcRendererLike {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
   on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(
-    channel: string,
-    listener: (event: unknown, ...args: unknown[]) => void
-  ): unknown;
+  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 }
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -46,9 +45,7 @@ export function createContainersBridge(ipcRenderer: IpcRendererLike): Containers
     getFolders: (spaceId?: number | null) =>
       ipcRenderer
         .invoke(containerChannels.getFolders, spaceId)
-        .then((raw) =>
-          parseResult(folderListResultSchema, raw, containerChannels.getFolders)
-        ),
+        .then((raw) => parseResult(folderListResultSchema, raw, containerChannels.getFolders)),
     createFolder: (name: string, spaceId?: number | null) =>
       ipcRenderer
         .invoke(containerChannels.createFolder, name, spaceId)
@@ -58,9 +55,7 @@ export function createContainersBridge(ipcRenderer: IpcRendererLike): Containers
     deleteFolder: (id: number) =>
       ipcRenderer
         .invoke(containerChannels.deleteFolder, id)
-        .then((raw) =>
-          parseResult(folderDeleteResultSchema, raw, containerChannels.deleteFolder)
-        ),
+        .then((raw) => parseResult(folderDeleteResultSchema, raw, containerChannels.deleteFolder)),
     renameFolder: (id: number, name: string) =>
       ipcRenderer
         .invoke(containerChannels.renameFolder, id, name)
@@ -89,42 +84,40 @@ export function createContainersBridge(ipcRenderer: IpcRendererLike): Containers
       ipcRenderer
         .invoke(containerChannels.getFolderNoteCounts)
         .then((raw) =>
-          parseResult(
-            folderNoteCountsResultSchema,
-            raw,
-            containerChannels.getFolderNoteCounts
-          )
+          parseResult(folderNoteCountsResultSchema, raw, containerChannels.getFolderNoteCounts)
         ),
     getSpaces: () =>
       ipcRenderer
         .invoke(containerChannels.getSpaces)
-        .then((raw) =>
-          parseResult(spaceListResultSchema, raw, containerChannels.getSpaces)
-        ),
+        .then((raw) => parseResult(spaceListResultSchema, raw, containerChannels.getSpaces)),
     updateSpace: (id: number, updates: { name?: string; emoji?: string | null }) =>
       ipcRenderer
         .invoke(containerChannels.updateSpace, id, updates)
-        .then((raw) =>
-          parseResult(spaceMutationResultSchema, raw, containerChannels.updateSpace)
-        ),
+        .then((raw) => parseResult(spaceMutationResultSchema, raw, containerChannels.updateSpace)),
     onFolderDeleted: (callback: (payload: FolderDeletedPayload) => void) => {
       if (typeof callback !== "function") {
         return () => {};
       }
+
       const listener = (_event: unknown, data: unknown) => {
         const result = folderDeletedPayloadSchema.safeParse(data);
+
         if (!result.success) {
           console.error(
             `[containersBridge] dropped malformed ${containerEventChannels.folderDeleted} event`
           );
+
           return;
         }
+
         callback(result.data);
       };
+
       ipcRenderer.on(
         containerEventChannels.folderDeleted,
         listener as (event: unknown, ...args: unknown[]) => void
       );
+
       return () => {
         ipcRenderer.removeListener(
           containerEventChannels.folderDeleted,

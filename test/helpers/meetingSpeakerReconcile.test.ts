@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const originalLoad = Module._load;
@@ -37,6 +39,7 @@ Module._load = function loadWithMocks(request: string, parent: unknown, isMain: 
   if (request === "electron") {
     return electronStub;
   }
+
   if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
     return {
       broadcastToWindows: (channel: string, payload: unknown) => {
@@ -44,6 +47,7 @@ Module._load = function loadWithMocks(request: string, parent: unknown, isMain: 
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -54,6 +58,7 @@ const {
 Module._load = originalLoad;
 
 const NOTE_ID = 42;
+
 const THREE_ATTENDEES = [
   { email: "one@example.com" },
   { email: "two@example.com" },
@@ -74,9 +79,11 @@ function refreshConfig(explicit: unknown, { expectedCount = 2, attendees = THREE
     getSpeakerProfiles: () => [],
     upsertSpeakerProfile: () => ({ id: 1 }),
   };
+
   broadcasts.length = 0;
 
   const handlers = new Map();
+
   const runtime = registerMeetingCoordinatorHandlers(
     {
       handle: (channel: string, listener: unknown) => handlers.set(channel, listener),
@@ -105,6 +112,7 @@ function refreshConfig(explicit: unknown, { expectedCount = 2, attendees = THREE
   runtime.refreshMeetingSpeakerConfigFromNote(NOTE_ID, {
     participants: JSON.stringify(attendees),
   });
+
   return { runtime, handlers };
 }
 

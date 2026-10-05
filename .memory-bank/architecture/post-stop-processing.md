@@ -18,7 +18,6 @@ To get a complete result for a recording that was split before, transcribe it ag
 
 Storage, mute, clock alignment, run creation and provider input formats are in [recording and processing](recording-processing.md).
 
-
 ### Results and Notes projection
 
 - The transcript and the Summary are per-run artifacts.
@@ -172,7 +171,6 @@ flowchart TD
 - The selected route sets the limits and the available functions.
 - A limit does not cause a provider change, a cut of the audio or a split without notice.
 - There is no new Self-Hosted meeting route.
-
 
 ## Provider limits (documentation checked 2026-09-25)
 

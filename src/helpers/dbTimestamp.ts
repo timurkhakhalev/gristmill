@@ -17,12 +17,14 @@ export function hasExplicitTimeZone(value: unknown): boolean {
 export function parseDbTimestamp(value: unknown): Date | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
+
   if (!trimmed) return null;
   // The stored separator is a space; ISO 8601 wants "T". Normalizing it here
   // keeps the parse spec-defined rather than relying on the implementation's
   // legacy date parser, which is free to reject the space-separated form.
   const isoish = trimmed.replace(" ", "T");
   const parsed = new Date(EXPLICIT_TIME_ZONE.test(isoish) ? isoish : `${isoish}Z`);
+
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 

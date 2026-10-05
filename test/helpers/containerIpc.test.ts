@@ -3,15 +3,21 @@
 // registration logic with a database double, so the behavior pinned here is
 // the behavior the JS boundary had — not the DB layer's.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const Module = require("node:module");
 
 type ContainerModule = typeof import("../../src/helpers/containerIpcHandlers.js");
+
 let registerContainerHandlers: ContainerModule["registerContainerHandlers"];
+
 const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+
 let sent: Array<{ channel: string; data: unknown }> | null = null;
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -30,6 +36,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -38,11 +45,15 @@ test.before(async () => {
 });
 
 type DatabaseDouble = Parameters<ContainerModule["registerContainerHandlers"]>[1]["database"];
+
 function setup(database: DatabaseDouble, overrides: Record<string, unknown> = {}) {
   handlers.clear();
   sent = [];
   registerContainerHandlers(
-    { handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) => handlers.set(channel, fn) },
+    {
+      handle: (channel: string, fn: (event: unknown, ...args: unknown[]) => unknown) =>
+        handlers.set(channel, fn),
+    },
     {
       database,
       noteFilesEnabled: () => false,
@@ -56,6 +67,7 @@ function setup(database: DatabaseDouble, overrides: Record<string, unknown> = {}
       ...overrides,
     }
   );
+
   return handlers;
 }
 
@@ -96,13 +108,19 @@ function fakeDb() {
   };
 }
 
-function call(handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>, channel: string, ...args: unknown[]): any {
+function call(
+  handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown>,
+  channel: string,
+  ...args: unknown[]
+): any {
   const handler = handlers.get(channel);
   assert.ok(handler, `handler registered for ${channel}`);
+
   return handler!(null, ...args);
 }
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
+
 const FOLDER = {
   id: 7,
   name: "Meetings",
@@ -112,6 +130,7 @@ const FOLDER = {
   created_at: "2026-09-14 10:00:00",
   updated_at: "2026-09-14 10:00:00",
 };
+
 const SPACE = {
   id: 3,
   name: "Personal",
@@ -124,7 +143,12 @@ const SPACE = {
 
 test("getFolders passes spaceId through (null keeps all folders)", async () => {
   const seen: unknown[] = [];
-  const db = { ...fakeDb(), getFolders: (spaceId: unknown) => (seen.push(spaceId), [FOLDER]) } as DatabaseDouble;
+
+  const db = {
+    ...fakeDb(),
+    getFolders: (spaceId: unknown) => (seen.push(spaceId), [FOLDER]),
+  } as DatabaseDouble;
+
   const h = setup(db);
   assert.deepEqual(await call(h, "db-get-folders", 3), [FOLDER]);
   assert.deepEqual(await call(h, "db-get-folders", null), [FOLDER]);
@@ -135,12 +159,20 @@ test("getFolders passes spaceId through (null keeps all folders)", async () => {
 });
 
 test("createFolder defers folder-created and the mirror only when enabled", async () => {
-  const db = { ...fakeDb(), createFolder: (_name: unknown, _spaceId: unknown) => ({ success: true, folder: FOLDER }) } as DatabaseDouble;
+  const db = {
+    ...fakeDb(),
+    createFolder: (_name: unknown, _spaceId: unknown) => ({ success: true, folder: FOLDER }),
+  } as DatabaseDouble;
+
   const calls: unknown[] = [];
+
   const h = setup(db, {
     noteFilesEnabled: () => true,
-    mirrorEnsureFolder: (name: string) => { calls.push(`ensure:${name}`); },
+    mirrorEnsureFolder: (name: string) => {
+      calls.push(`ensure:${name}`);
+    },
   });
+
   const result = await call(h, "db-create-folder", " Work ", 3);
   assert.equal(result.success, true);
   assert.deepEqual(sent!, [] as unknown);
@@ -157,7 +189,11 @@ test("createFolder defers folder-created and the mirror only when enabled", asyn
   assert.deepEqual(calls, []);
 
   // Failure: neither event nor mirror.
-  const h3 = setup({ ...db, createFolder: () => ({ success: false, error: "Folder name is required" }) });
+  const h3 = setup({
+    ...db,
+    createFolder: () => ({ success: false, error: "Folder name is required" }),
+  });
+
   const failed = await call(h3, "db-create-folder", "  ");
   assert.deepEqual(failed, { success: false, error: "Folder name is required" });
   await flush();
@@ -166,21 +202,26 @@ test("createFolder defers folder-created and the mirror only when enabled", asyn
 
 test("deleteFolder resolves the name before the delete and defers event + mirror", async () => {
   const order: unknown[] = [];
+
   const db = {
     ...fakeDb(),
     deleteFolder: (id: unknown) => {
       order.push(`delete:${id}`);
+
       return { success: true };
     },
   };
+
   const h = setup(db, {
     noteFilesEnabled: () => true,
     getFolderName: (id: unknown) => {
       order.push(`name:${id}`);
+
       return "Meetings";
     },
     mirrorDeleteFolderIfUnshared: (name: string) => order.push(`mirror:${name}`),
   });
+
   const result = await call(h, "db-delete-folder", 7);
   assert.deepEqual(result, { success: true });
   // Name resolution happens synchronously before the DB delete runs.
@@ -193,16 +234,19 @@ test("deleteFolder resolves the name before the delete and defers event + mirror
   // Not found: no event, no mirror. Name is still resolved first.
   order.length = 0;
   sent!.length = 0;
+
   const h2 = setup(
     { ...db, deleteFolder: () => ({ success: false }) },
     {
       noteFilesEnabled: () => true,
       getFolderName: (id: unknown) => {
         order.push(`name:${id}`);
+
         return "Meetings";
       },
     }
   );
+
   await call(h2, "db-delete-folder", 99);
   await flush();
   assert.deepEqual(sent!, [] as unknown);
@@ -210,13 +254,21 @@ test("deleteFolder resolves the name before the delete and defers event + mirror
 });
 
 test("renameFolder defers folder-renamed and the rename mirror when enabled", async () => {
-  const db = { ...fakeDb(), renameFolder: (id: unknown, name: string) => ({ success: true, folder: { ...FOLDER, name } }) };
+  const db = {
+    ...fakeDb(),
+    renameFolder: (id: unknown, name: string) => ({ success: true, folder: { ...FOLDER, name } }),
+  };
+
   const calls: unknown[] = [];
+
   const h = setup(db, {
     noteFilesEnabled: () => true,
     getFolderName: () => "Old",
-    mirrorRenameFolder: (oldName: string, newName: string) => { calls.push([oldName, newName]); },
+    mirrorRenameFolder: (oldName: string, newName: string) => {
+      calls.push([oldName, newName]);
+    },
   });
+
   const result = await call(h, "db-rename-folder", 7, "New");
   assert.equal(result.success, true);
   await flush();
@@ -225,7 +277,11 @@ test("renameFolder defers folder-renamed and the rename mirror when enabled", as
 });
 
 test("moveFolderToSpace sends folder-synced only on success with a folder", async () => {
-  const db = { ...fakeDb(), moveFolderToSpace: () => ({ success: true, folder: FOLDER, notes: [] }) };
+  const db = {
+    ...fakeDb(),
+    moveFolderToSpace: () => ({ success: true, folder: FOLDER, notes: [] }),
+  };
+
   const h = setup(db);
   const result = await call(h, "db-move-folder-to-space", 7, 3);
   assert.equal(result.success, true);
@@ -247,6 +303,7 @@ test("getSpaces/getFolderNoteCounts pass the DB rows straight through", async ()
     getSpaces: () => [SPACE],
     getFolderNoteCounts: () => [{ folder_id: null, space_id: 3, count: 4 }],
   });
+
   assert.deepEqual(await call(h, "db-get-spaces"), [SPACE]);
   assert.deepEqual(await call(h, "db-get-folder-note-counts"), [
     { folder_id: null, space_id: 3, count: 4 },
@@ -254,7 +311,11 @@ test("getSpaces/getFolderNoteCounts pass the DB rows straight through", async ()
 });
 
 test("updateSpace defers space-synced only on success with a space", async () => {
-  const db = { ...fakeDb(), updateSpace: (_id: unknown, _updates: unknown) => ({ success: true, space: SPACE }) } as DatabaseDouble;
+  const db = {
+    ...fakeDb(),
+    updateSpace: (_id: unknown, _updates: unknown) => ({ success: true, space: SPACE }),
+  } as DatabaseDouble;
+
   const h = setup(db);
   const result = await call(h, "db-update-space", 3, { name: "Renamed" });
   assert.equal(result.success, true);
@@ -272,7 +333,11 @@ test("updateSpace defers space-synced only on success with a space", async () =>
 
 test("wrong-shaped ids reject before the DB is touched", async () => {
   const touched: unknown[] = [];
-  const unexpected = (name: string) => () => { touched.push(name); };
+
+  const unexpected = (name: string) => () => {
+    touched.push(name);
+  };
+
   const db = {
     ...fakeDb(),
     deleteFolder: unexpected("deleteFolder"),
@@ -283,6 +348,7 @@ test("wrong-shaped ids reject before the DB is touched", async () => {
     updateSpace: unexpected("updateSpace"),
     getFolders: unexpected("getFolders"),
   };
+
   const h = setup(db);
   await assert.rejects(() => call(h, "db-delete-folder", "nope"), /Invalid arguments/);
   await assert.rejects(() => call(h, "db-rename-folder", 7, null, "extra"), /Invalid arguments/);

@@ -15,8 +15,7 @@ export interface DraggedNoteInfo {
   spaceId: number;
 }
 
-interface DropTargetInfo extends NoteMoveTarget {
-}
+interface DropTargetInfo extends NoteMoveTarget {}
 
 interface DragState {
   draggingNoteId: number | null;
@@ -79,6 +78,7 @@ export function useNoteDragAndDrop({
   useEffect(() => {
     return () => {
       if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+
       if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     };
   }, []);
@@ -132,6 +132,7 @@ export function useNoteDragAndDrop({
   const commitDrop = useCallback(
     (noteId: number, target: NoteMoveTarget, key: string) => {
       setDragState((prev) => ({ ...prev, dropSuccessKey: key }));
+
       if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
       successTimeoutRef.current = setTimeout(() => {
         setDragState((prev) =>
@@ -147,17 +148,24 @@ export function useNoteDragAndDrop({
     (targetInfo: DropTargetInfo) => {
       const target: NoteMoveTarget = { spaceId: targetInfo.spaceId, folderId: targetInfo.folderId };
       const key = targetKey(target);
+
       const crossSpaceVetoed = (note: DraggedNoteInfo): boolean =>
         note.spaceId !== target.spaceId && !!canCrossSpaceDrop && !canCrossSpaceDrop(note, target);
+
       const canDrop = () => {
         const note = draggedNoteRef.current;
+
         if (!note) return false;
+
         const isSameContainer =
           target.folderId != null
             ? note.folderId === target.folderId
             : note.folderId == null && note.spaceId === target.spaceId;
+
         if (isSameContainer) return false;
+
         if (crossSpaceVetoed(note)) return false;
+
         return true;
       };
 
@@ -169,18 +177,24 @@ export function useNoteDragAndDrop({
         },
         onDragEnter: (e: React.DragEvent) => {
           e.preventDefault();
+
           if (!canDrop()) {
             const note = draggedNoteRef.current;
+
             if (note && crossSpaceVetoed(note) && !vetoNotifiedRef.current) {
               vetoNotifiedRef.current = true;
               onCrossSpaceVeto?.(note);
             }
+
             return;
           }
+
           const count = (enterCounterRef.current.get(key) ?? 0) + 1;
           enterCounterRef.current.set(key, count);
+
           if (count === 1) {
             setDragState((prev) => ({ ...prev, dragOverKey: key }));
+
             if (onHoverTarget) {
               clearHoverTimeout();
               hoverKeyRef.current = key;
@@ -192,8 +206,10 @@ export function useNoteDragAndDrop({
           if (!canDrop()) return;
           const count = (enterCounterRef.current.get(key) ?? 0) - 1;
           enterCounterRef.current.set(key, Math.max(0, count));
+
           if (count <= 0) {
             enterCounterRef.current.set(key, 0);
+
             if (hoverKeyRef.current === key) clearHoverTimeout();
             setDragState((prev) =>
               prev.dragOverKey === key ? { ...prev, dragOverKey: null } : prev
@@ -202,10 +218,12 @@ export function useNoteDragAndDrop({
         },
         onDrop: (e: React.DragEvent) => {
           e.preventDefault();
+
           if (!canDrop()) return;
 
           const note = draggedNoteRef.current;
           const noteId = parseInt(e.dataTransfer.getData("application/x-note-id"), 10);
+
           if (!note || isNaN(noteId) || noteId !== note.id) return;
 
           clearHoverTimeout();

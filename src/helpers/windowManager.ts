@@ -1,4 +1,11 @@
-import { app, screen, BrowserWindow, dialog, type WebContents, type MessageBoxOptions } from "electron";
+import {
+  app,
+  screen,
+  BrowserWindow,
+  dialog,
+  type WebContents,
+  type MessageBoxOptions,
+} from "electron";
 import debugLogger from "./debugLogger.js";
 // Aliased: this class has an openExternalUrl method wrapping the helper.
 import { openExternalUrl as openUrlInExternalBrowser } from "./externalUrlOpener.js";
@@ -33,10 +40,7 @@ const AUTO_END_NOTIFICATION_LOAD_TIMEOUT_MS = 10_000;
 // detection algorithm stays its own owner (set from main.js).
 export interface MeetingDetectionEngineCallbacks {
   handleNotificationTimeout?(notification?: MeetingNotificationPrompt | null): void;
-  handleAutoEndNotificationClosed?(
-    sessionId: string,
-    options?: { flushQueued?: boolean }
-  ): void;
+  handleAutoEndNotificationClosed?(sessionId: string, options?: { flushQueued?: boolean }): void;
   handleDetectionNotificationClosed?(
     detectionId: string,
     options?: { flushQueued?: boolean }
@@ -96,6 +100,7 @@ export class WindowManager {
       "notifyCalendarReminders",
     ] as const) {
       const value = prefs[key];
+
       if (typeof value === "boolean") this.notificationPrefs[key] = value;
     }
   }
@@ -104,6 +109,7 @@ export class WindowManager {
   // the meeting toggle together gate the detector.
   notificationsGateDetection(): boolean {
     const { notificationsEnabled, notifyMeetingDetection } = this.notificationPrefs;
+
     return Boolean(notificationsEnabled && notifyMeetingDetection);
   }
   tray: TrayManager | null = null;
@@ -137,6 +143,7 @@ export class WindowManager {
       // close report here would flush the queue into a card that handler is
       // about to clear.
       this.dismissMeetingNotification({ notifyEngine: false });
+
       if (this.meetingDetectionEngine) {
         this.meetingDetectionEngine.handleNotificationTimeout?.(notification);
       }
@@ -146,10 +153,12 @@ export class WindowManager {
       if (this.isQuitting || !this.meetingCaptureQuitGuard?.isRecording()) {
         this.isQuitting = true;
         this.hotkeyManager.unregisterAll();
+
         return;
       }
 
       event.preventDefault();
+
       if (this._quitConfirmationPromise) return;
       const guard = this.meetingCaptureQuitGuard;
       this._quitConfirmationPromise = (async () => {
@@ -157,25 +166,35 @@ export class WindowManager {
           type: "warning",
           title: i18nMain.t("dialog.meetingQuit.title"),
           message: i18nMain.t("dialog.meetingQuit.message"),
-          buttons: [i18nMain.t("dialog.meetingQuit.stopAndQuit"), i18nMain.t("dialog.meetingQuit.cancel")],
+          buttons: [
+            i18nMain.t("dialog.meetingQuit.stopAndQuit"),
+            i18nMain.t("dialog.meetingQuit.cancel"),
+          ],
           defaultId: 1,
           cancelId: 1,
         };
+
         const parent = this.controlPanelWindow;
+
         // A windowless macOS alert runs a blocking modal loop, starving capture IPC.
         if (parent && !parent.isDestroyed()) parent.show();
-        const decision = parent && !parent.isDestroyed()
-          ? await dialog.showMessageBox(parent, options)
-          : await dialog.showMessageBox(options);
+
+        const decision =
+          parent && !parent.isDestroyed()
+            ? await dialog.showMessageBox(parent, options)
+            : await dialog.showMessageBox(options);
+
         if (decision.response !== 0) return;
 
         const stopped = await guard.stop();
+
         if (!stopped.success) {
           await dialog.showMessageBox({
             type: "error",
             message: i18nMain.t("dialog.meetingQuit.stopFailed"),
             buttons: ["OK"],
           });
+
           return;
         }
 
@@ -184,9 +203,13 @@ export class WindowManager {
         app.quit();
       })()
         .catch((error: unknown) => {
-          debugLogger.error("Meeting recording prevented safe quit", {
-            error: error instanceof Error ? error.message : String(error),
-          }, "meeting");
+          debugLogger.error(
+            "Meeting recording prevented safe quit",
+            {
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "meeting"
+          );
         })
         .finally(() => {
           this._quitConfirmationPromise = null;
@@ -200,9 +223,13 @@ export class WindowManager {
 
   stopMeetingCaptureFromMenu(): void {
     void this.meetingCaptureQuitGuard?.stop().catch((error: unknown) => {
-      debugLogger.error("Failed to stop meeting capture from the app menu", {
-        error: error instanceof Error ? error.message : String(error),
-      }, "meeting");
+      debugLogger.error(
+        "Failed to stop meeting capture from the app menu",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "meeting"
+      );
     });
   }
 
@@ -211,16 +238,21 @@ export class WindowManager {
   // its pointer ever leaves.
   setNotificationInteractivity(sender: WebContents, interactive: boolean): void {
     const win = this.notificationWindow;
+
     if (!win || win.isDestroyed() || sender !== win.webContents) {
       return;
     }
+
     const togglesClickThrough = true;
     const hasFixedExpiry = this._pendingNotificationData?.kind === "auto-end";
+
     if (interactive) {
       if (togglesClickThrough) win.setIgnoreMouseEvents(false);
+
       if (!hasFixedExpiry) this._notificationDismissTimer.pause();
     } else {
       if (togglesClickThrough) win.setIgnoreMouseEvents(true, { forward: true });
+
       if (!hasFixedExpiry) this._notificationDismissTimer.resume();
     }
   }
@@ -229,20 +261,29 @@ export class WindowManager {
     if (process.env.NODE_ENV === "development") {
       const appUrl = DevServerManager.getAppUrl(isControlPanel);
       await DevServerManager.waitForDevServer();
-      if (isControlPanel && !this.devRendererSettingsSeeded &&
-          isDevelopmentChannel() && !app.commandLine.getSwitchValue("user-data-dir")) {
+
+      if (
+        isControlPanel &&
+        !this.devRendererSettingsSeeded &&
+        isDevelopmentChannel() &&
+        !app.commandLine.getSwitchValue("user-data-dir")
+      ) {
         const release = await this.seedDevRendererSettings(window!, appUrl as string);
+
         try {
           await window!.loadURL(appUrl as string);
           this.devRendererSettingsSeeded = true;
         } finally {
           release();
         }
+
         return;
       }
+
       await window!.loadURL(appUrl as string);
     } else {
       const fileInfo = DevServerManager.getAppFilePath(isControlPanel);
+
       if (!fileInfo) {
         throw new Error("Failed to get app file path");
       }
@@ -259,16 +300,22 @@ export class WindowManager {
   // while pnpm dev uses http://localhost. Read through Chromium itself, then
   // install missing keys before the HTTP page's first script runs. A durable
   // marker stops later launches from resurrecting keys removed in dev.
-  private async seedDevRendererSettings(window: BrowserWindow, appUrl: string): Promise<() => void> {
+  private async seedDevRendererSettings(
+    window: BrowserWindow,
+    appUrl: string
+  ): Promise<() => void> {
     const bridge = path.join(app.getAppPath(), "src", "dev-storage-bridge.html");
     await window.loadFile(bridge);
-    const entries = await window.webContents.executeJavaScript(
+
+    const entries = (await window.webContents.executeJavaScript(
       "Array.from({ length: localStorage.length }, (_, i) => { const key = localStorage.key(i); return [key, localStorage.getItem(key)]; })"
-    ) as Array<[string, string]>;
+    )) as Array<[string, string]>;
+
     if (entries.length === 0) return () => {};
 
     const origin = new URL(appUrl).origin;
     const marker = "gristmill.dev-renderer-settings-imported";
+
     const script = `if (location.origin === ${JSON.stringify(origin)}) {
       if (localStorage.getItem(${JSON.stringify(marker)}) !== "1") {
         for (const [key, value] of ${JSON.stringify(entries)}) {
@@ -277,8 +324,10 @@ export class WindowManager {
         localStorage.setItem(${JSON.stringify(marker)}, "1");
       }
     }`;
+
     const debuggerApi = window.webContents.debugger;
     debuggerApi.attach("1.3");
+
     try {
       await debuggerApi.sendCommand("Page.enable");
       await debuggerApi.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: script });
@@ -286,6 +335,7 @@ export class WindowManager {
       debuggerApi.detach();
       throw error;
     }
+
     return () => {
       if (debuggerApi.isAttached()) debuggerApi.detach();
     };
@@ -314,6 +364,7 @@ export class WindowManager {
     if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
       return { success: false, message: "Window not available" };
     }
+
     return await this.dragManager.startWindowDrag(this.controlPanelWindow);
   }
 
@@ -334,16 +385,28 @@ export class WindowManager {
 
   async createControlPanelWindow({ show = true }: { show?: boolean } = {}): Promise<void> {
     const existingWindow = this.controlPanelWindow;
+
     if (existingWindow && !existingWindow.isDestroyed()) {
       if (!show) return;
       this._controlPanelShowRequested = true;
       this._clearControlPanelVisibilityTimer();
-      if (this._controlPanelLoadFailed || existingWindow.webContents.isCrashed()) await this.loadControlPanel();
-      if (!this._controlPanelShowRequested || this.controlPanelWindow !== existingWindow || existingWindow.isDestroyed()) return;
+
+      if (this._controlPanelLoadFailed || existingWindow.webContents.isCrashed())
+        await this.loadControlPanel();
+
+      if (
+        !this._controlPanelShowRequested ||
+        this.controlPanelWindow !== existingWindow ||
+        existingWindow.isDestroyed()
+      )
+        return;
+
       if (existingWindow.isMinimized()) existingWindow.restore();
+
       if (!existingWindow.isVisible()) existingWindow.show();
       existingWindow.focus();
       dockManager.setControlPanelVisible(true);
+
       return;
     }
 
@@ -368,6 +431,7 @@ export class WindowManager {
       }
 
       event.preventDefault();
+
       if (isExternalBrowserUrl(url)) {
         this.openExternalUrl(url);
       } else {
@@ -377,11 +441,13 @@ export class WindowManager {
 
     this.controlPanelWindow.webContents.setWindowOpenHandler(({ url }) => {
       this.openExternalUrl(url);
+
       return { action: "deny" };
     });
 
     this.controlPanelWindow.webContents.on("did-create-window", (childWindow, details) => {
       childWindow.close();
+
       if (details.url && !details.url.startsWith("devtools://")) {
         this.openExternalUrl(details.url, false);
       }
@@ -434,9 +500,11 @@ export class WindowManager {
         if (!isMainFrame) {
           return;
         }
+
         if (this._controlPanelShowRequested && process.env.NODE_ENV !== "development") {
           this.showLoadFailureDialog("Control panel", errorCode, errorDescription, validatedURL);
         }
+
         // Show it regardless: a failed load can't reach the renderer path that
         // normally does, and a hidden window leaves the failure invisible.
         this._showControlPanel();
@@ -469,13 +537,18 @@ export class WindowManager {
       if (show) throw error;
       this._controlPanelLoadFailed = true;
       this.setOnboardingActive(true);
-      debugLogger.error("Hidden control panel failed to load", { error: (error as Error).message }, "window");
+      debugLogger.error(
+        "Hidden control panel failed to load",
+        { error: (error as Error).message },
+        "window"
+      );
     }
   }
 
   async loadControlPanel(): Promise<void> {
     const window = this.controlPanelWindow;
     this._controlPanelLoadFailed = false;
+
     try {
       await this.loadWindowContent(window, true);
     } catch (error) {
@@ -483,13 +556,16 @@ export class WindowManager {
         this._controlPanelLoadFailed = true;
         this.setOnboardingActive(true);
       }
+
       throw error;
     }
   }
 
   setOnboardingActive(active: unknown): boolean {
     this._onboardingActive = active === true;
+
     if (this._onboardingActive) this._hideNormalAppSurfaces();
+
     return true;
   }
 
@@ -505,10 +581,12 @@ export class WindowManager {
   _showControlPanel(): void {
     if (!this._controlPanelShowRequested) return;
     const win = this.controlPanelWindow;
+
     if (!win || win.isDestroyed()) return;
     // Cancel the backstop either way: once the window has been shown on purpose,
     // a later timer firing could pull it back out of the tray.
     this._clearControlPanelVisibilityTimer();
+
     if (win.isVisible()) return;
     win.show();
     win.focus();
@@ -534,6 +612,7 @@ export class WindowManager {
       Math.min(floor.width, workArea.width),
       Math.min(floor.height, workArea.height)
     );
+
     if (process.platform === "darwin" && typeof win.setWindowButtonVisibility === "function") {
       win.setWindowButtonVisibility(true);
     }
@@ -541,14 +620,18 @@ export class WindowManager {
 
   setOnboardingWindowMode(mode: string): boolean {
     const win = this.controlPanelWindow;
+
     if (!win || win.isDestroyed()) return false;
+
     if (!new Set(["compact", "expanded", "restore"]).has(mode)) return false;
+
     if (mode !== "restore" && (win.isFullScreen() || win.isMaximized())) {
       // Entering onboarding from a maximized/fullscreen control panel must not
       // refuse: each mode is applied at its canonical centered bounds, which
       // only take effect from a normal window state. Both modes stay
       // maximizable, so the user can simply maximize again afterwards.
       if (win.isFullScreen()) win.setFullScreen(false);
+
       if (win.isMaximized()) win.unmaximize();
     }
 
@@ -563,7 +646,9 @@ export class WindowManager {
       if (!win.isFullScreen() && !win.isMaximized() && this._onboardingRestoreBounds) {
         win.setContentBounds(clampedBounds(this._onboardingRestoreBounds, workArea), true);
       }
+
       const state = this._onboardingWindowState;
+
       if (state) {
         win.setResizable(state.resizable);
         win.setMinimizable(state.minimizable);
@@ -575,13 +660,16 @@ export class WindowManager {
           Math.min(CONTROL_PANEL_MIN_SIZE.height, workArea.height)
         );
       }
+
       if (process.platform === "darwin" && typeof win.setWindowButtonVisibility === "function") {
         win.setWindowButtonVisibility(true);
       }
+
       this._onboardingRestoreBounds = null;
       this._onboardingWindowMode = null;
       this._onboardingWindowState = null;
       this._showControlPanel();
+
       return true;
     }
 
@@ -601,12 +689,15 @@ export class WindowManager {
 
     if (this._onboardingWindowMode === mode) {
       this._showControlPanel();
+
       return true;
     }
 
     const target =
       mode === "compact" ? ONBOARDING_WINDOW_SIZES.COMPACT : ONBOARDING_WINDOW_SIZES.EXPANDED;
+
     const next = centeredBounds(current, target, workArea);
+
     if (
       current.x === next.x &&
       current.y === next.y &&
@@ -615,12 +706,14 @@ export class WindowManager {
     ) {
       this._onboardingWindowMode = mode;
       this._showControlPanel();
+
       return true;
     }
 
     win.setContentBounds(next, true);
     this._onboardingWindowMode = mode;
     this._showControlPanel();
+
     return true;
   }
 
@@ -642,29 +735,39 @@ export class WindowManager {
 
   async showMeetingNotification(
     promptData: MeetingNotificationPrompt,
-    { autoDismiss = true, autoDismissAt = null }: { autoDismiss?: boolean; autoDismissAt?: number | null } = {}
+    {
+      autoDismiss = true,
+      autoDismissAt = null,
+    }: { autoDismiss?: boolean; autoDismissAt?: number | null } = {}
   ): Promise<boolean> {
     if (this._onboardingActive) return false;
+
     if (this.notificationWindow && !this.notificationWindow.isDestroyed()) {
       const previousWindow = this.notificationWindow;
+
       const replacedAutoEndSessionId =
         this._pendingNotificationData?.kind === "auto-end"
           ? this._pendingNotificationData.sessionId
           : null;
+
       this.notificationWindow = null;
       this._pendingNotificationData = null;
       previousWindow.close();
+
       if (replacedAutoEndSessionId) {
         this.meetingDetectionEngine?.handleAutoEndNotificationClosed?.(replacedAutoEndSessionId, {
           flushQueued: false,
         });
       }
     }
+
     this._notificationDismissTimer.cancel();
+
     if (this._notificationLoadTimeout) {
       clearTimeout(this._notificationLoadTimeout);
       this._notificationLoadTimeout = null;
     }
+
     if (this._notificationReadyFallback) {
       clearTimeout(this._notificationReadyFallback);
       this._notificationReadyFallback = null;
@@ -679,6 +782,7 @@ export class WindowManager {
       ...notificationSize,
       ...position,
     });
+
     this.notificationWindow = win;
 
     // "closed" fires asynchronously, so a replaced prompt's window emits it
@@ -686,21 +790,27 @@ export class WindowManager {
     win.on("closed", () => {
       if (this.notificationWindow !== win) return;
       const closedNotification = this._pendingNotificationData;
+
       const closedAutoEndSessionId =
         closedNotification?.kind === "auto-end" ? closedNotification.sessionId : null;
+
       const closedDetectionId =
         closedNotification?.kind === "detection" ? closedNotification.detectionId : null;
+
       this.notificationWindow = null;
       this._pendingNotificationData = null;
       this._notificationDismissTimer.cancel();
+
       if (this._notificationLoadTimeout) {
         clearTimeout(this._notificationLoadTimeout);
         this._notificationLoadTimeout = null;
       }
+
       if (this._notificationReadyFallback) {
         clearTimeout(this._notificationReadyFallback);
         this._notificationReadyFallback = null;
       }
+
       if (closedAutoEndSessionId) {
         this.meetingDetectionEngine?.handleAutoEndNotificationClosed?.(closedAutoEndSessionId);
       } else if (closedDetectionId) {
@@ -723,12 +833,15 @@ export class WindowManager {
     // over mid-load must not have this prompt's data, countdown or force-show
     // applied to its window.
     let loadTimeout: NodeJS.Timeout | null = null;
+
     try {
       const loadNotification = async () => {
         if (process.env.NODE_ENV === "development") {
           await DevServerManager.waitForDevServer();
+
           if (this.notificationWindow !== win) return;
           await win.loadURL(`${DevServerManager.DEV_SERVER_URL}?meeting-notification=true`);
+
           return;
         }
 
@@ -737,17 +850,21 @@ export class WindowManager {
           query: { ...fileInfo.query, "meeting-notification": "true" },
         });
       };
+
       const loadPromise = loadNotification();
+
       if (promptData?.kind === "auto-end") {
         const timeoutPromise = new Promise<never>((_, reject) => {
           loadTimeout = setTimeout(() => {
             if (this._notificationLoadTimeout === loadTimeout) {
               this._notificationLoadTimeout = null;
             }
+
             reject(new Error("Meeting auto-end notification load timed out"));
           }, AUTO_END_NOTIFICATION_LOAD_TIMEOUT_MS);
           this._notificationLoadTimeout = loadTimeout;
         });
+
         await Promise.race([loadPromise, timeoutPromise]);
       } else {
         await loadPromise;
@@ -764,21 +881,30 @@ export class WindowManager {
         this._notificationLoadTimeout = null;
       }
     }
+
     if (this.notificationWindow !== win) return false;
+
     if (this._onboardingActive) {
       this.dismissMeetingNotification();
+
       return false;
     }
 
     const readyFallback = setTimeout(() => {
       if (this._notificationReadyFallback !== readyFallback) return;
       this._notificationReadyFallback = null;
+
       if (this._onboardingActive || this.notificationWindow !== win || win.isDestroyed()) return;
       debugLogger.warn("Notification renderer did not signal ready, force-showing", {}, "meeting");
       win.webContents.send("meeting-notification-data", promptData);
       win.showInactive();
-      debugLogger.info("Meeting notification window shown", { visible: win.isVisible() }, "meeting");
+      debugLogger.info(
+        "Meeting notification window shown",
+        { visible: win.isVisible() },
+        "meeting"
+      );
     }, 3000);
+
     this._notificationReadyFallback = readyFallback;
 
     if (autoDismiss) {
@@ -788,6 +914,7 @@ export class WindowManager {
           : Math.max(0, autoDismissAt - Date.now())
       );
     }
+
     return true;
   }
 
@@ -796,9 +923,12 @@ export class WindowManager {
   showNotificationWindow(ownerWebContents?: WebContents | null): void {
     if (this._onboardingActive) {
       this.dismissMeetingNotification();
+
       return;
     }
+
     const win = this.notificationWindow;
+
     if (!win || win.isDestroyed() || (ownerWebContents && win.webContents !== ownerWebContents)) {
       return;
     }
@@ -807,28 +937,32 @@ export class WindowManager {
       clearTimeout(this._notificationReadyFallback);
       this._notificationReadyFallback = null;
     }
+
     win.showInactive();
     debugLogger.info("Meeting notification window shown", { visible: win.isVisible() }, "meeting");
   }
 
-  dismissMeetingNotification({
-    notifyEngine = true,
-    flushQueued = true,
-  } = {}): void {
+  dismissMeetingNotification({ notifyEngine = true, flushQueued = true } = {}): void {
     const notification = this._pendingNotificationData;
     this._pendingNotificationData = null;
+
     if (this._notificationReadyFallback) {
       clearTimeout(this._notificationReadyFallback);
       this._notificationReadyFallback = null;
     }
+
     this._notificationDismissTimer.cancel();
+
     if (this._notificationLoadTimeout) {
       clearTimeout(this._notificationLoadTimeout);
       this._notificationLoadTimeout = null;
     }
+
     const win = this.notificationWindow;
     this.notificationWindow = null;
+
     if (win && !win.isDestroyed()) win.close();
+
     if (notifyEngine && notification?.kind === "detection") {
       this.meetingDetectionEngine?.handleDetectionNotificationClosed?.(notification.detectionId!, {
         flushQueued,
@@ -867,17 +1001,21 @@ export class WindowManager {
     ) {
       return;
     }
+
     this.dismissMeetingNotification();
   }
 
   isMeetingNotificationSender(sender: WebContents): boolean {
     const win = this.notificationWindow;
+
     return !!win && !win.isDestroyed() && win.webContents === sender;
   }
 
   sendToControlPanel(channel: string, data?: unknown): void {
     const win = this.controlPanelWindow;
+
     if (!win || win.isDestroyed()) return;
+
     if (win.webContents.isLoading()) {
       win.webContents.once("did-finish-load", () => {
         if (!win.isDestroyed()) win.webContents.send(channel, data);
@@ -896,6 +1034,7 @@ export class WindowManager {
   consumePendingMeetingNoteNavigation(): unknown {
     const payload = this._pendingMeetingNoteNavigation;
     this._pendingMeetingNoteNavigation = null;
+
     return payload;
   }
 
@@ -908,11 +1047,13 @@ export class WindowManager {
   consumePendingNoteNavigation(): unknown {
     const payload = this._pendingNoteNavigation;
     this._pendingNoteNavigation = null;
+
     return payload;
   }
 
   snapControlPanelToMeetingMode(): void {
     const win = this.controlPanelWindow;
+
     if (!win || win.isDestroyed()) return;
     this._preMeetingBounds = win.getBounds();
     const display = screen.getPrimaryDisplay();
@@ -929,7 +1070,9 @@ export class WindowManager {
 
   restoreControlPanelFromMeetingMode(): void {
     const win = this.controlPanelWindow;
+
     if (!win || win.isDestroyed()) return;
+
     if (this._preMeetingBounds) {
       win.setBounds(this._preMeetingBounds);
       this._preMeetingBounds = null;
@@ -947,7 +1090,6 @@ export class WindowManager {
       MenuManager.setupControlPanelMenu(this.controlPanelWindow, () => this.openSettings());
       this.controlPanelWindow.setTitle(i18nMain.t("window.controlPanelTitle"));
     }
-
   }
 
   async requestNewNote(): Promise<void> {
@@ -974,13 +1116,16 @@ export class WindowManager {
     if (this.loadErrorShown) {
       return;
     }
+
     this.loadErrorShown = true;
+
     const detailLines = [
       i18nMain.t("dialog.loadFailure.detail.window", { windowName }),
       i18nMain.t("dialog.loadFailure.detail.error", { errorCode, errorDescription }),
       validatedURL ? i18nMain.t("dialog.loadFailure.detail.url", { url: validatedURL }) : null,
       i18nMain.t("dialog.loadFailure.detail.hint"),
     ].filter(Boolean);
+
     dialog.showMessageBox({
       type: "error",
       title: i18nMain.t("dialog.loadFailure.title"),
@@ -991,4 +1136,5 @@ export class WindowManager {
 }
 
 module.exports = WindowManager;
+
 module.exports.WindowManager = WindowManager;

@@ -1,11 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/services/ai/streamingThinkFilter.ts");
 
-type ThinkFilter = ReturnType<typeof import("../../src/services/ai/streamingThinkFilter.js").createStreamingThinkFilter>;
+type ThinkFilter = ReturnType<
+  typeof import("../../src/services/ai/streamingThinkFilter.js").createStreamingThinkFilter
+>;
 
-const filterAll = (filter: ThinkFilter, chunks: string[]) => chunks.map((chunk) => filter(chunk)).join("");
+const filterAll = (filter: ThinkFilter, chunks: string[]) =>
+  chunks.map((chunk) => filter(chunk)).join("");
 
 test("plain text passes through unchanged", async () => {
   const { createStreamingThinkFilter } = await load();

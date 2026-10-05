@@ -1,12 +1,18 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { mergeSpeakersWithText, formatSpeakerTranscript } = require("../../src/helpers/speakerMerge.ts");
+
+const {
+  mergeSpeakersWithText,
+  formatSpeakerTranscript,
+} = require("../../src/helpers/speakerMerge.ts");
 
 test("mergeSpeakersWithText assigns sentences to speakers by time proportion", () => {
   const segments = [
     { start: 0, end: 10, speaker: "speaker_0" },
     { start: 10, end: 20, speaker: "speaker_1" },
   ];
+
   const text = "Hello this is the first part. And this is the second part.";
   const duration = 20;
 
@@ -50,6 +56,7 @@ test("mergeSpeakersWithText consolidates adjacent same-speaker segments", () => 
     { start: 5, end: 10, speaker: "speaker_0" },
     { start: 10, end: 20, speaker: "speaker_1" },
   ];
+
   const text = "First sentence. Second sentence. Third sentence here.";
   const duration = 20;
 
@@ -73,7 +80,10 @@ test("formatSpeakerTranscript formats with labels and timestamps", () => {
   ];
 
   const output = formatSpeakerTranscript(merged);
-  assert.equal(output, "[Speaker 1] 0:00 - 0:10\nHello there.\n\n[Speaker 2] 0:10 - 0:20\nHi back.");
+  assert.equal(
+    output,
+    "[Speaker 1] 0:00 - 0:10\nHello there.\n\n[Speaker 2] 0:10 - 0:20\nHi back."
+  );
 });
 
 test("mergeSpeakersWithText handles duration=0 with segments", () => {
@@ -115,6 +125,7 @@ test("mergeSpeakersWithText assigns correct speakers with unsorted segments and 
     { start: 10, end: 20, speaker: "speaker_1" },
     { start: 0, end: 10, speaker: "speaker_0" },
   ];
+
   const text = "Alpha comes first. Beta comes second.";
 
   const result = mergeSpeakersWithText(segments, text);
@@ -134,6 +145,7 @@ test("mergeSpeakersWithText fallback duration matches sorted-input behavior when
     { start: 0, end: 10, speaker: "speaker_0" },
     { start: 10, end: 20, speaker: "speaker_1" },
   ];
+
   const text = "Alpha comes first. Beta comes second.";
 
   const result = mergeSpeakersWithText(segments, text);
@@ -153,6 +165,7 @@ test("empty-sentence fallback uses the max segment end, not the last segment's",
     { speaker: "spk_0", start: 0, end: 30 },
     { speaker: "spk_1", start: 10, end: 15 },
   ];
+
   const merged = mergeSpeakersWithText(segments, "   ", 0);
   assert.equal(merged.length, 1);
   assert.equal(merged[0].end, 30);
@@ -166,7 +179,10 @@ test("zero duration with unsorted segments still maps proportionally against the
     { speaker: "spk_1", start: 25, end: 40 },
     { speaker: "spk_0", start: 10, end: 15 },
   ];
-  const text = "First sentence here. Second sentence here. Third sentence here. Fourth sentence here.";
+
+  const text =
+    "First sentence here. Second sentence here. Third sentence here. Fourth sentence here.";
+
   const merged = mergeSpeakersWithText(segments, text, 0);
   const last = merged[merged.length - 1];
   assert.equal(last.speaker, "spk_1", "tail sentences must map to the late segment");

@@ -56,6 +56,8 @@ export function getModelFamilyConstraints(
   model: string | null | undefined
 ): ModelFamilyConstraints | null {
   const id = (model || "").toLowerCase();
+
   if (!id) return null;
+
   return FAMILIES.find((f) => f.match.test(id)) ?? null;
 }

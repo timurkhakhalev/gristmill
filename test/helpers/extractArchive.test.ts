@@ -1,9 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("fs");
+
 const path = require("path");
+
 const os = require("os");
+
 const Module = require("node:module");
+
 const cp = require("child_process");
 
 // Minimal valid zip: single file "test-file.txt" containing "hello from test\n"
@@ -20,10 +26,12 @@ function makeTmpDir() {
 function writeZip(dir: string, name: string, buf: Buffer) {
   const p = path.join(dir, name);
   fs.writeFileSync(p, buf);
+
   return p;
 }
 
 const downloadUtilsPath = require.resolve("../../src/helpers/downloadUtils.ts");
+
 const originalLoad = Module._load;
 
 function freshRequire({ runSystemTar }: { runSystemTar?: unknown } = {}) {
@@ -31,11 +39,13 @@ function freshRequire({ runSystemTar }: { runSystemTar?: unknown } = {}) {
 
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") return { net: {} };
+
     // The TS emit requires "./systemTar.js"; the pre-migration JS required
     // "./systemTar". Accept both so the hook survives the extension cutover.
     if ((request === "./systemTar" || request === "./systemTar.js") && runSystemTar) {
       return { runSystemTar };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
@@ -49,6 +59,7 @@ function freshRequire({ runSystemTar }: { runSystemTar?: unknown } = {}) {
 async function withModuleMock(requestToMock: string, mock: unknown, callback: () => Promise<void>) {
   Module._load = function loadWithMock(request: string, parent: unknown, isMain: boolean) {
     if (request === requestToMock) return mock;
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
@@ -61,6 +72,7 @@ async function withModuleMock(requestToMock: string, mock: unknown, callback: ()
 
 test("extractArchive extracts a zip file on Linux", async () => {
   const tmp = makeTmpDir();
+
   try {
     const zipPath = writeZip(tmp, "test.zip", Buffer.from(ZIP_FIXTURE_B64, "base64"));
     const dest = path.join(tmp, "out");
@@ -78,16 +90,27 @@ test("extractArchive extracts a zip file on Linux", async () => {
 
 test("extractArchive falls back to unzipper when system unzip is unavailable", async () => {
   const origExecFile = cp.execFile;
-  cp.execFile = function (this: unknown, cmd: string, _args: unknown, cb: (err: Error | null) => void) {
+  cp.execFile = function (
+    this: unknown,
+    cmd: string,
+    _args: unknown,
+    cb: (err: Error | null) => void
+  ) {
     if (cmd === "unzip") {
       const err = new Error("spawn unzip ENOENT");
       (err as { code?: string }).code = "ENOENT";
+
       return cb(err);
     }
-    return (origExecFile as (...a: unknown[]) => unknown).apply(this, arguments as unknown as unknown[]);
+
+    return (origExecFile as (...a: unknown[]) => unknown).apply(
+      this,
+      arguments as unknown as unknown[]
+    );
   } as typeof cp.execFile;
 
   const tmp = makeTmpDir();
+
   try {
     const zipPath = writeZip(tmp, "test.zip", Buffer.from(ZIP_FIXTURE_B64, "base64"));
     const dest = path.join(tmp, "out");
@@ -107,14 +130,24 @@ test("extractArchive falls back to unzipper when system unzip is unavailable", a
 
 test("extractArchive rejects on corrupt zip when both extraction methods fail", async () => {
   const origExecFile = cp.execFile;
-  cp.execFile = function (this: unknown, cmd: string, _args: unknown, cb: (err: Error | null) => void) {
+  cp.execFile = function (
+    this: unknown,
+    cmd: string,
+    _args: unknown,
+    cb: (err: Error | null) => void
+  ) {
     if (cmd === "unzip") {
       return cb(new Error("spawn unzip ENOENT"));
     }
-    return (origExecFile as (...a: unknown[]) => unknown).apply(this, arguments as unknown as unknown[]);
+
+    return (origExecFile as (...a: unknown[]) => unknown).apply(
+      this,
+      arguments as unknown as unknown[]
+    );
   } as typeof cp.execFile;
 
   const tmp = makeTmpDir();
+
   try {
     const zipPath = writeZip(tmp, "corrupt.zip", Buffer.from("not a zip file"));
     const dest = path.join(tmp, "out");
@@ -136,6 +169,7 @@ test("extractArchive falls back to JS tar when system tar rejects a tar.gz archi
   const systemTarCalls: unknown[] = [];
   const archivePath = "/cache/model.tar.gz";
   const destDir = "/cache/extract";
+
   const { extractArchive } = freshRequire({
     runSystemTar: async (...args: unknown[]) => {
       systemTarCalls.push(args);
@@ -168,6 +202,7 @@ test("extractArchive falls back to PowerShell when Windows tar rejects a zip arc
 
   const archivePath = "C:\\cache\\binary.zip";
   const destDir = "C:\\cache\\extract";
+
   const { extractArchive } = freshRequire({
     runSystemTar: async (...args: unknown[]) => {
       systemTarCalls.push(args);

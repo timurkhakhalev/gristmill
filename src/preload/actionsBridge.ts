@@ -23,17 +23,16 @@ import type { ZodType } from "zod";
 interface IpcRendererLike {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
   on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(
-    channel: string,
-    listener: (event: unknown, ...args: unknown[]) => void
-  ): unknown;
+  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 }
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -46,15 +45,21 @@ function subscribeValidated<T>(
   if (typeof callback !== "function") {
     return () => {};
   }
+
   const listener = (_event: unknown, data: unknown) => {
     const result = schema.safeParse(data);
+
     if (!result.success) {
       console.error(`[actionsBridge] dropped malformed ${channel} event`);
+
       return;
     }
+
     callback(result.data);
   };
+
   ipcRenderer.on(channel, listener as (event: unknown, ...args: unknown[]) => void);
+
   return () => {
     ipcRenderer.removeListener(channel, listener as (event: unknown, ...args: unknown[]) => void);
   };
@@ -80,35 +85,19 @@ export function createActionsBridge(ipcRenderer: IpcRendererLike): ActionsApi {
     ): Promise<ActionMutationResult> =>
       ipcRenderer
         .invoke(actionChannels.createAction, name, description, prompt, icon)
-        .then((raw) =>
-          parseResult(actionMutationResultSchema, raw, actionChannels.createAction)
-        ),
+        .then((raw) => parseResult(actionMutationResultSchema, raw, actionChannels.createAction)),
     updateAction: (id: number, updates: ActionUpdateInput): Promise<ActionMutationResult> =>
       ipcRenderer
         .invoke(actionChannels.updateAction, id, updates)
-        .then((raw) =>
-          parseResult(actionMutationResultSchema, raw, actionChannels.updateAction)
-        ),
+        .then((raw) => parseResult(actionMutationResultSchema, raw, actionChannels.updateAction)),
     deleteAction: (id: number) =>
       ipcRenderer
         .invoke(actionChannels.deleteAction, id)
-        .then((raw) =>
-          parseResult(actionDeleteResultSchema, raw, actionChannels.deleteAction)
-        ),
+        .then((raw) => parseResult(actionDeleteResultSchema, raw, actionChannels.deleteAction)),
     onActionCreated: (callback: (action: ActionItem) => void) =>
-      subscribeValidated(
-        ipcRenderer,
-        actionEventChannels.actionCreated,
-        actionSchema,
-        callback
-      ),
+      subscribeValidated(ipcRenderer, actionEventChannels.actionCreated, actionSchema, callback),
     onActionUpdated: (callback: (action: ActionItem) => void) =>
-      subscribeValidated(
-        ipcRenderer,
-        actionEventChannels.actionUpdated,
-        actionSchema,
-        callback
-      ),
+      subscribeValidated(ipcRenderer, actionEventChannels.actionUpdated, actionSchema, callback),
     onActionDeleted: (callback: (payload: ActionDeletedPayload) => void) =>
       subscribeValidated(
         ipcRenderer,

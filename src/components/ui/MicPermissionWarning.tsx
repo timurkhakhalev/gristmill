@@ -15,14 +15,19 @@ type Platform = "darwin" | "win32" | "linux";
 const getPlatform = (): Platform => {
   if (typeof window !== "undefined" && window.electronAPI?.getPlatform) {
     const p = window.electronAPI.getPlatform();
+
     if (p === "darwin" || p === "win32" || p === "linux") return p;
   }
+
   // Fallback to user agent
   if (typeof navigator !== "undefined") {
     const ua = navigator.userAgent.toLowerCase();
+
     if (ua.includes("mac")) return "darwin";
+
     if (ua.includes("linux")) return "linux";
   }
+
   return "win32";
 };
 
@@ -32,6 +37,7 @@ export default function MicPermissionWarning({
   onOpenPrivacySettings,
 }: MicPermissionWarningProps) {
   const { t } = useTranslation();
+
   const config = useMemo(() => {
     const platformConfig: Record<
       Platform,
@@ -56,6 +62,7 @@ export default function MicPermissionWarning({
         showPrivacyButton: false,
       },
     };
+
     return platformConfig[getPlatform()];
   }, [t]);
 
@@ -70,9 +77,7 @@ export default function MicPermissionWarning({
         <div className="w-6 h-6 rounded-md bg-warning/15 flex items-center justify-center shrink-0">
           <AlertCircle className="w-3.5 h-3.5 text-warning" />
         </div>
-        <p className="flex-1 text-xs text-warning/90 leading-snug">
-          {error || config.message}
-        </p>
+        <p className="flex-1 text-xs text-warning/90 leading-snug">{error || config.message}</p>
         <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="ghost"

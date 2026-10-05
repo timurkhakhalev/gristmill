@@ -41,14 +41,31 @@ async function useAll(): Promise<string> {
   const stamp: Date | null = parseDbTimestamp(transcriptions[0]?.timestamp);
   const written: string | null = toDbTimestamp(stamp ?? null);
   const hasZone: boolean = hasExplicitTimeZone(written);
-  const conversation: AgentConversationRow | null = manager.createAgentConversation("t", note?.id ?? null, space?.id ?? null, folders[0]?.id ?? null);
-  const message: AgentMessageRow | null = manager.addAgentMessage(conversation?.id ?? 0, "user", "hi", { tool: "x" });
-  const metadata: unknown = message?.metadata === null ? null : JSON.parse(message?.metadata ?? "null");
+  const conversation: AgentConversationRow | null = manager.createAgentConversation(
+    "t",
+    note?.id ?? null,
+    space?.id ?? null,
+    folders[0]?.id ?? null
+  );
+  const message: AgentMessageRow | null = manager.addAgentMessage(
+    conversation?.id ?? 0,
+    "user",
+    "hi",
+    { tool: "x" }
+  );
+  const metadata: unknown =
+    message?.metadata === null ? null : JSON.parse(message?.metadata ?? "null");
   void metadata;
-  const container: ContainerConversationRow[] = manager.getConversationsForContainer(space?.id ?? 0, null, 10);
+  const container: ContainerConversationRow[] = manager.getConversationsForContainer(
+    space?.id ?? 0,
+    null,
+    10
+  );
   const preview: ConversationPreviewRow[] = manager.getAgentConversationsWithPreview();
   const events: CalendarEventRow[] = manager.getUpcomingEvents(60);
-  const inRange = manager.getCalendarEventsInRange("2026-09-15T00:00:00Z", "2026-09-16T00:00:00Z", ["google"]);
+  const inRange = manager.getCalendarEventsInRange("2026-09-15T00:00:00Z", "2026-09-16T00:00:00Z", [
+    "google",
+  ]);
   const accounts: CalendarAccountRow[] = manager.getGoogleAccounts();
   const contacts: ContactRow[] = manager.searchContacts("a@b.c");
   const profiles: SpeakerProfileRow[] = manager.getSpeakerProfiles(false);
@@ -63,7 +80,12 @@ async function useAll(): Promise<string> {
   const msTokens: MicrosoftTokenRow | null = manager.getMicrosoftTokensByEmail("a@b.c");
   const fts: NoteRow[] = manager.searchNotes(buildNoteSearchQuery("meeting"), 10, null, null);
   manager.upsertCalendarEvents([
-    { id: "e1", calendar_id: "c1", start_time: "2026-09-15 10:00:00", end_time: "2026-09-15 11:00:00" },
+    {
+      id: "e1",
+      calendar_id: "c1",
+      start_time: "2026-09-15 10:00:00",
+      end_time: "2026-09-15 11:00:00",
+    },
   ]);
   manager.close();
   return [

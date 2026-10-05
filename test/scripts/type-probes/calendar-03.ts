@@ -10,7 +10,9 @@ import {
   type CalendarEvent,
 } from "./src/contracts/calendar.ts";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerCalendarIntegrationHandlers(ipcMain, {
   googleManager: {
@@ -40,7 +42,26 @@ registerCalendarIntegrationHandlers(ipcMain, {
     disconnect: () => ({ success: true }),
     getConnectionStatus: () => ({ connected: false, sourceNames: [] }),
   },
-  getUpcomingEvents: async () => [{ id: "e", calendar_id: "c", provider: "google", summary: null, start_time: "2026-09-15", end_time: "2026-09-15", is_all_day: 0, status: "confirmed", availability_status: "unknown", self_response_status: "unknown", hangout_link: null, conference_data: null, organizer_email: null, attendees_count: 0, attendees: null, synced_at: "x" }],
+  getUpcomingEvents: async () => [
+    {
+      id: "e",
+      calendar_id: "c",
+      provider: "google",
+      summary: null,
+      start_time: "2026-09-15",
+      end_time: "2026-09-15",
+      is_all_day: 0,
+      status: "confirmed",
+      availability_status: "unknown",
+      self_response_status: "unknown",
+      hangout_link: null,
+      conference_data: null,
+      organizer_email: null,
+      attendees_count: 0,
+      attendees: null,
+      synced_at: "x",
+    },
+  ],
   getCalendarEventById: () => null,
   openCalendarPrivacySettings: async () => ({ success: true }),
   logError: () => {},
@@ -87,7 +108,24 @@ async function useAll(): Promise<string> {
 void useAll;
 
 // The projection drops internals and keeps consumer fields at the type level.
-const projected = projectCalendarEvent({ id: "e", calendar_id: "c", provider: "google", summary: null, start_time: "s", end_time: "e", is_all_day: 0, status: "confirmed", availability_status: "busy", self_response_status: "accepted", hangout_link: null, conference_data: null, organizer_email: null, attendees_count: 1, attendees: null, synced_at: "internal" });
+const projected = projectCalendarEvent({
+  id: "e",
+  calendar_id: "c",
+  provider: "google",
+  summary: null,
+  start_time: "s",
+  end_time: "e",
+  is_all_day: 0,
+  status: "confirmed",
+  availability_status: "busy",
+  self_response_status: "accepted",
+  hangout_link: null,
+  conference_data: null,
+  organizer_email: null,
+  attendees_count: 1,
+  attendees: null,
+  synced_at: "internal",
+});
 const wire: CalendarEvent | null = projected;
 void wire;
 void projectGoogleCalendarSummary;

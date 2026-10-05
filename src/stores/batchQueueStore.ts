@@ -67,7 +67,9 @@ export function addFiles(files: Array<{ name: string; path: string; sizeBytes: n
     status: "queued" as const,
     progress: 0,
   }));
+
   updateQueue((prev) => [...prev, ...items]);
+
   return items;
 }
 
@@ -82,7 +84,9 @@ export function addUrls(urls: string[]) {
     status: "queued" as const,
     progress: 0,
   }));
+
   updateQueue((prev) => [...prev, ...items]);
+
   return items;
 }
 
@@ -99,11 +103,13 @@ export function cancelBatch() {
   // background batch survives it by design.
   const requestId = activeRequestId;
   activeRequestId = null;
+
   if (requestId) {
     void window.electronAPI.cancelUploadTranscription({ requestId }).catch(() => {
       // A late or repeated cancel is a safe no-op.
     });
   }
+
   useBatchQueueStore.setState((s) => ({
     isProcessing: false,
     queue: s.queue.map((item) =>
@@ -132,6 +138,7 @@ export function processBatchQueue(
   useBatchQueueStore.setState({ isProcessing: true });
 
   const snapshotApiKey = transcribeOpts.transcription.getApiKey();
+
   const transcription: FileTranscriptionConfig = {
     ...transcribeOpts.transcription,
     getApiKey: () => snapshotApiKey,
@@ -166,15 +173,20 @@ export function processBatchQueue(
 
         try {
           const res = await window.electronAPI.downloadUrlAudio(item.url, item.id);
+
           if (!res.success) {
             const fail = res as { success: false; error: string; code?: string };
+
             const key =
               fail.code === "DOWNLOAD_CANCELLED"
                 ? "batchCancelled"
                 : DOWNLOAD_ERROR_KEYS[fail.code || ""];
+
             updateItem(item.id, { status: "error", error: key || fail.error });
+
             return;
           }
+
           filePath = res.tempPath;
           tempPath = res.tempPath;
           noteName = res.title || item.name;
@@ -194,8 +206,10 @@ export function processBatchQueue(
       if (run !== runId) return;
 
       const sizeError = transcribeOpts.validateSize?.(sizeBytes) ?? null;
+
       if (sizeError) {
         updateItem(item.id, { status: "error", error: sizeError });
+
         return;
       }
 
@@ -204,6 +218,7 @@ export function processBatchQueue(
       const requestId = crypto.randomUUID();
       activeRequestId = requestId;
       claimedRequestId = requestId;
+
       const transcriptionResult = await transcribeFileWithSpeakers(
         filePath,
         transcription,
@@ -223,6 +238,7 @@ export function processBatchQueue(
             transcriptionResult.error ||
             "batchTranscriptionFailed",
         });
+
         return;
       }
 
@@ -231,10 +247,12 @@ export function processBatchQueue(
       // URL notes keep the video title; file notes get the same generated
       // titles as the single-file flow.
       let noteTitle = noteName;
+
       if (item.source === "file") {
         noteTitle =
           (await transcribeOpts.generateTitle?.(finalText)) ||
           uploadTitleFallback(finalText, noteName);
+
         if (run !== runId) return;
       }
 
@@ -272,6 +290,7 @@ export function processBatchQueue(
       if (activeRequestId === claimedRequestId) {
         activeRequestId = null;
       }
+
       if (tempPath) {
         window.electronAPI.deleteTempFile(tempPath);
       }
@@ -281,6 +300,7 @@ export function processBatchQueue(
   (async () => {
     const processed = new Set<string>();
     let next: QueueItem | undefined;
+
     while (
       run === runId &&
       (next = useBatchQueueStore
@@ -290,6 +310,7 @@ export function processBatchQueue(
       processed.add(next.id);
       await processItem(next);
     }
+
     if (run === runId) {
       useBatchQueueStore.setState({ isProcessing: false });
     }

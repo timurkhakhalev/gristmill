@@ -38,8 +38,10 @@ export function createPillVisibilityHandoff({
 
     async releaseAfter(settleBounds: () => Promise<unknown>) {
       const releaseGeneration = ++generation;
+
       try {
         await settleBounds();
+
         if (disposed || releaseGeneration !== generation) {
           return { released: false, superseded: true };
         }
@@ -57,7 +59,9 @@ export function createPillVisibilityHandoff({
       if (disposed || releaseGeneration !== generation) {
         return { released: false, superseded: true };
       }
+
       publish(false);
+
       return { released: true, superseded: false };
     },
 

@@ -37,6 +37,7 @@ function contextTooLarge(
       messageParams: { model },
     };
   }
+
   return {
     messageKey: "models.errors.contextTooLarge",
     messageParams: { model, needed, max },
@@ -45,9 +46,11 @@ function contextTooLarge(
 
 export function buildLocalInferenceError(result: LocalInferenceFailure): LocalInferenceError {
   const error: LocalInferenceError = new Error(result.error || "Local inference failed");
+
   if (result.code) error.code = result.code;
 
   const details = result.details ?? {};
+
   if (result.code === "CONTEXT_TOO_LARGE") {
     Object.assign(error, contextTooLarge(details));
   } else if (result.code === "LOCAL_SERVER_UNAVAILABLE") {

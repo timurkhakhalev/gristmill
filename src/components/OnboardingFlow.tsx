@@ -26,10 +26,12 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [providerSaving, setProviderSaving] = useState(false);
   // The provider step's confirmed save-then-proceed, wired to the footer.
   const providerCommitRef = useRef<() => Promise<void>>(async () => {});
+
   const bindProviderCommit = useCallback((commit: () => Promise<void>, saving: boolean) => {
     providerCommitRef.current = commit;
     setProviderSaving(saving);
   }, []);
+
   const store = useSettingsStore();
   const [languages, setLanguages] = useState<string[]>(store.spokenLanguages ?? []);
   const permissions = usePermissions();
@@ -52,13 +54,20 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   return (
     <CompactOnboardingFrame showBrandMark={step === "profile"}>
-      <div className={`onboarding-shell-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 ${step === "profile" ? "pt-45" : "pt-33"}`}>
+      <div
+        className={`onboarding-shell-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 ${step === "profile" ? "pt-45" : "pt-33"}`}
+      >
         {step === "profile" && (
           <>
             <OnboardingStepHeader title={t("profile.onboardingTitle")} />
-            <div className="mt-6"><ProfileNameField /></div>
-            <Footer back={() => setStep("permissions")} onContinue={() => setStep("provider")}
-              continueLabel={store.profileName.trim() ? t("common.continue") : t("profile.skip")} />
+            <div className="mt-6">
+              <ProfileNameField />
+            </div>
+            <Footer
+              back={() => setStep("permissions")}
+              onContinue={() => setStep("provider")}
+              continueLabel={store.profileName.trim() ? t("common.continue") : t("profile.skip")}
+            />
           </>
         )}
         {step === "provider" && (
@@ -75,7 +84,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 onFooterContinue={bindProviderCommit}
               />
             </div>
-            <Button variant="ghost" className="shrink-0" onClick={() => setStep("languages")}>{t("cleanupSettings.configureLater")}</Button>
+            <Button variant="ghost" className="shrink-0" onClick={() => setStep("languages")}>
+              {t("cleanupSettings.configureLater")}
+            </Button>
             <Footer
               back={() => setStep("profile")}
               continueDisabled={!providerConnected || providerSaving}
@@ -111,7 +122,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             <div className="mt-6 flex shrink-0 flex-col">
               <CalendarConnectionsStep />
             </div>
-            <Footer back={() => setStep("languages")} onContinue={finish} continueLabel={t("common.finish")} />
+            <Footer
+              back={() => setStep("languages")}
+              onContinue={finish}
+              continueLabel={t("common.finish")}
+            />
           </>
         )}
       </div>
@@ -131,12 +146,18 @@ function Footer({
   continueLabel?: string;
 }) {
   const { t } = useTranslation();
+
   return (
     <div className="sticky -bottom-6 z-10 -mb-6 mt-auto flex w-full shrink-0 gap-3 bg-background pb-6 pt-4">
       <Button type="button" variant="outline-flat" onClick={back} className="h-10 flex-1">
         {t("common.back")}
       </Button>
-      <Button type="button" onClick={onContinue} disabled={continueDisabled} className="h-10 flex-1">
+      <Button
+        type="button"
+        onClick={onContinue}
+        disabled={continueDisabled}
+        className="h-10 flex-1"
+      >
         {continueLabel ?? t("common.continue")}
       </Button>
     </div>

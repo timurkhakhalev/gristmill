@@ -21,6 +21,7 @@ export const commandResultSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
 });
+
 export type NoteFilesCommandResult = z.infer<typeof commandResultSchema>;
 
 export const noteFilesSetEnabledArgsSchema = z.tuple([
@@ -28,6 +29,7 @@ export const noteFilesSetEnabledArgsSchema = z.tuple([
   z.string().optional(),
   z.object({ skipRebuild: z.boolean().optional() }).optional(),
 ]);
+
 export type NoteFilesSetEnabledOptions = { skipRebuild?: boolean };
 
 export const noteFilesSetPathArgsSchema = z.tuple([z.string().min(1)]);
@@ -36,9 +38,11 @@ export const pickFolderResultSchema = z.object({
   canceled: z.boolean(),
   path: z.string().optional(),
 });
+
 export type PickFolderResult = z.infer<typeof pickFolderResultSchema>;
 
 export const showNoteFileArgsSchema = z.tuple([z.number().int().positive()]);
+
 export const showFolderInExplorerArgsSchema = z.tuple([z.string().min(1)]);
 
 // Granola import: the preview parses in main from picked files; the renderer
@@ -61,6 +65,7 @@ export const granolaPreviewResultSchema = z.union([
     rowIssueCount: z.number().int(),
   }),
 ]);
+
 // The insert-ready note the main-side parser produced; crossing only into
 // the import handler dependency, never the renderer API.
 export interface GranolaParsedNote {
@@ -82,6 +87,7 @@ export const granolaRunResultSchema = z.object({
   skipped: z.number().int().optional(),
   errors: z.array(z.object({ error: z.string() })).optional(),
 });
+
 export type GranolaRunResult = z.infer<typeof granolaRunResultSchema>;
 
 export interface NoteFilesApi {

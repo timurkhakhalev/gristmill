@@ -25,11 +25,13 @@ export function requestMeetingRecordingAutoEnd(
   onError: (error: unknown, sessionId: string) => void
 ): boolean {
   const sessionId = payload?.sessionId;
+
   if (typeof sessionId !== "string" || sessionId.trim().length === 0) return false;
 
   void Promise.resolve(stopRecording(sessionId))
     .then((result) => onStopSettled(sessionId, result.stopped))
     .catch((error) => onError(error, sessionId));
+
   return true;
 }
 
@@ -78,7 +80,8 @@ export function createMeetingAutoEndRestartContext(
 type MeetingAutoEndRestartNote = Pick<NoteItem, "transcript">;
 
 export type MeetingAutoEndRestartSeed =
-  { ok: true; seedSegments: TranscriptSegment[] } | { ok: false; reason: "note-missing" };
+  | { ok: true; seedSegments: TranscriptSegment[] }
+  | { ok: false; reason: "note-missing" };
 
 // The live segments the renderer holds are the pre-diarization copy: background
 // speaker identification writes its enrichment to the note, never back into the
@@ -92,8 +95,10 @@ export function resolveMeetingAutoEndRestartSeed(
   liveSegments: TranscriptSegment[]
 ): MeetingAutoEndRestartSeed {
   if (noteId == null) return { ok: true, seedSegments: liveSegments };
+
   // A deleted note is just absent: getNote returns null for it.
   if (!note) return { ok: false, reason: "note-missing" };
+
   return { ok: true, seedSegments: note.transcript ? parseSegments(note.transcript) : [] };
 }
 
@@ -123,18 +128,21 @@ export async function runMeetingAutoEndRestart(
   if (!context || context.sessionId !== request.sessionId) {
     return { status: "aborted", reason: "no-context" };
   }
+
   if (deps.getActiveSessionId() !== null) {
     return { status: "aborted", reason: "already-recording" };
   }
 
   const args: StartRecordingArgs = { ...context.args, seedSegments: deps.getLatestSegments() };
   const note = args.noteId == null ? null : await deps.getNote(args.noteId);
+
   const seed = resolveMeetingAutoEndRestartSeed(
     args.noteId,
     note,
     deps.parseSegments,
     args.seedSegments ?? []
   );
+
   if (!seed.ok) return { status: "aborted", reason: "note-missing" };
 
   // Re-checked after the note read: a manual recording can win the race across
@@ -144,6 +152,7 @@ export async function runMeetingAutoEndRestart(
   }
 
   const started = await deps.startRecording({ ...args, seedSegments: seed.seedSegments });
+
   return started ? { status: "started" } : { status: "aborted", reason: "start-refused" };
 }
 
@@ -162,6 +171,7 @@ export function createMeetingRecordingStopBarrier(): MeetingRecordingStopBarrier
   let pendingStop: Promise<unknown> | null = null;
 
   const waitForPendingStop = (): Promise<unknown> => pendingStop ?? Promise.resolve();
+
   const runStop = <T>(operation: () => Promise<T> | T): Promise<T> => {
     // Concurrent callers share the in-flight stop's result.
     if (pendingStop) return pendingStop as Promise<T>;
@@ -176,6 +186,7 @@ export function createMeetingRecordingStopBarrier(): MeetingRecordingStopBarrier
         if (pendingStop === stopPromise) pendingStop = null;
       }
     );
+
     return stopPromise;
   };
 
@@ -220,6 +231,7 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
 
     const state = pendingStarts.shift() as PendingStart<unknown>;
     activeStart = state;
+
     const operation: MeetingRecordingStartOperation = {
       sessionId: state.sessionId,
       isCurrent: () => activeStart === state && !state.canceled,
@@ -231,9 +243,11 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
       },
       stopMainOnce: (stopMain) => {
         if (!state.mainStartAttempted) return Promise.resolve();
+
         if (!state.mainStopPromise) {
           state.mainStopPromise = Promise.resolve().then(stopMain);
         }
+
         return state.mainStopPromise;
       },
     };
@@ -262,11 +276,14 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
   ): Promise<T> => {
     let resolveStart!: (value: T) => void;
     let rejectStart!: (error: unknown) => void;
+
     const startPromise = new Promise<T>((resolve, reject) => {
       resolveStart = resolve;
       rejectStart = reject;
     });
+
     let settleStart!: () => void;
+
     const settled = new Promise<void>((resolve) => {
       settleStart = resolve;
     });
@@ -286,6 +303,7 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
       mainStopPromise: null,
     } as PendingStart<unknown>);
     startNext();
+
     return startPromise;
   };
 
@@ -299,6 +317,7 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
     }
 
     activeStart.canceled = true;
+
     return activeStart.settled;
   };
 

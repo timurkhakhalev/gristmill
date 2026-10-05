@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 const fs: typeof import("fs") = require("fs");
+
 const os: typeof import("os") = require("os");
+
 const path: typeof import("path") = require("path");
+
 const { execFileSync }: typeof import("child_process") = require("child_process");
+
 const {
   downloadFile,
   parseArgs,
@@ -10,18 +14,24 @@ const {
 
 const SEGMENTATION_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";
+
 const SEGMENTATION_DIR = "sherpa-onnx-pyannote-segmentation-3-0";
+
 const SEGMENTATION_FILE = "model.onnx";
 
 const EMBEDDING_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
+
 const EMBEDDING_FILE = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
+
 const VAD_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
+
 const VAD_FILE = "silero_vad.onnx";
 
 function getModelDir() {
   const outputDirIndex = process.argv.indexOf("--output-dir");
+
   if (outputDirIndex !== -1 && process.argv[outputDirIndex + 1]) {
     return path.resolve(process.argv[outputDirIndex + 1]);
   }
@@ -54,8 +64,10 @@ async function main() {
 
   const allExist =
     fs.existsSync(segModelPath) && fs.existsSync(embModelPath) && fs.existsSync(vadModelPath);
+
   if (allExist && !args.isForce) {
     console.log("[diarization-models] Model files already exist (use --force to re-download)\n");
+
     return;
   }
 
@@ -76,9 +88,11 @@ async function main() {
 
       // Find model.onnx inside the extracted directory
       const extractedModelPath = path.join(extractDir, SEGMENTATION_DIR, SEGMENTATION_FILE);
+
       if (!fs.existsSync(extractedModelPath)) {
         console.error(`[diarization-models] ${SEGMENTATION_FILE} not found in archive`);
         process.exitCode = 1;
+
         return;
       }
 
@@ -92,13 +106,16 @@ async function main() {
 
       // Cleanup
       fs.rmSync(extractDir, { recursive: true, force: true });
+
       if (fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
     } catch (error) {
       console.error(
         `[diarization-models] Failed to download segmentation model: ${error instanceof Error ? error.message : String(error)}`
       );
+
       if (fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
       process.exitCode = 1;
+
       return;
     }
   } else {
@@ -118,8 +135,10 @@ async function main() {
       console.error(
         `[diarization-models] Failed to download embedding model: ${error instanceof Error ? error.message : String(error)}`
       );
+
       if (fs.existsSync(embModelPath)) fs.unlinkSync(embModelPath);
       process.exitCode = 1;
+
       return;
     }
   } else {
@@ -138,8 +157,10 @@ async function main() {
       console.error(
         `[diarization-models] Failed to download VAD model: ${error instanceof Error ? error.message : String(error)}`
       );
+
       if (fs.existsSync(vadModelPath)) fs.unlinkSync(vadModelPath);
       process.exitCode = 1;
+
       return;
     }
   } else {

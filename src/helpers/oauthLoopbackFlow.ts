@@ -36,6 +36,7 @@ function respond(res: MinimalServerResponse, statusCode: number, message: string
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+
   res.writeHead(statusCode, { "Content-Type": "text/html; charset=utf-8" });
   res.end(`<html><body><h3>${safeMessage}</h3></body></html>`);
 }
@@ -62,6 +63,7 @@ export function runOAuthLoopbackFlow<T = OAuthFlowResult>({
         if (callbackClaimed) {
           res.writeHead(400, { "Content-Type": "text/html" });
           res.end("<html><body><h3>Invalid request.</h3></body></html>");
+
           return;
         }
 
@@ -73,6 +75,7 @@ export function runOAuthLoopbackFlow<T = OAuthFlowResult>({
 
           if (returnedState !== state) {
             respond(res, 400, "Invalid request.");
+
             // A real callback with a code but the wrong state is a failed
             // attempt (stale tab, CSRF). Fail the flow now. A request with no
             // code (favicon / bare GET) must keep waiting for the redirect.
@@ -81,6 +84,7 @@ export function runOAuthLoopbackFlow<T = OAuthFlowResult>({
               cleanup();
               reject(new Error("OAuth state mismatch"));
             }
+
             return;
           }
 
@@ -89,11 +93,13 @@ export function runOAuthLoopbackFlow<T = OAuthFlowResult>({
             respond(res, 400, `OAuth error: ${error}`);
             cleanup();
             reject(new Error(`OAuth error: ${error}`));
+
             return;
           }
 
           if (!code) {
             respond(res, 400, "Invalid request.");
+
             return;
           }
 

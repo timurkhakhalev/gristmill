@@ -10,18 +10,22 @@ interface ElectronAppMetricsLike {
 
 function getOwnProcessPids(): Set<number> {
   const pids = new Set<number>([process.pid]);
+
   try {
     // Lazy require keeps every non-Electron consumer (unit tests, tooling)
     // working without the module graph touching electron at load time.
     const { app } = require("electron") as { app: ElectronAppMetricsLike };
+
     for (const metric of app.getAppMetrics?.() ?? []) {
       if (typeof metric?.pid === "number") pids.add(metric.pid);
     }
   } catch {
     // Outside Electron, or before the app is ready: the main PID is all we have.
   }
+
   return pids;
 }
 
 export { getOwnProcessPids };
+
 module.exports = { getOwnProcessPids };

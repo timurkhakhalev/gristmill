@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const {
   createRendererServer,
   installBrowserGlobals,
@@ -25,6 +27,7 @@ test("an unsupported system source stays unavailable instead of falling back to 
 
   const stopRequests: Array<{ incomplete?: boolean; errorCode?: string | null }> = [];
   const noopListener = () => () => {};
+
   const api = {
     checkSystemAudioAccess: async () => ({
       granted: false,
@@ -42,11 +45,20 @@ test("an unsupported system source stays unavailable instead of falling back to 
       systemAudioStrategy: "unsupported",
     }),
     meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
-    meetingTranscriptionStop: async (request: { incomplete?: boolean; errorCode?: string | null }) => {
+    meetingTranscriptionStop: async (request: {
+      incomplete?: boolean;
+      errorCode?: string | null;
+    }) => {
       stopRequests.push(request);
+
       return { success: true, captureState: "incomplete" };
     },
-    meetingTranscriptionSend: async (_buffer: unknown, _source: unknown, _sessionId: unknown, packet: { sequence: number }) => ({
+    meetingTranscriptionSend: async (
+      _buffer: unknown,
+      _source: unknown,
+      _sessionId: unknown,
+      packet: { sequence: number }
+    ) => ({
       success: true,
       sequence: packet.sequence,
     }),
@@ -56,6 +68,7 @@ test("an unsupported system source stays unavailable instead of falling back to 
     onMeetingSystemAudioInterrupted: noopListener,
     onMeetingSystemAudioResumed: noopListener,
   };
+
   installBrowserGlobals(t, {
     window: {
       electronAPI: api,
@@ -63,10 +76,14 @@ test("an unsupported system source stays unavailable instead of falling back to 
       clearTimeout: (timer: ReturnType<typeof setTimeout>) => clearTimeout(timer),
     },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: "gristmill-meeting-system-audio-no-fallback-",
   });
-  const store = (await vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as typeof import("../../src/stores/meetingRecordingStore.ts"));
+
+  const store = (await vite.ssrLoadModule(
+    "/stores/meetingRecordingStore.ts"
+  )) as typeof import("../../src/stores/meetingRecordingStore.ts");
 
   assert.equal(await store.startRecording(START_ARGS), true);
   const state = store.useMeetingRecordingStore.getState();

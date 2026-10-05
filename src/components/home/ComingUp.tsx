@@ -35,14 +35,21 @@ const openJoinUrl = (url: string) => {
   }
 };
 
-function formatTimeRange(locale: string, startTime: string, endTime: string, timeFormat: TimeFormat): string {
+function formatTimeRange(
+  locale: string,
+  startTime: string,
+  endTime: string,
+  timeFormat: TimeFormat
+): string {
   const format = (value: string) =>
     formatTime(new Date(value), locale, { hour: "numeric", minute: "2-digit" }, timeFormat);
+
   return `${format(startTime)} – ${format(endTime)}`;
 }
 
 // Today plus the next days that have events, capped at a working week.
 const MAX_DAYS = 5;
+
 // Avatars shown before the "+N" overflow pill.
 const MAX_STACKED_AVATARS = 2;
 
@@ -56,23 +63,29 @@ interface DayGroup {
 function groupEventsByDay(events: CalendarEvent[], now: Date): DayGroup[] {
   const groups: DayGroup[] = [];
   const byKey = new Map<string, DayGroup>();
+
   for (const event of events) {
     const date = parseEventDate(event.start_time);
+
     if (!date) continue;
     const key = date.toDateString();
     let group = byKey.get(key);
+
     if (!group) {
       group = { key, date, isToday: key === now.toDateString(), items: [] };
       byKey.set(key, group);
       groups.push(group);
     }
+
     group.items.push(event);
   }
+
   // Surface "today" even when it has nothing scheduled, so the list always
   // answers "what's next today?" at a glance.
   if (!groups.some((g) => g.isToday)) {
     groups.unshift({ key: now.toDateString(), date: now, isToday: true, items: [] });
   }
+
   return groups.slice(0, MAX_DAYS);
 }
 
@@ -135,9 +148,7 @@ function AttendeePopover({
               <div className="min-w-0 flex-1">
                 <p dir="auto" className="truncate text-xs text-foreground/80">
                   <PersonName email={a.email} inviteName={a.displayName} />
-                  {a.self && (
-                    <span className="ms-1 text-muted">{t("notes.participants.me")}</span>
-                  )}
+                  {a.self && <span className="ms-1 text-muted">{t("notes.participants.me")}</span>}
                 </p>
                 <p dir="ltr" className="truncate text-2xs text-muted">
                   {a.email}
@@ -168,7 +179,15 @@ function AttendeePopover({
   );
 }
 
-function EventRow({ event, isNow, onOpen }: { event: CalendarEvent; isNow: boolean; onOpen: () => void }) {
+function EventRow({
+  event,
+  isNow,
+  onOpen,
+}: {
+  event: CalendarEvent;
+  isNow: boolean;
+  onOpen: () => void;
+}) {
   const { t } = useTranslation();
   const locale = useUiLocale();
   const { timeFormat } = useDateTimePreferences();
@@ -195,7 +214,12 @@ function EventRow({ event, isNow, onOpen }: { event: CalendarEvent; isNow: boole
 
   const attendeeStack =
     attendees.length > 1 ? (
-      <AttendeePopover event={event} attendees={attendees} timeRange={timeRange} joinUrl={joinUrl} />
+      <AttendeePopover
+        event={event}
+        attendees={attendees}
+        timeRange={timeRange}
+        joinUrl={joinUrl}
+      />
     ) : event.attendees_count > 1 ? (
       <span className={ATTENDEE_COUNT_PILL_CLASS}>+{event.attendees_count - 1}</span>
     ) : null;
@@ -207,12 +231,17 @@ function EventRow({ event, isNow, onOpen }: { event: CalendarEvent; isNow: boole
       <button
         type="button"
         onClick={onOpen}
-        aria-label={t("upcoming.openEventNote", { title: event.summary || t("upcoming.untitledEvent") })}
+        aria-label={t("upcoming.openEventNote", {
+          title: event.summary || t("upcoming.untitledEvent"),
+        })}
         className="absolute inset-0 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-focus"
       />
       <span
         aria-hidden="true"
-        className={cn("pointer-events-none relative w-0.5 shrink-0 rounded-full", isNow ? "bg-success" : "bg-primary/70")}
+        className={cn(
+          "pointer-events-none relative w-0.5 shrink-0 rounded-full",
+          isNow ? "bg-success" : "bg-primary/70"
+        )}
       />
       <div className="pointer-events-none relative min-w-0 flex-1 py-0.5">
         <p dir="auto" className="truncate text-sm font-medium leading-snug text-foreground">
@@ -294,7 +323,12 @@ function DayRow({
       ) : (
         <div className="space-y-1">
           {group.items.map((event) => (
-            <EventRow key={event.id} event={event} isNow={isNowFn(event)} onOpen={() => onOpenEvent(event)} />
+            <EventRow
+              key={event.id}
+              event={event}
+              isNow={isNowFn(event)}
+              onOpen={() => onOpenEvent(event)}
+            />
           ))}
         </div>
       )}
@@ -322,6 +356,7 @@ export default function ComingUp({
   const isNowFn = (event: CalendarEvent) => {
     const start = new Date(event.start_time);
     const end = new Date(event.end_time);
+
     return start <= now && now <= end;
   };
 

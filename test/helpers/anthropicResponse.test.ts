@@ -1,5 +1,7 @@
 const { test, describe }: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert") = require("node:assert");
+
 const {
   extractAnthropicText,
   describeMissingAnthropicText,
@@ -18,6 +20,7 @@ describe("extractAnthropicText", () => {
         { type: "text", text: "second" },
       ],
     };
+
     assert.strictEqual(extractAnthropicText(data), "first second");
   });
 
@@ -28,6 +31,7 @@ describe("extractAnthropicText", () => {
         { type: "text", text: "the answer" },
       ],
     };
+
     assert.strictEqual(extractAnthropicText(data), "the answer");
   });
 
@@ -59,6 +63,7 @@ describe("extractAnthropicText", () => {
       { content: [], stop_reason: "max_tokens" },
       { content: [{ type: "thinking", thinking: "..." }] },
     ];
+
     for (const data of shapes) {
       assert.throws(() => (data.content[0] as any).text.trim(), TypeError);
       assert.doesNotThrow(() => extractAnthropicText(data));

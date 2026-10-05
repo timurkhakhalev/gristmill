@@ -10,6 +10,7 @@
 import { z } from "zod";
 
 const nonNegativeInt = z.number().int();
+
 const idArg = nonNegativeInt;
 
 export const actionSchema = z.object({
@@ -24,6 +25,7 @@ export const actionSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
 });
+
 export type ActionItem = z.infer<typeof actionSchema>;
 
 // Positional arguments are frozen API: renderer preload and main handlers
@@ -31,35 +33,46 @@ export type ActionItem = z.infer<typeof actionSchema>;
 // update payload stay tolerant — the DB layer owns trimming, whitelisting
 // and the success:false outcomes.
 export const getActionsArgsSchema = z.tuple([]);
+
 export const getActionArgsSchema = z.tuple([idArg]);
+
 export const createActionArgsSchema = z.tuple([
   z.unknown(),
   z.unknown(),
   z.unknown(),
   z.unknown().optional(),
 ]);
+
 export const updateActionArgsSchema = z.tuple([idArg, z.unknown()]);
+
 export const deleteActionArgsSchema = z.tuple([idArg]);
 
 // getAction(id) yields null for a missing row; update re-reads the row, so
 // a missing id carries action:null.
 export const actionResultSchema = actionSchema.nullable();
+
 export const actionMutationResultSchema = z.object({
   success: z.boolean(),
   action: actionSchema.nullish(),
   error: z.string().optional(),
 });
+
 export type ActionMutationResult = z.infer<typeof actionMutationResultSchema>;
+
 // deleteAction never carries the row back; builtins and unknown ids
 // report plain success:false.
 export const actionDeleteResultSchema = z.object({ success: z.boolean() });
+
 export const actionListResultSchema = z.array(actionSchema);
 
 // Event payloads: create/update carry the full verified local row; delete
 // only carries the id the handler was called with.
 export const actionCreatedPayloadSchema = actionSchema;
+
 export const actionUpdatedPayloadSchema = actionSchema;
+
 export const actionDeletedPayloadSchema = z.object({ id: idArg });
+
 export type ActionDeletedPayload = z.infer<typeof actionDeletedPayloadSchema>;
 
 // The renderer-facing surface: five operations, three subscriptions.

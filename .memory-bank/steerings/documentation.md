@@ -2,13 +2,13 @@
 
 ## Where to put knowledge
 
-| Knowledge | Location |
-| --- | --- |
-| Durable product, architecture and process knowledge | `.memory-bank/`, in the related section |
-| The reason for a significant decision | A new ADR in `.memory-bank/adr/` |
-| Task draft, plan, progress, reviews | `.tasks/<task>/` (temporary) |
-| Open work, backlog, evaluation checklists | GitHub issues |
-| Test logs, measurements of one run, verification reports | The pull request description |
+| Knowledge                                                | Location                                |
+| -------------------------------------------------------- | --------------------------------------- |
+| Durable product, architecture and process knowledge      | `.memory-bank/`, in the related section |
+| The reason for a significant decision                    | A new ADR in `.memory-bank/adr/`        |
+| Task draft, plan, progress, reviews                      | `.tasks/<task>/` (temporary)            |
+| Open work, backlog, evaluation checklists                | GitHub issues                           |
+| Test logs, measurements of one run, verification reports | The pull request description            |
 
 ## Rules
 

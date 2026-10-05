@@ -21,9 +21,11 @@ export type { TranscriptionResponse };
 
 function parseResponse<T>(schema: ZodType<T>, raw: unknown): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error("Local transcription returned an unexpected result shape");
   }
+
   return result.data;
 }
 
@@ -36,13 +38,16 @@ export async function transcribeLocalFile(
   options: Record<string, unknown> = {}
 ): Promise<TranscriptionResponse> {
   const audioBuffer = deps.readFile(filePath);
+
   if (deps.isSherpaLocalProvider(options.provider)) {
     return parseResponse(
       transcriptionResponseSchema,
       await deps.transcribeLocalParakeet(audioBuffer, options)
     );
   }
+
   const vad = deps.resolveWhisperVadOptions("noteRecording") as Record<string, unknown>;
+
   return parseResponse(
     transcriptionResponseSchema,
     await deps.transcribeLocalWhisper(audioBuffer, { ...options, ...vad })

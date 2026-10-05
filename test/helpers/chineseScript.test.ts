@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 async function load() {
@@ -113,6 +114,7 @@ test("applyChineseScript is idempotent for the same target", async () => {
 
 test("applyChineseScript is a no-op for Japanese and Korean when target is null", async () => {
   const { applyChineseScript, resolveChineseScriptTarget } = await load();
+
   for (const text of ["会議の資料を確認してください", "한국어 漢字 텍스트"]) {
     const target = resolveChineseScriptTarget("auto", "simplified", text);
     assert.equal(target, null);

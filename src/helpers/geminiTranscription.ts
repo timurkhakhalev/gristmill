@@ -1,4 +1,5 @@
 const { net } = require("electron");
+
 const debugLogger = require("./debugLogger");
 
 // gemini-3.5-transcribe is only served by the Interactions API; there is no
@@ -16,11 +17,15 @@ const GEMINI_MIME_TYPES = {
 // omits it — joining the steps' text content is the safe fallback.
 function extractText(data: unknown): string {
   const outputText = (data as { output_text?: unknown })?.output_text;
+
   if (typeof outputText === "string" && outputText.trim()) {
     return outputText;
   }
-  const steps = (data as { steps?: Array<{ content?: Array<{ type?: unknown; text?: unknown }> }> | null })
-    ?.steps;
+
+  const steps = (
+    data as { steps?: Array<{ content?: Array<{ type?: unknown; text?: unknown }> }> | null }
+  )?.steps;
+
   return (steps || [])
     .flatMap((step) => step?.content || [])
     .filter((part) => part?.type === "text" && typeof part.text === "string")
@@ -56,7 +61,15 @@ interface CodedGeminiError extends Error {
 }
 
 export async function transcribeWithGemini(
-  { audioBuffer, model, contentType, language, keyterms, apiKey, signal }: GeminiTranscriptionRequest,
+  {
+    audioBuffer,
+    model,
+    contentType,
+    language,
+    keyterms,
+    apiKey,
+    signal,
+  }: GeminiTranscriptionRequest,
   fetchImpl?: GeminiFetch
 ): Promise<{ text: string; model: string }> {
   if (!apiKey?.trim()) {
@@ -67,12 +80,15 @@ export async function transcribeWithGemini(
 
   const resolvedModel = model || "gemini-3.5-transcribe";
   const transcriptionConfig: { language_codes?: string[]; custom_vocabulary?: string[] } = {};
+
   if (language && language !== "auto") {
     transcriptionConfig.language_codes = [language];
   }
+
   if (keyterms && keyterms.length > 0) {
     transcriptionConfig.custom_vocabulary = keyterms;
   }
+
   const input: Array<Record<string, unknown>> = [
     {
       type: "audio",
@@ -82,10 +98,12 @@ export async function transcribeWithGemini(
       mime_type: (GEMINI_MIME_TYPES as Record<string, string>)[contentType] || contentType,
     },
   ];
+
   const requestBody: Record<string, unknown> = {
     model: resolvedModel,
     input,
   };
+
   if (Object.keys(transcriptionConfig).length > 0) {
     requestBody.generation_config = { transcription_config: transcriptionConfig };
   }
@@ -97,6 +115,7 @@ export async function transcribeWithGemini(
   );
 
   const doFetch: GeminiFetch = fetchImpl || ((url, init) => net.fetch(url, init as RequestInit));
+
   const response = await doFetch(GEMINI_INTERACTIONS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
@@ -106,6 +125,7 @@ export async function transcribeWithGemini(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
+
     // Google rejects a bad key with 400 + reason API_KEY_INVALID rather than 401,
     // so status alone would surface the raw JSON instead of a fixable message.
     if (
@@ -117,21 +137,25 @@ export async function transcribeWithGemini(
         code: "INVALID_KEY",
       }) as CodedGeminiError;
     }
+
     const error = Object.assign(
       new Error(`Gemini API Error: ${response.status} ${errorText}`.trim()),
       {} as Record<string, unknown>
     ) as CodedGeminiError;
+
     if (response.status === 429) {
       error.code = "PROVIDER_RATE_LIMITED";
       error.messageKey = "hooks.audioRecording.errorDescriptions.providerRateLimited";
     } else if (response.status >= 500) {
       error.code = "SERVER_ERROR";
     }
+
     throw error;
   }
 
   const data = await response.json();
   const record = data as { status?: string; error?: { message?: string } } | null;
+
   // Anything short of "completed" (failed, cancelled, budget_exceeded, ...) must
   // not fall through to extractText, which would return empty or truncated text
   // as a successful transcription.
@@ -143,5 +167,6 @@ export async function transcribeWithGemini(
         : `Gemini transcription did not complete (status: ${record.status})`
     );
   }
+
   return { text: extractText(data), model: resolvedModel };
 }

@@ -12,6 +12,7 @@ import { LIST_SEARCH_THRESHOLD } from "../../config/constants.mts";
 export const MODEL_SEARCH_THRESHOLD = LIST_SEARCH_THRESHOLD;
 
 const OTHER_GROUP = "__other";
+
 const SELECTED_GROUP = "__selected";
 
 type Row =
@@ -20,6 +21,7 @@ type Row =
 
 function providerPrefix(value: string): string | null {
   const slash = value.indexOf("/");
+
   return slash > 0 ? value.slice(0, slash) : null;
 }
 
@@ -36,16 +38,20 @@ function matchesQuery(model: ModelCardOption, normalizedQuery: string): boolean 
 // "Selected" row keeps the full id so its provider stays identifiable.
 function toDisplayOption(model: ModelCardOption, stripPrefix: boolean): ModelCardOption {
   const prefix = providerPrefix(model.value);
+
   if (!prefix) {
     if (!model.group || model.icon) return model;
     // Vendor names like "Mistral AI" or "Z.AI" → icon slugs like "mistralai".
     const groupSlug = model.group.toLowerCase().replace(/[^a-z0-9]/g, "");
     const { icon, invertInDark } = getRemoteProviderIcon(groupSlug, model.value);
+
     return { ...model, icon, invertInDark };
   }
+
   const name = model.value.slice(prefix.length + 1);
   const { icon, invertInDark } = getRemoteProviderIcon(prefix, name);
   const label = (stripPrefix && name) || model.label;
+
   return { ...model, label, icon, invertInDark };
 }
 
@@ -75,26 +81,33 @@ export default function SearchableModelList({
   const { rows, matchCount } = useMemo(() => {
     const groups = new Map<string, ModelCardOption[]>();
     const seen = new Set<string>();
+
     for (const model of models) {
       if (model.value === selectedModel) continue; // pinned separately
+
       if (seen.has(model.value)) continue;
+
       if (normalizedQuery && !matchesQuery(model, normalizedQuery)) continue;
       seen.add(model.value);
       const prefix = model.group ?? providerPrefix(model.value);
       const key = prefix ? prefix.replace(/^~/, "").toLowerCase() : OTHER_GROUP;
       const bucket = groups.get(key);
+
       if (bucket) bucket.push(model);
       else groups.set(key, [model]);
     }
 
     const sortedKeys = [...groups.keys()].sort((a, b) => {
       if (a === OTHER_GROUP) return 1;
+
       if (b === OTHER_GROUP) return -1;
+
       return a.localeCompare(b);
     });
 
     const result: Row[] = [];
     let matched = 0;
+
     if (selectedOption) {
       result.push({
         type: "header",
@@ -108,6 +121,7 @@ export default function SearchableModelList({
         data: toDisplayOption(selectedOption, false),
       });
     }
+
     for (const key of sortedKeys) {
       const bucket = groups.get(key)!.sort((a, b) => a.label.localeCompare(b.label));
       result.push({
@@ -116,11 +130,13 @@ export default function SearchableModelList({
         label: key === OTHER_GROUP ? t("reasoning.custom.otherGroup") : key,
         count: bucket.length,
       });
+
       for (const model of bucket) {
         result.push({ type: "model", key: `m:${model.value}`, data: toDisplayOption(model, true) });
         matched += 1;
       }
     }
+
     return { rows: result, matchCount: matched };
   }, [models, selectedModel, selectedOption, normalizedQuery, t]);
 
@@ -149,9 +165,12 @@ export default function SearchableModelList({
       for (let i = from + direction; i >= 0 && i < rows.length; i += direction) {
         if (rows[i].type === "model") return i;
       }
+
       return -1;
     };
+
     const next = step(activeIndex < 0 && direction < 0 ? rows.length : activeIndex);
+
     if (next >= 0) {
       setActiveIndex(next);
       virtualizer.scrollToIndex(next, { align: "auto" });
@@ -167,6 +186,7 @@ export default function SearchableModelList({
       moveActive(-1);
     } else if (event.key === "Enter" && activeIndex >= 0) {
       const row = rows[activeIndex];
+
       if (row?.type === "model") {
         event.preventDefault();
         onModelSelect(row.data.value);
@@ -212,6 +232,7 @@ export default function SearchableModelList({
             {virtualizer.getVirtualItems().map((virtualItem) => {
               const row = rows[virtualItem.index];
               const isActive = virtualItem.index === activeIndex;
+
               return (
                 <div
                   key={row.key}
@@ -230,9 +251,7 @@ export default function SearchableModelList({
                       <span className="text-2xs font-medium uppercase tracking-wide text-muted">
                         {row.label}
                       </span>
-                      <span className="text-2xs text-muted tabular-nums">
-                        {row.count}
-                      </span>
+                      <span className="text-2xs text-muted tabular-nums">{row.count}</span>
                     </div>
                   ) : (
                     <div

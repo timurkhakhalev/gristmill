@@ -1,24 +1,27 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/components/notes/floatingChatLayout.js");
 
-type FakeElement = typeof globalThis.document extends never ? never : {
-  scrollHeight: number;
-  scrollTop: number;
-  clientHeight: number;
-  offsetHeight: number;
-  style: {
-    setProperty(name: string, value: string): void;
-    removeProperty(name: string): void;
-    getPropertyValue(name: string): string;
-  };
-  addEventListener(name: string, listener: (event: unknown) => void): void;
-  removeEventListener(name: string, listener: (event: unknown) => void): void;
-  dispatch(name: string, event?: unknown): void;
-  hasListener(name: string): boolean;
-  contains?(target: unknown): boolean;
-};
+type FakeElement = typeof globalThis.document extends never
+  ? never
+  : {
+      scrollHeight: number;
+      scrollTop: number;
+      clientHeight: number;
+      offsetHeight: number;
+      style: {
+        setProperty(name: string, value: string): void;
+        removeProperty(name: string): void;
+        getPropertyValue(name: string): string;
+      };
+      addEventListener(name: string, listener: (event: unknown) => void): void;
+      removeEventListener(name: string, listener: (event: unknown) => void): void;
+      dispatch(name: string, event?: unknown): void;
+      hasListener(name: string): boolean;
+      contains?(target: unknown): boolean;
+    };
 
 function createElement(overrides: Partial<FakeElement> = {}): FakeElement {
   const listeners = new Map<string, (event: unknown) => void>();
@@ -93,6 +96,7 @@ test("viewport resizes preserve pinned content without yanking a reader", async 
     {
       createResizeObserver(callback) {
         resizeCallback = callback;
+
         return {
           observe(element) {
             observedElements.push(element as unknown as FakeElement);
@@ -108,6 +112,7 @@ test("viewport resizes preserve pinned content without yanking a reader", async 
           scheduledFrames.delete(frameId);
           callback();
         });
+
         return frameId;
       },
       cancelFrame(frameId: number) {
@@ -166,12 +171,22 @@ interface LayoutHarness {
   cleanup?: () => void;
 }
 
-function createLayoutHarness(observe: typeof import("../../src/components/notes/floatingChatLayout.js")["observeFloatingChatLayout"], { scroller }: { scroller: FakeElement }): LayoutHarness {
+function createLayoutHarness(
+  observe: (typeof import("../../src/components/notes/floatingChatLayout.js"))["observeFloatingChatLayout"],
+  { scroller }: { scroller: FakeElement }
+): LayoutHarness {
   const panel = createElement({ offsetHeight: 200 });
   const container = createElement();
   const contentRoot = createElement();
   const scheduledFrames = new Map<number, () => void>();
-  const harness = { panel, container, contentRoot, scheduledFrames, nextFrameId: 0 } as LayoutHarness;
+
+  const harness = {
+    panel,
+    container,
+    contentRoot,
+    scheduledFrames,
+    nextFrameId: 0,
+  } as LayoutHarness;
 
   harness.cleanup = observe(
     {
@@ -183,6 +198,7 @@ function createLayoutHarness(observe: typeof import("../../src/components/notes/
     {
       createResizeObserver(callback: () => void) {
         harness.resizeCallback = callback;
+
         return { observe() {}, disconnect() {} };
       },
       requestFrame(callback: () => void) {
@@ -191,6 +207,7 @@ function createLayoutHarness(observe: typeof import("../../src/components/notes/
           scheduledFrames.delete(frameId);
           callback();
         });
+
         return frameId;
       },
       cancelFrame(frameId: number) {
@@ -205,12 +222,14 @@ function createLayoutHarness(observe: typeof import("../../src/components/notes/
 test("upward wheel intent cancels resize pinning until the reader returns to bottom", async () => {
   const { observeFloatingChatLayout } = await load();
   const transcriptRow = { name: "transcript-row" };
+
   const scroller = createElement({
     scrollHeight: 1000,
     scrollTop: 700,
     clientHeight: 300,
     contains: (target) => target === transcriptRow,
   });
+
   const { contentRoot, scheduledFrames, resizeCallback, nextFrameId, cleanup } =
     createLayoutHarness(observeFloatingChatLayout, { scroller });
 
@@ -237,12 +256,14 @@ test("upward wheel intent cancels resize pinning until the reader returns to bot
 test("upward wheel over chrome outside the scroller keeps following", async () => {
   const { observeFloatingChatLayout } = await load();
   const recordingHeader = { name: "recording-header" };
+
   const scroller = createElement({
     scrollHeight: 1000,
     scrollTop: 700,
     clientHeight: 300,
     contains: () => false,
   });
+
   const harness = createLayoutHarness(observeFloatingChatLayout, { scroller });
   const { contentRoot, scheduledFrames } = harness;
 

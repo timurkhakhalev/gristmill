@@ -1,9 +1,13 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const test: typeof import("node:test") = require("node:test");
 
 const root = path.join(__dirname, "../..");
+
 const read = (relativePath: string) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
 test("macOS packaging uses the Gristmill icon", () => {
@@ -16,6 +20,7 @@ test("macOS packaging uses the Gristmill icon", () => {
 test("removed Linux shortcut helpers and dependency stay absent", () => {
   const packageJson = JSON.parse(read("package.json"));
   assert.equal("@homebridge/dbus-native" in (packageJson.dependencies || {}), false);
+
   for (const helper of [
     "gnomeShortcut.js",
     "gnomeGlobalShortcutsPortal.js",

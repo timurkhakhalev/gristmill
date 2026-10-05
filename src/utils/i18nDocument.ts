@@ -24,17 +24,21 @@ export function bindDocumentLanguage(
     root.lang = language;
     root.dir = i18n.dir(language);
   };
+
   const handleLanguageChanged = (language: string) => sync(language);
 
   sync(i18n.resolvedLanguage || i18n.language || "en");
   i18n.on("languageChanged", handleLanguageChanged);
 
   let active = true;
+
   const dispose = () => {
     if (!active) return;
     active = false;
     i18n.off("languageChanged", handleLanguageChanged);
   };
+
   hot?.dispose(dispose);
+
   return dispose;
 }

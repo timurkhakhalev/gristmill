@@ -5,21 +5,31 @@
 // boundary, and the registration-collision guard (a second handle on the
 // same channel must fail loudly — the #23 duplicate-handler failure).
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
+
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
+
 let activeHandlers: Map<string, BridgeHandler> | null = null;
+
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-bridge-"));
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -28,18 +38,21 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
         // One shared duplicate-detecting double: handle() throws on a
         // second registration of the same channel, on()/emit() no-op.
         const seen = new Set<string>();
+
         const getMap = () => {
           if (!activeHandlers) activeHandlers = new Map<string, BridgeHandler>();
+
           return activeHandlers;
         };
+
         return {
           handle: (channel: string, listener: BridgeHandler) => {
             const handlers = getMap();
+
             if (seen.has(channel)) {
-              throw new Error(
-                `Attempted to register a second handler for '${channel}'`
-              );
+              throw new Error(`Attempted to register a second handler for '${channel}'`);
             }
+
             seen.add(channel);
             handlers.set(channel, listener as BridgeHandler);
           },
@@ -51,16 +64,21 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       BrowserWindow: { getAllWindows: () => [] },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 const originalNodeEnv = process.env.NODE_ENV;
+
 process.env.NODE_ENV = "test";
 
 const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
+
 const initialUserDataDir = userDataDir;
 
 test.after(() => {
   Module._load = originalLoad;
+
   if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = originalNodeEnv;
   fs.rmSync(initialUserDataDir, { recursive: true, force: true });
@@ -68,6 +86,7 @@ test.after(() => {
 
 function isNativeBindingUnavailable(error: unknown) {
   const message = String((error as { message?: unknown })?.message || error);
+
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -83,6 +102,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     exports: {},
     require(name: string) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: Record<string, unknown>) => {
@@ -101,11 +121,21 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     process: { platform: "darwin", versions: {} },
     console,
   });
+
   return api!;
 }
 
-type DbUnderTest = import("../../src/helpers/chatPersistenceIpcHandlers.js").ChatPersistenceHandlerDeps["database"] & { close: () => void; getPrivateSpaceId: () => unknown };
-async function createFixture(t: import("node:test").TestContext): Promise<{ db: DbUnderTest; api: Record<string, (...args: unknown[]) => Promise<any>>; invoke: (channel: string, ...args: unknown[]) => Promise<unknown> } | null> {
+type DbUnderTest =
+  import("../../src/helpers/chatPersistenceIpcHandlers.js").ChatPersistenceHandlerDeps["database"] & {
+    close: () => void;
+    getPrivateSpaceId: () => unknown;
+  };
+
+async function createFixture(t: import("node:test").TestContext): Promise<{
+  db: DbUnderTest;
+  api: Record<string, (...args: unknown[]) => Promise<any>>;
+  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+} | null> {
   activeHandlers = new Map();
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-chat-bridge-"));
   const fixtureDir = userDataDir;
@@ -114,30 +144,44 @@ async function createFixture(t: import("node:test").TestContext): Promise<{ db: 
     db?.close();
     fs.rmSync(fixtureDir, { recursive: true, force: true });
   });
+
   try {
     db = new DatabaseManager() as unknown as NonNullable<typeof db>;
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return null;
     }
+
     throw error;
   }
-  const { registerChatPersistenceHandlers } = await import(
-    "../../src/helpers/chatPersistenceIpcHandlers.ts"
-  );
+
+  const { registerChatPersistenceHandlers } =
+    await import("../../src/helpers/chatPersistenceIpcHandlers.ts");
+
   registerChatPersistenceHandlers(
-    { handle: (channel: string, listener: BridgeHandler) => activeHandlers!.set(channel, listener) },
+    {
+      handle: (channel: string, listener: BridgeHandler) => activeHandlers!.set(channel, listener),
+    },
     { database: db }
   );
 
   const handlersSnapshot = new Map(activeHandlers!);
+
   const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
+
     return handler(null, ...args);
   };
-  const api = loadBundledPreload(invoke) as Record<string, (...args: unknown[]) => Promise<unknown>>;
+
+  const api = loadBundledPreload(invoke) as Record<
+    string,
+    (...args: unknown[]) => Promise<unknown>
+  >;
+
   return { db, api, invoke };
 }
 
@@ -146,6 +190,7 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 test("the full bundled preload chain round-trips conversations and messages", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, db } = ctx;
 
@@ -157,6 +202,7 @@ test("the full bundled preload chain round-trips conversations and messages", as
   const message = await api.addAgentMessage(created.id, "user", "hello", {
     toolCalls: [{ id: "t1", name: "search_notes", arguments: "{}" }],
   });
+
   assert.equal(message.conversation_id, created.id);
   assert.deepEqual(JSON.parse(String(message.metadata)).toolCalls, [
     { id: "t1", name: "search_notes", arguments: "{}" },
@@ -182,7 +228,10 @@ test("the full bundled preload chain round-trips conversations and messages", as
   assert.equal((containerList[0] as Record<string, unknown>).title, "Renamed");
 
   const all = await api.getAgentConversations();
-  assert.equal(all.some((c: Record<string, unknown>) => c.id === created.id), true);
+  assert.equal(
+    all.some((c: Record<string, unknown>) => c.id === created.id),
+    true
+  );
   assert.equal("message_count" in all[0], false);
 
   const search = await api.searchAgentConversations("Renamed");
@@ -190,7 +239,10 @@ test("the full bundled preload chain round-trips conversations and messages", as
   assert.equal("preview" in search[0], false);
 
   const preview = await api.getAgentConversationsWithPreview();
-  assert.equal(preview.find((c: Record<string, unknown>) => c.id === created.id)?.preview, "answer");
+  assert.equal(
+    preview.find((c: Record<string, unknown>) => c.id === created.id)?.preview,
+    "answer"
+  );
 
   assert.deepEqual(plain(await api.archiveAgentConversation(created.id)), { success: true });
   assert.equal((await api.getAgentConversations()).length, 0);
@@ -204,6 +256,7 @@ test("the full bundled preload chain round-trips conversations and messages", as
 
 test("missing ids stay null through the bridge", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api } = ctx;
 
@@ -220,6 +273,7 @@ test("missing ids stay null through the bridge", async (t: import("node:test").T
 
 test("a wrong-shaped main response rejects instead of becoming an empty chat", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, invoke } = ctx;
 
@@ -227,31 +281,50 @@ test("a wrong-shaped main response rejects instead of becoming an empty chat", a
   const apiA = (() => {
     // Rebuild the bridge over the corrupted invoke path.
     const handlers = new Map(activeHandlers);
+
     return loadBundledPreload(async (channel: string, ...args: unknown[]) => {
       if (channel === "db-get-agent-conversation") return { error: "boom" };
       const handler = handlers.get(channel);
+
       return handler?.(null, ...args);
     });
   })();
-  await assert.rejects((apiA as Record<string, (id: number) => Promise<unknown>>).getAgentConversation(1));
+
+  await assert.rejects(
+    (apiA as Record<string, (id: number) => Promise<unknown>>).getAgentConversation(1)
+  );
 
   // A null for a list channel is not a valid list.
   const apiB = loadBundledPreload(async (channel: string, ...args) => {
     if (channel === "db-get-agent-conversations") return null;
     const handler = new Map(activeHandlers!).get(channel);
+
     return handler?.(null, ...args);
   });
+
   await assert.rejects((apiB as Record<string, () => Promise<unknown>>).getAgentConversations());
 
   // A message with an unknown role is rejected at the preload boundary.
   const apiC = loadBundledPreload(async (channel: string, ...args) => {
     if (channel === "db-add-agent-message") {
-      return { id: 1, conversation_id: 1, role: "admin", content: "x", metadata: null, created_at: "t" };
+      return {
+        id: 1,
+        conversation_id: 1,
+        role: "admin",
+        content: "x",
+        metadata: null,
+        created_at: "t",
+      };
     }
+
     const handler = new Map(activeHandlers!).get(channel);
+
     return handler?.(null, ...args);
   });
-  await assert.rejects((apiC as Record<string, (...a: unknown[]) => Promise<unknown>>).addAgentMessage(1, "user", "x"));
+
+  await assert.rejects(
+    (apiC as Record<string, (...a: unknown[]) => Promise<unknown>>).addAgentMessage(1, "user", "x")
+  );
 
   assert.ok(api && invoke);
 });
@@ -262,6 +335,7 @@ test("the shared main registration registers every channel exactly once", async 
   // registered db-get-folders or db-create-agent-conversation twice — the
   // #23 packaged-start breakage — setupHandlers throws and the test fails.
   const ctx = await createFixture(t);
+
   if (!ctx) return;
 
   const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
@@ -271,7 +345,10 @@ test("the shared main registration registers every channel exactly once", async 
     if (previousHandlersModule) require.cache[handlersModulePath] = previousHandlersModule;
     else delete require.cache[handlersModulePath];
   });
-  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
+
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(
+    handlersModulePath
+  );
 
   // Granola-test style `anything()`: each property access returns a fresh
   // proxy instead of the self-referential one that blows the stack.
@@ -279,10 +356,13 @@ test("the shared main registration registers every channel exactly once", async 
     new Proxy(function () {}, {
       get: (_target, property) => {
         if (property === Symbol.toPrimitive || property === "toString") return () => "";
+
         if (property === "then") return undefined;
+
         if (property === "apply" || property === "call" || property === "bind") {
           return () => anything();
         }
+
         return anything();
       },
       apply: () => anything(),
@@ -291,7 +371,8 @@ test("the shared main registration registers every channel exactly once", async 
   const target = { databaseManager: ctx.db };
   Ctor.prototype.setupHandlers.call(
     new Proxy(target, {
-      get: (value: object, property: string | symbol) => (property in value ? (value as Record<string, unknown>)[property as string] : anything()),
+      get: (value: object, property: string | symbol) =>
+        property in value ? (value as Record<string, unknown>)[property as string] : anything(),
     })
   );
 

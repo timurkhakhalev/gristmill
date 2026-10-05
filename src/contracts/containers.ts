@@ -11,7 +11,9 @@ import { z } from "zod";
 import { noteItemSchema } from "./notes.js";
 
 const nonNegativeInt = z.number().int();
+
 const idArg = nonNegativeInt;
+
 const optionalId = nonNegativeInt.nullable().optional();
 
 export const folderSchema = z.object({
@@ -25,6 +27,7 @@ export const folderSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
 });
+
 export type FolderItem = z.infer<typeof folderSchema>;
 
 export const spaceSchema = z.object({
@@ -36,6 +39,7 @@ export const spaceSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
 });
+
 export type SpaceItem = z.infer<typeof spaceSchema>;
 
 export const folderNoteCountSchema = z.object({
@@ -43,6 +47,7 @@ export const folderNoteCountSchema = z.object({
   space_id: nonNegativeInt,
   count: nonNegativeInt,
 });
+
 export type FolderNoteCount = z.infer<typeof folderNoteCountSchema>;
 
 // Positional arguments are frozen API: renderer preload and main handlers
@@ -50,19 +55,30 @@ export type FolderNoteCount = z.infer<typeof folderNoteCountSchema>;
 // owns trimming, whitelisting and the "Folder name is required" /
 // "{success:false}" outcomes); only ids are strict.
 export const getFoldersArgsSchema = z.tuple([optionalId]);
+
 export const createFolderArgsSchema = z.tuple([z.unknown().optional(), optionalId]);
+
 export const deleteFolderArgsSchema = z.tuple([idArg]);
+
 export const renameFolderArgsSchema = z.tuple([idArg, z.unknown().optional()]);
+
 export const folderStyleSchema = z.object({
   icon: z.string().nullable().optional(),
   color: z.string().nullable().optional(),
 });
+
 export type FolderStyle = z.infer<typeof folderStyleSchema>;
+
 export const updateFolderStyleArgsSchema = z.tuple([idArg, folderStyleSchema]);
+
 export const reorderFoldersArgsSchema = z.tuple([idArg, z.array(idArg)]);
+
 export const moveFolderToSpaceArgsSchema = z.tuple([idArg, idArg]);
+
 export const getFolderNoteCountsArgsSchema = z.tuple([]);
+
 export const getSpacesArgsSchema = z.tuple([]);
+
 export const updateSpaceArgsSchema = z.tuple([idArg, z.unknown().optional()]);
 
 // renameFolder misses omit `folder` entirely (the SELECT after a 0-change
@@ -73,6 +89,7 @@ export const folderMutationResultSchema = z.object({
   folder: folderSchema.nullish(),
   error: z.string().optional(),
 });
+
 export type FolderMutationResult = z.infer<typeof folderMutationResultSchema>;
 
 // The moved notes are re-read after the move (new space_id already applied).
@@ -82,6 +99,7 @@ export const folderMoveResultSchema = z.object({
   notes: z.array(noteItemSchema).optional(),
   error: z.string().optional(),
 });
+
 export type FolderMoveResult = z.infer<typeof folderMoveResultSchema>;
 
 export const spaceMutationResultSchema = z.object({
@@ -89,6 +107,7 @@ export const spaceMutationResultSchema = z.object({
   space: spaceSchema.nullable().optional(),
   error: z.string().optional(),
 });
+
 export type SpaceMutationResult = z.infer<typeof spaceMutationResultSchema>;
 
 // deleteFolder never carries the row back; the DB layer reports plain success.
@@ -99,14 +118,19 @@ export const folderDeleteResultSchema = z.object({
 });
 
 export const folderListResultSchema = z.array(folderSchema);
+
 export const spaceListResultSchema = z.array(spaceSchema);
+
 export const folderNoteCountsResultSchema = z.array(folderNoteCountSchema);
 
 // Event payloads: folder/space rows carry the full local row; deletion only
 // carries the id the handler was called with.
 export const folderDeletedPayloadSchema = z.object({ id: idArg });
+
 export type FolderDeletedPayload = z.infer<typeof folderDeletedPayloadSchema>;
+
 export const folderCreatedRenamedSyncedPayloadSchema = folderSchema;
+
 export const spaceSyncedPayloadSchema = spaceSchema;
 
 // The renderer-facing surface: eight operations, one subscription. Main-only

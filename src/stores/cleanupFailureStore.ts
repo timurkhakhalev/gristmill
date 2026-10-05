@@ -41,8 +41,10 @@ export function recordCleanupFailure(failure: string | CleanupFailure = ""): voi
 
 export function consumeCleanupFailures(): number {
   const { pending } = useCleanupFailureStore.getState();
+
   if (pending > 0) {
     useCleanupFailureStore.setState({ pending: 0 });
   }
+
   return pending;
 }

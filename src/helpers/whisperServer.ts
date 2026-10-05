@@ -1,15 +1,27 @@
 const { spawn } = require("child_process");
+
 const EventEmitter = require("events");
+
 const fs = require("fs");
+
 const path = require("path");
+
 import http from "http";
+
 const os = require("os");
+
 const debugLogger = require("./debugLogger.js");
+
 const { ensureLocalEngine } = require("./localEngineInstaller.js");
+
 const { killProcess } = require("../utils/process.js");
+
 const { isPortAvailable, resolveBinaryPath } = require("../utils/serverUtils.js");
+
 import { getSafeTempDir } from "./safeTempDir.js";
+
 const { convertToWav } = require("./ffmpegUtils.js");
+
 import { createAbortError } from "./abortError.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
 import { sanitizeWhisperVadConfig, DEFAULT_WHISPER_VAD_CONFIG } from "./whisperVadConfig.js";
@@ -19,14 +31,23 @@ import {
 } from "./transcriptionTimeout.js";
 
 const PORT_RANGE_START = 8178;
+
 const PORT_RANGE_END = 8199;
+
 const STARTUP_TIMEOUT_MS = 30000;
+
 const HEALTH_CHECK_INTERVAL_MS = 5000;
+
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
+
 const DEFAULT_WHISPER_THREADS = 4;
+
 const MAX_AUTO_WHISPER_THREADS = 12;
+
 const MAX_MANUAL_WHISPER_THREADS = 64;
+
 const AUTO_THREAD_RATIO = 0.75;
+
 // Decoder anti-hallucination thresholds sent with /inference requests. whisper.cpp's
 // defaults (entropy 2.4, logprob -1.0) let a mostly-silent 30s decode window pass the
 // repetition check and emit training-data outro boilerplate ("Thank you for watching",
@@ -47,8 +68,10 @@ export function clamp(value: number, min: number, max: number): number {
 
 export function parsePositiveInteger(value: unknown): number | null {
   const normalized = String(value ?? "").trim();
+
   if (!/^\d+$/.test(normalized)) return null;
   const parsed = Number(normalized);
+
   return parsed > 0 ? parsed : null;
 }
 
@@ -60,6 +83,7 @@ export function getAvailableParallelism(): number {
   } catch {}
 
   const cpus = os.cpus();
+
   return Array.isArray(cpus) && cpus.length > 0 ? cpus.length : DEFAULT_WHISPER_THREADS;
 }
 
@@ -85,6 +109,7 @@ export function resolveWhisperThreads(
     parsePositiveInteger(runtime.availableParallelism) || getAvailableParallelism();
 
   const explicitThreads = parsePositiveInteger(options.threads);
+
   if (explicitThreads) {
     return createThreadResolution(
       clamp(explicitThreads, 1, MAX_MANUAL_WHISPER_THREADS),
@@ -99,6 +124,7 @@ export function resolveWhisperThreads(
 
   if (!shouldAutoTune) {
     const parsedEnvThreads = parsePositiveInteger(envThreads);
+
     if (parsedEnvThreads) {
       return createThreadResolution(
         clamp(parsedEnvThreads, 1, MAX_MANUAL_WHISPER_THREADS),
@@ -148,9 +174,11 @@ export function getVadSignature(
   options: { vadEnabled?: unknown; vadModelPath?: unknown; vadConfig?: unknown } = {}
 ): string {
   if (!isVadActive(options)) return "vad:off";
+
   const vadConfig = sanitizeWhisperVadConfig(
     (options.vadConfig as Record<string, unknown> | null) || DEFAULT_WHISPER_VAD_CONFIG
   );
+
   return `vad:on:${String(options.vadModelPath)}:${JSON.stringify(vadConfig)}`;
 }
 
@@ -198,6 +226,7 @@ export function buildWhisperServerArgs({
     const cfg = sanitizeWhisperVadConfig(
       (vadConfig as Record<string, unknown> | null) || DEFAULT_WHISPER_VAD_CONFIG
     );
+
     args.push(
       "--vad",
       "--vad-model",
@@ -267,7 +296,9 @@ export class WhisperServerManager extends EventEmitter {
             debugLogger.warn("Failed to chmod FFmpeg", { error: (chmodErr as Error).message });
           }
         }
+
         this.cachedFFmpegPath = unpackedPath;
+
         return unpackedPath;
       }
 
@@ -279,7 +310,9 @@ export class WhisperServerManager extends EventEmitter {
           debugLogger.debug("FFmpeg exists but not executable", { ffmpegPath });
           throw new Error("Not executable");
         }
+
         this.cachedFFmpegPath = ffmpegPath;
+
         return ffmpegPath;
       }
     } catch (err) {
@@ -292,6 +325,7 @@ export class WhisperServerManager extends EventEmitter {
     for (const candidate of systemCandidates) {
       if (fs.existsSync(candidate)) {
         this.cachedFFmpegPath = candidate;
+
         return candidate;
       }
     }
@@ -303,17 +337,22 @@ export class WhisperServerManager extends EventEmitter {
     for (const dir of pathDirs) {
       if (!dir) continue;
       const candidate = path.join(dir, pathBinary);
+
       if (!fs.existsSync(candidate)) continue;
+
       try {
         fs.accessSync(candidate, fs.constants.X_OK);
       } catch {
         continue;
       }
+
       this.cachedFFmpegPath = candidate;
+
       return candidate;
     }
 
     debugLogger.debug("FFmpeg not found");
+
     return null;
   }
 
@@ -321,7 +360,9 @@ export class WhisperServerManager extends EventEmitter {
     if (this.cachedServerBinaryPath) return this.cachedServerBinaryPath;
 
     const resolved = resolveBinaryPath("whisper-server-darwin-arm64");
+
     if (resolved) this.cachedServerBinaryPath = resolved;
+
     return resolved;
   }
 
@@ -344,6 +385,7 @@ export class WhisperServerManager extends EventEmitter {
           res.resume();
         }
       );
+
       req.on("error", () => resolve(false));
       req.on("timeout", () => {
         req.destroy();
@@ -375,36 +417,61 @@ export class WhisperServerManager extends EventEmitter {
     for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
       if (await isPortAvailable(port)) return port;
     }
+
     throw new Error(`No available ports in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
   }
 
   async start(modelPath: string, options: Record<string, unknown> = {}): Promise<void> {
-    const requestedOptions: Record<string, unknown> = { ...options,
-      ...(options.vadConfig ? { vadConfig: sanitizeWhisperVadConfig(options.vadConfig as Record<string, unknown>) } : {}),
+    const requestedOptions: Record<string, unknown> = {
+      ...options,
+      ...(options.vadConfig
+        ? { vadConfig: sanitizeWhisperVadConfig(options.vadConfig as Record<string, unknown>) }
+        : {}),
     };
+
     const threadResolution = resolveWhisperThreads(requestedOptions);
     const nextThreadSignature = getThreadSignature(threadResolution);
     const nextVadSignature = getVadSignature(requestedOptions);
-    const identity = JSON.stringify([modelPath, nextThreadSignature, threadResolution.source, nextVadSignature, requestedOptions.language || "auto"]);
+
+    const identity = JSON.stringify([
+      modelPath,
+      nextThreadSignature,
+      threadResolution.source,
+      nextVadSignature,
+      requestedOptions.language || "auto",
+    ]);
+
     if (this.startupPromise && this.startupIdentity === identity) return this.startupPromise;
     const generation = this.stopGeneration;
     const previous = this.startupPromise as Promise<void> | null;
-    const operation = (previous ?? Promise.resolve()).catch(() => {}).then(async () => {
-      if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
-      this.lastStartOptions = requestedOptions;
-      if (this.ready && !this.isRemote && this.activeStartIdentity === identity) return;
-      if (this.process || this.isRemote) await this.stopProcess();
-      if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
-      this.isRemote = false;
-      this.hostname = "127.0.0.1";
-      this.vadSignature = nextVadSignature;
-      this.threadSignature = nextThreadSignature;
-      await this._doStart(modelPath, { ...requestedOptions, threadResolution }, generation);
-      if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
-      this.activeStartIdentity = identity;
-    });
+
+    const operation = (previous ?? Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        if (generation !== this.stopGeneration)
+          throw new Error("whisper-server startup interrupted by stop");
+        this.lastStartOptions = requestedOptions;
+
+        if (this.ready && !this.isRemote && this.activeStartIdentity === identity) return;
+
+        if (this.process || this.isRemote) await this.stopProcess();
+
+        if (generation !== this.stopGeneration)
+          throw new Error("whisper-server startup interrupted by stop");
+        this.isRemote = false;
+        this.hostname = "127.0.0.1";
+        this.vadSignature = nextVadSignature;
+        this.threadSignature = nextThreadSignature;
+        await this._doStart(modelPath, { ...requestedOptions, threadResolution }, generation);
+
+        if (generation !== this.stopGeneration)
+          throw new Error("whisper-server startup interrupted by stop");
+        this.activeStartIdentity = identity;
+      });
+
     this.startupPromise = operation;
     this.startupIdentity = identity;
+
     try {
       await operation;
     } finally {
@@ -423,17 +490,24 @@ export class WhisperServerManager extends EventEmitter {
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
     this.startGeneration += 1;
     this._stopRequested = false;
+
     const threadResolution: ThreadResolution =
       options.threadResolution || resolveWhisperThreads(options);
+
     const serverBinary = this.getServerBinaryPath();
+
     if (!serverBinary) {
       await ensureLocalEngine("whisper-cpp");
     }
+
     const resolvedBinary = serverBinary ?? this.getServerBinaryPath();
+
     if (!resolvedBinary) throw new Error("whisper-server binary not found");
 
     const port = await this.findAvailablePort();
-    if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
+
+    if (generation !== this.stopGeneration)
+      throw new Error("whisper-server startup interrupted by stop");
     this.port = port;
     this.modelPath = modelPath;
 
@@ -458,6 +532,7 @@ export class WhisperServerManager extends EventEmitter {
 
     // FFmpeg is required for pre-converting audio to 16kHz mono WAV
     this.canConvert = !!ffmpegPath;
+
     if (ffmpegPath) {
       const ffmpegDir = path.dirname(ffmpegPath);
       spawnEnv.PATH = ffmpegDir + pathSep + spawnEnv.PATH;
@@ -508,18 +583,17 @@ export class WhisperServerManager extends EventEmitter {
     });
 
     try {
-      await this.waitForReady(
-        () => ({ stderr: stderrBuffer, exitCode }),
-        STARTUP_TIMEOUT_MS
-      );
+      await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }), STARTUP_TIMEOUT_MS);
     } catch (err: unknown) {
       if ((err as { isStopped?: boolean }).isStopped) throw err;
+
       if (shouldFallbackToDefaultThreads(threadResolution)) {
         const defaultThreadResolution = createThreadResolution(
           null,
           "auto-fallback",
           threadResolution.availableParallelism
         );
+
         debugLogger.warn("Auto whisper thread count failed, falling back to default", {
           selectedThreads: threadResolution.threads,
           availableParallelism: threadResolution.availableParallelism,
@@ -527,15 +601,22 @@ export class WhisperServerManager extends EventEmitter {
         });
         await this.stopProcess();
         this.threadSignature = getThreadSignature(threadResolution);
-        return this._doStart(modelPath, {
-          ...options,
-          threadResolution: defaultThreadResolution,
-        }, generation);
+
+        return this._doStart(
+          modelPath,
+          {
+            ...options,
+            threadResolution: defaultThreadResolution,
+          },
+          generation
+        );
       }
+
       throw err;
     }
 
-    if (generation !== this.stopGeneration) throw new Error("whisper-server startup interrupted by stop");
+    if (generation !== this.stopGeneration)
+      throw new Error("whisper-server startup interrupted by stop");
     this.startHealthCheck();
 
     debugLogger.info("whisper-server started successfully", {
@@ -564,10 +645,10 @@ export class WhisperServerManager extends EventEmitter {
           isStopped: true,
         });
       }
+
       if (!this.process || this.process.killed) {
-        const info = getProcessInfo
-          ? getProcessInfo()
-          : { stderr: null, exitCode: null };
+        const info = getProcessInfo ? getProcessInfo() : { stderr: null, exitCode: null };
+
         const stderr = info.stderr ? info.stderr.trim().slice(0, 200) : "";
         const details = stderr || (info.exitCode !== null ? `exit code: ${info.exitCode}` : "");
         throw new Error(
@@ -576,12 +657,14 @@ export class WhisperServerManager extends EventEmitter {
       }
 
       pollCount++;
+
       if (await this.checkHealth()) {
         this.ready = true;
         debugLogger.debug("whisper-server ready", {
           startupTimeMs: Date.now() - startTime,
           pollCount,
         });
+
         return;
       }
 
@@ -621,8 +704,10 @@ export class WhisperServerManager extends EventEmitter {
     this.healthCheckInterval = setInterval(async () => {
       if (!this.isRemote && !this.process) {
         this.stopHealthCheck();
+
         return;
       }
+
       if (!(await this.checkHealth())) {
         debugLogger.warn("whisper-server health check failed");
         this.ready = false;
@@ -637,12 +722,15 @@ export class WhisperServerManager extends EventEmitter {
     }
   }
 
-  async transcribe(audioBuffer: Buffer, options: {
-    language?: string | null;
-    initialPrompt?: string | null;
-    signal?: AbortSignal;
-    skipDecoderThresholds?: boolean;
-  } = {}): Promise<Record<string, unknown>> {
+  async transcribe(
+    audioBuffer: Buffer,
+    options: {
+      language?: string | null;
+      initialPrompt?: string | null;
+      signal?: AbortSignal;
+      skipDecoderThresholds?: boolean;
+    } = {}
+  ): Promise<Record<string, unknown>> {
     if (!this.ready || (!this.process && !this.isRemote)) {
       throw new Error("whisper-server is not running");
     }
@@ -661,13 +749,16 @@ export class WhisperServerManager extends EventEmitter {
 
     // signal is optional; only cancellable uploads pass one.
     const { language, initialPrompt, signal, skipDecoderThresholds } = options;
+
     if (signal?.aborted) throw createAbortError("whisper-server transcription cancelled");
 
     // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
     let finalBuffer = audioBuffer;
+
     if (!this.canConvert) {
       throw new Error("FFmpeg not found - required for audio conversion");
     }
+
     finalBuffer = await this._convertToWav(audioBuffer, signal);
 
     const boundary = `----WhisperBoundary${Date.now()}`;
@@ -722,13 +813,18 @@ export class WhisperServerManager extends EventEmitter {
     return await this._postInference(body, boundary, signal);
   }
 
-  _postInference(body: Buffer, boundary: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  _postInference(
+    body: Buffer,
+    boundary: string,
+    signal?: AbortSignal
+  ): Promise<Record<string, unknown>> {
     // Multipart boilerplate adds under a kilobyte, so body length tracks audio length.
     const timeoutMs = computeTranscriptionTimeoutMs(body.length / PCM16_MONO_16K_BYTES_PER_SECOND);
 
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
         reject(createAbortError("whisper-server request cancelled"));
+
         return;
       }
 
@@ -762,6 +858,7 @@ export class WhisperServerManager extends EventEmitter {
 
             if (res.statusCode !== 200) {
               reject(new Error(`whisper-server returned status ${res.statusCode}: ${data}`));
+
               return;
             }
 
@@ -781,15 +878,18 @@ export class WhisperServerManager extends EventEmitter {
         req.destroy();
         reject(createAbortError("whisper-server request cancelled"));
       };
+
       signal?.addEventListener("abort", onAbort, { once: true });
       const removeAbortListener = () => signal?.removeEventListener("abort", onAbort);
 
       req.on("error", (error: NodeJS.ErrnoException) => {
         removeAbortListener();
-        const err = Object.assign(
-          new Error(`whisper-server request failed: ${error.message}`),
-          { isConnectionError: true, code: error.code }
-        ) as Error & { isConnectionError: boolean; code?: string };
+
+        const err = Object.assign(new Error(`whisper-server request failed: ${error.message}`), {
+          isConnectionError: true,
+          code: error.code,
+        }) as Error & { isConnectionError: boolean; code?: string };
+
         reject(err);
       });
       req.on("timeout", () => {
@@ -812,6 +912,7 @@ export class WhisperServerManager extends EventEmitter {
     try {
       fs.writeFileSync(tempInputPath, audioBuffer);
       await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1, signal });
+
       return fs.readFileSync(tempWavPath);
     } finally {
       for (const f of [tempInputPath, tempWavPath]) {
@@ -827,13 +928,16 @@ export class WhisperServerManager extends EventEmitter {
   async stop(): Promise<void> {
     this.stopGeneration += 1;
     const pending = this.startupPromise as Promise<void> | null;
+
     const operation = Promise.all([this.stopProcess(), pending?.catch(() => {})]).then(() => {
       this.stopHealthCheck();
       this.ready = false;
       this.activeStartIdentity = null;
     });
+
     this.startupPromise = operation;
     this.startupIdentity = null;
+
     try {
       await operation;
     } finally {
@@ -851,11 +955,13 @@ export class WhisperServerManager extends EventEmitter {
       this.isRemote = false;
       this.hostname = "127.0.0.1";
       this.port = null;
+
       return;
     }
 
     if (!this.process) {
       this.ready = false;
+
       return;
     }
 
@@ -869,6 +975,7 @@ export class WhisperServerManager extends EventEmitter {
           if (this.process) {
             killProcess(this.process, "SIGKILL");
           }
+
           resolve();
         }, 5000);
 
@@ -894,6 +1001,7 @@ export class WhisperServerManager extends EventEmitter {
 
   getStatus(): Record<string, unknown> {
     const running = this.ready && (this.process !== null || this.isRemote);
+
     return {
       available: this.isAvailable(),
       running,
@@ -906,14 +1014,17 @@ export class WhisperServerManager extends EventEmitter {
   }
 }
 
-
-
 // Dual export: legacy tests require this module as the class and read the
 // argv/thread/VAD helpers as its statics, while the TS graph imports the
 // named exports.
 module.exports = WhisperServerManager;
+
 module.exports.WhisperServerManager = WhisperServerManager;
+
 module.exports.buildWhisperServerArgs = buildWhisperServerArgs;
+
 module.exports.INFERENCE_DECODER_FIELDS = INFERENCE_DECODER_FIELDS;
+
 module.exports.getVadSignature = getVadSignature;
+
 module.exports.resolveWhisperThreads = resolveWhisperThreads;

@@ -7,12 +7,17 @@
 // standalone hook boundary) against the real main-side cancel handler and
 // registry.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const test: typeof import("node:test") = require("node:test");
+
 const vm: typeof import("node:vm") = require("node:vm");
 
 const root = path.join(__dirname, "../..");
+
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 interface TestDeferred {
@@ -22,9 +27,11 @@ interface TestDeferred {
 
 const deferred = (): TestDeferred => {
   let resolve!: (value?: unknown) => void;
+
   const promise = new Promise<unknown>((r) => {
     resolve = r;
   });
+
   return { promise, resolve };
 };
 
@@ -57,8 +64,9 @@ interface Sandbox {
   handleRetry(): Promise<void>;
 }
 
-let registerUploadCancelHandler!: typeof import("../../src/helpers/uploadCancelIpcHandler.ts")["registerUploadCancelHandler"];
-let createUploadCancelRegistry!: typeof import("../../src/helpers/uploadCancelRegistry.ts")["createUploadCancelRegistry"];
+let registerUploadCancelHandler!: (typeof import("../../src/helpers/uploadCancelIpcHandler.ts"))["registerUploadCancelHandler"];
+
+let createUploadCancelRegistry!: (typeof import("../../src/helpers/uploadCancelRegistry.ts"))["createUploadCancelRegistry"];
 
 test.before(async () => {
   ({ registerUploadCancelHandler } = await import("../../src/helpers/uploadCancelIpcHandler.ts"));
@@ -73,9 +81,19 @@ function buildSandbox({ deletes }: { deletes: string[] }) {
     path.join(root, "src/components/notes/UploadAudioView.tsx"),
     "utf8"
   );
+
   const ts: typeof import("typescript") = require(path.join(root, "node_modules/typescript"));
-  const tree = ts.createSourceFile("view.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+
+  const tree = ts.createSourceFile(
+    "view.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+
   const initializers: Record<string, string> = {};
+
   const wanted = new Set([
     "reset",
     "cancelTranscription",
@@ -84,17 +102,17 @@ function buildSandbox({ deletes }: { deletes: string[] }) {
     "keepExecutionTempForRetry",
     "handleRetry",
   ]);
+
   const visit = (node: import("typescript").Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      wanted.has(node.name.getText(tree)) &&
-      node.initializer
-    ) {
+    if (ts.isVariableDeclaration(node) && wanted.has(node.name.getText(tree)) && node.initializer) {
       initializers[node.name.getText(tree)] = node.initializer.getText(tree);
     }
+
     ts.forEachChild(node, visit);
   };
+
   visit(tree);
+
   for (const name of wanted) {
     assert.ok(initializers[name], `${name} found in UploadAudioView`);
   }
@@ -161,12 +179,14 @@ function buildSandbox({ deletes }: { deletes: string[] }) {
     handleRetry: async () => {},
     runMountEffect: () => () => {},
   };
+
   for (const name of wanted) {
     // The initializers are TS source (type annotations inside the bodies);
     // transpile the parenthesized expression so vm parses plain JS.
     const expression = ts.transpileModule(`(${initializers[name]})`, {
       compilerOptions: { target: ts.ScriptTarget.ES2022 },
     }).outputText;
+
     sandbox[name] = vm.runInNewContext(expression, sandbox);
   }
 
@@ -174,18 +194,23 @@ function buildSandbox({ deletes }: { deletes: string[] }) {
   // view-owned temp deletion); expose it so tests unmount through the real
   // component path instead of poking mountedRef directly.
   const mountEffects: string[] = [];
+
   const visitEffects = (node: import("typescript").Node) => {
     if (ts.isCallExpression(node) && node.expression.getText(tree) === "useEffect") {
       const arg = node.arguments[0];
+
       if (arg && arg.getText(tree).includes("mountedRef.current = true")) {
         mountEffects.push(arg.getText(tree));
       }
     }
+
     ts.forEachChild(node, visitEffects);
   };
+
   visitEffects(tree);
   assert.equal(mountEffects.length, 1, "the mount effect with the unmount cleanup is unique");
   sandbox.runMountEffect = vm.runInNewContext(`(${mountEffects[0]})`, sandbox);
+
   return sandbox;
 }
 
@@ -199,15 +224,26 @@ function unmountView(sandbox: Sandbox) {
 
 // Real main-side cancel: the handler aborts the registry registration, whose
 // release is gated behind a deferred "reader close" the test controls.
-async function installCancelHandler({ sandbox, childClose }: { sandbox: Sandbox; childClose: TestDeferred }) {
+async function installCancelHandler({
+  sandbox,
+  childClose,
+}: {
+  sandbox: Sandbox;
+  childClose: TestDeferred;
+}) {
   let closed = false;
   const handlers = new Map();
   const registry = createUploadCancelRegistry();
-  registerUploadCancelHandler({ handle: (channel, fn) => handlers.set(channel, fn) }, {
-    uploadCancelRegistry: registry,
-  });
+  registerUploadCancelHandler(
+    { handle: (channel, fn) => handlers.set(channel, fn) },
+    {
+      uploadCancelRegistry: registry,
+    }
+  );
+
   const cancel = async (_event: unknown, payload: unknown) =>
     handlers.get("cancel-upload-transcription")(_event, payload);
+
   sandbox.transcribeFileWithSpeakers = async () => {
     const registration = registry.register(sandbox.singleRequestIdRef.current);
     registration.signal!.addEventListener("abort", () => {
@@ -216,8 +252,10 @@ async function installCancelHandler({ sandbox, childClose }: { sandbox: Sandbox;
         registration.release();
       });
     });
+
     return sandbox.transcription;
   };
+
   return {
     isClosed: () => closed,
     cancel,
@@ -343,8 +381,10 @@ test("a failure settling after unmount deletes the temp instead of leaking it", 
   const gate = deferred();
   sandbox.transcribeFileWithSpeakers = async () => {
     await gate.promise;
+
     return { success: false, code: "PROVIDER_ERROR" };
   };
+
   const run = sandbox.handleTranscribe();
   await tick();
   assert.equal(sandbox.executionTempRef.current, "/tmp/dl-4.wav", "the execution owns the temp");
@@ -379,6 +419,7 @@ test("a thrown settlement after unmount deletes the temp instead of leaking it",
     await gate.promise;
     throw new Error("reader blew up");
   };
+
   const run = sandbox.handleTranscribe();
   await tick();
   unmountView(sandbox);
@@ -395,52 +436,59 @@ test("a thrown settlement after unmount deletes the temp instead of leaking it",
 // failure must surface as an error state and Retry must re-save the ASR
 // result without re-transcribing.
 for (const failure of ["structured", "rejected"] as const) {
-test(`a ${failure} first Note save retries without re-transcribing`, async () => {
-  const deletes: string[] = [];
-  const sandbox = buildSandbox({ deletes });
-  const states: string[] = [];
-  sandbox.setState = (s: string) => states.push(s);
-  const savedTexts: string[] = [];
-  let saveFails = true;
-  sandbox.saveUploadNote = async (params: { text: string }) => {
-    savedTexts.push(params.text);
-    if (saveFails && failure === "rejected") throw new Error("DB unavailable");
-    return saveFails ? { success: false } : { success: true, note: { id: 7 } };
-  };
-  sandbox.downloadedTempPath = "/tmp/dl-6.wav";
-  sandbox.downloadedTempPathRef.current = "/tmp/dl-6.wav";
-  sandbox.file = fromUrlFile("/tmp/dl-6.wav");
+  test(`a ${failure} first Note save retries without re-transcribing`, async () => {
+    const deletes: string[] = [];
+    const sandbox = buildSandbox({ deletes });
+    const states: string[] = [];
+    sandbox.setState = (s: string) => states.push(s);
+    const savedTexts: string[] = [];
+    let saveFails = true;
+    sandbox.saveUploadNote = async (params: { text: string }) => {
+      savedTexts.push(params.text);
 
-  let transcriptions = 0;
-  sandbox.transcribeFileWithSpeakers = async () => {
-    transcriptions++;
-    return { success: true, text: "hello world", segments: [] };
-  };
+      if (saveFails && failure === "rejected") throw new Error("DB unavailable");
 
-  await sandbox.handleTranscribe();
-  assert.equal(transcriptions, 1);
-  assert.ok(!states.includes("complete"), "a save failure must not report complete");
-  assert.deepEqual(states.slice(-1), ["error"]);
-  assert.ok(sandbox.pendingSaveRef.current, "the ASR result is kept for a re-save");
-  assert.deepEqual(deletes, [], "the temp is kept for Retry");
+      return saveFails ? { success: false } : { success: true, note: { id: 7 } };
+    };
 
-  // Retry re-saves the kept result: no second transcription.
-  saveFails = false;
-  sandbox.transcribeFileWithSpeakers = async () => { transcriptions++; throw new Error("provider offline"); };
-  await sandbox.handleRetry();
-  assert.equal(transcriptions, 1, "Retry must not re-transcribe");
-  assert.deepEqual(savedTexts, ["hello world", "hello world"]);
-  assert.equal(sandbox.pendingSaveRef.current, null);
-  assert.deepEqual(states.slice(-1), ["complete"]);
-  assert.deepEqual(deletes, ["/tmp/dl-6.wav"], "the successful re-save releases the temp");
-  assert.equal(sandbox.downloadedTempPath, null, "the view no longer holds the released temp");
+    sandbox.downloadedTempPath = "/tmp/dl-6.wav";
+    sandbox.downloadedTempPathRef.current = "/tmp/dl-6.wav";
+    sandbox.file = fromUrlFile("/tmp/dl-6.wav");
 
-  // Start Over (the temp is already gone) deletes nothing again.
-  sandbox.reset();
-  assert.equal(sandbox.pendingSaveRef.current, null);
-  assert.deepEqual(deletes, ["/tmp/dl-6.wav"]);
-});
+    let transcriptions = 0;
+    sandbox.transcribeFileWithSpeakers = async () => {
+      transcriptions++;
 
+      return { success: true, text: "hello world", segments: [] };
+    };
+
+    await sandbox.handleTranscribe();
+    assert.equal(transcriptions, 1);
+    assert.ok(!states.includes("complete"), "a save failure must not report complete");
+    assert.deepEqual(states.slice(-1), ["error"]);
+    assert.ok(sandbox.pendingSaveRef.current, "the ASR result is kept for a re-save");
+    assert.deepEqual(deletes, [], "the temp is kept for Retry");
+
+    // Retry re-saves the kept result: no second transcription.
+    saveFails = false;
+    sandbox.transcribeFileWithSpeakers = async () => {
+      transcriptions++;
+      throw new Error("provider offline");
+    };
+
+    await sandbox.handleRetry();
+    assert.equal(transcriptions, 1, "Retry must not re-transcribe");
+    assert.deepEqual(savedTexts, ["hello world", "hello world"]);
+    assert.equal(sandbox.pendingSaveRef.current, null);
+    assert.deepEqual(states.slice(-1), ["complete"]);
+    assert.deepEqual(deletes, ["/tmp/dl-6.wav"], "the successful re-save releases the temp");
+    assert.equal(sandbox.downloadedTempPath, null, "the view no longer holds the released temp");
+
+    // Start Over (the temp is already gone) deletes nothing again.
+    sandbox.reset();
+    assert.equal(sandbox.pendingSaveRef.current, null);
+    assert.deepEqual(deletes, ["/tmp/dl-6.wav"]);
+  });
 }
 
 // The pending re-save's own settlement paths.
@@ -461,8 +509,11 @@ test("a rejected save in the pending re-save is caught and Retry still re-saves"
   let calls = 0;
   sandbox.saveUploadNote = async () => {
     calls++;
+
     if (calls === 1) return { success: false };
+
     if (calls === 2) throw new Error("db write failed");
+
     return { success: true, note: { id: 7 } };
   };
 
@@ -505,8 +556,10 @@ test("Cancel during the pending re-save drops the late settlement", async () => 
   const gate = deferred();
   sandbox.saveUploadNote = async () => {
     await gate.promise;
+
     return { success: true, note: { id: 9 } };
   };
+
   const retry = sandbox.handleRetry();
   await tick();
   assert.deepEqual(states.slice(-1), ["transcribing"]);

@@ -42,7 +42,10 @@ export class CalendarSyncInterval {
   // its completion; new explicit operations use the new generation.
   private _generation = 0;
 
-  constructor(syncFn: () => Promise<CalendarSyncOutcome | void>, { intervalMs, maxIntervalMs, logScope }: CalendarSyncIntervalOptions) {
+  constructor(
+    syncFn: () => Promise<CalendarSyncOutcome | void>,
+    { intervalMs, maxIntervalMs, logScope }: CalendarSyncIntervalOptions
+  ) {
     this.syncFn = syncFn;
     this.intervalMs = intervalMs;
     this.maxIntervalMs = maxIntervalMs;
@@ -56,6 +59,7 @@ export class CalendarSyncInterval {
 
   stop(): void {
     this._generation++;
+
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -69,8 +73,10 @@ export class CalendarSyncInterval {
   notifyOutcome(outcome: CalendarSyncOutcome | void): void {
     if (isCalendarSyncFailure(outcome)) {
       this._recordFailure(outcome as CalendarSyncOutcome);
+
       return;
     }
+
     if (this._consecutiveFailures > 0) {
       this._consecutiveFailures = 0;
       this._schedule();
@@ -84,6 +90,7 @@ export class CalendarSyncInterval {
 
   syncOnFocus(): void {
     const now = Date.now();
+
     if (now - this._lastFocusSync < FOCUS_SYNC_THROTTLE_MS) return;
     this._lastFocusSync = now;
     const generation = this._generation;
@@ -125,7 +132,12 @@ export class CalendarSyncInterval {
         })
         .catch((err) => {
           if (generation !== this._generation) return;
-          this._recordFailure({ total: 0, succeeded: 0, failed: 1, errors: [(err as Error).message] });
+          this._recordFailure({
+            total: 0,
+            succeeded: 0,
+            failed: 1,
+            errors: [(err as Error).message],
+          });
         });
     }, interval);
   }
@@ -146,6 +158,7 @@ export class CalendarSyncInterval {
 
   private _getInterval(): number {
     if (this._consecutiveFailures === 0) return this.intervalMs;
+
     return Math.min(this.intervalMs * Math.pow(2, this._consecutiveFailures), this.maxIntervalMs);
   }
 }
@@ -155,6 +168,9 @@ function describeOutcome(outcome: CalendarSyncOutcome): string {
 }
 
 module.exports = CalendarSyncInterval;
+
 module.exports.CalendarSyncInterval = CalendarSyncInterval;
+
 module.exports.FOCUS_SYNC_THROTTLE_MS = FOCUS_SYNC_THROTTLE_MS;
+
 module.exports.isCalendarSyncFailure = isCalendarSyncFailure;

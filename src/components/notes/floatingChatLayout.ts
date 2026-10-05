@@ -5,7 +5,9 @@ import {
 } from "../../utils/scrollFollowState";
 
 export const FLOATING_CHAT_INSET_EXTRA_PX = 32;
+
 export const FLOATING_CHAT_MIN_VISIBLE_CONTENT_PX = 80;
+
 export const FLOATING_CHAT_MAX_HEIGHT_CSS = "calc(100% - 7rem)";
 
 const SCROLL_BOTTOM_THRESHOLD_PX = 80;
@@ -41,19 +43,24 @@ export function observeFloatingChatLayout(
   const createResizeObserver =
     dependencies.createResizeObserver ??
     ((callback): ResizeObserverHandle => new ResizeObserver(callback));
+
   const requestFrame =
     dependencies.requestFrame ?? ((callback): number => requestAnimationFrame(callback));
+
   const cancelFrame =
     dependencies.cancelFrame ?? ((frameId): void => cancelAnimationFrame(frameId));
+
   const follower = createScrollFollowController({
     nearBottomThreshold: SCROLL_BOTTOM_THRESHOLD_PX,
   });
+
   let frameId: number | null = null;
   let forcePinPending = false;
   let touchY: number | null = null;
 
   const pinActiveScroller = (): void => {
     const scroller = getActiveScroller();
+
     if (!scroller) return;
     scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
     follower.follow();
@@ -61,12 +68,15 @@ export function observeFloatingChatLayout(
 
   const schedulePin = (force: boolean): void => {
     forcePinPending ||= force;
+
     if (!forcePinPending && !follower.isFollowing()) return;
+
     if (frameId !== null) cancelFrame(frameId);
     frameId = requestFrame((): void => {
       frameId = null;
       const shouldForce = forcePinPending;
       forcePinPending = false;
+
       if (shouldForce || follower.isFollowing()) pinActiveScroller();
     });
   };
@@ -81,6 +91,7 @@ export function observeFloatingChatLayout(
 
   const updateFollowState = (): void => {
     const scroller = getActiveScroller();
+
     if (scroller) follower.update(scroller);
   };
 
@@ -90,12 +101,15 @@ export function observeFloatingChatLayout(
   // mode — only a gesture aimed at the scroller itself counts as leaving.
   const stopFollowing = (target: EventTarget | null): void => {
     const scroller = getActiveScroller();
+
     if (!scroller || scroller.scrollHeight - scroller.clientHeight <= 1) return;
+
     // Cast, not `instanceof Node`: this module runs under node:test, which has
     // no DOM globals; wheel/touch targets are always nodes in the renderer.
     if (target == null || !scroller.contains(target as Node)) return;
     follower.leaveBottom();
     forcePinPending = false;
+
     if (frameId !== null) {
       cancelFrame(frameId);
       frameId = null;
@@ -112,7 +126,9 @@ export function observeFloatingChatLayout(
 
   const handleTouchMove = (event: TouchEvent): void => {
     const nextY = event.touches[0]?.clientY;
+
     if (nextY == null) return;
+
     if (touchY != null && nextY > touchY) stopFollowing(event.target);
     touchY = nextY;
   };
@@ -141,6 +157,7 @@ export function observeFloatingChatLayout(
     contentRoot.removeEventListener("touchstart", handleTouchStart, true);
     contentRoot.removeEventListener("touchmove", handleTouchMove, true);
     contentRoot.removeEventListener("touchend", handleTouchEnd, true);
+
     if (frameId !== null) cancelFrame(frameId);
     container.style.removeProperty("--floating-inset");
   };

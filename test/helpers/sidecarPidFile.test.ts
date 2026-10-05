@@ -1,11 +1,17 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("fs");
+
 const os = require("os");
+
 const path = require("path");
 
 let userDataDir: unknown;
+
 const electronPath = require.resolve("electron");
+
 require.cache[electronPath] = Object.assign(new (require("node:module").Module)(electronPath), {
   exports: {
     app: {
@@ -14,12 +20,17 @@ require.cache[electronPath] = Object.assign(new (require("node:module").Module)(
   },
 });
 
-const { write, clear, readAll }: typeof import("../../src/helpers/sidecarPidFile") = require("../../src/helpers/sidecarPidFile");
+const {
+  write,
+  clear,
+  readAll,
+}: typeof import("../../src/helpers/sidecarPidFile") = require("../../src/helpers/sidecarPidFile");
 
 function createUserDataDir(t: import("node:test").TestContext) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ow-sidecar-pids-"));
   userDataDir = dir;
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
   return path.join(dir, "sidecar-pids");
 }
 

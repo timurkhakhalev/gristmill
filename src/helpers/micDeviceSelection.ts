@@ -30,6 +30,7 @@ export function resolveMicDeviceSelection<Device extends MicrophoneDeviceLike>(
   const audioInputs = devices.filter(
     (device) => device.kind === undefined || device.kind === "audioinput"
   );
+
   const exactMatch = audioInputs.find((device) => device.deviceId === selectedDeviceId);
 
   if (exactMatch) {

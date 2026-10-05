@@ -21,8 +21,10 @@ export function recordTinfoilModelSwitch(event: TinfoilModelSwitch): void {
 
 export function consumeTinfoilModelSwitches(): TinfoilModelSwitch[] {
   const { events } = useTinfoilModelSwitchStore.getState();
+
   if (events.length > 0) {
     useTinfoilModelSwitchStore.setState({ events: [] });
   }
+
   return events;
 }

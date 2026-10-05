@@ -1,7 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 let MAX_AVAILABILITY_HORIZON_DAYS: number;
+
 test.before(async () => {
   ({ MAX_AVAILABILITY_HORIZON_DAYS } = await import("../../src/helpers/calendarAvailability.js"));
 });
@@ -9,11 +11,16 @@ test.before(async () => {
 const loadTool = () => import("../../src/services/tools/calendarAvailabilityTool.ts");
 
 const START = "2026-08-25T09:00:00+05:30";
+
 const END = "2026-08-25T17:00:00+05:30";
 
 // Narrow boundary: tests stub one IPC channel on a DOM-lib-typed window.
-const setWindow = (value: unknown) => { (globalThis as { window?: unknown }).window = value; };
+const setWindow = (value: unknown) => {
+  (globalThis as { window?: unknown }).window = value;
+};
+
 const originalWindow = (globalThis as { window?: unknown }).window;
+
 test.afterEach(() => {
   if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
   else setWindow(originalWindow);
@@ -40,12 +47,16 @@ function availability(overrides: Record<string, unknown> = {}) {
 
 test("declares a strict read-only availability schema", async () => {
   const { calendarAvailabilityTool } = await loadTool();
-  const properties = calendarAvailabilityTool.parameters.properties as Record<string, {
-    format?: string;
-    minimum?: number;
-    maximum?: number;
-    description?: string;
-  }>;
+
+  const properties = calendarAvailabilityTool.parameters.properties as Record<
+    string,
+    {
+      format?: string;
+      minimum?: number;
+      maximum?: number;
+      description?: string;
+    }
+  >;
 
   assert.equal(calendarAvailabilityTool.name, "get_calendar_availability");
   assert.equal(calendarAvailabilityTool.readOnly, true);
@@ -64,10 +75,7 @@ test("declares a strict read-only availability schema", async () => {
     new RegExp(`${MAX_AVAILABILITY_HORIZON_DAYS} local calendar days`)
   );
   assert.match(properties.end.description ?? "", /end plus buffer/);
-  assert.doesNotMatch(
-    properties.end.description ?? "",
-    /after start/
-  );
+  assert.doesNotMatch(properties.end.description ?? "", /after start/);
 });
 
 test("forwards valid options and strips all event-identifying response fields", async () => {
@@ -77,6 +85,7 @@ test("forwards valid options and strips all event-identifying response fields", 
     electronAPI: {
       calendarGetAvailability: async (request: unknown) => {
         calls.push(request);
+
         return {
           success: true,
           availability: availability({
@@ -208,6 +217,7 @@ test("returns the observed failing case as exact authoritative local facts", asy
     slotCount: number;
     availableSlots: Array<{ start: LocalizedTime; end: LocalizedTime; durationMinutes: number }>;
   };
+
   assert.equal(data.slotCount, 2);
   assert.deepEqual(
     data.availableSlots.map(({ start, end, durationMinutes }) => ({
@@ -240,7 +250,13 @@ interface LocalizedTime {
 
 interface AvailabilityFacts {
   timezone: string;
-  query: { start: LocalizedTime; end: LocalizedTime; minimumSlotMinutes?: number; bufferMinutes?: number; maxResults?: number };
+  query: {
+    start: LocalizedTime;
+    end: LocalizedTime;
+    minimumSlotMinutes?: number;
+    bufferMinutes?: number;
+    maxResults?: number;
+  };
   slotCount: number;
   availableSlots: Array<{ start: LocalizedTime; end: LocalizedTime; durationMinutes: number }>;
   hasMore: boolean;
@@ -272,6 +288,7 @@ test("localizes each DST boundary independently", async () => {
     start: "2026-11-01T01:00:00-04:00",
     end: "2026-11-01T02:00:00-05:00",
   });
+
   const [slot] = (result.data as AvailabilityFacts).availableSlots;
 
   assert.deepEqual(
@@ -293,6 +310,7 @@ test("omits IPC defaults when optional arguments are not supplied", async () => 
     electronAPI: {
       calendarGetAvailability: async (value: unknown) => {
         request = value;
+
         return {
           success: true,
           availability: availability({ busy: [], isEntireRangeFree: true }),
@@ -314,6 +332,7 @@ test("treats explicit null optional arguments as absent", async () => {
     electronAPI: {
       calendarGetAvailability: async (value: unknown) => {
         request = value;
+
         return {
           success: true,
           availability: availability({ busy: [], isEntireRangeFree: true }),
@@ -357,15 +376,18 @@ test("does not describe a too-short free range as an available slot", async () =
 
 test("delegates the local-calendar-day horizon to authoritative IPC validation", async () => {
   const { calendarAvailabilityTool } = await loadTool();
+
   const request = {
     start: "2026-10-30T09:00:00-04:00",
     end: "2026-11-06T09:00:00-05:00",
   };
+
   let forwarded: unknown;
   setWindow({
     electronAPI: {
       calendarGetAvailability: async (value: unknown) => {
         forwarded = value;
+
         return { success: true, availability: availability() };
       },
     },
@@ -385,6 +407,7 @@ test("rejects malformed and out-of-bounds requests before IPC", async () => {
     electronAPI: {
       calendarGetAvailability: async () => {
         calls += 1;
+
         return { success: true, availability: availability() };
       },
     },
@@ -413,6 +436,7 @@ test("rejects malformed and out-of-bounds requests before IPC", async () => {
     assert.equal(result.success, false, JSON.stringify(args));
     assert.match(result.displayText, /^Invalid calendar availability request/);
   }
+
   assert.equal(calls, 0);
 });
 
@@ -438,10 +462,14 @@ test("fails generically without exposing IPC or provider errors", async () => {
     displayText: "Failed to fetch calendar availability",
   });
 
-  (globalThis as unknown as { window: { electronAPI: { calendarGetAvailability: () => Promise<unknown> } } })
-    .window.electronAPI.calendarGetAvailability = async () => {
+  (
+    globalThis as unknown as {
+      window: { electronAPI: { calendarGetAvailability: () => Promise<unknown> } };
+    }
+  ).window.electronAPI.calendarGetAvailability = async () => {
     throw new Error("database path and event title");
   };
+
   const thrown = await calendarAvailabilityTool.execute({ start: START, end: END });
   assert.equal(thrown.displayText, "Failed to fetch calendar availability");
   assert.doesNotMatch(
@@ -452,7 +480,10 @@ test("fails generically without exposing IPC or provider errors", async () => {
 
 test("relays only the time- and connection-dependent validation errors", async () => {
   const { calendarAvailabilityTool } = await loadTool();
-  const { USER_CORRECTABLE_ERRORS }: typeof import("../../src/helpers/calendarAvailability") = require("../../src/helpers/calendarAvailability");
+
+  const {
+    USER_CORRECTABLE_ERRORS,
+  }: typeof import("../../src/helpers/calendarAvailability") = require("../../src/helpers/calendarAvailability");
 
   for (const message of Object.values(USER_CORRECTABLE_ERRORS)) {
     setWindow({
@@ -486,6 +517,7 @@ test("fails closed when IPC returns a malformed availability payload", async () 
 
 test("registry exposes availability only for a connected calendar", async () => {
   const { createToolRegistry } = await import("../../src/services/tools/index.js");
+
   const settings = {
     isSignedIn: false,
     cloudBackupEnabled: false,

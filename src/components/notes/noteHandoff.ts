@@ -19,5 +19,6 @@ export function takeNoteHandoff(noteId: number): NoteHandoff | null {
   if (pending?.noteId !== noteId) return null;
   const handoff = pending;
   pending = null;
+
   return handoff;
 }

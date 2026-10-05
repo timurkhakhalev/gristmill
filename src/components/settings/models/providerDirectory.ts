@@ -46,7 +46,11 @@ export interface ProviderEntry {
   noteKey?: string;
 }
 
-const secret = (key: CredentialKey, capability: ProviderCapability, labelKey?: string): CredentialField => ({
+const secret = (
+  key: CredentialKey,
+  capability: ProviderCapability,
+  labelKey?: string
+): CredentialField => ({
   key,
   input: "secret",
   capability,
@@ -151,7 +155,13 @@ export const PROVIDER_DIRECTORY: ProviderEntry[] = [
           { value: "eu", label: "EU" },
         ],
       },
-      { key: "cortiTenant", input: "text", capability: "speech", labelKey: "transcription.corti.tenant", placeholder: "base" },
+      {
+        key: "cortiTenant",
+        input: "text",
+        capability: "speech",
+        labelKey: "transcription.corti.tenant",
+        placeholder: "base",
+      },
     ],
   },
 ];
@@ -172,5 +182,6 @@ export function isProviderReady(
   const secrets = entry.fields.filter((field) => field.input === "secret");
   const own = secrets.filter((field) => field.capability === capability);
   const required = own.length ? own : secrets;
+
   return required.length > 0 && required.every((field) => !!values[field.key]?.trim());
 }

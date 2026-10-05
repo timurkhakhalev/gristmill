@@ -39,6 +39,7 @@ export function createSnippetTool(getSnippets: () => Snippet[]): ToolDefinition 
       const requested = typeof args.trigger === "string" ? args.trigger : "";
       const wanted = normalizeTrigger(requested);
       const snippet = getSnippets().find((s) => normalizeTrigger(s.trigger) === wanted);
+
       if (!snippet) {
         return {
           success: false,
@@ -46,6 +47,7 @@ export function createSnippetTool(getSnippets: () => Snippet[]): ToolDefinition 
           displayText: `No snippet with trigger "${requested}". Saved triggers: ${triggerList()}`,
         };
       }
+
       return {
         success: true,
         data: { trigger: snippet.trigger, text: snippet.replacement },
@@ -58,14 +60,17 @@ export function createSnippetTool(getSnippets: () => Snippet[]): ToolDefinition 
 function parseSnippetInputs(values: unknown): Snippet[] {
   if (!Array.isArray(values)) return [];
   const byKey = new Map<string, Snippet>();
+
   for (const value of values) {
     const raw = value as Partial<Snippet> | null;
     const trigger = typeof raw?.trigger === "string" ? raw.trigger.trim() : "";
     const replacement = typeof raw?.replacement === "string" ? raw.replacement.trim() : "";
+
     if (trigger && trigger.length <= MAX_SNIPPET_TRIGGER_LENGTH && replacement) {
       byKey.set(normalizeTrigger(trigger), { trigger, replacement });
     }
   }
+
   return [...byKey.values()];
 }
 
@@ -128,11 +133,13 @@ export function createUpdateSnippetsTool(actions: SnippetActions): ToolDefinitio
 
       const replacedKeys = new Set(replaced.map(normalizeTrigger));
       const added = add.map((s) => s.trigger).filter((t) => !replacedKeys.has(normalizeTrigger(t)));
+
       const summary = [
         added.length ? `Added ${quoteList(added)}` : "",
         replaced.length ? `Replaced ${quoteList(replaced)}` : "",
         removed.length ? `Removed ${quoteList(removed)}` : "",
       ].filter(Boolean);
+
       return {
         success: true,
         data: { added, replaced, removed, notFound },

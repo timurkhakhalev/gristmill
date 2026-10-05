@@ -17,13 +17,15 @@ export function splitIntoSentences(text: string): string[] {
   if (typeof Intl !== "undefined" && (Intl as { Segmenter?: unknown }).Segmenter) {
     try {
       const segmenter = new Intl.Segmenter(undefined, { granularity: "sentence" });
-      return Array.from(segmenter.segment(text), (s: { segment: string }) => s.segment.trim()).filter(
-        (s: string) => s.length > 0
-      );
+
+      return Array.from(segmenter.segment(text), (s: { segment: string }) =>
+        s.segment.trim()
+      ).filter((s: string) => s.length > 0);
     } catch {
       // fall through to regex
     }
   }
+
   return text
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
@@ -34,9 +36,11 @@ export function formatTimestamp(seconds: number): string {
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
+
   if (hrs > 0) {
     return `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   }
+
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
@@ -53,6 +57,7 @@ export function mergeSpeakersWithText(
   const maxSegmentEnd = segments.reduce((max, s) => Math.max(max, s.end || 0), 0);
 
   const sentences = splitIntoSentences(text);
+
   if (sentences.length === 0) {
     return [{ speaker: segments[0].speaker, text, start: segments[0].start, end: maxSegmentEnd }];
   }
@@ -69,6 +74,7 @@ export function mergeSpeakersWithText(
 
     let bestSegment: SpeakerMergeSegment | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
+
     for (const seg of segments) {
       const distance =
         sentenceMidpoint < seg.start
@@ -76,10 +82,12 @@ export function mergeSpeakersWithText(
           : sentenceMidpoint > seg.end
             ? sentenceMidpoint - seg.end
             : 0;
+
       if (distance < bestDistance) {
         bestDistance = distance;
         bestSegment = seg;
       }
+
       if (distance === 0) break;
     }
 
@@ -93,8 +101,10 @@ export function mergeSpeakersWithText(
   }
 
   const consolidated: MergedSpeakerSegment[] = [];
+
   for (const item of assigned) {
     const prev = consolidated[consolidated.length - 1];
+
     if (prev && prev.speaker === item.speaker) {
       prev.text += " " + item.text;
       prev.end = Math.max(prev.end, item.end);
@@ -115,8 +125,10 @@ export function formatSpeakerTranscript(mergedSegments: MergedSpeakerSegment[]):
       if (!speakerMap.has(seg.speaker)) {
         speakerMap.set(seg.speaker, nextIndex++);
       }
+
       const label = `Speaker ${speakerMap.get(seg.speaker)}`;
       const timeRange = `${formatTimestamp(seg.start)} - ${formatTimestamp(seg.end)}`;
+
       return `[${label}] ${timeRange}\n${seg.text}`;
     })
     .join("\n\n");

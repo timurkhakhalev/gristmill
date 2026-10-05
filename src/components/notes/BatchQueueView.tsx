@@ -43,11 +43,15 @@ export function BatchWarningIndicator({
   t,
 }: BatchWarningIndicatorProps): JSX.Element | null {
   const messages: string[] = [];
+
   if (transcriptionWarning) messages.push(t("notes.upload.partialWarning"));
+
   if (diarizationWarning) messages.push(t("notes.upload.diarizationWarning"));
+
   if (messages.length === 0) return null;
 
   const label = messages.join(" ");
+
   return (
     <span className="flex shrink-0" role="img" title={label} aria-label={label}>
       <AlertTriangle size={11} className="text-warning" />
@@ -68,8 +72,10 @@ export default function BatchQueueView({
   onOpenNote,
 }: BatchQueueViewProps) {
   const { t } = useTranslation();
+
   const allDone =
     queue.length > 0 && queue.every((i) => i.status === "done" || i.status === "error");
+
   // Failed items still count as settled so the bar reaches 100% when the run ends.
   const overallProgress =
     totalCount > 0 ? Math.round(((completedCount + failedCount) / totalCount) * 100) : 0;
@@ -120,7 +126,9 @@ export default function BatchQueueView({
             )}
           >
             <StatusIcon status={item.status} />
-            <span dir="auto" className="flex-1 truncate text-muted">{item.name}</span>
+            <span dir="auto" className="flex-1 truncate text-muted">
+              {item.name}
+            </span>
 
             {item.status === "downloading" && (
               <div className="w-16 h-[2px] rounded-full bg-default overflow-hidden">

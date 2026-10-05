@@ -63,17 +63,21 @@ function reconcileSelectedModels(
   const available = new Set(models.map((model) => model.id));
   const settings = getSettings() as unknown as Record<string, unknown>;
   const replacement = pickDefaultTinfoilModel(models);
+
   if (!replacement) return;
   const announced = new Set<string>();
 
   for (const scope of Object.values(INFERENCE_SCOPES)) {
     const { provider, model } = scope.storeKeys;
+
     if (settings[provider] !== "tinfoil") continue;
 
     const selected = settings[model];
+
     if (typeof selected !== "string" || !selected || available.has(selected)) continue;
 
     setStringSetting(model, replacement.id);
+
     // Several scopes can share a retired model; say so once.
     if (announced.has(selected)) continue;
     announced.add(selected);
@@ -88,11 +92,13 @@ let inFlight: Promise<CloudModelDefinition[]> | null = null;
 
 async function fetchAndApply(): Promise<CloudModelDefinition[]> {
   const fetchModels = window.electronAPI?.getTinfoilChatModels;
+
   if (!fetchModels) {
     throw new Error("Tinfoil model list is unavailable");
   }
 
   const models = toCloudModels(await fetchModels());
+
   if (models.length === 0) {
     // Far more likely something upstream broke, so keep what we already have.
     throw new Error("Tinfoil returned no chat models");
@@ -102,6 +108,7 @@ async function fetchAndApply(): Promise<CloudModelDefinition[]> {
   applyTinfoilModels(models);
   writeCachedTinfoilModels(models);
   reconcileSelectedModels(previous, models);
+
   return models;
 }
 
@@ -122,9 +129,11 @@ export function isTinfoilListFresh(): boolean {
  */
 export function refreshTinfoilCatalogAndReconcileSelections(): Promise<CloudModelDefinition[]> {
   const cached = readCachedTinfoilModels();
+
   if (isCachedListFresh(cached)) {
     // Another window may have fetched this; make sure our registry has it too.
     applyTinfoilModels(cached.models);
+
     return Promise.resolve(cached.models);
   }
 
@@ -133,5 +142,6 @@ export function refreshTinfoilCatalogAndReconcileSelections(): Promise<CloudMode
       inFlight = null;
     });
   }
+
   return inFlight;
 }

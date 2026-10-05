@@ -8,8 +8,11 @@
 // has to fail closed: the fall-through at the end of resolveTranscriptionRoute
 // would otherwise POST the user's audio to api.openai.com with their OpenAI key.
 export const STREAMING_ONLY_PROVIDERS = new Set(["assemblyai"]);
+
 export const DEEPGRAM_FILE_SIZE_LIMIT = 2 * 1024 * 1024 * 1024;
+
 export const ELEVENLABS_FILE_SIZE_LIMIT = 3 * 1024 * 1024 * 1024;
+
 export const GEMINI_FILE_SIZE_LIMIT = 2 * 1024 * 1024 * 1024;
 
 // Single source for the default cloud transcription provider used by the

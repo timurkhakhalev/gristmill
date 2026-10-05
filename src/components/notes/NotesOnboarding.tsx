@@ -20,9 +20,14 @@ interface NotesOnboardingProps {
 function useMeetingTranscriptionReady() {
   return useSettingsStore((state) => {
     const meeting = selectResolvedMeetingTranscription(state);
+
     if (meeting.transcriptionMode === "local") return true;
+
     if (meeting.transcriptionMode !== "providers") return false;
-    if (meeting.cloudTranscriptionProvider === "custom") return !!meeting.cloudTranscriptionBaseUrl?.trim();
+
+    if (meeting.cloudTranscriptionProvider === "custom")
+      return !!meeting.cloudTranscriptionBaseUrl?.trim();
+
     return !!getTranscriptionApiKey(meeting.cloudTranscriptionProvider, state);
   });
 }
@@ -56,7 +61,11 @@ function SetupStep({
         <p className="text-sm font-medium text-foreground">{title}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
       </div>
-      {done ? <span className="shrink-0 text-xs font-medium text-success">{doneLabel}</span> : action}
+      {done ? (
+        <span className="shrink-0 text-xs font-medium text-success">{doneLabel}</span>
+      ) : (
+        action
+      )}
     </li>
   );
 }
@@ -65,13 +74,19 @@ export default function NotesOnboarding({ onComplete, preview = false }: NotesOn
   const { t } = useTranslation();
   const { isLLMConfigured, complete } = useNotesOnboarding();
   const transcriptionReady = useMeetingTranscriptionReady();
-  const { granted: systemAudioGranted, mode: systemAudioMode, request: requestSystemAudio } =
-    useSystemAudioPermission();
+
+  const {
+    granted: systemAudioGranted,
+    mode: systemAudioMode,
+    request: requestSystemAudio,
+  } = useSystemAudioPermission();
+
   const [isRequestingSystemAudio, setIsRequestingSystemAudio] = useState(false);
   const showSystemAudio = canManageSystemAudioInApp({ mode: systemAudioMode });
 
   const handleGrantSystemAudio = useCallback(async () => {
     setIsRequestingSystemAudio(true);
+
     try {
       await requestSystemAudio();
     } finally {

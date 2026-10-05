@@ -29,18 +29,29 @@ export interface ShortcutEvent {
 export function resolveAppShortcut(event: ShortcutEvent): AppShortcut | null {
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return null;
   const key = event.key.toLowerCase();
+
   if (event.shiftKey) {
     if (key === "n") return "new-folder";
+
     if (event.code === "BracketRight" || key === "}" || key === "]") return "next-note";
+
     if (event.code === "BracketLeft" || key === "{" || key === "[") return "prev-note";
+
     return null;
   }
+
   if (key === "k") return "search";
+
   if (key === ",") return "settings";
+
   if (key === "n") return "new-note";
+
   if (key === "1") return "view-notes";
+
   if (key === "2") return "view-upload";
+
   if (key === "/") return "shortcuts-help";
+
   return null;
 }
 

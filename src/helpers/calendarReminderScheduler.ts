@@ -11,10 +11,7 @@ function notificationKey(event: Pick<CalendarEventRow, "provider" | "id">): stri
 // A solo event with no invitees and no meeting link is a time block (focus
 // time, a personal reminder), not a meeting — every provider syncs those.
 function isReminderEligible(event: CalendarEventRow): boolean {
-  return (
-    (event.attendees_count ?? 0) > 0 ||
-    getMeetingJoinUrl(event as never) !== null
-  );
+  return (event.attendees_count ?? 0) > 0 || getMeetingJoinUrl(event as never) !== null;
 }
 
 export interface ReminderSchedulerDb {
@@ -48,14 +45,18 @@ export class CalendarReminderScheduler {
     }
 
     const upcoming = this.databaseManager.getUpcomingEvents(1440);
+
     const next = upcoming.find(
       (event) => isReminderEligible(event) && !this.notifiedMeetings.has(notificationKey(event))
     );
+
     if (!next) return;
 
     const delay = new Date(next.start_time).getTime() - MEETING_REMINDER_LEAD_MS - Date.now();
+
     if (delay <= 0) {
       this.onMeetingStart(next);
+
       return;
     }
 
@@ -67,10 +68,12 @@ export class CalendarReminderScheduler {
   onMeetingStart(event: CalendarEventRow): void {
     if (!isReminderEligible(event)) {
       this.scheduleNextMeeting();
+
       return;
     }
 
     const events = this.databaseManager.getActiveEvents();
+
     const stillExists =
       events.some((e) => notificationKey(e) === notificationKey(event)) ||
       this.databaseManager
@@ -79,6 +82,7 @@ export class CalendarReminderScheduler {
 
     if (!stillExists) {
       this.scheduleNextMeeting();
+
       return;
     }
 
@@ -94,11 +98,7 @@ export class CalendarReminderScheduler {
   }
 
   onMeetingEnd(): void {
-    debugLogger.info(
-      "Calendar meeting ended",
-      { eventId: this.activeMeeting?.id },
-      "calendar"
-    );
+    debugLogger.info("Calendar meeting ended", { eventId: this.activeMeeting?.id }, "calendar");
     this.activeMeeting = null;
     this._clearMeetingEndTimer();
     this.scheduleNextMeeting();
@@ -106,9 +106,11 @@ export class CalendarReminderScheduler {
 
   onWakeFromSleep(): void {
     const activeEvents = this.databaseManager.getActiveEvents();
+
     if (activeEvents.length > 0 && !this.activeMeeting) {
       this.onMeetingStart(activeEvents[0]);
     }
+
     this.scheduleNextMeeting();
   }
 
@@ -131,6 +133,7 @@ export class CalendarReminderScheduler {
     if (!this.activeMeeting || this.activeMeeting.provider !== provider) return;
 
     const key = notificationKey(this.activeMeeting);
+
     const currentEvent = [
       ...this.databaseManager.getActiveEvents(),
       ...this.databaseManager.getUpcomingEvents(1),
@@ -139,6 +142,7 @@ export class CalendarReminderScheduler {
     if (!currentEvent) {
       this.activeMeeting = null;
       this._clearMeetingEndTimer();
+
       return;
     }
 
@@ -149,6 +153,7 @@ export class CalendarReminderScheduler {
   private _scheduleMeetingEnd(event: CalendarEventRow): void {
     this._clearMeetingEndTimer();
     const endDelay = new Date(event.end_time).getTime() - Date.now();
+
     if (endDelay > 0) {
       this.meetingEndTimer = setTimeout(() => {
         this.onMeetingEnd();
@@ -168,6 +173,7 @@ export class CalendarReminderScheduler {
       clearTimeout(this.nextMeetingTimer);
       this.nextMeetingTimer = null;
     }
+
     this._clearMeetingEndTimer();
     this.activeMeeting = null;
   }
@@ -178,6 +184,7 @@ export class CalendarReminderScheduler {
     if (!provider) {
       this.stop();
       this.notifiedMeetings.clear();
+
       return;
     }
 
@@ -192,6 +199,7 @@ export class CalendarReminderScheduler {
     }
 
     const prefix = `${provider}:`;
+
     for (const key of this.notifiedMeetings) {
       if (key.startsWith(prefix)) this.notifiedMeetings.delete(key);
     }
@@ -201,4 +209,5 @@ export class CalendarReminderScheduler {
 }
 
 module.exports = CalendarReminderScheduler;
+
 module.exports.CalendarReminderScheduler = CalendarReminderScheduler;

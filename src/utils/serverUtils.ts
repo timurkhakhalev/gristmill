@@ -34,6 +34,7 @@ export async function findAvailablePort(rangeStart: number, rangeEnd: number): P
   for (let port = rangeStart; port <= rangeEnd; port++) {
     if (await isPortAvailable(port)) return port;
   }
+
   throw new Error(`No available ports in range ${rangeStart}-${rangeEnd}`);
 }
 
@@ -45,8 +46,10 @@ export function getLocalEngineBinDir(): string {
 
 export function resolveBinaryPath(binaryName: string): string | null {
   const candidate = path.join(getLocalEngineBinDir(), binaryName);
+
   try {
     fs.accessSync(candidate, fs.constants.X_OK);
+
     return candidate;
   } catch {
     return null;

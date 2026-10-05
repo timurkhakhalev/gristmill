@@ -4,10 +4,15 @@
 // conversion failure and read failure all release them, and an abort before
 // conversion starts no inference.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const fs = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
 
 const MODEL_NAME = "parakeet-tdt-0.6b-v3";
@@ -29,9 +34,11 @@ function createFloat32Wav(sampleValue: number, sampleCount = 160) {
   wav.writeUInt16LE(32, 34);
   wav.write("data", 36);
   wav.writeUInt32LE(dataSize, 40);
+
   for (let index = 0; index < sampleCount; index += 1) {
     wav.writeFloatLE(sampleValue, 44 + index * 4);
   }
+
   return wav;
 }
 
@@ -52,9 +59,11 @@ function createPcm16Wav(sampleValue: number, sampleCount = 160) {
   wav.writeUInt16LE(16, 34);
   wav.write("data", 36);
   wav.writeUInt32LE(dataSize, 40);
+
   for (let index = 0; index < sampleCount; index += 1) {
     wav.writeInt16LE(Math.round(sampleValue * 32767), 44 + index * 2);
   }
+
   return wav;
 }
 
@@ -65,10 +74,7 @@ interface LoadedParakeet {
 
 // Asserts the exact files this operation created are gone — never a global
 // tmpdir scan, which concurrent tests' real parakeet-* files would poison.
-function assertTempFilesGone(
-  call: { input: string; output: string },
-  message: string
-): void {
+function assertTempFilesGone(call: { input: string; output: string }, message: string): void {
   assert.equal(fs.existsSync(call.input), false, `${message}: temp input must be unlinked`);
   assert.equal(fs.existsSync(call.output), false, `${message}: temp WAV must be unlinked`);
 }
@@ -91,6 +97,7 @@ function loadWithConvertToWav(behavior: (outputPath: string) => void): LoadedPar
   ) {
     if (request === "./ffmpegUtils.js" && parent?.filename?.endsWith("parakeetServer.ts")) {
       const ffmpegUtils = require("../../src/helpers/ffmpegUtils");
+
       return {
         ...ffmpegUtils,
         getFFmpegPath: () => "/mock/ffmpeg",
@@ -104,15 +111,17 @@ function loadWithConvertToWav(behavior: (outputPath: string) => void): LoadedPar
         },
       };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
   delete require.cache[parakeetServerModulePath];
+
   try {
     const ParakeetServerManager = require("../../src/helpers/parakeetServer");
+
     return {
-      ParakeetServerManager:
-        ParakeetServerManager.ParakeetServerManager ?? ParakeetServerManager,
+      ParakeetServerManager: ParakeetServerManager.ParakeetServerManager ?? ParakeetServerManager,
       convertCalls,
     };
   } finally {
@@ -127,11 +136,15 @@ function withIsolatedModelDir<T>(run: () => Promise<T>): Promise<T> {
   process.env.GRISTMILL_CACHE_ROOT = cacheRoot;
   const modelDir = path.join(cacheRoot, "parakeet-models", MODEL_NAME);
   fs.mkdirSync(modelDir, { recursive: true });
-  const { getRequiredModelFiles }: typeof import("../../src/helpers/parakeetModelInfo") =
-    require("../../src/helpers/parakeetModelInfo");
+
+  const {
+    getRequiredModelFiles,
+  }: typeof import("../../src/helpers/parakeetModelInfo") = require("../../src/helpers/parakeetModelInfo");
+
   for (const file of getRequiredModelFiles(MODEL_NAME)) {
     fs.writeFileSync(path.join(modelDir, file), "");
   }
+
   return run().finally(() => {
     if (previous === undefined) delete process.env.GRISTMILL_CACHE_ROOT;
     else process.env.GRISTMILL_CACHE_ROOT = previous;
@@ -143,6 +156,7 @@ test("preprocessing passes the caller's signal to convertToWav and cleans up on 
   const { ParakeetServerManager, convertCalls } = loadWithConvertToWav((outputPath) => {
     fs.writeFileSync(outputPath, createPcm16Wav(0.5));
   });
+
   await withIsolatedModelDir(async () => {
     const manager = new ParakeetServerManager();
     manager.wsServer = {
@@ -150,13 +164,19 @@ test("preprocessing passes the caller's signal to convertToWav and cleans up on 
       transcribe: async () => ({ text: "audible", elapsed: 0 }),
     };
     const controller = new AbortController();
+
     const result = await manager.transcribe(createFloat32Wav(0.5), {
       modelName: MODEL_NAME,
       signal: controller.signal,
     });
+
     assert.equal(result.text, "audible");
     assert.equal(convertCalls.length, 1);
-    assert.equal(convertCalls[0].signal, controller.signal, "the cancellation signal reaches ffmpeg");
+    assert.equal(
+      convertCalls[0].signal,
+      controller.signal,
+      "the cancellation signal reaches ffmpeg"
+    );
     assertTempFilesGone(convertCalls[0], "success");
   });
 });
@@ -166,6 +186,7 @@ test("conversion failure cleans up the temp input and partial WAV", async () => 
     fs.writeFileSync(outputPath, Buffer.from("partial"));
     throw new Error("FFmpeg exited with code 1");
   });
+
   await withIsolatedModelDir(async () => {
     const manager = new ParakeetServerManager();
     manager.wsServer = {
@@ -187,15 +208,22 @@ test("WAV read failure after conversion also cleans up the temp files", async ()
     // Simulate the file vanishing between ffmpeg close and readFileSync.
     fs.unlinkSync(outputPath);
   });
+
   await withIsolatedModelDir(async () => {
     const manager = new ParakeetServerManager();
     manager.wsServer = {
       start: async () => {},
       transcribe: async () => ({ text: "never", elapsed: 0 }),
     };
-    await assert.rejects(() => manager.transcribe(createFloat32Wav(0.5), { modelName: MODEL_NAME }));
+    await assert.rejects(() =>
+      manager.transcribe(createFloat32Wav(0.5), { modelName: MODEL_NAME })
+    );
     assert.equal(convertCalls.length, 1);
-    assert.equal(fs.existsSync(convertCalls[0].input), false, "a read failure must not leak the temp input");
+    assert.equal(
+      fs.existsSync(convertCalls[0].input),
+      false,
+      "a read failure must not leak the temp input"
+    );
   });
 });
 
@@ -203,6 +231,7 @@ test("a pre-aborted signal stops before conversion and starts no inference", asy
   const { ParakeetServerManager, convertCalls } = loadWithConvertToWav(() => {
     throw new Error("conversion must not run after cancellation");
   });
+
   await withIsolatedModelDir(async () => {
     const manager = new ParakeetServerManager();
     const wsStarts: number[] = [];
@@ -215,7 +244,11 @@ test("a pre-aborted signal stops before conversion and starts no inference", asy
     const controller = new AbortController();
     controller.abort();
     await assert.rejects(
-      () => manager.transcribe(createFloat32Wav(0.5), { modelName: MODEL_NAME, signal: controller.signal }),
+      () =>
+        manager.transcribe(createFloat32Wav(0.5), {
+          modelName: MODEL_NAME,
+          signal: controller.signal,
+        }),
       (error: Error) => error.name === "AbortError"
     );
     assert.equal(convertCalls.length, 0, "no conversion child after an abort");

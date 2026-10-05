@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 let getCalendarAvailability: any;
@@ -8,6 +9,7 @@ test.before(async () => {
 });
 
 const NOW = new Date("2026-08-25T06:00:00.000Z");
+
 const REQUEST = {
   start: "2026-08-25T07:00:00.000Z",
   end: "2026-08-25T12:00:00.000Z",
@@ -24,6 +26,7 @@ test("calculates privacy-safe availability from connected provider caches", () =
       assert.equal(start, "2026-08-25T06:45:00.000Z");
       assert.equal(end, "2026-08-25T12:15:00.000Z");
       assert.deepEqual(providers, ["google", "microsoft"]);
+
       return [
         {
           start_time: "2026-08-25T09:00:00.000Z",

@@ -1,16 +1,18 @@
 const fs = require("fs");
+
 const fsPromises = require("fs").promises;
+
 const path = require("path");
+
 import { spawn, type ChildProcessByStdio } from "child_process";
 import type { Readable } from "stream";
 import { ensureLocalEngine } from "./localEngineInstaller.js";
+
 const debugLogger = require("./debugLogger.js");
+
 const { runSystemTar } = require("./systemTar.js");
-const {
-  downloadFile,
-  createDownloadSignal,
-  checkDiskSpace,
-} = require("./downloadUtils.js") as {
+
+const { downloadFile, createDownloadSignal, checkDiskSpace } = require("./downloadUtils.js") as {
   downloadFile: (
     url: string,
     target: string,
@@ -23,20 +25,29 @@ const {
   createDownloadSignal: () => { signal: { aborted: boolean }; abort: () => void };
   checkDiskSpace: (dir: string, bytes: number) => Promise<{ ok: boolean; availableBytes: number }>;
 };
+
 const { resolveBinaryPath, gracefulStopProcess } = require("../utils/serverUtils.js") as {
   resolveBinaryPath: (name: string) => string | null;
-  gracefulStopProcess: (proc: ChildProcessByStdio<null, Readable, Readable>) => Promise<void> | void;
+  gracefulStopProcess: (
+    proc: ChildProcessByStdio<null, Readable, Readable>
+  ) => Promise<void> | void;
 };
+
 const { getModelsDirForService } = require("./modelDirUtils.js");
+
 const { convertToWav } = require("./ffmpegUtils.js");
+
 const { getSafeTempDir } = require("./safeTempDir.js");
+
 import { applyConfirmedSpeaker } from "./speakerAssignmentPolicy.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
+
 const {
   transcriptsOverlap,
   transcriptsLooselyOverlap,
   buildMergedCandidates,
 } = require("./transcriptText.js");
+
 const {
   computeTranscriptionTimeoutMs,
   PCM16_MONO_16K_BYTES_PER_SECOND,
@@ -84,15 +95,19 @@ export interface DiarizeOptions {
 }
 
 const DIARIZATION_TIMEOUT_MS = 3600000; // 60 minutes
+
 const POST_MERGE_CONTEXT_WINDOW_MS = 6000;
+
 const POST_MERGE_CONTEXT_MERGE_LIMIT = 3;
 
 const dedupeMicAgainstSystem = (segments: TranscriptSegment[]): TranscriptSegment[] => {
   const systemSegments = segments.filter((seg) => seg.source === "system" && seg.text);
+
   if (!systemSegments.length) return segments;
 
   return segments.filter((seg) => {
     if (seg.source !== "mic" || !seg.text) return true;
+
     if (
       !seg.likelyRenderBleed &&
       !seg.hasBleedEvidence &&
@@ -103,29 +118,37 @@ const dedupeMicAgainstSystem = (segments: TranscriptSegment[]): TranscriptSegmen
 
     const matcher =
       seg.suppressionReason === "double_talk" ? transcriptsLooselyOverlap : transcriptsOverlap;
+
     const candidates = buildMergedCandidates({
       segments: systemSegments,
       timestamp: seg.timestamp,
       windowMs: POST_MERGE_CONTEXT_WINDOW_MS,
       mergeLimit: POST_MERGE_CONTEXT_MERGE_LIMIT,
     });
+
     return !candidates.some((candidateText: string) => matcher(seg.text, candidateText));
   });
 };
 
 const SEGMENTATION_MODEL_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";
+
 const EMBEDDING_MODEL_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
+
 const SILERO_VAD_MODEL_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
 
 const SEGMENTATION_DIR = "sherpa-onnx-pyannote-segmentation-3-0";
+
 const SEGMENTATION_ONNX = path.join(SEGMENTATION_DIR, "model.onnx");
+
 const EMBEDDING_ONNX = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
+
 const SILERO_VAD_ONNX = "silero_vad.onnx";
 
 type DiarizeChild = ChildProcessByStdio<null, Readable, Readable>;
+
 type DownloadSignalHandle = { abort: () => void };
 
 export class DiarizationManager {
@@ -145,13 +168,16 @@ export class DiarizationManager {
     if (this.cachedBinaryPath) return this.cachedBinaryPath;
 
     const platformArch = `${process.platform}-${process.arch}`;
+
     const binaryName =
       process.platform === "win32"
         ? `sherpa-onnx-diarize-${platformArch}.exe`
         : `sherpa-onnx-diarize-${platformArch}`;
 
     const resolved = resolveBinaryPath(binaryName);
+
     if (resolved) this.cachedBinaryPath = resolved;
+
     return resolved;
   }
 
@@ -173,8 +199,10 @@ export class DiarizationManager {
 
   _resolveModelPath(relativePath: string): string {
     const bundledModelsDir = this.getBundledModelsDir();
+
     if (bundledModelsDir) {
       const bundledPath = path.join(bundledModelsDir, relativePath);
+
       if (fs.existsSync(bundledPath)) {
         return bundledPath;
       }
@@ -186,6 +214,7 @@ export class DiarizationManager {
   isModelDownloaded(): boolean {
     const segPath = this._resolveModelPath(SEGMENTATION_ONNX);
     const embPath = this._resolveModelPath(EMBEDDING_ONNX);
+
     return fs.existsSync(segPath) && fs.existsSync(embPath);
   }
 
@@ -197,7 +226,9 @@ export class DiarizationManager {
     return fs.existsSync(this.getVadModelPath());
   }
 
-  async downloadModels(progressCallback: DownloadProgressCallback | null = null): Promise<{ success: boolean; path: string }> {
+  async downloadModels(
+    progressCallback: DownloadProgressCallback | null = null
+  ): Promise<{ success: boolean; path: string }> {
     if (!this.getBinaryPath()) await ensureLocalEngine("sherpa-onnx");
     const modelsDir = this.getModelsDir();
     await fsPromises.mkdir(modelsDir, { recursive: true });
@@ -211,6 +242,7 @@ export class DiarizationManager {
 
     const requiredBytes = modelsReady ? 2 * 1_000_000 : 37 * 1_000_000;
     const spaceCheck = await checkDiskSpace(modelsDir, requiredBytes * 2.5);
+
     if (!spaceCheck.ok) {
       throw new Error(
         `Not enough disk space. Need ~${Math.round((requiredBytes * 2.5) / 1_000_000)}MB, ` +
@@ -298,6 +330,7 @@ export class DiarizationManager {
           if ((error as { isAbort?: boolean }).isAbort) {
             throw new Error("Download interrupted by user");
           }
+
           debugLogger.warn("Silero VAD model download failed", {
             error: (error as Error).message,
             modelsDir,
@@ -310,14 +343,17 @@ export class DiarizationManager {
       }
 
       debugLogger.info("Diarization models downloaded", { modelsDir });
+
       return { success: true, path: modelsDir };
     } catch (error) {
       if ((error as { isAbort?: boolean }).isAbort) {
         throw new Error("Download interrupted by user");
       }
+
       if (progressCallback) {
         progressCallback({ type: "error", error: (error as Error).message });
       }
+
       throw error;
     } finally {
       this.currentDownloadProcess = null;
@@ -327,6 +363,7 @@ export class DiarizationManager {
   async _extractTarBz2(archivePath: string, destDir: string): Promise<void> {
     try {
       await this._runSystemTar(archivePath, destDir);
+
       return;
     } catch (err) {
       debugLogger.debug("System tar failed, falling back to JS extraction", {
@@ -348,8 +385,10 @@ export class DiarizationManager {
     if (this.currentDownloadProcess) {
       this.currentDownloadProcess.abort();
       this.currentDownloadProcess = null;
+
       return { success: true, message: "Download cancelled" };
     }
+
     return { success: false, error: "No active download to cancel" };
   }
 
@@ -360,15 +399,18 @@ export class DiarizationManager {
 
     if (!this.isModelDownloaded()) {
       debugLogger.warn("Diarization models not downloaded");
+
       return [];
     }
 
     if (!this.getBinaryPath()) await ensureLocalEngine("sherpa-onnx");
     const binaryPath = this.getBinaryPath();
+
     if (!binaryPath) throw new Error("sherpa-onnx diarization binary not found");
 
     if (!fs.existsSync(wavPath)) {
       debugLogger.warn("Diarization input file not found", { wavPath });
+
       return [];
     }
 
@@ -394,6 +436,7 @@ export class DiarizationManager {
 
     // Scale with the recording length, but never below the 60-minute floor.
     let timeoutMs = DIARIZATION_TIMEOUT_MS;
+
     try {
       timeoutMs = Math.max(
         DIARIZATION_TIMEOUT_MS,
@@ -414,6 +457,7 @@ export class DiarizationManager {
       });
 
       this._processes.add(proc);
+
       if (proc.pid !== undefined) sidecarPidFile.write("diarization", proc.pid);
 
       // The single pid-file slot tracks whichever process is still alive; only
@@ -421,7 +465,9 @@ export class DiarizationManager {
       const untrack = () => {
         this._processes.delete(proc);
         const survivor = this._processes.values().next().value;
-        if (survivor && survivor.pid !== undefined) sidecarPidFile.write("diarization", survivor.pid);
+
+        if (survivor && survivor.pid !== undefined)
+          sidecarPidFile.write("diarization", survivor.pid);
         else sidecarPidFile.clear("diarization");
       };
 
@@ -438,6 +484,7 @@ export class DiarizationManager {
         gracefulStopProcess(proc);
         resolve([]);
       };
+
       signal?.addEventListener("abort", onAbort, { once: true });
 
       proc.stdout.on("data", (data: Buffer) => {
@@ -459,6 +506,7 @@ export class DiarizationManager {
             stderr: stderr.slice(-500).trim(),
           });
           resolve([]);
+
           return;
         }
 
@@ -483,8 +531,10 @@ export class DiarizationManager {
 
     for (const line of stdout.split("\n")) {
       const trimmed = line.trim();
+
       if (!trimmed) continue;
       const match = trimmed.match(lineRegex);
+
       if (match) {
         segments.push({
           start: parseFloat(match[1]),
@@ -497,17 +547,23 @@ export class DiarizationManager {
     return segments;
   }
 
-  capSpeakerClusters(segments: DiarizationSegment[], cap: number | null | undefined): DiarizationSegment[] {
+  capSpeakerClusters(
+    segments: DiarizationSegment[],
+    cap: number | null | undefined
+  ): DiarizationSegment[] {
     if (!cap || !segments?.length) return segments;
     const totals = new Map();
+
     for (const s of segments) {
       totals.set(s.speaker, (totals.get(s.speaker) || 0) + (s.end - s.start));
     }
+
     if (totals.size <= cap) return segments;
 
     const ranked = [...totals.entries()].sort((a, b) => b[1] - a[1]);
     const keep = new Set(ranked.slice(0, cap).map(([sp]) => sp));
     const primary = ranked[0][0];
+
     return segments.map((s) => (keep.has(s.speaker) ? s : { ...s, speaker: primary }));
   }
 
@@ -518,6 +574,7 @@ export class DiarizationManager {
   ): TranscriptSegment[] {
     if (!transcriptSegments || transcriptSegments.length === 0) return [];
     const deduped = dedupeMicAgainstSystem(transcriptSegments);
+
     if (!diarizationSegments || diarizationSegments.length === 0) {
       return deduped.map((seg) => ({ ...seg }));
     }
@@ -526,6 +583,7 @@ export class DiarizationManager {
     const speakerSet = new Set(diarizationSegments.map((d) => d.speaker));
     const speakerMap = new Map();
     let idx = 0;
+
     for (const sp of speakerSet) {
       speakerMap.set(sp, `speaker_${idx}`);
       idx++;
@@ -539,10 +597,12 @@ export class DiarizationManager {
     const nextTimestampAt = (startIndex: number, source: string): number | null => {
       for (let i = startIndex + 1; i < deduped.length; i += 1) {
         const candidate = deduped[i];
+
         if (candidate.source === source && candidate.timestamp != null) {
           return candidate.timestamp;
         }
       }
+
       return null;
     };
 
@@ -554,6 +614,7 @@ export class DiarizationManager {
           speaker: "you",
           speakerIsPlaceholder: false,
         });
+
         return enriched;
       }
 
@@ -568,6 +629,7 @@ export class DiarizationManager {
 
         for (const dSeg of diarizationSegments) {
           const overlap = Math.min(segEnd, dSeg.end) - Math.max(segStart, dSeg.start);
+
           if (overlap > bestOverlap) {
             bestOverlap = overlap;
             overlapSpeaker = dSeg.speaker;
@@ -604,6 +666,7 @@ export class DiarizationManager {
 
   async convertRawPcmToWav(rawPcmPath: string, inputSampleRate: number): Promise<string> {
     const stat = await fsPromises.stat(rawPcmPath);
+
     if (stat.size === 0) {
       throw new Error("Raw PCM file is empty");
     }
@@ -672,14 +735,17 @@ export class DiarizationManager {
     if (fs.existsSync(segDir)) {
       await fsPromises.rm(segDir, { recursive: true, force: true });
     }
+
     if (fs.existsSync(embPath)) {
       await fsPromises.unlink(embPath);
     }
+
     if (fs.existsSync(vadPath)) {
       await fsPromises.unlink(vadPath);
     }
 
     debugLogger.info("Diarization models deleted", { modelsDir });
+
     return { success: true };
   }
 
@@ -693,4 +759,5 @@ export class DiarizationManager {
 // Dual export: main.js requires this module as the class itself, while the TS
 // graph imports the named export.
 module.exports = DiarizationManager;
+
 module.exports.DiarizationManager = DiarizationManager;

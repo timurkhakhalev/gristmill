@@ -13,12 +13,16 @@ import type { ConversationRow } from "../../contracts/chatPersistence";
 import { FLOATING_CHAT_MAX_HEIGHT_CSS } from "../notes/floatingChatLayout";
 
 const FLOATING_CLOSE_MS = 160;
+
 const FLOATING_DEFAULT_HEIGHT_PX = 576;
+
 const FLOATING_MIN_HEIGHT_PX = 240;
+
 const FLOATING_HEIGHT_KEY = "gristmill.floatingChatHeight";
 
 function readStoredHeight(): number | null {
   const value = Number(localStorage.getItem(FLOATING_HEIGHT_KEY));
+
   return Number.isFinite(value) && value >= FLOATING_MIN_HEIGHT_PX ? value : null;
 }
 
@@ -41,7 +45,13 @@ interface ChatPanelProps {
   emptyStateText: string;
   onOpenNote?: (noteId: number) => void;
   /** Runs the editable Follow-up action; its draft arrives as an ordinary assistant message. */
-  followUp?: { label: string; onPress: () => void; disabled?: boolean; title?: string; error?: string };
+  followUp?: {
+    label: string;
+    onPress: () => void;
+    disabled?: boolean;
+    title?: string;
+    error?: string;
+  };
   /** Hosts that have room for a docked column offer the sidebar mode. */
   allowSidebar?: boolean;
   voiceDraft?: boolean;
@@ -51,10 +61,25 @@ interface ChatPanelProps {
   floatingMaxHeight?: string;
 }
 
-function HeaderButton({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
+function HeaderButton({
+  label,
+  onPress,
+  children,
+}: {
+  label: string;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <IconTooltip label={label}>
-      <Button isIconOnly size="sm" variant="ghost" className="size-7 min-h-7 text-muted" aria-label={label} onPress={onPress}>
+      <Button
+        isIconOnly
+        size="sm"
+        variant="ghost"
+        className="size-7 min-h-7 text-muted"
+        aria-label={label}
+        onPress={onPress}
+      >
         {children}
       </Button>
     </IconTooltip>
@@ -92,13 +117,16 @@ export default function ChatPanel({
   // The floating card stays mounted while it plays its exit animation.
   const [closing, setClosing] = useState(false);
   const [previousMode, setPreviousMode] = useState(mode);
+
   if (mode !== previousMode) {
     setPreviousMode(mode);
     setClosing(previousMode === "floating" && mode === "hidden");
   }
+
   useEffect(() => {
     if (!closing) return;
     const timer = setTimeout(() => setClosing(false), FLOATING_CLOSE_MS);
+
     return () => clearTimeout(timer);
   }, [closing]);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -109,6 +137,7 @@ export default function ChatPanel({
 
   const onResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
     const panel = panelRef.current;
+
     if (!panel) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const startHeight = panel.getBoundingClientRect().height;
@@ -119,24 +148,38 @@ export default function ChatPanel({
     panel.style.height = inline;
     resize.current = { startY: e.clientY, startHeight, cap };
   };
+
   const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const start = resize.current;
     const panel = panelRef.current;
+
     if (!start || !panel) return;
     // The card is bottom-anchored, so dragging its top edge up grows it, up to the host's cap.
-    setHeight(Math.round(Math.min(start.cap, Math.max(FLOATING_MIN_HEIGHT_PX, start.startHeight + start.startY - e.clientY))));
+    setHeight(
+      Math.round(
+        Math.min(
+          start.cap,
+          Math.max(FLOATING_MIN_HEIGHT_PX, start.startHeight + start.startY - e.clientY)
+        )
+      )
+    );
   };
+
   const onResizeEnd = () => {
     if (!resize.current) return;
     resize.current = null;
-    if (heightRef.current != null) localStorage.setItem(FLOATING_HEIGHT_KEY, String(heightRef.current));
+
+    if (heightRef.current != null)
+      localStorage.setItem(FLOATING_HEIGHT_KEY, String(heightRef.current));
   };
 
   // One node, two owners: the click-outside check here and the host's layout observer.
   const setPanelRef = useCallback(
     (node: HTMLDivElement | null) => {
       panelRef.current = node;
+
       if (typeof floatingPanelRef === "function") return floatingPanelRef(node);
+
       if (floatingPanelRef) floatingPanelRef.current = node;
     },
     [floatingPanelRef]
@@ -146,22 +189,35 @@ export default function ChatPanel({
   // render in portals outside the card, so their clicks are not "outside".
   useEffect(() => {
     if (mode !== "floating") return;
+
     const onPointerDown = (e: MouseEvent) => {
       const target = e.target as Element | null;
+
       if (!target || panelRef.current?.contains(target)) return;
-      if (target.closest("[data-radix-popper-content-wrapper], [role=menu], [role=listbox], [role=dialog], [data-slot=popover-content], [data-react-aria-top-layer]")) return;
+
+      if (
+        target.closest(
+          "[data-radix-popper-content-wrapper], [role=menu], [role=listbox], [role=dialog], [data-slot=popover-content], [data-react-aria-top-layer]"
+        )
+      )
+        return;
       onModeChange("hidden");
     };
+
     document.addEventListener("mousedown", onPointerDown);
+
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [mode, onModeChange]);
 
   useEffect(() => {
     if (mode !== "floating") return;
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onModeChange("hidden");
     };
+
     document.addEventListener("keydown", onKey);
+
     return () => document.removeEventListener("keydown", onKey);
   }, [mode, onModeChange]);
 
@@ -208,6 +264,7 @@ export default function ChatPanel({
   );
 
   const isIdle = agentState === "idle";
+
   const content = (
     <>
       {header}
@@ -240,7 +297,11 @@ export default function ChatPanel({
                 <Sparkles size={12} className="shrink-0" />
                 {followUp.label}
               </button>
-              {followUp.error && <span role="alert" className="text-xs text-danger">{followUp.error}</span>}
+              {followUp.error && (
+                <span role="alert" className="text-xs text-danger">
+                  {followUp.error}
+                </span>
+              )}
             </div>
           )}
           {suggestions.map((text) => (

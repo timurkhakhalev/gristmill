@@ -12,23 +12,30 @@ type FakeWindow = typeof globalThis & {
 
 export function installBrowserGlobals(
   t: Pick<TestContext, "after">,
-  { initialStorage = {}, window: windowProps = {} }: { initialStorage?: Record<string, string>; window?: Record<string, unknown> } = {}
+  {
+    initialStorage = {},
+    window: windowProps = {},
+  }: { initialStorage?: Record<string, string>; window?: Record<string, unknown> } = {}
 ) {
   const originalWindow = (globalThis as { window?: unknown }).window;
   const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
   const values = new Map(Object.entries(initialStorage));
+
   const storage = {
     getItem: (key: string) => (values.has(key) ? values.get(key)! : null),
     setItem: (key: string, value: string) => values.set(key, String(value)),
     removeItem: (key: string) => values.delete(key),
     clear: () => values.clear(),
   };
+
   (globalThis as Record<string, unknown>).localStorage = storage;
   const originalCSS = (globalThis as { CSS?: unknown }).CSS;
+
   if (originalCSS === undefined) {
     // react-aria's getNonce reads global CSS; harmless stub for the fake DOM.
     (globalThis as Record<string, unknown>).CSS = { escape: (value: string) => value };
   }
+
   (globalThis as Record<string, unknown>).window = {
     innerWidth: 1200,
     localStorage: storage,
@@ -48,12 +55,16 @@ export function installBrowserGlobals(
   };
   t.after(() => {
     const globals = globalThis as Record<string, unknown>;
+
     if (originalWindow === undefined) delete globals.window;
     else globals.window = originalWindow;
+
     if (originalLocalStorage === undefined) delete globals.localStorage;
     else globals.localStorage = originalLocalStorage;
+
     if (originalCSS === undefined) delete globals.CSS;
   });
+
   return { window: (globalThis as unknown as { window: FakeWindow }).window, storage };
 }
 
@@ -114,24 +125,45 @@ interface FakeDocument {
 // events. Call installBrowserGlobals first; this assigns onto globalThis.window.
 export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
   const elementNames = ["Element", "HTMLElement", "HTMLIFrameElement", "SVGElement"] as const;
-  const elementDescriptors = elementNames.map(name => Object.getOwnPropertyDescriptor(globalThis, name));
-  t.after(() => elementNames.forEach((name, index) => {
-    const original = elementDescriptors[index];
-    if (original) Object.defineProperty(globalThis, name, original);
-    else delete (globalThis as Record<string, unknown>)[name];
-  }));
+
+  const elementDescriptors = elementNames.map((name) =>
+    Object.getOwnPropertyDescriptor(globalThis, name)
+  );
+
+  t.after(() =>
+    elementNames.forEach((name, index) => {
+      const original = elementDescriptors[index];
+
+      if (original) Object.defineProperty(globalThis, name, original);
+      else delete (globalThis as Record<string, unknown>)[name];
+    })
+  );
   const originalDocument = (globalThis as { document?: unknown }).document;
-  const originalActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown }).IS_REACT_ACT_ENVIRONMENT;
-  const originalRequestAnimationFrame = (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
-  const originalCancelAnimationFrame = (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame;
+
+  const originalActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown })
+    .IS_REACT_ACT_ENVIRONMENT;
+
+  const originalRequestAnimationFrame = (globalThis as { requestAnimationFrame?: unknown })
+    .requestAnimationFrame;
+
+  const originalCancelAnimationFrame = (globalThis as { cancelAnimationFrame?: unknown })
+    .cancelAnimationFrame;
+
   const noop = () => {};
 
   class Element {}
+
   class HTMLElement extends Element {}
+
   class HTMLIFrameElement extends HTMLElement {}
+
   class SVGElement extends Element {}
 
-  function makeNode(nodeType: number, nodeName: string, namespaceURI = "http://www.w3.org/1999/xhtml"): FakeNode {
+  function makeNode(
+    nodeType: number,
+    nodeName: string,
+    namespaceURI = "http://www.w3.org/1999/xhtml"
+  ): FakeNode {
     const node: FakeNode = {
       nodeType,
       nodeName,
@@ -146,6 +178,7 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
         child.parentNode?.removeChild?.(child);
         child.parentNode = this;
         this.childNodes.push(child);
+
         return child;
       },
       insertBefore(child, before) {
@@ -154,16 +187,23 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
         const index = this.childNodes.indexOf(before);
         child.parentNode = this;
         this.childNodes.splice(index < 0 ? this.childNodes.length : index, 0, child);
+
         return child;
       },
       removeChild(child) {
         const index = this.childNodes.indexOf(child);
+
         if (index >= 0) this.childNodes.splice(index, 1);
         child.parentNode = null;
+
         return child;
       },
-      setAttribute(name, value) { this.attributes.set(name, String(value)); },
-      removeAttribute(name) { this.attributes.delete(name); },
+      setAttribute(name, value) {
+        this.attributes.set(name, String(value));
+      },
+      removeAttribute(name) {
+        this.attributes.delete(name);
+      },
       addEventListener: noop,
       removeEventListener: noop,
       // React calls these on host elements (autoFocus, ref-driven scroll and
@@ -174,34 +214,57 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
       contains(candidate) {
         return candidate === this || this.childNodes.some((child) => child.contains?.(candidate));
       },
-      get firstChild() { return this.childNodes[0] ?? null; },
-      get lastChild() { return this.childNodes.at(-1) ?? null; },
+      get firstChild() {
+        return this.childNodes[0] ?? null;
+      },
+      get lastChild() {
+        return this.childNodes.at(-1) ?? null;
+      },
       prepend(...nodes: FakeNode[]) {
         for (const node of [...nodes].reverse()) this.insertBefore(node, this.firstChild);
       },
       append(...nodes: FakeNode[]) {
         for (const node of nodes) this.appendChild(node);
       },
-      get options() { return this.childNodes.filter((child) => child.tagName === "OPTION"); },
+      get options() {
+        return this.childNodes.filter((child) => child.tagName === "OPTION");
+      },
       get nextSibling() {
         if (!this.parentNode) return null;
         const siblings = this.parentNode.childNodes;
+
         return siblings[siblings.indexOf(this) + 1] ?? null;
       },
       get textContent() {
-        return nodeType === 3 ? this.nodeValue ?? "" : this.childNodes.map((child) => child.textContent ?? "").join("");
+        return nodeType === 3
+          ? (this.nodeValue ?? "")
+          : this.childNodes.map((child) => child.textContent ?? "").join("");
       },
       set textContent(value) {
-        this.childNodes.forEach((child) => { child.parentNode = null; });
+        this.childNodes.forEach((child) => {
+          child.parentNode = null;
+        });
         this.childNodes = [];
-        if (value != null && String(value)) this.appendChild(document.createTextNode(String(value)));
+
+        if (value != null && String(value))
+          this.appendChild(document.createTextNode(String(value)));
       },
     };
+
     if (nodeType === 3 || nodeType === 8) {
       node.nodeValue = "";
       node.data = "";
     }
-    Object.setPrototypeOf(node, nodeType === 1 ? (namespaceURI === "http://www.w3.org/1999/xhtml" ? HTMLElement.prototype : Element.prototype) : Object.prototype);
+
+    Object.setPrototypeOf(
+      node,
+      nodeType === 1
+        ? namespaceURI === "http://www.w3.org/1999/xhtml"
+          ? HTMLElement.prototype
+          : Element.prototype
+        : Object.prototype
+    );
+
     return node;
   }
 
@@ -213,11 +276,13 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
     createElement(name) {
       const element = makeNode(1, name);
       element.ownerDocument = document;
+
       return element;
     },
     createElementNS(namespaceURI, name) {
       const element = makeNode(1, name, namespaceURI);
       element.ownerDocument = document;
+
       return element;
     },
     createTextNode(value) {
@@ -225,6 +290,7 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
       node.ownerDocument = document;
       node.nodeValue = String(value);
       node.data = String(value);
+
       return node;
     },
     createComment(value) {
@@ -232,11 +298,13 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
       node.ownerDocument = document;
       node.nodeValue = String(value);
       node.data = String(value);
+
       return node;
     },
     createDocumentFragment() {
       const fragment = makeNode(11, "#document-fragment");
       fragment.ownerDocument = document;
+
       return fragment;
     },
     querySelector: () => null,
@@ -246,10 +314,13 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
         for (const child of node.childNodes ?? []) {
           if (child.attributes?.get("id") === id) return child;
           const found = visit(child);
+
           if (found) return found;
         }
+
         return null;
       };
+
       return visit(document as unknown as FakeNode);
     },
     createRange: () => ({
@@ -262,6 +333,7 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
     body: null as unknown as FakeNode,
     defaultView: null,
   };
+
   const container = document.createElement("div");
   document.documentElement = document.createElement("html");
   document.head = document.createElement("head");
@@ -276,10 +348,22 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
     document,
     getSelection: () => null,
   });
+
   // react-aria's press cleanup reads bare global element constructors on unmount.
-  for (const [name, value] of Object.entries({ Element, HTMLElement, HTMLIFrameElement, SVGElement })) {
-    Object.defineProperty(globalThis, name, { value, writable: true, enumerable: true, configurable: true });
+  for (const [name, value] of Object.entries({
+    Element,
+    HTMLElement,
+    HTMLIFrameElement,
+    SVGElement,
+  })) {
+    Object.defineProperty(globalThis, name, {
+      value,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
   }
+
   document.defaultView = globalThis.window;
   document.documentElement = container;
   (globalThis as Record<string, unknown>).document = document;
@@ -289,12 +373,16 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
 
   t.after(() => {
     const globals = globalThis as Record<string, unknown>;
+
     if (originalDocument === undefined) delete globals.document;
     else globals.document = originalDocument;
+
     if (originalActEnvironment === undefined) delete globals.IS_REACT_ACT_ENVIRONMENT;
     else globals.IS_REACT_ACT_ENVIRONMENT = originalActEnvironment;
+
     if (originalRequestAnimationFrame === undefined) delete globals.requestAnimationFrame;
     else globals.requestAnimationFrame = originalRequestAnimationFrame;
+
     if (originalCancelAnimationFrame === undefined) delete globals.cancelAnimationFrame;
     else globals.cancelAnimationFrame = originalCancelAnimationFrame;
   });
@@ -311,13 +399,25 @@ export interface RendererServerOptions {
 
 // mockModules maps an import-path suffix (e.g. "/utils/logger") to the ESM
 // source served in its place.
-export async function createRendererServer(t: Pick<TestContext, "after">, { cachePrefix = "openwhispr-renderer-test-", mockModules = {}, noExternal = false, resolveAlias = {} }: RendererServerOptions = {}, createServer?: typeof import("vite").createServer): Promise<ViteDevServer> {
+export async function createRendererServer(
+  t: Pick<TestContext, "after">,
+  {
+    cachePrefix = "openwhispr-renderer-test-",
+    mockModules = {},
+    noExternal = false,
+    resolveAlias = {},
+  }: RendererServerOptions = {},
+  createServer?: typeof import("vite").createServer
+): Promise<ViteDevServer> {
   createServer ??= (await import("vite")).createServer;
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), cachePrefix));
   let vite: ViteDevServer | undefined;
   t.after(async () => {
-    try { await vite?.close(); }
-    finally { fs.rmSync(cacheDir, { recursive: true, force: true }); }
+    try {
+      await vite?.close();
+    } finally {
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
   const suffixes = Object.keys(mockModules);
   vite = await createServer({
@@ -335,25 +435,31 @@ export async function createRendererServer(t: Pick<TestContext, "after">, { cach
         enforce: "pre",
         resolveId(source: string) {
           const suffix = suffixes.find((candidate) => source.endsWith(candidate));
+
           if (suffix) return `\0mock:${suffix}`;
+
           return null;
         },
         load(id: string) {
           if (!id.startsWith("\0mock:")) return null;
+
           return mockModules[id.slice("\0mock:".length)];
         },
       },
     ],
     server: { middlewareMode: true },
   });
+
   return vite;
 }
 
 export async function reloadSettingsStore(vite: ViteDevServer): Promise<unknown> {
   const url = "/stores/settingsStore.ts";
   const module = await vite.moduleGraph.getModuleByUrl(url);
+
   // Vite invalidates this module and its importers; shared dependencies stay cached.
   if (module) vite.moduleGraph.invalidateModule(module);
+
   return vite.ssrLoadModule(url);
 }
 
@@ -365,17 +471,20 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
     stop() {},
     getSettings: () => ({}) as Record<string, unknown>,
   };
+
   const stream = {
     getTracks: () => [track],
     getAudioTracks: () => [track],
-    getVideoTracks: () => [] as typeof track[],
+    getVideoTracks: () => [] as (typeof track)[],
   };
+
   const mediaDevices = {
     getUserMedia: async () => stream,
     enumerateDevices: async () => [] as Array<Record<string, unknown>>,
     addEventListener() {},
     removeEventListener() {},
   };
+
   const node = () => ({
     connect() {},
     disconnect() {},
@@ -383,6 +492,7 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
     fftSize: 0,
     smoothingTimeConstant: 0,
   });
+
   class FakeAudioContext {
     state = "running";
     currentTime = 0;
@@ -404,8 +514,12 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
     async resume() {}
     async close() {}
   }
+
   class FakeAudioWorkletNode {
-    port: { onmessage: ((event: { data: unknown }) => void) | null; postMessage: (message: unknown) => void };
+    port: {
+      onmessage: ((event: { data: unknown }) => void) | null;
+      postMessage: (message: unknown) => void;
+    };
     constructor(
       _context?: unknown,
       _name?: string,
@@ -420,19 +534,25 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
             sourceGeneration?: number;
             effectiveMuted?: boolean;
           };
+
           if (request?.type === "flush") {
             queueMicrotask(() =>
               this.port.onmessage?.({ data: { type: "flush-complete", lastSequence: -1 } })
             );
           } else if (request?.type === "set-gate") {
-            queueMicrotask(() => this.port.onmessage?.({ data: {
-              type: "gate-ack",
-              commandId: request.commandId,
-              sourceGeneration: request.sourceGeneration ?? options?.processorOptions?.sourceGeneration ?? 1,
-              effectiveMuted: request.effectiveMuted,
-              boundaryRenderFrame: 0,
-              lastSequence: -1,
-            } }));
+            queueMicrotask(() =>
+              this.port.onmessage?.({
+                data: {
+                  type: "gate-ack",
+                  commandId: request.commandId,
+                  sourceGeneration:
+                    request.sourceGeneration ?? options?.processorOptions?.sourceGeneration ?? 1,
+                  effectiveMuted: request.effectiveMuted,
+                  boundaryRenderFrame: 0,
+                  lastSequence: -1,
+                },
+              })
+            );
           }
         },
       };
@@ -445,7 +565,11 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
   const originalAudioContext = Object.getOwnPropertyDescriptor(globalThis, "AudioContext");
   const originalAudioWorkletNode = Object.getOwnPropertyDescriptor(globalThis, "AudioWorkletNode");
   t.after(() => {
-    for (const [name, descriptor] of [["navigator", originalNavigator], ["AudioContext", originalAudioContext], ["AudioWorkletNode", originalAudioWorkletNode]] as const) {
+    for (const [name, descriptor] of [
+      ["navigator", originalNavigator],
+      ["AudioContext", originalAudioContext],
+      ["AudioWorkletNode", originalAudioWorkletNode],
+    ] as const) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else delete (globalThis as Record<string, unknown>)[name];
     }
@@ -455,6 +579,14 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
     configurable: true,
     writable: true,
   });
-  Object.defineProperty(globalThis, "AudioContext", { value: FakeAudioContext, configurable: true, writable: true });
-  Object.defineProperty(globalThis, "AudioWorkletNode", { value: FakeAudioWorkletNode, configurable: true, writable: true });
+  Object.defineProperty(globalThis, "AudioContext", {
+    value: FakeAudioContext,
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(globalThis, "AudioWorkletNode", {
+    value: FakeAudioWorkletNode,
+    configurable: true,
+    writable: true,
+  });
 }

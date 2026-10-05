@@ -8,6 +8,7 @@ export const groqProvider: InferenceProvider = {
     logger.logReasoning("GROQ_START", { model, agentName });
     const apiKey = await ctx.getApiKey("groq");
     const endpoint = buildApiUrl(API_ENDPOINTS.GROQ_BASE, "/chat/completions");
+
     return ctx.callChatCompletionsApi(endpoint, apiKey, model, text, agentName, config, "Groq");
   },
 };

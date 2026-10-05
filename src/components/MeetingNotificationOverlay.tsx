@@ -9,7 +9,10 @@ import {
   type ReactElement,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { MeetingAutoEndAction, MeetingNotificationData } from "../contracts/meetingCoordinator";
+import type {
+  MeetingAutoEndAction,
+  MeetingNotificationData,
+} from "../contracts/meetingCoordinator";
 import { MeetingNotificationCard } from "./MeetingNotificationCard";
 import {
   getMeetingNotificationPresentation,
@@ -26,6 +29,7 @@ interface PointerSwipe {
 
 // Distance over which a dragged card fades to its minimum opacity.
 const SWIPE_FADE_DISTANCE_PX = 240;
+
 const SWIPE_MIN_OPACITY = 0.4;
 
 export default function MeetingNotificationOverlay(): ReactElement {
@@ -55,6 +59,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
 
   useEffect(() => {
     if (data?.kind !== "auto-end") return;
+
     return subscribeMeetingAutoEndCountdown(data.expiresAt, setSecondsRemaining);
   }, [data]);
 
@@ -74,12 +79,14 @@ export default function MeetingNotificationOverlay(): ReactElement {
     async (action: MeetingAutoEndAction): Promise<void> => {
       if (data?.kind !== "auto-end") return;
       setIsVisible(false);
+
       // Main closes this window when it accepts the response. Anything else —
       // a rejection, a throw, a preload without the method — leaves it open, so
       // put the card back instead of stranding an invisible, unclickable
       // always-on-top overlay.
       try {
         const result = await window.electronAPI?.meetingAutoEndRespond?.(data.sessionId, action);
+
         if (shouldRestoreAutoEndCard(result)) setIsVisible(true);
       } catch {
         setIsVisible(true);
@@ -88,14 +95,25 @@ export default function MeetingNotificationOverlay(): ReactElement {
     [data]
   );
 
-  const respondToContext = useCallback(async (action: "stop" | "dismiss") => {
-    if (data?.kind !== "meet-context-lost") return;
-    setIsVisible(false);
-    try {
-      const result = await window.electronAPI?.respondMeetContextReminder({ recordingId: data.recordingId, sessionId: data.sessionId, action });
-      if (!result?.success) setIsVisible(true);
-    } catch { setIsVisible(true); }
-  }, [data]);
+  const respondToContext = useCallback(
+    async (action: "stop" | "dismiss") => {
+      if (data?.kind !== "meet-context-lost") return;
+      setIsVisible(false);
+
+      try {
+        const result = await window.electronAPI?.respondMeetContextReminder({
+          recordingId: data.recordingId,
+          sessionId: data.sessionId,
+          action,
+        });
+
+        if (!result?.success) setIsVisible(true);
+      } catch {
+        setIsVisible(true);
+      }
+    },
+    [data]
+  );
 
   const dismiss = useCallback((): void => {
     if (data?.kind === "meet-context-lost") void respondToContext("dismiss");
@@ -110,6 +128,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
 
   const handleMouseLeave = useCallback((): void => {
     setIsHovered(false);
+
     // A captured pointer keeps dragging outside the card, so the window has to
     // stay interactive until the swipe finishes.
     if (pointerSwipeRef.current) return;
@@ -136,6 +155,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
     const swipe = pointerSwipeRef.current;
+
     if (!swipe || swipe.pointerId !== event.pointerId) return;
     setDragX(event.clientX - swipe.startX);
   }, []);
@@ -143,9 +163,11 @@ export default function MeetingNotificationOverlay(): ReactElement {
   const handlePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
       const swipe = pointerSwipeRef.current;
+
       if (!swipe || swipe.pointerId !== event.pointerId) return;
 
       pointerSwipeRef.current = null;
+
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
@@ -172,21 +194,25 @@ export default function MeetingNotificationOverlay(): ReactElement {
       if (pointerSwipeRef.current?.pointerId !== event.pointerId) return;
       pointerSwipeRef.current = null;
       setDragX(null);
+
       if (!isHovered) window.electronAPI?.setNotificationInteractivity?.(false);
     },
     [isHovered]
   );
 
-  const title =
-    "title" in presentation ? presentation.title : t(presentation.titleKey as string);
+  const title = "title" in presentation ? presentation.title : t(presentation.titleKey as string);
+
   const body =
     "bodyValues" in presentation
       ? t(presentation.bodyKey, presentation.bodyValues)
       : t(presentation.bodyKey);
+
   const handleAction =
-    presentation.action === "stop" ? () => void respondToContext("stop") : presentation.action === "restart"
-      ? () => void respondToAutoEnd("restart")
-      : () => respond(presentation.action);
+    presentation.action === "stop"
+      ? () => void respondToContext("stop")
+      : presentation.action === "restart"
+        ? () => void respondToAutoEnd("restart")
+        : () => respond(presentation.action);
 
   const countdownMs = useMemo(
     () => (data?.kind === "auto-end" ? Math.max(0, data.expiresAt - Date.now()) : undefined),
@@ -194,6 +220,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
   );
 
   const isDragging = dragX !== null;
+
   const motionStyle: CSSProperties = isDragging
     ? {
         transform: `translateX(${dragX}px)`,

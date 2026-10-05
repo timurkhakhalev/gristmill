@@ -7,6 +7,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 globalThis.React = React;
 
 export const renderStatic = (type: unknown, props: unknown, ...children: unknown[]): string =>
-  renderToStaticMarkup(React.createElement(type as React.ElementType, props as React.Attributes, ...(children as React.ReactNode[])));
+  renderToStaticMarkup(
+    React.createElement(
+      type as React.ElementType,
+      props as React.Attributes,
+      ...(children as React.ReactNode[])
+    )
+  );
 
 export { React };

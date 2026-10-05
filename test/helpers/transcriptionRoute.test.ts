@@ -1,10 +1,16 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/transcriptionRoute.ts");
 
-const resolve = async (settings: import("../../src/helpers/transcriptionRoute.ts").TranscriptionRouteSettings & Record<string, unknown>, extra: Record<string, unknown> = {}): Promise<any> => {
+const resolve = async (
+  settings: import("../../src/helpers/transcriptionRoute.ts").TranscriptionRouteSettings &
+    Record<string, unknown>,
+  extra: Record<string, unknown> = {}
+): Promise<any> => {
   const { resolveTranscriptionRoute } = await load();
+
   return resolveTranscriptionRoute({ settings, ...extra });
 };
 
@@ -16,6 +22,7 @@ test("self-hosted routes to the configured server and wins over stale flags", as
     useLocalWhisper: true,
     cloudTranscriptionProvider: "mistral",
   });
+
   assert.equal(route.transport, "http-batch");
   assert.equal(route.provider, "self-hosted");
   assert.equal(route.endpoint, "http://192.168.1.5:11434/v1/audio/transcriptions");
@@ -30,6 +37,7 @@ test("self-hosted mode without a URL fails closed unless the provider is custom"
       remoteTranscriptionUrl: "",
       cloudTranscriptionProvider: provider,
     });
+
     assert.equal(route.transport, "error", provider);
     assert.match(route.message, /not configured/, provider);
   }
@@ -42,6 +50,7 @@ test("self-hosted mode without a URL fails closed unless the provider is custom"
     cloudTranscriptionProvider: "custom",
     cloudTranscriptionBaseUrl: "https://stt.parasail.example.com/v1",
   });
+
   assert.equal(customRoute.transport, "http-batch");
   assert.equal(customRoute.provider, "custom");
   assert.equal(customRoute.endpoint, "https://stt.parasail.example.com/v1/audio/transcriptions");
@@ -58,6 +67,7 @@ test("self-hosted fails closed on invalid or public-http URLs", async () => {
       remoteTranscriptionUrl,
       cloudTranscriptionProvider: "openai",
     });
+
     assert.equal(route.transport, "error", remoteTranscriptionUrl);
     assert.match(route.message, /invalid or unsupported/, remoteTranscriptionUrl);
   }
@@ -89,6 +99,7 @@ test("proxied providers carry their quirks as route data", async () => {
     cloudTranscriptionProvider: "deepgram",
     cloudTranscriptionModel: "flux-general-en",
   });
+
   assert.equal(flux.transport, "error");
   assert.equal(flux.code, "DEEPGRAM_MODEL_UNSUPPORTED");
 
@@ -96,18 +107,22 @@ test("proxied providers carry their quirks as route data", async () => {
     cloudTranscriptionProvider: "mistral",
     cloudTranscriptionModel: "voxtral-small-latest",
   });
+
   assert.equal(mistral.model, "voxtral-small-latest");
 
   const xai = await resolve({
     cloudTranscriptionProvider: "xai",
     preferredLanguage: "mk",
   });
+
   assert.equal(xai.model, "grok-stt", "recorded for history; executors omit the form field");
   assert.equal(xai.language, "mk");
+
   const xaiUnsupported = await resolve({
     cloudTranscriptionProvider: "xai",
     preferredLanguage: "yo",
   });
+
   assert.equal(xaiUnsupported.language, undefined, "outside the xAI ITN allowlist");
 
   const corti = await resolve({ cloudTranscriptionProvider: "corti", cortiTenant: " acme " });
@@ -119,15 +134,13 @@ test("proxied providers carry their quirks as route data", async () => {
   const gemini = await resolve({ cloudTranscriptionProvider: "gemini" });
   assert.equal(gemini.transport, "proxied");
   assert.equal(gemini.model, "gemini-3.5-transcribe");
-  assert.equal(
-    gemini.sizeCapBytes,
-    2 * 1024 * 1024 * 1024,
-    "Gemini Files API accepts up to 2 GB"
-  );
+  assert.equal(gemini.sizeCapBytes, 2 * 1024 * 1024 * 1024, "Gemini Files API accepts up to 2 GB");
+
   const geminiLive = await resolve({
     cloudTranscriptionProvider: "gemini",
     cloudTranscriptionModel: "gemini-3.5-transcribe-live",
   });
+
   assert.equal(geminiLive.code, "GEMINI_MODEL_UNSUPPORTED");
 });
 
@@ -141,6 +154,7 @@ test("byokFileSizeLimit matches the per-provider route caps", async () => {
 
 test("custom requires a configured secure endpoint (empty, sentinel, garbage all fail)", async () => {
   const { resolveTranscriptionRoute } = await load();
+
   for (const cloudTranscriptionBaseUrl of [
     "",
     "   ",
@@ -152,8 +166,13 @@ test("custom requires a configured secure endpoint (empty, sentinel, garbage all
     const route = resolveTranscriptionRoute({
       settings: { cloudTranscriptionProvider: "custom", cloudTranscriptionBaseUrl },
     });
+
     assert.equal(route.transport, "error", cloudTranscriptionBaseUrl);
-    assert.equal((route as { code?: string }).code, "CUSTOM_ENDPOINT_INVALID", cloudTranscriptionBaseUrl);
+    assert.equal(
+      (route as { code?: string }).code,
+      "CUSTOM_ENDPOINT_INVALID",
+      cloudTranscriptionBaseUrl
+    );
   }
 
   const localhost = await resolve({
@@ -161,6 +180,7 @@ test("custom requires a configured secure endpoint (empty, sentinel, garbage all
     cloudTranscriptionBaseUrl: "http://localhost:1234/v1",
     cloudTranscriptionModel: "my-model",
   });
+
   assert.equal(localhost.transport, "http-batch");
   assert.equal(localhost.endpoint, "http://localhost:1234/v1/audio/transcriptions");
   assert.equal(localhost.model, "my-model");
@@ -174,6 +194,7 @@ test("custom requires a configured secure endpoint (empty, sentinel, garbage all
 test("realtime-only providers fail closed instead of falling through to OpenAI", async () => {
   const { STREAMING_ONLY_PROVIDERS } =
     await import("../../src/config/transcriptionCapabilities.ts");
+
   assert.ok(STREAMING_ONLY_PROVIDERS.size > 0);
 
   for (const provider of STREAMING_ONLY_PROVIDERS) {
@@ -182,6 +203,7 @@ test("realtime-only providers fail closed instead of falling through to OpenAI",
         cloudTranscriptionProvider: provider,
         cloudTranscriptionModel: model,
       });
+
       assert.equal(route.transport, "error", `${provider} must not produce a batch route`);
       assert.equal(route.code, "STREAMING_ONLY_PROVIDER", provider);
       assert.equal(
@@ -211,6 +233,7 @@ test("realtime-only providers report a missing key ahead of the transport limita
       { cloudTranscriptionProvider: provider },
       { hasProviderKey: false }
     );
+
     assert.equal(missingKey.transport, "error", provider);
     assert.equal(missingKey.code, "API_KEY_MISSING", provider);
     assert.equal(
@@ -240,6 +263,7 @@ test("a custom URL pointing at Tinfoil's host must use the attested proxy", asyn
     },
     { providers: [{ id: "tinfoil", baseUrl: "https://inference.tinfoil.sh/v1" }] }
   );
+
   assert.equal(route.transport, "error");
   assert.match(route.message, /attested main-process proxy/);
 });
@@ -250,6 +274,7 @@ test("Azure custom endpoints build deployment URLs from the raw base", async () 
     cloudTranscriptionBaseUrl: "https://myres.openai.azure.com",
     cloudTranscriptionModel: "my-deployment",
   });
+
   assert.equal(
     route.endpoint,
     "https://myres.openai.azure.com/openai/deployments/my-deployment/audio/transcriptions?api-version=2025-03-01-preview"
@@ -263,6 +288,7 @@ test("Azure custom endpoints build deployment URLs from the raw base", async () 
       "https://myres.openai.azure.com/openai/deployments/d1/audio/transcriptions?api-version=2024-06-01",
     cloudTranscriptionModel: "ignored",
   });
+
   assert.match(pinned.endpoint, /deployments\/d1\/audio\/transcriptions\?api-version=2024-06-01/);
 });
 
@@ -275,6 +301,7 @@ test("Azure self-hosted endpoints build deployment URLs, like Custom ones", asyn
     remoteTranscriptionUrl: "https://myres.openai.azure.com",
     remoteTranscriptionModel: "my-deployment",
   });
+
   assert.equal(route.provider, "self-hosted");
   assert.equal(
     route.endpoint,
@@ -287,6 +314,7 @@ test("Azure self-hosted endpoints build deployment URLs, like Custom ones", asyn
       "https://myres.openai.azure.com/openai/deployments/d1/audio/transcriptions?api-version=2024-06-01",
     remoteTranscriptionModel: "ignored",
   });
+
   assert.match(pinned.endpoint, /deployments\/d1\/audio\/transcriptions\?api-version=2024-06-01/);
 
   // Non-Azure self-hosted servers keep the plain OpenAI-compatible path.
@@ -295,6 +323,7 @@ test("Azure self-hosted endpoints build deployment URLs, like Custom ones", asyn
     remoteTranscriptionUrl: "https://stt.internal.example.com",
     remoteTranscriptionModel: "tiny",
   });
+
   assert.equal(plain.endpoint, "https://stt.internal.example.com/audio/transcriptions");
 });
 
@@ -316,6 +345,7 @@ test("openai and groq route to fixed endpoints with provider-validated models", 
     cloudTranscriptionProvider: "groq",
     cloudTranscriptionModel: "voxtral-mini-latest", // stale from a mistral era
   });
+
   assert.equal(groqStale.endpoint, "https://api.groq.com/openai/v1/audio/transcriptions");
   assert.equal(groqStale.model, "whisper-large-v3-turbo", "mismatched model degrades to default");
   assert.deepEqual(groqStale.auth, { scheme: "bearer", keyRef: "groq" });
@@ -326,6 +356,7 @@ test("request overrides win: explicit model and effective language", async () =>
     { cloudTranscriptionProvider: "groq", preferredLanguage: "de-DE" },
     { request: { model: "whisper-large-v3", effectiveLanguage: "ja" } }
   );
+
   assert.equal(route.model, "whisper-large-v3");
   assert.equal(route.language, "ja");
 });
@@ -335,6 +366,7 @@ test("enterprise transcription mode fails closed without organization routing", 
     transcriptionMode: "enterprise",
     cloudTranscriptionProvider: "openai",
   });
+
   assert.equal(route.transport, "error");
   assert.equal(route.code, "UNSUPPORTED_TRANSCRIPTION_MODE");
 });

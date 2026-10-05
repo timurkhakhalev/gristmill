@@ -23,6 +23,7 @@ export class DragManager {
    *  it explicitly for the duration of one drag. */
   async startWindowDrag(windowOverride: BrowserWindow | null = null): Promise<DragOperationResult> {
     const win = windowOverride || this.targetWindow;
+
     if (!win || win.isDestroyed()) {
       return { success: false, message: "Window not available" };
     }
@@ -45,10 +46,12 @@ export class DragManager {
       this.setupMouseTracking();
 
       debugLogger.info("Window drag started", undefined, "window-drag");
+
       return { success: true };
     } catch (error) {
       console.error("Failed to start window drag:", error);
       this.isDragging = false;
+
       return { success: false, message: (error as Error).message };
     }
   }
@@ -59,9 +62,11 @@ export class DragManager {
       this.activeWindow = null;
       this.stopMouseTracking();
       debugLogger.info("Window drag stopped", undefined, "window-drag");
+
       return { success: true };
     } catch (error) {
       console.error("Failed to stop window drag:", error);
+
       return { success: false, message: (error as Error).message };
     }
   }
@@ -93,6 +98,7 @@ export class DragManager {
         x: x + width / 2,
         y: y + height / 2,
       });
+
       const clamped = WindowPositionUtil.clampToWorkArea({ x, y, width, height }, display);
 
       this.activeWindow!.setPosition(clamped.x, clamped.y);
@@ -124,4 +130,5 @@ export class DragManager {
 }
 
 module.exports = DragManager;
+
 module.exports.DragManager = DragManager;

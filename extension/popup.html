@@ -1,27 +1,237 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Gristmill Companion</title>
-<style>
-:root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f1efe6;background:#24251f;font-size:13px}
-*{box-sizing:border-box}body{margin:0;width:340px}header{display:flex;align-items:center;gap:10px;padding:22px 24px 0}.brand{width:32px;height:32px;border-radius:8px}h1{font-size:21px;letter-spacing:-.025em;line-height:1.1;margin:0;font-weight:650}.subtitle{font-size:11px;color:#b8b9ac;margin:4px 0 0}.release{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:5px;color:#b8b9ac;font-size:11px}.channel{font-size:10px;font-weight:650;letter-spacing:.025em;color:#e6be85;border:1px solid #65563f;border-radius:4px;padding:2px 5px}
-main{padding:24px}h2{font-size:15px;line-height:1.4;font-weight:600;margin:0 0 7px}#notice{color:#b8b9ac;line-height:1.55;margin:0;text-wrap:pretty}.features{list-style:none;margin:22px 0 0;padding:0;display:grid;gap:12px}.features li{display:flex;align-items:center;gap:10px;line-height:1.4}.check{color:#becb9c;width:16px;flex:none}.features span{color:#e0e3d0}
-footer{border-top:1px solid #414338;padding:15px 24px;display:flex;align-items:center;gap:9px;color:#c9cbbd;font-size:12px}.dot{width:7px;height:7px;border-radius:50%;background:#b2c487;flex:none}footer[data-connected=false] .dot{background:#d4aa71}
-button{font:inherit;border:1px solid #565b48;border-radius:7px;padding:9px 12px;cursor:pointer;color:#edf0df;background:#34382c}button:hover{background:#414735}button:focus-visible,summary:focus-visible{outline:2px solid #c5d4a3;outline-offset:3px}button:disabled{opacity:.55;cursor:wait}#mute{margin-top:20px;width:100%}#error{color:#f4b1a1;font-size:12px;line-height:1.5;margin:12px 0 0}#error:empty{display:none}[hidden]{display:none!important}
-details{border-top:1px solid #414338;padding:12px 24px;color:#b8b9ac;font-size:11px}summary{cursor:pointer;width:fit-content}dl{display:grid;grid-template-columns:108px minmax(0,1fr);gap:10px 12px;margin:16px 0 4px;line-height:1.45}dt{color:#b8b9ac}dd{margin:0;color:#e0e3d0;overflow-wrap:anywhere}
-</style>
-</head>
-<body>
-<header><img class="brand" src="icons/128.png" alt=""><div><h1>Gristmill</h1><p class="subtitle">Companion</p></div><div class="release"><span id="channel" class="channel" hidden>DEV</span><span id="version"></span></div></header>
-<main><h2 id="status" role="status">Connecting…</h2><p id="notice"></p>
-<ul class="features" aria-label="Companion features">
-<li><svg class="check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Speaker name suggestions</span></li>
-<li><svg class="check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Follow call mute and Leave</span></li>
-</ul><button id="mute" type="button" hidden>Mute recorded microphone</button><p id="error" role="alert"></p></main>
-<footer id="connection" data-connected="false"><span class="dot" aria-hidden="true"></span><span id="connection-label" role="status">Connecting to Gristmill…</span></footer>
-<!-- DEV-ONLY-START -->
-<details id="diagnostics"><summary>Diagnostics</summary><dl id="rows"></dl></details>
-<!-- DEV-ONLY-END -->
-<script src="popup.js"></script>
-</body></html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Gristmill Companion</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #f1efe6;
+        background: #24251f;
+        font-size: 13px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        width: 340px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 22px 24px 0;
+      }
+      .brand {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+      }
+      h1 {
+        font-size: 21px;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        margin: 0;
+        font-weight: 650;
+      }
+      .subtitle {
+        font-size: 11px;
+        color: #b8b9ac;
+        margin: 4px 0 0;
+      }
+      .release {
+        margin-left: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 5px;
+        color: #b8b9ac;
+        font-size: 11px;
+      }
+      .channel {
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.025em;
+        color: #e6be85;
+        border: 1px solid #65563f;
+        border-radius: 4px;
+        padding: 2px 5px;
+      }
+      main {
+        padding: 24px;
+      }
+      h2 {
+        font-size: 15px;
+        line-height: 1.4;
+        font-weight: 600;
+        margin: 0 0 7px;
+      }
+      #notice {
+        color: #b8b9ac;
+        line-height: 1.55;
+        margin: 0;
+        text-wrap: pretty;
+      }
+      .features {
+        list-style: none;
+        margin: 22px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 12px;
+      }
+      .features li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        line-height: 1.4;
+      }
+      .check {
+        color: #becb9c;
+        width: 16px;
+        flex: none;
+      }
+      .features span {
+        color: #e0e3d0;
+      }
+      footer {
+        border-top: 1px solid #414338;
+        padding: 15px 24px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: #c9cbbd;
+        font-size: 12px;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #b2c487;
+        flex: none;
+      }
+      footer[data-connected="false"] .dot {
+        background: #d4aa71;
+      }
+      button {
+        font: inherit;
+        border: 1px solid #565b48;
+        border-radius: 7px;
+        padding: 9px 12px;
+        cursor: pointer;
+        color: #edf0df;
+        background: #34382c;
+      }
+      button:hover {
+        background: #414735;
+      }
+      button:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid #c5d4a3;
+        outline-offset: 3px;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+      #mute {
+        margin-top: 20px;
+        width: 100%;
+      }
+      #error {
+        color: #f4b1a1;
+        font-size: 12px;
+        line-height: 1.5;
+        margin: 12px 0 0;
+      }
+      #error:empty {
+        display: none;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      details {
+        border-top: 1px solid #414338;
+        padding: 12px 24px;
+        color: #b8b9ac;
+        font-size: 11px;
+      }
+      summary {
+        cursor: pointer;
+        width: fit-content;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: 108px minmax(0, 1fr);
+        gap: 10px 12px;
+        margin: 16px 0 4px;
+        line-height: 1.45;
+      }
+      dt {
+        color: #b8b9ac;
+      }
+      dd {
+        margin: 0;
+        color: #e0e3d0;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img class="brand" src="icons/128.png" alt="" />
+      <div>
+        <h1>Gristmill</h1>
+        <p class="subtitle">Companion</p>
+      </div>
+      <div class="release">
+        <span id="channel" class="channel" hidden>DEV</span><span id="version"></span>
+      </div>
+    </header>
+    <main>
+      <h2 id="status" role="status">Connecting…</h2>
+      <p id="notice"></p>
+      <ul class="features" aria-label="Companion features">
+        <li>
+          <svg class="check" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="m3 8 3 3 7-7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            /></svg
+          ><span>Speaker name suggestions</span>
+        </li>
+        <li>
+          <svg class="check" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="m3 8 3 3 7-7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            /></svg
+          ><span>Follow call mute and Leave</span>
+        </li>
+      </ul>
+      <button id="mute" type="button" hidden>Mute recorded microphone</button>
+      <p id="error" role="alert"></p>
+    </main>
+    <footer id="connection" data-connected="false">
+      <span class="dot" aria-hidden="true"></span
+      ><span id="connection-label" role="status">Connecting to Gristmill…</span>
+    </footer>
+    <!-- DEV-ONLY-START -->
+    <details id="diagnostics">
+      <summary>Diagnostics</summary>
+      <dl id="rows"></dl>
+    </details>
+    <!-- DEV-ONLY-END -->
+    <script src="popup.js"></script>
+  </body>
+</html>

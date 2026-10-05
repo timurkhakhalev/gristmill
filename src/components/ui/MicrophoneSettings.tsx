@@ -45,6 +45,7 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
       // music on macOS), so only do it when labels are missing (no permission yet).
       let allDevices = await navigator.mediaDevices.enumerateDevices();
       const hasLabels = allDevices.some((d) => d.kind === "audioinput" && d.label);
+
       if (!hasLabels) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach((track) => track.stop());
@@ -61,17 +62,20 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
         }));
 
       setDevices(audioInputs);
+
       const resolvedSelection = resolveMicDeviceSelection(
         audioInputs,
         selectedMicDeviceId,
         selectedMicDeviceLabel
       );
+
       if (
         resolvedSelection.device &&
         (resolvedSelection.status === "remapped" || !selectedMicDeviceLabel)
       ) {
         onDeviceSelect(resolvedSelection.device.deviceId, resolvedSelection.device.label);
       }
+
       const nativeDefault = await window.electronAPI?.getSystemDefaultMicrophone?.();
       const resolvedDefault = resolveSystemDefaultMicDevice(audioInputs, nativeDefault);
       setSystemDefaultLabel(nativeDefault?.name || resolvedDefault.device?.label || "");
@@ -95,6 +99,7 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
 
   const builtInDevice = devices.find((d) => d.isBuiltIn);
   const selectedDevice = devices.find((d) => d.deviceId === selectedMicDeviceId);
+
   const selectorValue =
     microphoneSelectionMode === "system"
       ? "__system__"
@@ -117,8 +122,12 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
           : device.label,
       })),
   ];
+
   if (!options.some((option) => option.id === selectorValue)) {
-    options.push({ id: selectorValue, label: selectedDevice?.label || t("microphoneSettings.unknownDevice") });
+    options.push({
+      id: selectorValue,
+      label: selectedDevice?.label || t("microphoneSettings.unknownDevice"),
+    });
   }
 
   const builtInNotice =
@@ -153,13 +162,18 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
           onChange={(value) => {
             if (value === "__system__") {
               onSelectionModeChange("system");
+
               return;
             }
+
             if (value === "__built-in__") {
               onSelectionModeChange("built-in");
+
               return;
             }
+
             const device = devices.find((candidate) => candidate.deviceId === value);
+
             if (!device) return;
             onDeviceSelect(value, device.label);
             onSelectionModeChange("specific");

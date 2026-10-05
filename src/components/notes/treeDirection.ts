@@ -6,5 +6,6 @@ export function treeHorizontalIntent(
 ): TreeHorizontalIntent | null {
   if (key !== "ArrowLeft" && key !== "ArrowRight") return null;
   const inwardKey = direction === "rtl" ? "ArrowLeft" : "ArrowRight";
+
   return key === inwardKey ? "inward" : "outward";
 }

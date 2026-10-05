@@ -19,11 +19,13 @@ export function resolveConfiguredOpenAIBase(provider: string, configuredBaseUrl?
   if (provider !== "custom") return API_ENDPOINTS.OPENAI_BASE;
 
   const trimmed = configuredBaseUrl?.trim() ?? "";
+
   if (!trimmed) {
     return invalidCustomEndpoint("Custom endpoint is not configured");
   }
 
   const normalized = ensureV1Suffix(trimmed);
+
   if (!normalized) {
     return invalidCustomEndpoint("Custom endpoint could not be normalized", trimmed);
   }
@@ -35,6 +37,7 @@ export function resolveConfiguredOpenAIBase(provider: string, configuredBaseUrl?
     // Tinfoil must go through its attested SDK client, never a plain fetch.
     "tinfoil.sh",
   ];
+
   if (knownNonOpenAIUrls.some((url) => normalized.includes(url))) {
     return invalidCustomEndpoint("Custom URL is a known non-OpenAI provider", normalized);
   }
@@ -61,6 +64,7 @@ export function resolveConfiguredOpenAIBase(provider: string, configuredBaseUrl?
 export function canBorrowCleanupCustomKey(requestBaseUrl: string | undefined): boolean {
   const cleanupBase = getSettings().cleanupCloudBaseUrl?.trim();
   const requestBase = requestBaseUrl?.trim();
+
   return !!requestBase && requestBase === cleanupBase;
 }
 

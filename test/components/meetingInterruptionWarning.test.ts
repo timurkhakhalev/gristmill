@@ -1,11 +1,19 @@
 const { createRequire }: typeof import("node:module") = require("node:module");
+
 const requireRepo = createRequire(require("node:path").resolve(__dirname, "../../package.json"));
+
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const React = requireRepo("react");
+
 const { createRoot } = requireRepo("react-dom/client");
+
 const { createRendererServer, installBrowserGlobals, installHookDom, installMicCaptureGlobals } =
-  requireRepo("./test/lib/rendererTestHarness.ts") as typeof import("../lib/rendererTestHarness.js");
+  requireRepo(
+    "./test/lib/rendererTestHarness.ts"
+  ) as typeof import("../lib/rendererTestHarness.js");
 
 type TestContext = import("node:test").TestContext;
 
@@ -23,26 +31,35 @@ type GlobalWithMocks = typeof globalThis & {
   __interruptionToasts?: Array<Record<string, unknown>>;
   __interruptionDismissals?: string[];
 };
+
 const mocks = globalThis as GlobalWithMocks;
+
 type FakeDocument = typeof globalThis.document & {
   visibilityState: string;
   hidden: boolean;
   hasFocus(): boolean;
 };
+
 const fakeDoc = () => globalThis.document as FakeDocument;
 
 let vitePromise: Promise<import("vite").ViteDevServer> | undefined;
+
 const cleanup: Array<() => Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
+
 function getVite() {
-  return vitePromise ??= createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) } as unknown as TestContext, {
-    cachePrefix: "pr2040-renderer-warning-review-",
-    mockModules: {
-      "/ui/useToast": `const toast = (props) => { globalThis.__interruptionToasts.push({ ...props, visibility: globalThis.document.visibilityState }); return String(globalThis.__interruptionToasts.length); }; const dismiss = (id) => globalThis.__interruptionDismissals.push(id); export const useToast = () => ({ toast, dismiss });`,
-    },
-  });
+  return (vitePromise ??= createRendererServer(
+    { after: (close: () => Promise<void>) => cleanup.push(close) } as unknown as TestContext,
+    {
+      cachePrefix: "pr2040-renderer-warning-review-",
+      mockModules: {
+        "/ui/useToast": `const toast = (props) => { globalThis.__interruptionToasts.push({ ...props, visibility: globalThis.document.visibilityState }); return String(globalThis.__interruptionToasts.length); }; const dismiss = (id) => globalThis.__interruptionDismissals.push(id); export const useToast = () => ({ toast, dismiss });`,
+      },
+    }
+  ));
 }
 
 interface InterruptionListeners {
@@ -55,12 +72,14 @@ async function setup(t: TestContext) {
   let store: MeetingStoreModule | undefined;
   t.after(async () => {
     if (store) await React.act(async () => store!.stopRecording());
+
     if (root) await React.act(async () => root.unmount());
     delete (mocks as { __interruptionToasts?: unknown }).__interruptionToasts;
     delete (mocks as { __interruptionDismissals?: unknown }).__interruptionDismissals;
   });
   const listeners: InterruptionListeners = { interrupted: null, resumed: null };
   const noop = () => () => {};
+
   const api = {
     checkSystemAudioAccess: async () => ({
       granted: true,
@@ -89,17 +108,20 @@ async function setup(t: TestContext) {
     onMeetingSystemAudioSilent: noop,
     onMeetingSystemAudioInterrupted(callback: (details: Record<string, unknown>) => void) {
       listeners.interrupted = callback;
+
       return () => {
         if (listeners.interrupted === callback) listeners.interrupted = null;
       };
     },
     onMeetingSystemAudioResumed(callback: () => void) {
       listeners.resumed = callback;
+
       return () => {
         if (listeners.resumed === callback) listeners.resumed = null;
       };
     },
   };
+
   installBrowserGlobals(t, { window: { electronAPI: api } });
   installMicCaptureGlobals(t);
   const container = installHookDom(t);
@@ -108,31 +130,49 @@ async function setup(t: TestContext) {
   let focused = true;
   fakeDoc().hasFocus = () => focused;
   const events = new Map<string, () => void>();
-  for (const target of [globalThis.window, globalThis.document] as Array<{ addEventListener: (n: string, cb: () => void) => void; removeEventListener: (n: string, cb: () => void) => void }>) {
+
+  for (const target of [globalThis.window, globalThis.document] as Array<{
+    addEventListener: (n: string, cb: () => void) => void;
+    removeEventListener: (n: string, cb: () => void) => void;
+  }>) {
     target.addEventListener = (name: string, callback: () => void) => events.set(name, callback);
     target.removeEventListener = (name: string, callback: () => void) => {
       if (events.get(name) === callback) events.delete(name);
     };
   }
+
   const focus = async (value: boolean) => {
     focused = value;
     await React.act(async () => events.get("focus")?.());
   };
+
   const reveal = async () => {
     fakeDoc().hidden = false;
     fakeDoc().visibilityState = "visible";
     await React.act(async () => events.get("visibilitychange")?.());
   };
+
   mocks.__interruptionToasts! = [];
   mocks.__interruptionDismissals! = [];
   const vite = await getVite();
-  for (const url of ["/components/MeetingRecordingMount.tsx", "/stores/meetingRecordingStore.ts", "/i18n.ts"]) {
+
+  for (const url of [
+    "/components/MeetingRecordingMount.tsx",
+    "/stores/meetingRecordingStore.ts",
+    "/i18n.ts",
+  ]) {
     const module = await vite.moduleGraph.getModuleByUrl(url);
+
     if (module) vite.moduleGraph.invalidateModule(module);
   }
-  const { default: Mount } = (await vite.ssrLoadModule("/components/MeetingRecordingMount.tsx")) as { default: import("react").ComponentType };
+
+  const { default: Mount } = (await vite.ssrLoadModule(
+    "/components/MeetingRecordingMount.tsx"
+  )) as { default: import("react").ComponentType };
+
   store = (await vite.ssrLoadModule("/stores/meetingRecordingStore.ts")) as MeetingStoreModule;
   root = createRoot(container as unknown as Element);
+
   const render = async (visible: boolean, strict = false) =>
     React.act(async () =>
       root.render(
@@ -143,11 +183,13 @@ async function setup(t: TestContext) {
           : null
       )
     );
+
   await render(true);
   await React.act(async () =>
     store.startRecording({ noteId: null, noteTitle: null, folderId: null, autoEndEligible: false })
   );
   assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
+
   const interrupt = async (details: Record<string, unknown> = {}) =>
     React.act(async () =>
       listeners.interrupted!({
@@ -157,8 +199,13 @@ async function setup(t: TestContext) {
         ...details,
       })
     );
-  const { default: i18n } = (await vite.ssrLoadModule("/i18n.ts")) as { default: { changeLanguage(lang: string): Promise<unknown> } };
+
+  const { default: i18n } = (await vite.ssrLoadModule("/i18n.ts")) as {
+    default: { changeLanguage(lang: string): Promise<unknown> };
+  };
+
   const resume = async () => React.act(async () => listeners.resumed!());
+
   return { store, render, interrupt, resume, focus, reveal, i18n };
 }
 
@@ -233,7 +280,12 @@ test("unmounted events deliver once on remount and repeated events replace the w
 test("persistent warning offers a scoped stop and does not leak into the next session", async (t: TestContext) => {
   const { store, interrupt, render } = await setup(t);
   await interrupt();
-  const warning = mocks.__interruptionToasts![0] as { duration: number; action: { props: { onClick(): void } } };
+
+  const warning = mocks.__interruptionToasts![0] as {
+    duration: number;
+    action: { props: { onClick(): void } };
+  };
+
   assert.equal(warning.duration, 0);
   assert.ok(warning.action);
   await React.act(async () => warning.action.props.onClick());
@@ -278,6 +330,7 @@ test("latest pending event delivers once and cautious warnings do not offer stop
 test("locale changes do not replay delivered interruptions", async (t: TestContext) => {
   const { interrupt, i18n } = await setup(t);
   await interrupt();
+
   try {
     await React.act(async () => i18n.changeLanguage("es"));
     assert.equal(mocks.__interruptionToasts!.length, 1);

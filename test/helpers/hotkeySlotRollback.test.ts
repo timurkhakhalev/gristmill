@@ -1,31 +1,37 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 // Stub electron's globalShortcut before hotkeyManager loads so slot
 // registration can run outside Electron. Accelerators containing "BAD"
 // simulate an OS-level conflict.
 const registered = new Map();
-require.cache[require.resolve("electron")] = Object.assign(new (require("node:module").Module)(require.resolve("electron")), {
-  exports: {
-    globalShortcut: {
-      register(accelerator: string, callback: unknown) {
-        if (accelerator.includes("BAD") || registered.has(accelerator)) return false;
-        registered.set(accelerator, callback);
-        return true;
+
+require.cache[require.resolve("electron")] = Object.assign(
+  new (require("node:module").Module)(require.resolve("electron")),
+  {
+    exports: {
+      globalShortcut: {
+        register(accelerator: string, callback: unknown) {
+          if (accelerator.includes("BAD") || registered.has(accelerator)) return false;
+          registered.set(accelerator, callback);
+
+          return true;
+        },
+        unregister(accelerator: string) {
+          registered.delete(accelerator);
+        },
+        isRegistered(accelerator: string) {
+          return registered.has(accelerator);
+        },
+        unregisterAll() {
+          registered.clear();
+        },
       },
-      unregister(accelerator: string) {
-        registered.delete(accelerator);
-      },
-      isRegistered(accelerator: string) {
-        return registered.has(accelerator);
-      },
-      unregisterAll() {
-        registered.clear();
-      },
+      BrowserWindow: class {},
     },
-    BrowserWindow: class {},
-  },
-});
+  }
+);
 
 const HotkeyManager = require("../../src/helpers/hotkeyManager.ts");
 

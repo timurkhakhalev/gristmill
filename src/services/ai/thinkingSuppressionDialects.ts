@@ -19,9 +19,11 @@ export function detectEndpointDialect(baseUrl: string | null | undefined): Endpo
   if (matchesHost(baseUrl, "mistral.ai")) {
     return { key: "mistral", tokenParam: "max_tokens", supportsTemperature: true };
   }
+
   if (matchesHost(baseUrl, "deepseek.com")) {
     return { key: "deepseek", tokenParam: "max_tokens", supportsTemperature: true };
   }
+
   if (matchesHost(baseUrl, "cerebras.ai")) {
     return { key: "cerebras", tokenParam: "max_tokens", supportsTemperature: true };
   }
@@ -38,6 +40,7 @@ export function suppressThinking(
 
   if (providerKey === "gemini") {
     requestBody.reasoning_effort = "minimal";
+
     return;
   }
 
@@ -45,6 +48,7 @@ export function suppressThinking(
   // them — use its native reasoning control instead.
   if (providerKey === "openrouter") {
     requestBody.reasoning = { enabled: false };
+
     return;
   }
 
@@ -55,6 +59,7 @@ export function suppressThinking(
     if (family?.reasoningEffort) {
       requestBody.reasoning_effort = family.reasoningEffort.suppressValue;
     }
+
     return;
   }
 
@@ -63,6 +68,7 @@ export function suppressThinking(
   // deepseek models on other hosts (e.g. Tinfoil) accept the generic shape.
   if (providerKey === "deepseek") {
     requestBody.thinking = { type: "disabled" };
+
     return;
   }
 
@@ -70,6 +76,7 @@ export function suppressThinking(
   if (providerKey === "mistral") {
     if (family?.omitReasoningParams) return;
     requestBody.reasoning_effort = "none";
+
     return;
   }
 
@@ -84,5 +91,6 @@ export function suppressThinking(
   } else {
     requestBody.reasoning_effort = family?.reasoningEffort?.suppressValue ?? "none";
   }
+
   requestBody.chat_template_kwargs = { enable_thinking: false };
 }

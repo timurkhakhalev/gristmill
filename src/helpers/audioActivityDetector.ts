@@ -1,17 +1,22 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
 import { EventEmitter } from "events";
+
 const debugLogger = require("./debugLogger");
+
 import { resolveBundledBinary } from "./binaryResolver.js";
 import { getOwnProcessPids } from "./ownProcessPids.js";
 
-
 const SUSTAINED_EVENT_DRIVEN_MS = 2 * 1000;
+
 const COOLDOWN_MS = 5 * 60 * 1000;
+
 const INACTIVE_RESET_MS = 60 * 1000;
+
 // PipeWire/PulseAudio emit 'change' subscribe events several times a second on
 // cork/volume churn, and every reconcile forks a pactl subprocess.
 // macOS has no polling fallback, so a lost listener is respawned instead.
 const LISTENER_RESPAWN_BASE_MS = 5 * 1000;
+
 const LISTENER_RESPAWN_MAX_MS = 60 * 1000;
 
 type ListenerChild = ChildProcess;
@@ -110,16 +115,21 @@ export class AudioActivityDetector extends EventEmitter {
   // what hasPrompted exists to prevent.
   private _rearmPromptForSourceChange(active: boolean): void {
     if (!active) this._captureIdleSincePrompt = true;
+
     if (!this.hasPrompted || !this._pidScopedCapability || !this._externalCapturePids.size) return;
+
     if (!this._promptedCapturePids.size) {
       this._promptedCapturePids = new Set(this._externalCapturePids);
+
       return;
     }
+
     if (!this._captureIdleSincePrompt) return;
 
     const previousSourceGone = [...this._promptedCapturePids].every(
       (pid) => !this._externalCapturePids.has(pid)
     );
+
     if (!previousSourceGone) return;
 
     this.hasPrompted = false;
@@ -130,6 +140,7 @@ export class AudioActivityDetector extends EventEmitter {
 
   getExternalMicState(): ExternalMicState {
     this._updateExternalMicState(false);
+
     return {
       reliable: this._externalMicReliable,
       externalMicActive: this._externalMicActive,
@@ -138,12 +149,14 @@ export class AudioActivityDetector extends EventEmitter {
 
   setUserRecording(active: boolean): void {
     this._userRecording = active;
+
     if (active) {
       this.audioActiveStart = null;
       this._clearSustainedTimer();
     } else {
       this._reevaluateAfterGate();
     }
+
     debugLogger.debug("User recording state changed", { active }, "meeting");
   }
 
@@ -156,9 +169,11 @@ export class AudioActivityDetector extends EventEmitter {
     this._micWarmHold = active;
     this.audioActiveStart = null;
     this._clearSustainedTimer();
+
     if (!active) {
       this._reevaluateAfterGate();
     }
+
     debugLogger.debug("Mic warm-hold state changed", { active }, "meeting");
   }
 
@@ -175,6 +190,7 @@ export class AudioActivityDetector extends EventEmitter {
     const generation = ++this._startGeneration;
 
     const started = await this._tryEventDriven(generation);
+
     if (this._isStale(generation)) return;
 
     if (started) {
@@ -208,11 +224,13 @@ export class AudioActivityDetector extends EventEmitter {
     this._reset();
     this._clearSustainedTimer();
     this._clearResetTimer();
+
     // Polling parity: polling re-detects a still-running call once the cooldown
     // lapses, but the edge-triggered listeners will never re-announce it.
     if (this._eventDriven && this._lastKnownMicState) {
       this._scheduleCooldownReeval(COOLDOWN_MS);
     }
+
     debugLogger.info(
       "Audio detection dismissed, cooldown started",
       { cooldownMs: COOLDOWN_MS },
@@ -285,6 +303,7 @@ export class AudioActivityDetector extends EventEmitter {
       } catch {
         // already exited
       }
+
       this._listenerProcess = null;
     }
   }
@@ -322,6 +341,7 @@ export class AudioActivityDetector extends EventEmitter {
   }): Promise<boolean> {
     return new Promise((resolve) => {
       let child: ListenerChild;
+
       try {
         child = spawn(command, args, options ?? {});
       } catch (err: unknown) {
@@ -331,23 +351,29 @@ export class AudioActivityDetector extends EventEmitter {
           "meeting"
         );
         resolve(false);
+
         return;
       }
 
       const onSpawn = () => {
         child.removeListener("error", onError);
+
         if (this._isStale(generation)) {
           child.kill();
           resolve(false);
+
           return;
         }
 
         this._listenerProcess = child;
+
         if (!child.stdout) {
           child.kill();
           resolve(false);
+
           return;
         }
+
         this._readLines(child.stdout, (line) => {
           // stdout can still drain after exit or after a replacement listener starts.
           if (this._listenerProcess !== child || this._isStale(generation)) return;
@@ -376,6 +402,7 @@ export class AudioActivityDetector extends EventEmitter {
     stream.on("data", (data) => {
       buffer += data.toString();
       let newlineIdx;
+
       while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
         const line = buffer.slice(0, newlineIdx).trim();
         buffer = buffer.slice(newlineIdx + 1);
@@ -392,6 +419,7 @@ export class AudioActivityDetector extends EventEmitter {
       // emit de-dupe would swallow it.
       this._setPidScopedCapability(false);
       this._resetListenerState();
+
       if (this._running && this._eventDriven) {
         this._eventDriven = false;
         this._pauseAutomaticPrompts();
@@ -412,8 +440,10 @@ export class AudioActivityDetector extends EventEmitter {
 
   private _tryEventDrivenDarwin(generation: number): Promise<boolean> | boolean {
     const binaryPath = resolveBundledBinary("macos-mic-listener", "meeting");
+
     if (!binaryPath) {
       debugLogger.warn("macos-mic-listener binary not found", {}, "meeting");
+
       return false;
     }
 
@@ -441,6 +471,7 @@ export class AudioActivityDetector extends EventEmitter {
       this._activeMicPids.clear();
       this._setPidScopedCapability(pidScoped);
       this._onMicStateChanged(false, pidScoped);
+
       return;
     }
 
@@ -449,6 +480,7 @@ export class AudioActivityDetector extends EventEmitter {
     // app corroborates it (see _evaluateMicState).
     if (line === "MIC_ACTIVE" || line === "MIC_INACTIVE") {
       this._onMicStateChanged(line === "MIC_ACTIVE", false);
+
       return;
     }
 
@@ -458,10 +490,12 @@ export class AudioActivityDetector extends EventEmitter {
 
   private _scheduleListenerRespawn(): void {
     this._clearRespawnTimer();
+
     const delayMs = Math.min(
       LISTENER_RESPAWN_BASE_MS * 2 ** this._respawnAttempts,
       LISTENER_RESPAWN_MAX_MS
     );
+
     this._respawnAttempts++;
     debugLogger.info("Retrying the macOS microphone listener", { delayMs }, "meeting");
     this._respawnTimer = setTimeout(() => {
@@ -474,6 +508,7 @@ export class AudioActivityDetector extends EventEmitter {
     if (!this._running || this._listenerProcess) return;
     const generation = this._startGeneration;
     const started = await this._tryEventDriven(generation);
+
     if (this._isStale(generation)) return;
 
     if (started) {
@@ -507,28 +542,35 @@ export class AudioActivityDetector extends EventEmitter {
 
   private _parsePidScopedListenerLine(line: string): void {
     const startMatch = line.match(/^MIC_START\s+(\d+)$/);
+
     if (startMatch) {
       const pid = parseInt(startMatch[1], 10);
+
       if (this._isExcludedProcessId(pid)) return;
       this._activeMicPids.add(pid);
       const externalMicActive = this._updateExternalMicState();
       this._onMicStateChanged(externalMicActive);
+
       return;
     }
 
     const stopMatch = line.match(/^MIC_STOP\s+(\d+)$/);
+
     if (stopMatch) {
       const pid = parseInt(stopMatch[1], 10);
+
       if (this._isExcludedProcessId(pid)) return;
       this._activeMicPids.delete(pid);
       const externalMicActive = this._updateExternalMicState();
       this._onMicStateChanged(externalMicActive);
+
       return;
     }
   }
 
   private _getExcludedProcessIdSet(): Set<number> {
     const processIds = this._getExcludedProcessIds();
+
     return new Set(
       [...processIds]
         .map((processId) => Number(processId))
@@ -553,6 +595,7 @@ export class AudioActivityDetector extends EventEmitter {
 
   private _updateExternalMicState(emitChange = true): boolean {
     let excludedProcessIds;
+
     try {
       excludedProcessIds = this._getExcludedProcessIdSet();
     } catch (err: unknown) {
@@ -563,20 +606,25 @@ export class AudioActivityDetector extends EventEmitter {
         { error: err instanceof Error ? err.message : String(err) },
         "meeting"
       );
+
       return false;
     }
 
     const externalPids = [...this._activeMicPids].filter(
       (processId) => !excludedProcessIds.has(processId)
     );
+
     this._externalCapturePids = new Set(externalPids);
     const externalMicActive = externalPids.length > 0;
+
     if (!this._pidScopedCapability || !this._isOwnershipSnapshotLive()) {
       this._setExternalMicSnapshot(false, false, emitChange);
+
       return externalMicActive;
     }
 
     this._setExternalMicSnapshot(true, externalMicActive, emitChange);
+
     return externalMicActive;
   }
 
@@ -587,6 +635,7 @@ export class AudioActivityDetector extends EventEmitter {
   ): void {
     this._externalMicReliable = reliable;
     this._externalMicActive = reliable ? externalMicActive : false;
+
     if (
       emitChange &&
       (this._externalMicReliable !== this._lastEmittedExternalMicReliable ||
@@ -622,6 +671,7 @@ export class AudioActivityDetector extends EventEmitter {
 
   private _cooldownRemainingMs(): number {
     if (!this.lastDismissedAt) return 0;
+
     return Math.max(0, COOLDOWN_MS - (Date.now() - this.lastDismissedAt));
   }
 
@@ -647,28 +697,37 @@ export class AudioActivityDetector extends EventEmitter {
   private _evaluateMicState(active: boolean): void {
     if (this._userRecording) {
       debugLogger.debug("Mic state changed but user recording, ignoring", { active }, "meeting");
+
       return;
     }
+
     if (this._micWarmHold) {
       debugLogger.debug("Mic state changed during warm-hold, ignoring", { active }, "meeting");
+
       return;
     }
+
     const cooldownRemainingMs = this._cooldownRemainingMs();
+
     if (cooldownRemainingMs > 0) {
       debugLogger.debug(
         "Mic state changed but in cooldown",
         { active, remainingMs: cooldownRemainingMs },
         "meeting"
       );
+
       if (active) {
         this._scheduleCooldownReeval(cooldownRemainingMs);
       } else {
         this._clearCooldownReevalTimer();
       }
+
       return;
     }
+
     if (active && !this._isUnattributedActivityCorroborated()) {
       debugLogger.debug("Unattributed mic activity without a meeting app, waiting", {}, "meeting");
+
       return;
     }
 
@@ -680,22 +739,29 @@ export class AudioActivityDetector extends EventEmitter {
 
     if (active) {
       this._clearResetTimer();
+
       if (this.hasPrompted) {
         debugLogger.debug("Mic active but already prompted, suppressing", {}, "meeting");
+
         return;
       }
+
       if (!this.audioActiveStart) this.audioActiveStart = Date.now();
 
       if (!this._sustainedTimer) {
         this._sustainedTimer = setTimeout(() => {
           this._sustainedTimer = null;
+
           if (this._userRecording || this._micWarmHold || this.hasPrompted) return;
+
           if (this.lastDismissedAt && Date.now() - this.lastDismissedAt < COOLDOWN_MS) return;
+
           if (!this._isUnattributedActivityCorroborated()) return;
 
           this._markPrompted();
           const now = Date.now();
           const startedAt = this.audioActiveStart;
+
           if (startedAt === null) return;
           const durationMs = now - startedAt;
           const attributed = this._lastKnownMicAttributed;
@@ -710,6 +776,7 @@ export class AudioActivityDetector extends EventEmitter {
     } else {
       this._clearSustainedTimer();
       this.audioActiveStart = null;
+
       if (this.hasPrompted) this._startResetTimer();
     }
   }
@@ -722,9 +789,14 @@ export class AudioActivityDetector extends EventEmitter {
     this._clearSustainedTimer();
     this.audioActiveStart = null;
     this._lastKnownMicState = false;
-    debugLogger.info("macOS microphone listener unavailable; automatic audio prompts paused", {}, "meeting");
+    debugLogger.info(
+      "macOS microphone listener unavailable; automatic audio prompts paused",
+      {},
+      "meeting"
+    );
   }
 }
 
 module.exports = AudioActivityDetector;
+
 module.exports.AudioActivityDetector = AudioActivityDetector;

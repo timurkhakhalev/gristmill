@@ -1,8 +1,10 @@
 import { execFile, type ExecFileOptionsWithStringEncoding } from "child_process";
 import { resolveBundledBinary } from "./binaryResolver.js";
+
 const debugLogger = require("./debugLogger");
 
 const COMMAND_TIMEOUT_MS = 3000;
+
 // Windows resolves through a short-lived PowerShell process, so keep successful
 // lookups warm. Renderer devicechange recovery explicitly bypasses this cache.
 const CACHE_TTL_MS = 30000;
@@ -143,18 +145,16 @@ function runFile(
       maxBuffer: 256 * 1024,
       ...options,
     };
-    execFile(
-      command,
-      [...args],
-      execOptions,
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(Object.assign(error, { stderr }));
-          return;
-        }
-        resolve(stdout.trim());
+
+    execFile(command, [...args], execOptions, (error, stdout, stderr) => {
+      if (error) {
+        reject(Object.assign(error, { stderr }));
+
+        return;
       }
-    );
+
+      resolve(stdout.trim());
+    });
   });
 }
 
@@ -164,9 +164,12 @@ export function parseJsonResult(output: unknown): NativeMicrophoneDescription | 
     .map((candidate) => candidate.trim())
     .filter(Boolean)
     .at(-1);
+
   if (!line) return null;
   const result: unknown = JSON.parse(line);
+
   if (!isRecord(result) || typeof result.name !== "string" || !result.name.trim()) return null;
+
   return {
     name: result.name.trim(),
     nativeId: typeof result.id === "string" && result.id ? result.id : undefined,
@@ -177,8 +180,10 @@ export function parseWpctlResult(output: unknown): NativeMicrophoneDescription |
   const description = String(output || "").match(
     /^\s*(?:node\.description|device\.description)\s*=\s*"([^"]+)"/m
   )?.[1];
+
   const name = String(output || "").match(/^\s*node\.name\s*=\s*"([^"]+)"/m)?.[1];
   const label = description || name;
+
   return label ? { name: label, nativeId: name || undefined } : null;
 }
 
@@ -187,23 +192,28 @@ export function parsePactlSources(
   defaultSourceName: string
 ): NativeMicrophoneDescription | null {
   let sources: unknown;
+
   try {
     sources = JSON.parse(output);
   } catch {
     return null;
   }
+
   if (!Array.isArray(sources)) return null;
+
   const source = sources.find(
     (candidate): candidate is Record<string, unknown> =>
       isRecord(candidate) && candidate.name === defaultSourceName
   );
+
   if (!source || typeof source.name !== "string") return null;
   const properties = isRecord(source.properties) ? source.properties : null;
+
   const label =
     (typeof source.description === "string" && source.description) ||
-    (typeof properties?.["device.description"] === "string" &&
-      properties["device.description"]) ||
+    (typeof properties?.["device.description"] === "string" && properties["device.description"]) ||
     source.name;
+
   return label ? { name: label, nativeId: source.name } : null;
 }
 
@@ -218,7 +228,9 @@ export function createSystemDefaultMicrophoneResolver({
 
   const resolveDarwin = async () => {
     const helper = resolveBinary("macos-mic-listener", "audio");
+
     if (!helper) return null;
+
     return parseJsonResult(await run(helper, ["--print-default-input"]));
   };
 
@@ -226,6 +238,7 @@ export function createSystemDefaultMicrophoneResolver({
     const shell = process.env.SystemRoot
       ? `${process.env.SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`
       : "powershell.exe";
+
     return parseJsonResult(
       await run(shell, [
         "-NoLogo",
@@ -241,14 +254,17 @@ export function createSystemDefaultMicrophoneResolver({
     try {
       const output = await run("wpctl", ["inspect", "@DEFAULT_AUDIO_SOURCE@"]);
       const result = parseWpctlResult(output);
+
       if (result) return result;
     } catch {
       // PulseAudio remains common on distributions without WirePlumber.
     }
 
     const defaultSourceName = (await run("pactl", ["get-default-source"])).trim();
+
     if (!defaultSourceName) return null;
     const sources = await run("pactl", ["--format=json", "list", "sources"]);
+
     return parsePactlSources(sources, defaultSourceName);
   };
 
@@ -257,6 +273,7 @@ export function createSystemDefaultMicrophoneResolver({
 
     try {
       let result = null;
+
       if (platform === "darwin") result = await resolveDarwin();
       else if (platform === "win32") result = await resolveWindows();
       else if (platform === "linux") result = await resolveLinux();
@@ -265,6 +282,7 @@ export function createSystemDefaultMicrophoneResolver({
         ? { ...result, platform, source: "system" }
         : { name: "", platform, source: "unavailable" };
       cachedAt = now();
+
       return cache;
     } catch (error: unknown) {
       debugLogger.debug(
@@ -274,6 +292,7 @@ export function createSystemDefaultMicrophoneResolver({
       );
       cache = { name: "", platform, source: "unavailable" };
       cachedAt = now();
+
       return cache;
     }
   };

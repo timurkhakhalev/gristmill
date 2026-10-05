@@ -1,14 +1,17 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/noteFormattingOverrides.ts");
 
 test("cloud mode leaves provider selection to the configured note-formatting scope", async () => {
   const { buildNoteFormattingOverrides } = await load();
+
   const overrides = buildNoteFormattingOverrides(
     { mode: "self-hosted", remoteUrl: "http://192.168.1.126:11434/v1", customApiKey: "secret" },
     true
   );
+
   assert.deepEqual(overrides, {
     inferenceScope: "noteFormatting",
     baseUrl: undefined,
@@ -19,6 +22,7 @@ test("cloud mode leaves provider selection to the configured note-formatting sco
 
 test("self-hosted forwards remoteUrl as lanUrl and the api key (regression: was hitting OpenAI)", async () => {
   const { buildNoteFormattingOverrides } = await load();
+
   const overrides = buildNoteFormattingOverrides(
     {
       mode: "self-hosted",
@@ -28,6 +32,7 @@ test("self-hosted forwards remoteUrl as lanUrl and the api key (regression: was 
     },
     false
   );
+
   assert.equal(overrides.lanUrl, "http://192.168.1.126:11434/v1");
   assert.equal(overrides.customApiKey, "sk-local");
   assert.equal(overrides.provider, undefined);
@@ -37,10 +42,12 @@ test("self-hosted forwards remoteUrl as lanUrl and the api key (regression: was 
 
 test("self-hosted with no key still routes via lanUrl", async () => {
   const { buildNoteFormattingOverrides } = await load();
+
   const overrides = buildNoteFormattingOverrides(
     { mode: "self-hosted", remoteUrl: "http://host:8080/v1", customApiKey: "" },
     false
   );
+
   assert.equal(overrides.lanUrl, "http://host:8080/v1");
   assert.equal(overrides.customApiKey, undefined);
   assert.equal(overrides.inferenceScope, "noteFormatting");
@@ -48,6 +55,7 @@ test("self-hosted with no key still routes via lanUrl", async () => {
 
 test("providers/custom forwards cloudBaseUrl as baseUrl and the key", async () => {
   const { buildNoteFormattingOverrides } = await load();
+
   const overrides = buildNoteFormattingOverrides(
     {
       mode: "providers",
@@ -57,6 +65,7 @@ test("providers/custom forwards cloudBaseUrl as baseUrl and the key", async () =
     },
     false
   );
+
   assert.deepEqual(overrides, {
     inferenceScope: "noteFormatting",
     provider: "custom",
@@ -68,10 +77,12 @@ test("providers/custom forwards cloudBaseUrl as baseUrl and the key", async () =
 
 test("providers with a first-party cloud provider passes provider only, no key/baseUrl", async () => {
   const { buildNoteFormattingOverrides } = await load();
+
   const overrides = buildNoteFormattingOverrides(
     { mode: "providers", provider: "anthropic", customApiKey: "should-not-leak" },
     false
   );
+
   assert.deepEqual(overrides, {
     inferenceScope: "noteFormatting",
     provider: "anthropic",
@@ -83,10 +94,12 @@ test("providers with a first-party cloud provider passes provider only, no key/b
 
 test("local mode pins the local provider and leaks no key", async () => {
   const { buildNoteFormattingOverrides } = await load();
+
   const overrides = buildNoteFormattingOverrides(
     { mode: "local", ...{ model: "qwen2.5-3b" }, customApiKey: "irrelevant" },
     false
   );
+
   assert.deepEqual(overrides, {
     inferenceScope: "noteFormatting",
     provider: "local",
@@ -98,10 +111,12 @@ test("local mode pins the local provider and leaks no key", async () => {
 
 test("local mode with no model stays local (regression: inherited cloud id hit the cloud)", async () => {
   const { buildNoteFormattingOverrides } = await load();
+
   const overrides = buildNoteFormattingOverrides(
     { mode: "local", ...{ model: "" }, customApiKey: "sk-cloud" },
     false
   );
+
   assert.equal(overrides.provider, "local");
   assert.equal(overrides.customApiKey, undefined);
   assert.equal(overrides.inferenceScope, "noteFormatting");
@@ -109,10 +124,12 @@ test("local mode with no model stays local (regression: inherited cloud id hit t
 
 test("enterprise mode pins its provider instead of inheriting cleanup routing", async () => {
   const { buildNoteFormattingOverrides } = await load();
+
   const overrides = buildNoteFormattingOverrides(
     { mode: "enterprise", provider: "bedrock", customApiKey: "irrelevant" },
     false
   );
+
   assert.deepEqual(overrides, {
     inferenceScope: "noteFormatting",
     provider: "bedrock",

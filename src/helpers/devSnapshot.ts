@@ -12,40 +12,49 @@ import { SECRET_ENV_KEYS } from "../config/secretKeys.js";
 // overwritten — a dev database with dev-made notes stays intact).
 
 const PROD_DB = "transcriptions.db";
+
 // The dev main process runs on the development channel and opens
 // transcriptions-dev.db (appChannel.ts + database.ts); both dev modes
 // converge on this one file, so the snapshot writes only it.
 const DEV_DB = "transcriptions-dev.db";
+
 const COPY_FILES = ["globe-preference-state.json", ".system-audio-permission"];
 
 // Copy non-secret settings only. Protocol selectors belong to the build
 // channel, while encrypted secrets are copied separately in secure-keys.
-const ENV_STRIP_KEYS = new Set([
-  ...SECRET_ENV_KEYS,
-  "GRISTMILL_PROTOCOL",
-  "VITE_GRISTMILL_PROTOCOL",
-].map((key) => key.toUpperCase()));
+const ENV_STRIP_KEYS = new Set(
+  [...SECRET_ENV_KEYS, "GRISTMILL_PROTOCOL", "VITE_GRISTMILL_PROTOCOL"].map((key) =>
+    key.toUpperCase()
+  )
+);
 
 function cloneEnvFile(source: string, target: string): void {
   const destination = path.join(target, ".env");
   const origin = path.join(source, ".env");
+
   if (!ordinaryFileOrMissing(destination) || !ordinaryFileOrMissing(origin)) {
     throw new Error("snapshot .env path is not an ordinary file");
   }
+
   if (fs.existsSync(destination) || !fs.existsSync(origin)) return;
   const parsed = require("dotenv").parse(fs.readFileSync(origin, "utf8")) as Record<string, string>;
+
   const safeContent = Object.entries(parsed)
     .filter(([key]) => !ENV_STRIP_KEYS.has(key.toUpperCase()))
     .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
     .join("\n");
+
   fs.writeFileSync(destination, safeContent ? `${safeContent}\n` : "", { mode: 0o600 });
 }
+
 // The file-origin renderer settings live in Partitions. pnpm dev has a separate
 // HTTP origin; windowManager imports those settings before loading that page.
 const COPY_DIRS = ["audio", "meeting-results", "notes", "secure-keys", "Partitions"];
+
 // Written last: a profile without it was interrupted mid-snapshot and the
 // snapshot resumes on the next launch instead of staying half-empty forever.
 const MARKER = ".dev-snapshot-complete";
+
 const SUPPRESSED = ".dev-snapshot-suppressed";
 
 function sourceProfileDir(): string {
@@ -78,6 +87,7 @@ function clone(from: string, to: string): void {
   if (!ordinaryFileOrMissing(from) || !ordinaryFileOrMissing(to)) {
     throw new Error(`snapshot file path is not an ordinary file: ${from} -> ${to}`);
   }
+
   if (fs.existsSync(to) || !fs.existsSync(from)) return;
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(from, to, fs.constants.COPYFILE_FICLONE);
@@ -87,11 +97,15 @@ function assertOrdinaryTree(dir: string): void {
   if (!ordinaryDirectoryOrMissing(dir)) {
     throw new Error(`snapshot directory path is not an ordinary directory: ${dir}`);
   }
+
   if (!fs.existsSync(dir)) return;
+
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const child = path.join(dir, entry.name);
+
     if (entry.isDirectory()) assertOrdinaryTree(child);
-    else if (!entry.isFile()) throw new Error(`snapshot does not support links or special files: ${child}`);
+    else if (!entry.isFile())
+      throw new Error(`snapshot does not support links or special files: ${child}`);
   }
 }
 
@@ -99,13 +113,17 @@ function copyDir(from: string, to: string): void {
   if (!ordinaryDirectoryOrMissing(from) || !ordinaryDirectoryOrMissing(to)) {
     throw new Error(`snapshot directory path is not an ordinary directory: ${from} -> ${to}`);
   }
+
   if (!fs.existsSync(from)) return;
+
   if (!fs.existsSync(to)) {
     fs.mkdirSync(to, { recursive: true });
   }
+
   for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
     const src = path.join(from, entry.name);
     const dst = path.join(to, entry.name);
+
     if (entry.isDirectory()) copyDir(src, dst);
     else if (entry.isFile()) clone(src, dst);
     else throw new Error(`snapshot does not support links or special files: ${src}`);
@@ -128,13 +146,17 @@ function checkpointDatabase(file: string): boolean {
       prepare: (sql: string) => { get: () => { busy: number } };
       close: () => void;
     };
+
     const db = new Database(file);
+
     try {
       const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy: number };
+
       if (row?.busy !== 0) throw new Error("wal_checkpoint blocked by another reader");
     } finally {
       db.close();
     }
+
     return true;
   } catch (error) {
     debugLogger.warn(
@@ -142,6 +164,7 @@ function checkpointDatabase(file: string): boolean {
       { error: (error as Error)?.message },
       "devSnapshot"
     );
+
     return false;
   }
 }
@@ -156,9 +179,12 @@ function discardPlaintextCalendarTokens(file: string): void {
     };
     close(): void;
   };
+
   const db = new Database(file);
+
   try {
     db.exec("PRAGMA secure_delete = ON");
+
     const tables = new Set(
       db
         .prepare(
@@ -167,7 +193,9 @@ function discardPlaintextCalendarTokens(file: string): void {
         .all()
         .map((row) => row.name)
     );
+
     let changed = false;
+
     if (tables.has("google_calendar_tokens")) {
       changed =
         db
@@ -176,6 +204,7 @@ function discardPlaintextCalendarTokens(file: string): void {
           )
           .run("ohenc:v1:*", "ohenc:v1:*").changes > 0 || changed;
     }
+
     if (tables.has("microsoft_calendar_tokens")) {
       changed =
         db
@@ -184,8 +213,10 @@ function discardPlaintextCalendarTokens(file: string): void {
           )
           .run("ohenc:v1:*", "ohenc:v1:*").changes > 0 || changed;
     }
+
     if (changed) {
       const checkpoint = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+
       if (checkpoint?.busy !== 0) throw new Error("calendar token WAL checkpoint failed");
     }
   } finally {
@@ -200,6 +231,7 @@ function renameDatabaseSet(from: string, to: string): void {
   for (const suffix of ["-shm", "-wal"]) {
     if (fs.existsSync(from + suffix)) fs.renameSync(from + suffix, to + suffix);
   }
+
   fs.renameSync(from, to);
 }
 
@@ -212,25 +244,40 @@ function renameDatabaseSet(from: string, to: string): void {
 function adoptLegacyDevDatabase(target: string): boolean {
   const legacy = path.join(target, PROD_DB);
   const current = path.join(target, DEV_DB);
+
   if (!fs.existsSync(legacy)) return true;
+
   try {
     discardPlaintextCalendarTokens(legacy);
   } catch (error) {
-    debugLogger.warn("legacy dev database could not be prepared; retrying on the next launch", {
-      error: (error as Error).message,
-    }, "devSnapshot");
+    debugLogger.warn(
+      "legacy dev database could not be prepared; retrying on the next launch",
+      {
+        error: (error as Error).message,
+      },
+      "devSnapshot"
+    );
+
     return false;
   }
+
   if (!checkpointDatabase(legacy)) return false;
+
   if (fs.existsSync(current)) {
     try {
       discardPlaintextCalendarTokens(current);
     } catch (error) {
-      debugLogger.warn("dev database could not be prepared; retrying on the next launch", {
-        error: (error as Error).message,
-      }, "devSnapshot");
+      debugLogger.warn(
+        "dev database could not be prepared; retrying on the next launch",
+        {
+          error: (error as Error).message,
+        },
+        "devSnapshot"
+      );
+
       return false;
     }
+
     if (!checkpointDatabase(current)) return false;
     // Both databases predate the cutover: keep the packaged-Dev set as an
     // explicit, visible backup. It is not opened automatically; restoring it
@@ -238,22 +285,28 @@ function adoptLegacyDevDatabase(target: string): boolean {
     // onto an existing file overwrites it, and a same-millisecond collision
     // must not destroy an earlier backup.
     let backup: string | null = null;
+
     for (let attempt = 0; attempt < 1000 && !backup; attempt++) {
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+
       const candidate = path.join(
         target,
         `transcriptions-legacy-dev-backup-${stamp}${attempt ? `-${attempt}` : ""}.db`
       );
+
       if (!fs.existsSync(candidate)) backup = candidate;
     }
+
     if (!backup) {
       debugLogger.warn(
         "could not reserve a legacy backup name; retrying on the next launch",
         {},
         "devSnapshot"
       );
+
       return false;
     }
+
     debugLogger.warn(
       "dev profile holds both pre-cutover databases; keeping the packaged-Dev set as " +
         path.basename(backup),
@@ -261,9 +314,12 @@ function adoptLegacyDevDatabase(target: string): boolean {
       "devSnapshot"
     );
     renameDatabaseSet(legacy, backup);
+
     return true;
   }
+
   renameDatabaseSet(legacy, current);
+
   return true;
 }
 
@@ -275,14 +331,16 @@ function adoptLegacyDevDatabase(target: string): boolean {
 // first launches cannot replace a database the other one published or opened.
 function snapshotDatabase(source: string, target: string, name: string): boolean {
   const destination = path.join(target, name);
-  if (!ordinaryFileOrMissing(path.join(source, PROD_DB)) ||
-      !ordinaryFileOrMissing(destination)) {
+
+  if (!ordinaryFileOrMissing(path.join(source, PROD_DB)) || !ordinaryFileOrMissing(destination)) {
     throw new Error("snapshot database path is not an ordinary file");
   }
+
   if (fs.existsSync(destination)) return true;
   fs.mkdirSync(target, { recursive: true });
   const staged = path.join(target, `.${name}.snapshot-${process.pid}.tmp`);
   fs.rmSync(staged, { force: true, recursive: true });
+
   try {
     const Database = require("better-sqlite3") as new (
       path: string,
@@ -291,29 +349,35 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
       exec: (sql: string) => void;
       close: () => void;
     };
+
     const db = new Database(path.join(source, PROD_DB), {
       readonly: true,
       fileMustExist: true,
     });
+
     try {
       db.exec(`VACUUM INTO '${staged.replace(/'/g, "''")}'`);
     } finally {
       db.close();
     }
+
     discardPlaintextCalendarTokens(staged);
     // link() never overwrites; rename() over APFS would clobber a database a
     // concurrent launch created between the existsSync check and now.
     fs.linkSync(staged, destination);
     fs.rmSync(staged, { force: true, recursive: true });
+
     return true;
   } catch (error) {
     fs.rmSync(staged, { force: true, recursive: true });
+
     if (fs.existsSync(destination)) return true; // a concurrent launch won
     debugLogger.warn(
       "consistent database snapshot failed; retrying on the next launch",
       { error: (error as Error)?.message },
       "devSnapshot"
     );
+
     return false;
   }
 }
@@ -340,10 +404,13 @@ function reachesProduction(resolved: string, source: string): boolean {
 function realpathDeep(p: string): string | null {
   let current = p;
   const tail: string[] = [];
+
   for (;;) {
     const resolved = realpathOrNull(current);
+
     if (resolved) return tail.length ? path.join(resolved, ...tail) : resolved;
     const parent = path.dirname(current);
+
     if (parent === current) return null;
     tail.unshift(path.basename(current));
     current = parent;
@@ -352,14 +419,17 @@ function realpathDeep(p: string): string | null {
 
 export function profilePathAliasesProduction(targetProfile: string): boolean {
   const source = realpathOrNull(sourceProfileDir());
+
   if (!source) return false;
   // Equal or nested either way, including paths that do not exist yet: the
   // deepest existing ancestor decides (an explicit --user-data-dir inside
   // production must refuse before mkdir creates anything there).
   const target = realpathDeep(targetProfile);
+
   if (target && (reachesProduction(target, source) || reachesProduction(source, target))) {
     return true;
   }
+
   return false;
 }
 
@@ -369,12 +439,15 @@ export function profilePathAliasesProduction(targetProfile: string): boolean {
 export function devProfileHasUnsafePaths(target = targetProfileDir()): boolean {
   if (profilePathAliasesProduction(target)) return true;
   const files = [PROD_DB, DEV_DB, ".env", MARKER, SUPPRESSED, ...COPY_FILES];
+
   for (const name of [PROD_DB, DEV_DB]) {
     files.push(`${name}-wal`, `${name}-shm`);
   }
-  return files.some((name) => !ordinaryFileOrMissing(path.join(target, name))) ||
-    [...COPY_DIRS, "logs"].some((name) =>
-      !ordinaryDirectoryOrMissing(path.join(target, name)));
+
+  return (
+    files.some((name) => !ordinaryFileOrMissing(path.join(target, name))) ||
+    [...COPY_DIRS, "logs"].some((name) => !ordinaryDirectoryOrMissing(path.join(target, name)))
+  );
 }
 
 // Explicit Reset All App Data is a lasting choice, including when the first
@@ -382,23 +455,28 @@ export function devProfileHasUnsafePaths(target = targetProfileDir()): boolean {
 export function suppressDevSnapshotAfterReset(): void {
   const target = targetProfileDir();
   const file = path.join(target, SUPPRESSED);
-  if (!ordinaryFileOrMissing(file)) throw new Error("snapshot suppression path is not an ordinary file");
+
+  if (!ordinaryFileOrMissing(file))
+    throw new Error("snapshot suppression path is not an ordinary file");
   fs.writeFileSync(file, `${new Date().toISOString()}\n`, { mode: 0o600 });
 }
 
 export function snapshotProductionProfileForDev(): boolean {
   const source = sourceProfileDir();
   const target = targetProfileDir();
+
   if (devProfileHasUnsafePaths(target)) {
     debugLogger.warn(
       "dev profile has an unsafe storage path; refusing to start",
       { source, target },
       "devSnapshot"
     );
+
     return false;
   }
 
   const refresh = process.env.GRISTMILL_REFRESH_SNAPSHOT === "1";
+
   if (fs.existsSync(path.join(target, SUPPRESSED)) && !refresh) return true;
 
   // Adoption is independent of the production snapshot: a dev-only profile
@@ -413,17 +491,21 @@ export function snapshotProductionProfileForDev(): boolean {
 
   const markerExists = fs.existsSync(path.join(target, MARKER));
   const devDbExists = fs.existsSync(path.join(target, DEV_DB));
+
   if (devDbExists && markerExists && !refresh) return true;
 
   let dbReady: boolean;
+
   try {
     // The database filename follows the channel (appChannel.ts): both dev
     // modes — pnpm dev and the packaged Dev app — open transcriptions-dev.db.
     dbReady = snapshotDatabase(source, target, DEV_DB);
     cloneEnvFile(source, target);
+
     for (const name of COPY_FILES) {
       clone(path.join(source, name), path.join(target, name));
     }
+
     for (const name of COPY_DIRS) {
       cloneDir(path.join(source, name), path.join(target, name));
     }
@@ -433,8 +515,10 @@ export function snapshotProductionProfileForDev(): boolean {
       { error: (error as Error)?.message },
       "devSnapshot"
     );
+
     return false;
   }
+
   if (!dbReady && !fs.existsSync(path.join(target, DEV_DB))) {
     // Without the database the app would create an empty transcriptions-dev.db
     // on startup and every later launch would treat it as a completed profile.
@@ -444,10 +528,13 @@ export function snapshotProductionProfileForDev(): boolean {
       {},
       "devSnapshot"
     );
+
     return false;
   }
+
   // Marker last: only a fully copied profile counts as snapshotted.
   fs.writeFileSync(path.join(target, MARKER), `${new Date().toISOString()}\n`, { mode: 0o600 });
   debugLogger.info("production profile snapshotted into dev profile", { source, target });
+
   return true;
 }

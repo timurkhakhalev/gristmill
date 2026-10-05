@@ -21,6 +21,7 @@ function ensureIpcListeners() {
     const dispose = window.electronAPI.onActionCreated((action) => {
       if (action) addActionToStore(action);
     });
+
     if (typeof dispose === "function") disposers.push(dispose);
   }
 
@@ -28,6 +29,7 @@ function ensureIpcListeners() {
     const dispose = window.electronAPI.onActionUpdated((action) => {
       if (action) updateActionInStore(action);
     });
+
     if (typeof dispose === "function") disposers.push(dispose);
   }
 
@@ -35,6 +37,7 @@ function ensureIpcListeners() {
     const dispose = window.electronAPI.onActionDeleted(({ id }) => {
       removeActionFromStore(id);
     });
+
     if (typeof dispose === "function") disposers.push(dispose);
   }
 
@@ -48,6 +51,7 @@ export async function initializeActions(): Promise<ActionItem[]> {
   ensureIpcListeners();
   const items = (await window.electronAPI?.getActions()) ?? [];
   useActionStore.setState({ actions: items });
+
   return items;
 }
 
@@ -67,6 +71,7 @@ function updateActionInStore(action: ActionItem): void {
 function removeActionFromStore(id: number): void {
   const { actions } = useActionStore.getState();
   const next = actions.filter((a) => a.id !== id);
+
   if (next.length === actions.length) return;
   useActionStore.setState({ actions: next });
 }

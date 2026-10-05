@@ -24,6 +24,7 @@ export const transcriptionItemSchema = z
     route_kind: z.string().nullable(),
   })
   .passthrough();
+
 export type TranscriptionItem = z.infer<typeof transcriptionItemSchema>;
 
 export const transcriptionOrNullSchema = transcriptionItemSchema.nullable();
@@ -35,6 +36,7 @@ export const binaryLikeSchema = z.custom<ArrayBuffer | ArrayBufferView>(
   (value) => value instanceof ArrayBuffer || ArrayBuffer.isView(value),
   { message: "Expected binary audio data" }
 );
+
 export type BinaryLike = z.infer<typeof binaryLikeSchema>;
 
 // ---- db-* record channels -------------------------------------------------
@@ -44,6 +46,7 @@ export const transcriptionSaveResultSchema = z.object({
   success: z.boolean(),
   transcription: transcriptionItemSchema.nullable(),
 });
+
 export type TranscriptionSaveResult = z.infer<typeof transcriptionSaveResultSchema>;
 
 export const transcriptionListSchema = z.array(transcriptionItemSchema);
@@ -59,6 +62,7 @@ export const transcriptionDeleteResultSchema = z
     id: z.number().optional(),
   })
   .passthrough();
+
 export type TranscriptionDeleteResult = z.infer<typeof transcriptionDeleteResultSchema>;
 
 export const transcriptionUpdateResultSchema = z.object({
@@ -66,6 +70,7 @@ export const transcriptionUpdateResultSchema = z.object({
   transcription: transcriptionItemSchema.nullable().optional(),
   error: z.string().optional(),
 });
+
 export type TranscriptionUpdateResult = z.infer<typeof transcriptionUpdateResultSchema>;
 
 // ---- audio storage channels -----------------------------------------------
@@ -94,6 +99,7 @@ export const mergeAudioSegmentsArgsSchema = z.object({
     .min(2)
     .max(100),
 });
+
 export type MergeAudioSegmentsArgs = z.infer<typeof mergeAudioSegmentsArgsSchema>;
 
 export const mergeAudioSegmentsResultSchema = z.union([
@@ -125,9 +131,11 @@ export const exportResultSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
 });
+
 export type ExportResult = z.infer<typeof exportResultSchema>;
 
 export const noteExportFormatSchema = z.enum(["txt", "md"]);
+
 export const transcriptExportFormatSchema = z.enum(["txt", "srt", "json", "md"]);
 
 // ---- file selection --------------------------------------------------------
@@ -156,13 +164,17 @@ export const pendingNoteNavigationSchema = z
   })
   .passthrough()
   .nullable();
+
 export type PendingNoteNavigation = z.infer<typeof pendingNoteNavigationSchema>;
 
 // ---- main -> renderer events -----------------------------------------------
 
 export const transcriptionAddedEventSchema = transcriptionItemSchema;
+
 export const transcriptionUpdatedEventSchema = transcriptionItemSchema;
+
 export const transcriptionDeletedEventSchema = z.object({ id: z.number() });
+
 export const transcriptionsClearedEventSchema = z.object({ cleared: z.number() });
 
 // ---- channels --------------------------------------------------------------
@@ -216,9 +228,10 @@ export interface TranscriptionDataApi {
       [key: string]: unknown;
     }
   ): Promise<TranscriptionSaveResult>;
-  getTranscriptions(limit?: number, options?: { includeDiscarded?: boolean }): Promise<
-    TranscriptionItem[]
-  >;
+  getTranscriptions(
+    limit?: number,
+    options?: { includeDiscarded?: boolean }
+  ): Promise<TranscriptionItem[]>;
   clearTranscriptions(): Promise<{ success: boolean; cleared: number }>;
   deleteTranscription(id: number): Promise<TranscriptionDeleteResult>;
   saveTranscriptionAudio(

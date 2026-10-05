@@ -45,8 +45,20 @@ const emptyTimeline = (durationMs: number | null): NoteTranscript["timeline"] =>
   intentional_pauses: "excluded",
 });
 
-function absent(noteId: number, status: NoteTranscript["status"], diagnostics: string[] = []): NoteTranscript {
-  return { note_id: noteId, status, timeline: emptyTimeline(null), speakers: [], text: null, segments: null, diagnostics };
+function absent(
+  noteId: number,
+  status: NoteTranscript["status"],
+  diagnostics: string[] = []
+): NoteTranscript {
+  return {
+    note_id: noteId,
+    status,
+    timeline: emptyTimeline(null),
+    speakers: [],
+    text: null,
+    segments: null,
+    diagnostics,
+  };
 }
 
 /**
@@ -60,12 +72,18 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   return readNoteTranscriptOutput(deps, noteId).transcript;
 }
 
-export function readNoteTranscriptOutput(deps: NoteTranscriptDeps, noteId: number): {
-  transcript: NoteTranscript; sources: Array<{ runId: string; recordingIds: string[] }>;
+export function readNoteTranscriptOutput(
+  deps: NoteTranscriptDeps,
+  noteId: number
+): {
+  transcript: NoteTranscript;
+  sources: Array<{ runId: string; recordingIds: string[] }>;
 } {
-  const recordings = deps.listRecordings(noteId)
+  const recordings = deps
+    .listRecordings(noteId)
     .slice()
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
+
   if (!recordings.length) return { transcript: readProjection(deps, noteId), sources: [] };
 
   const diagnostics: string[] = [];
@@ -80,18 +98,22 @@ export function readNoteTranscriptOutput(deps: NoteTranscriptDeps, noteId: numbe
   // Display uses proven capture lengths; alignment gaps must not fail assembly.
   // Processing keeps meetingTimelineFrameCount strict — this does not weaken it.
   const partOffsets = new Map<string, number | null>();
+
   for (const part of recordings) {
     // A part's own start offset is proven by everything before it, even while it records.
     partOffsets.set(part.id, durationKnown ? Math.round(durationMs) : null);
+
     if (part.captureState === "recording" || part.captureState === "finalizing") {
       pending = true;
       durationKnown = false;
       continue;
     }
+
     if (part.captureState === "incomplete") {
       uncovered = true;
       diagnostics.push(`part-capture-incomplete:${part.id}`);
     }
+
     try {
       durationMs += meetingTimelineFrameCount(part, deps.listEpochs(part.id), true) / FRAMES_PER_MS;
     } catch {
@@ -101,49 +123,94 @@ export function readNoteTranscriptOutput(deps: NoteTranscriptDeps, noteId: numbe
   }
 
   const candidates = new Map<string, MeetingProcessingRunDto>();
+
   for (const part of recordings) {
     const current = part.currentRunId ? deps.getRun(part.currentRunId) : null;
+
     if (!current) continue;
-    const transcriptRun = current.kind === "summary" && current.sourceRunId ? deps.getRun(current.sourceRunId) : current;
+
+    const transcriptRun =
+      current.kind === "summary" && current.sourceRunId
+        ? deps.getRun(current.sourceRunId)
+        : current;
+
     if (transcriptRun) candidates.set(transcriptRun.id, transcriptRun);
   }
+
   // Prefer runs covering more parts; never take two runs over the same audio.
   const covered = new Set<string>();
+
   const orderedRuns = [...candidates.values()].sort(
-    (a, b) => b.sourceRecordingIds.length - a.sourceRecordingIds.length || b.createdAt.localeCompare(a.createdAt)
+    (a, b) =>
+      b.sourceRecordingIds.length - a.sourceRecordingIds.length ||
+      b.createdAt.localeCompare(a.createdAt)
   );
+
   let pieceOrder = 0;
+
   for (const run of orderedRuns) {
     if (run.sourceRecordingIds.some((id) => covered.has(id))) continue;
     const transcript = run.hasTranscript ? deps.readTranscript(run.id) : null;
+
     if (!transcript) continue;
     const offset = partOffsets.get(run.sourceRecordingIds[0]);
+
     if (offset === undefined) continue;
     run.sourceRecordingIds.forEach((id) => covered.add(id));
-    pieces.push({ offsetMs: offset, order: pieceOrder++, sourceIds: run.sourceRecordingIds, runId: run.id, transcript, corrections: deps.getCorrections(run.id) });
+    pieces.push({
+      offsetMs: offset,
+      order: pieceOrder++,
+      sourceIds: run.sourceRecordingIds,
+      runId: run.id,
+      transcript,
+      corrections: deps.getCorrections(run.id),
+    });
   }
 
   for (const part of recordings) {
-    if (covered.has(part.id) || part.captureState === "recording" || part.captureState === "finalizing") continue;
+    if (
+      covered.has(part.id) ||
+      part.captureState === "recording" ||
+      part.captureState === "finalizing"
+    )
+      continue;
     const runs = part.currentRunId ? [deps.getRun(part.currentRunId)] : [];
-    if (runs.some((run) => run && (run.status === "pending" || run.status === "running"))) pending = true;
-    else if (runs.some((run) => run && (run.status === "failed" || run.status === "blocked"))) failed = true;
+
+    if (runs.some((run) => run && (run.status === "pending" || run.status === "running")))
+      pending = true;
+    else if (runs.some((run) => run && (run.status === "failed" || run.status === "blocked")))
+      failed = true;
     else uncovered = true;
     diagnostics.push(`part-uncovered:${part.id}`);
   }
 
   if (!pieces.length) {
-    const status = pending ? "pending" : failed ? "error" : uncovered || !durationKnown ? "partial" : "absent";
-    return { transcript: { ...absent(noteId, status, diagnostics), timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null) }, sources: [] };
+    const status = pending
+      ? "pending"
+      : failed
+        ? "error"
+        : uncovered || !durationKnown
+          ? "partial"
+          : "absent";
+
+    return {
+      transcript: {
+        ...absent(noteId, status, diagnostics),
+        timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null),
+      },
+      sources: [],
+    };
   }
 
   // Proven offsets ascend; unknown offsets keep start order after proven ones.
   pieces.sort((a, b) => (a.offsetMs ?? Infinity) - (b.offsetMs ?? Infinity) || a.order - b.order);
   const speakers: NoteTranscriptSpeaker[] = [];
   const speakerIds = new Map<string, string>();
+
   const speakerFor = (piece: Piece, provider: string): string => {
     const key = `${piece.runId}\u0000${provider}`;
     let id = speakerIds.get(key);
+
     if (!id) {
       id = `speaker_${speakerIds.size + 1}`;
       speakerIds.set(key, id);
@@ -151,11 +218,20 @@ export function readNoteTranscriptOutput(deps: NoteTranscriptDeps, noteId: numbe
       speakers.push({
         id,
         name: correction?.displayName ?? null,
-        ...(correction ? { name_source: correction.source, ...(correction.platform ? { name_platform: correction.platform } : {}) } : {}),
-        email: correction?.participantEmail ?? (correction?.profileId ? deps.profileEmail(correction.profileId) : null),
-        source: provider === "mic" ? "microphone" : provider.startsWith("system:") ? "system" : null,
+        ...(correction
+          ? {
+              name_source: correction.source,
+              ...(correction.platform ? { name_platform: correction.platform } : {}),
+            }
+          : {}),
+        email:
+          correction?.participantEmail ??
+          (correction?.profileId ? deps.profileEmail(correction.profileId) : null),
+        source:
+          provider === "mic" ? "microphone" : provider.startsWith("system:") ? "system" : null,
       });
     }
+
     return id;
   };
 
@@ -164,6 +240,7 @@ export function readNoteTranscriptOutput(deps: NoteTranscriptDeps, noteId: numbe
   // Ordering is by start_ms only; end_ms serves as the tiebreaker below.
   const sortKey = (segment: NoteTranscriptSegment): number => segment.start_ms ?? Infinity;
   const ordered: Array<{ segment: NoteTranscriptSegment; order: number }> = [];
+
   if (withSegments) {
     pieces.forEach((piece, pieceIndex) => {
       // An unknown offset makes this piece's absolute times unknowable, not zero.
@@ -183,47 +260,62 @@ export function readNoteTranscriptOutput(deps: NoteTranscriptDeps, noteId: numbe
       });
     });
     // Equal times keep source order so output is deterministic; unknown times sort last by source order.
-    ordered.sort((a, b) =>
-      sortKey(a.segment) - sortKey(b.segment) ||
-      (a.segment.end_ms ?? Infinity) - (b.segment.end_ms ?? Infinity) ||
-      a.order - b.order
+    ordered.sort(
+      (a, b) =>
+        sortKey(a.segment) - sortKey(b.segment) ||
+        (a.segment.end_ms ?? Infinity) - (b.segment.end_ms ?? Infinity) ||
+        a.order - b.order
     );
   }
+
   const segments = ordered.map((item) => item.segment);
 
-  return { sources: pieces.map(piece => ({ runId: piece.runId, recordingIds: piece.sourceIds })), transcript: {
-    note_id: noteId,
-    status: pending || failed || uncovered || !durationKnown ? "partial" : "ready",
-    timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null),
-    speakers,
-    text: withSegments ? segments.map((segment) => segment.text).join("\n") : pieces.map((piece) => piece.transcript.text).join("\n"),
-    segments: withSegments ? segments : null,
-    diagnostics,
-  } };
+  return {
+    sources: pieces.map((piece) => ({ runId: piece.runId, recordingIds: piece.sourceIds })),
+    transcript: {
+      note_id: noteId,
+      status: pending || failed || uncovered || !durationKnown ? "partial" : "ready",
+      timeline: emptyTimeline(durationKnown ? Math.round(durationMs) : null),
+      speakers,
+      text: withSegments
+        ? segments.map((segment) => segment.text).join("\n")
+        : pieces.map((piece) => piece.transcript.text).join("\n"),
+      segments: withSegments ? segments : null,
+      diagnostics,
+    },
+  };
 }
 
 function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscript {
   const raw = deps.getProjection(noteId);
+
   if (!raw?.trim()) return absent(noteId, "absent");
   let parsed: unknown;
+
   try {
     parsed = raw.trimStart().startsWith("[") ? JSON.parse(raw) : null;
   } catch {
     return absent(noteId, "error", ["projection-invalid"]);
   }
+
   if (!Array.isArray(parsed)) {
     return { ...absent(noteId, "ready"), text: raw, diagnostics: [] };
   }
+
   if (parsed.some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
     return absent(noteId, "error", ["projection-invalid"]);
   }
+
   const speakers: NoteTranscriptSpeaker[] = [];
   const ids = new Map<string, string>();
+
   const segments = parsed.map((item: Record<string, unknown>): NoteTranscriptSegment => {
     const label = typeof item.speaker === "string" ? item.speaker : null;
     let speakerId: string | null = null;
+
     if (label) {
       speakerId = ids.get(label) ?? null;
+
       if (!speakerId) {
         speakerId = `speaker_${ids.size + 1}`;
         ids.set(label, speakerId);
@@ -235,8 +327,15 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
         });
       }
     }
-    const start = typeof item.timestamp === "number" && Number.isFinite(item.timestamp) ? item.timestamp : null;
-    const end = typeof item.endTimestamp === "number" && Number.isFinite(item.endTimestamp) ? item.endTimestamp : null;
+
+    const start =
+      typeof item.timestamp === "number" && Number.isFinite(item.timestamp) ? item.timestamp : null;
+
+    const end =
+      typeof item.endTimestamp === "number" && Number.isFinite(item.endTimestamp)
+        ? item.endTimestamp
+        : null;
+
     return {
       speaker_id: speakerId,
       start_ms: start === null ? null : Math.round(start * 1000),
@@ -244,7 +343,9 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
       text: typeof item.text === "string" ? item.text : "",
     };
   });
+
   const timed = segments.every((segment) => segment.start_ms !== null && segment.end_ms !== null);
+
   return {
     note_id: noteId,
     status: "ready",
@@ -257,26 +358,42 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
 }
 
 /** Restrict an assembled transcript. `text` and `segments` always describe the same selection. */
-export function filterNoteTranscript(transcript: NoteTranscript, filter: TranscriptFilter): NoteTranscript {
+export function filterNoteTranscript(
+  transcript: NoteTranscript,
+  filter: TranscriptFilter
+): NoteTranscript {
   const { fromMs, toMs, speaker } = filter;
+
   if (fromMs === undefined && toMs === undefined && speaker === undefined) return transcript;
+
   if (transcript.text === null) return transcript;
+
   if (transcript.segments === null) {
     throw new NoteReadError(
       "transcript_filter_unavailable",
       "This transcript has no per-segment timing or speakers, so it cannot be filtered"
     );
   }
+
   if (speaker !== undefined && !transcript.speakers.some((item) => item.id === speaker)) {
     throw new NoteReadError("speaker_not_found", `Speaker ${speaker} is not in this transcript`);
   }
+
   const segments = transcript.segments.filter((segment) => {
     if (speaker !== undefined && segment.speaker_id !== speaker) return false;
+
     if (fromMs === undefined && toMs === undefined) return true;
+
     if (segment.start_ms === null || segment.end_ms === null) return false;
-    return (toMs === undefined || segment.start_ms < toMs) && (fromMs === undefined || segment.end_ms > fromMs);
+
+    return (
+      (toMs === undefined || segment.start_ms < toMs) &&
+      (fromMs === undefined || segment.end_ms > fromMs)
+    );
   });
+
   const used = new Set(segments.map((segment) => segment.speaker_id));
+
   return {
     ...transcript,
     speakers: transcript.speakers.filter((item) => used.has(item.id)),

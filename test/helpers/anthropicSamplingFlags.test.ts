@@ -1,10 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const modelData: typeof import("../../src/models/modelRegistryData.json") = require("../../src/models/modelRegistryData.json");
 
 const anthropic = modelData.cloudProviders.find((p) => p.id === "anthropic");
+
 assert.ok(anthropic);
+
 const anthropicModels = anthropic.models;
 
 test("every Anthropic model declares sampling support explicitly", () => {

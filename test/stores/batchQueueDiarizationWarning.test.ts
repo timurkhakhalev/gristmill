@@ -1,14 +1,22 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
-async function waitForQueueCompletion(useBatchQueueStore: { getState(): { isProcessing: boolean } }) {
+async function waitForQueueCompletion(useBatchQueueStore: {
+  getState(): { isProcessing: boolean };
+}) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     if (!useBatchQueueStore.getState().isProcessing) return;
     await new Promise((resolve) => setImmediate(resolve));
   }
+
   throw new Error("Batch queue did not finish");
 }
 
@@ -48,6 +56,7 @@ test("batch uploads retain diarization warnings separately from transcription wa
       `,
     },
   });
+
   const { addFiles, processBatchQueue, useBatchQueueStore } = await vite.ssrLoadModule(
     "/stores/batchQueueStore.ts"
   );

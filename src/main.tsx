@@ -23,11 +23,13 @@ import "./index.css";
 bindDocumentLanguage(i18n, document.documentElement, import.meta.hot);
 
 const rootElement = document.getElementById("root");
+
 if (!rootElement) {
   throw new Error("Renderer root element #root is missing from index.html");
 }
 
 const root = ReactDOM.createRoot(rootElement);
+
 root.render(
   <React.StrictMode>
     <ErrorBoundary>

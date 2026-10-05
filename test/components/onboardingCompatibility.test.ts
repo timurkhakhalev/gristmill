@@ -1,58 +1,79 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
+
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
 const servers = new Map();
+
 const cleanup: Array<() => void | Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
 
 const noop = () => {};
+
 const asyncNoop = async () => {};
 
 async function createOnboardingRenderer(t: TestContext, platform = "linux") {
   installBrowserGlobals(t, {
     window: { electronAPI: { getPlatform: () => platform } },
   });
-  if (!servers.has(platform)) servers.set(platform, createRendererServer({ after: (close: () => void | Promise<void>) => cleanup.push(close) }, {
-    cachePrefix: "openwhispr-onboarding-compatibility-",
-    noExternal: ["react-i18next"],
-    mockModules: {
-      "react-i18next": `
+
+  if (!servers.has(platform))
+    servers.set(
+      platform,
+      createRendererServer(
+        { after: (close: () => void | Promise<void>) => cleanup.push(close) },
+        {
+          cachePrefix: "openwhispr-onboarding-compatibility-",
+          noExternal: ["react-i18next"],
+          mockModules: {
+            "react-i18next": `
         export function useTranslation() {
           return { t(key) { return key; } };
         }
       `,
-      "onboarding-hero-dither.webp": `export default "hero-light.webp";`,
-      "onboarding-hero-dither-dark.webp": `export default "hero-dark.webp";`,
-      "onboarding-bg-light.svg": `export default "background-light.svg";`,
-      "onboarding-bg-dark.svg": `export default "background-dark.svg";`,
-      "onboarding-permission-microphone.webp": `export default "microphone.webp";`,
-      "onboarding-permission-system-audio.webp": `export default "system-audio.webp";`,
-      "/utils/platform": `
+            "onboarding-hero-dither.webp": `export default "hero-light.webp";`,
+            "onboarding-hero-dither-dark.webp": `export default "hero-dark.webp";`,
+            "onboarding-bg-light.svg": `export default "background-light.svg";`,
+            "onboarding-bg-dark.svg": `export default "background-dark.svg";`,
+            "onboarding-permission-microphone.webp": `export default "microphone.webp";`,
+            "onboarding-permission-system-audio.webp": `export default "system-audio.webp";`,
+            "/utils/platform": `
         export function getPlatform() { return "${platform}"; }
         export function getCachedPlatform() { return "${platform}"; }
       `,
-      "/stores/settingsStore": `
+            "/stores/settingsStore": `
         export function useSettingsStore() { return {}; }
         useSettingsStore.getState = () => ({});
       `,
-      "/ui/ProviderIcon": `
+            "/ui/ProviderIcon": `
         import React from "react";
         export function ProviderIcon() { return React.createElement("span"); }
       `,
-    },
-  }));
+          },
+        }
+      )
+    );
   const vite = await servers.get(platform);
-  for (const url of ["/components/onboarding/OnboardingShell.tsx", "/components/onboarding/CompactPermissionsStep.tsx"]) {
+
+  for (const url of [
+    "/components/onboarding/OnboardingShell.tsx",
+    "/components/onboarding/CompactPermissionsStep.tsx",
+  ]) {
     const module = await vite.moduleGraph.getModuleByUrl(url);
+
     if (module) vite.moduleGraph.invalidateModule(module);
   }
+
   return vite;
 }
 
@@ -90,12 +111,14 @@ const systemAudio = {
 
 test("Linux onboarding exposes labelled minimize, maximize, and close controls in both modes", async (t: TestContext) => {
   const vite = await createOnboardingRenderer(t);
+
   const { default: OnboardingShell } = await vite.ssrLoadModule(
     "/components/onboarding/OnboardingShell.tsx"
   );
 
   for (const compact of [true, false]) {
     const mode = compact ? "compact" : "expanded";
+
     const markup = renderToStaticMarkup(
       React.createElement(OnboardingShell, { compact }, React.createElement("div"))
     );
@@ -117,6 +140,7 @@ test("Linux onboarding exposes labelled minimize, maximize, and close controls i
 
 test("a denied microphone exposes the existing Linux settings recovery", async (t: TestContext) => {
   const vite = await createOnboardingRenderer(t);
+
   const { default: CompactPermissionsStep } = await vite.ssrLoadModule(
     "/components/onboarding/CompactPermissionsStep.tsx"
   );
@@ -136,6 +160,7 @@ test("a denied microphone exposes the existing Linux settings recovery", async (
 
 test("permissions offers Back ahead of Continue and gates Continue on microphone access", async (t: TestContext) => {
   const vite = await createOnboardingRenderer(t, "darwin");
+
   const { default: CompactPermissionsStep } = await vite.ssrLoadModule(
     "/components/onboarding/CompactPermissionsStep.tsx"
   );
@@ -168,11 +193,15 @@ test("permissions offers Back ahead of Continue and gates Continue on microphone
 
   const afterAccessibilityPrompt = renderToStaticMarkup(
     React.createElement(CompactPermissionsStep, {
-      permissions: permissions({ accessibilityPromptRequested: true, accessibilityTroubleshooting: true }),
+      permissions: permissions({
+        accessibilityPromptRequested: true,
+        accessibilityTroubleshooting: true,
+      }),
       systemAudio,
       onContinue: noop,
     })
   );
+
   assert.match(afterAccessibilityPrompt, /cleanupSettings\.accessibilityHelp/);
   assert.match(afterAccessibilityPrompt, />cleanupSettings\.openSettings<\/button>/);
 
@@ -183,8 +212,10 @@ test("permissions offers Back ahead of Continue and gates Continue on microphone
   // With nothing to return to (a resumed session with no history), Back is gone.
   assert.doesNotMatch(render(true, undefined), /common\.back/);
 });
+
 test("provider setup exposes a single transcription stage", async (t: TestContext) => {
   const vite = await createOnboardingRenderer(t);
+
   const { SetupStageStepper } = await vite.ssrLoadModule(
     "/components/onboarding/ProviderSetupStep.tsx"
   );

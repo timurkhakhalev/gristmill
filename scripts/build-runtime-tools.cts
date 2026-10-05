@@ -1,9 +1,13 @@
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const { stripTypeScriptTypes }: typeof import("node:module") = require("node:module");
+
 const { build }: typeof import("esbuild") = require("esbuild");
 
 const root = path.resolve(__dirname, "..");
+
 // Strip exactly as Node does before bundling: type-only exports must not turn
 // native CommonJS scripts into ESM modules in esbuild's dependency graph.
 const nativeCommonJs: import("esbuild").Plugin = {
@@ -15,6 +19,7 @@ const nativeCommonJs: import("esbuild").Plugin = {
     }));
   },
 };
+
 async function main() {
   for (const name of [
     "download-whisper-cpp",
@@ -38,8 +43,10 @@ async function main() {
     });
   }
 }
+
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
 export type {};

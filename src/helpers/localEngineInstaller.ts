@@ -17,13 +17,16 @@ const inFlight = new Map<LocalEngine, Promise<void>>();
 
 export async function ensureLocalEngine(engine: LocalEngine): Promise<void> {
   const existing = inFlight.get(engine);
+
   if (existing) return existing;
 
   const pending = (async () => {
     const name = scripts[engine];
+
     const scriptPath = app.isPackaged
       ? path.join(process.resourcesPath, "local-engine-installers", `${name}.cjs`)
       : path.join(app.getAppPath(), "scripts", `${name}.cts`);
+
     if (!fs.existsSync(scriptPath)) throw new Error(`Local engine installer missing: ${engine}`);
 
     const binDir = getLocalEngineBinDir();
@@ -40,20 +43,27 @@ export async function ensureLocalEngine(engine: LocalEngine): Promise<void> {
           GRISTMILL_LOCAL_BIN_DIR: binDir,
         },
       });
+
       let stderr = "";
       child.stderr?.on("data", (chunk: Buffer) => {
         stderr = (stderr + chunk.toString()).slice(-2048);
       });
-      const timeout = setTimeout(() => {
-        child.kill();
-        reject(new Error(`Timed out installing ${engine}`));
-      }, 10 * 60 * 1000);
+
+      const timeout = setTimeout(
+        () => {
+          child.kill();
+          reject(new Error(`Timed out installing ${engine}`));
+        },
+        10 * 60 * 1000
+      );
+
       child.once("error", (error) => {
         clearTimeout(timeout);
         reject(error);
       });
       child.once("exit", (code) => {
         clearTimeout(timeout);
+
         if (code === 0) resolve();
         else reject(new Error(`Failed to install ${engine}: ${stderr.trim() || `exit ${code}`}`));
       });
@@ -62,5 +72,6 @@ export async function ensureLocalEngine(engine: LocalEngine): Promise<void> {
   })().finally(() => inFlight.delete(engine));
 
   inFlight.set(engine, pending);
+
   return pending;
 }

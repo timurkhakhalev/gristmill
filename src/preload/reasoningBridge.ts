@@ -33,9 +33,11 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -56,16 +58,15 @@ export function createReasoningBridge(ipcRenderer: IpcRendererLike): ReasoningAp
         ),
 
     checkLocalReasoningAvailable: (): Promise<boolean> =>
-      ipcRenderer
-        .invoke(reasoningChannels.checkLocalReasoningAvailable)
-        .then((raw) => {
-          if (typeof raw !== "boolean") {
-            throw new Error(
-              `Unexpected response shape from ${reasoningChannels.checkLocalReasoningAvailable}`
-            );
-          }
-          return raw;
-        }),
+      ipcRenderer.invoke(reasoningChannels.checkLocalReasoningAvailable).then((raw) => {
+        if (typeof raw !== "boolean") {
+          throw new Error(
+            `Unexpected response shape from ${reasoningChannels.checkLocalReasoningAvailable}`
+          );
+        }
+
+        return raw;
+      }),
 
     processAnthropicReasoning: (
       text: string,
@@ -124,10 +125,13 @@ export function createReasoningBridge(ipcRenderer: IpcRendererLike): ReasoningAp
     ): (() => void) => {
       const listener = (_event: unknown, ...args: unknown[]) => {
         const parsed = enterpriseStreamEnvelopeSchema.safeParse(args[0]);
+
         if (!parsed.success) return;
         callback(parsed.data);
       };
+
       ipcRenderer.on(reasoningChannels.enterpriseStreamPart, listener);
+
       return () => {
         ipcRenderer.removeListener(reasoningChannels.enterpriseStreamPart, listener);
       };

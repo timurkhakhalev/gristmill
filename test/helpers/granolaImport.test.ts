@@ -1,6 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
 
 const load = () => import("../../src/helpers/granolaImport.ts");
@@ -78,6 +81,7 @@ test("parseCsv recovers from an unclosed quote at EOF with a warning", async () 
 
 test("mapHeaders maps exact lowercase headers to column indices", async () => {
   const { mapHeaders } = await load();
+
   const { mapping, unknown } = mapHeaders([
     "id",
     "title",
@@ -86,6 +90,7 @@ test("mapHeaders maps exact lowercase headers to column indices", async () => {
     "created_at",
     "attendees",
   ]);
+
   assert.deepEqual(mapping, {
     id: 0,
     title: 1,
@@ -183,10 +188,12 @@ test("normalizeDate returns null for garbage or empty input", async () => {
 
 test("parseTranscriptToSegments splits speaker-labeled lines into locked segments", async () => {
   const { parseTranscriptToSegments } = await load();
+
   const segments = parseTranscriptToSegments(
     "Alice: Hello there\nBob: Hi Alice\nAlice: How are you?",
     1000
   );
+
   assert.deepEqual(segments, [
     {
       text: "Hello there",
@@ -226,8 +233,10 @@ test("parseTranscriptToSegments falls back to one segment per paragraph for free
 
 test("parseTranscriptToSegments stays unlabeled below the speaker-line threshold", async () => {
   const { parseTranscriptToSegments } = await load();
+
   const text =
     "Alice: Hi\nA long unstructured line without any label\nAnother unstructured line here";
+
   const segments = parseTranscriptToSegments(text, 0);
   assert.equal(segments.length, 3);
   assert.ok(segments.every((segment) => segment.speakerName === undefined));
@@ -241,19 +250,23 @@ test("parseTranscriptToSegments requires two distinct speakers to label lines", 
 
 test("parseTranscriptToSegments does not mistake URLs for speaker labels", async () => {
   const { parseTranscriptToSegments } = await load();
+
   const segments = parseTranscriptToSegments(
     "https://example.com/foo: bar baz\nhttps://example.com/x: qux quux",
     0
   );
+
   assert.ok(segments.every((segment) => segment.speakerName === undefined));
 });
 
 test("parseTranscriptToSegments rejects speaker names longer than four words", async () => {
   const { parseTranscriptToSegments } = await load();
+
   const segments = parseTranscriptToSegments(
     "This is definitely not a speaker name: because it is long\nAnd this line is even less like one: yes",
     0
   );
+
   assert.ok(segments.every((segment) => segment.speakerName === undefined));
 });
 
@@ -265,10 +278,12 @@ test("parseTranscriptToSegments returns no segments for empty input", async () =
 
 test("parseTranscriptToSegments appends unlabeled continuation lines to the previous segment", async () => {
   const { parseTranscriptToSegments } = await load();
+
   const segments = parseTranscriptToSegments(
     "Alice: First point\ncontinued thought\nBob: Reply\nCarol: Another\nDave: More\nEve: Yet more",
     0
   );
+
   assert.equal(segments[0].text, "First point\ncontinued thought");
   assert.equal(segments.length, 5);
 });
@@ -359,11 +374,13 @@ test("parseGranolaCsv preserves the released title+date fallback key for the fir
 
 test("parseGranolaCsv generates distinct fallback keys for notes sharing title and date without an id column", async () => {
   const { parseGranolaCsv } = await load();
+
   const csv = [
     "title,summary,created_at",
     'Sync,"Morning sync notes",2026-07-15T14:30:00Z',
     'Sync,"Afternoon sync notes",2026-07-15T14:30:00Z',
   ].join("\n");
+
   const result = parseGranolaCsv(csv);
   assert.equal(result.notes.length, 2);
   assert.notEqual(result.notes[0].clientNoteId, result.notes[1].clientNoteId);
@@ -372,11 +389,13 @@ test("parseGranolaCsv generates distinct fallback keys for notes sharing title a
 
 test("parseGranolaCsv keeps a colliding note id when its summary changes", async () => {
   const { parseGranolaCsv } = await load();
+
   const originalCsv = [
     "title,summary,created_at",
     'Sync,"First meeting",2026-07-15T14:30:00Z',
     'Sync,"Original second meeting",2026-07-15T14:30:00Z',
   ].join("\n");
+
   const editedCsv = [
     "title,summary,created_at",
     'Sync,"First meeting",2026-07-15T14:30:00Z',
@@ -425,12 +444,14 @@ test("createGranolaNoteKeyAllocator counts delimiter-colliding tuples independen
 
 test("parseGranolaCsv distinguishes notes with matching content but different transcripts", async () => {
   const { parseGranolaCsv } = await load();
+
   const csv = [
     "title,summary,created_at,transcript",
     'Sync,"Same summary",2026-07-15T14:30:00Z,"Alice: First meeting"',
     'Sync,"Same summary",2026-07-15T14:30:00Z,"Bob: Second meeting"',
     'Sync,"Same summary",2026-07-15T14:30:00Z,"Carol: Third meeting"',
   ].join("\n");
+
   const result = parseGranolaCsv(csv);
   assert.equal(result.notes.length, 3);
   assert.equal(new Set(result.notes.map((note) => note.clientNoteId)).size, 3);
@@ -439,12 +460,14 @@ test("parseGranolaCsv distinguishes notes with matching content but different tr
 
 test("parseGranolaCsv assigns distinct fallback keys to identical source rows", async () => {
   const { parseGranolaCsv } = await load();
+
   const csv = [
     "title,summary,created_at",
     'Sync,"Same summary",2026-07-15T14:30:00Z',
     'Sync,"Same summary",2026-07-15T14:30:00Z',
     'Sync,"Same summary",2026-07-15T14:30:00Z',
   ].join("\n");
+
   const result = parseGranolaCsv(csv);
   assert.equal(result.notes.length, 3);
   assert.equal(new Set(result.notes.map((note) => note.clientNoteId)).size, 3);
@@ -456,11 +479,13 @@ test("parseGranolaCsv shares fallback collision allocation across CSV files", as
   assert.equal(typeof createGranolaNoteKeyAllocator, "function");
   const allocateNoteKey = createGranolaNoteKeyAllocator();
   const csv = 'title,summary,created_at\nSync,"Same summary",2026-07-15T14:30:00Z';
+
   const notes = [
     ...parseGranolaCsv(csv, { allocateNoteKey }).notes,
     ...parseGranolaCsv(csv, { allocateNoteKey }).notes,
     ...parseGranolaCsv(csv, { allocateNoteKey }).notes,
   ];
+
   assert.equal(new Set(notes.map((note) => note.clientNoteId)).size, 3);
   assert.equal(new Set(notes.map((note) => note.sourceFile)).size, 3);
 });
@@ -496,9 +521,11 @@ test("parseGranolaCsv skips summary-less and empty rows with warnings", async ()
 
 test("parseGranolaCsv pads short rows and truncates long rows with a warning", async () => {
   const { parseGranolaCsv } = await load();
+
   const result = parseGranolaCsv(
     'title,summary,created_at\nShort,"only two"\nLong,"x",2026-07-15,extra'
   );
+
   assert.equal(result.notes.length, 2);
   assert.equal(result.notes[0].createdAt, null);
   const codes = result.warnings.filter((w) => w.code === "ROW_COLUMN_COUNT_MISMATCH");
@@ -535,10 +562,12 @@ const REAL_HEADER_ROW =
 
 test("parseGranolaCsv maps the real Granola export headers", async () => {
   const { parseGranolaCsv } = await load();
+
   const csv =
     REAL_HEADER_ROW +
     "\n" +
     'abc-123,owner@x.com,Design Review,Acme,2026-08-20T17:46:57.650Z,"# Notes\n- point",,"Para one.\nPara two."';
+
   const result = parseGranolaCsv(csv);
   assert.equal(result.ok, true);
   const note = result.notes[0];
@@ -564,10 +593,12 @@ test("parseGranolaCsv uses user notes as content when the summary is empty", asy
 
 test("parseGranolaCsv parses the sanitized real-export fixture end to end", async () => {
   const { parseGranolaCsv } = await load();
+
   const fixture = fs.readFileSync(
     path.join(__dirname, "fixtures", "granola-export-sample.csv"),
     "utf8"
   );
+
   const result = parseGranolaCsv(fixture);
   assert.equal(result.ok, true);
   assert.equal(result.notes.length, 1);
@@ -577,9 +608,14 @@ test("parseGranolaCsv parses the sanitized real-export fixture end to end", asyn
   assert.match(note.content, /^# UI Cleanup Priorities/);
   const segments = JSON.parse(note.transcript as string);
   assert.ok(segments.length > 1);
-  assert.ok(segments.every((segment: { speakerName?: string }) => segment.speakerName === undefined));
+  assert.ok(
+    segments.every((segment: { speakerName?: string }) => segment.speakerName === undefined)
+  );
   // Anchor derives from the stored created_at, which is second-granular.
-  assert.equal((segments[0] as { timestamp: number }).timestamp, Date.parse("2026-08-20T17:46:57Z"));
+  assert.equal(
+    (segments[0] as { timestamp: number }).timestamp,
+    Date.parse("2026-08-20T17:46:57Z")
+  );
   assert.deepEqual(result.headerInfo.unknown, ["user_email", "workspace_name"]);
   // The only warning a clean real export produces is the file-level unknown-columns one.
   assert.deepEqual(result.warnings, [

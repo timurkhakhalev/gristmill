@@ -10,7 +10,10 @@ import type {
   SelfHostedType,
 } from "../contracts/inferenceSettings";
 import { inferenceScopeDefinition, type InferenceScope } from "./inferenceScopes";
-import { DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER, STREAMING_ONLY_PROVIDERS } from "./transcriptionCapabilities";
+import {
+  DEFAULT_CLOUD_TRANSCRIPTION_PROVIDER,
+  STREAMING_ONLY_PROVIDERS,
+} from "./transcriptionCapabilities";
 import { inheritsFallbackEndpoint } from "../helpers/reasoningRouting";
 import { resolveBbSelection } from "./bbAgentPreferences";
 
@@ -70,6 +73,7 @@ export const selectResolvedUploadTranscription = (
   state: InferenceSettingsSnapshot
 ): ResolvedUploadTranscription => {
   const inheritsBaseProvider = !STREAMING_ONLY_PROVIDERS.has(state.cloudTranscriptionProvider);
+
   return {
     useLocalWhisper: state.uploadUseLocalWhisper,
     whisperModel: state.uploadWhisperModel || state.whisperModel,
@@ -104,9 +108,12 @@ export interface ResolvedNoteFormatting {
   agentReasoningLevel?: string;
 }
 
-export const selectResolvedNoteFormatting = (state: InferenceSettingsSnapshot): ResolvedNoteFormatting => {
+export const selectResolvedNoteFormatting = (
+  state: InferenceSettingsSnapshot
+): ResolvedNoteFormatting => {
   const cfg = selectResolvedLLMConfig(state, "noteFormatting");
   const cleanup = selectResolvedLLMConfig(state, "cleanup");
+
   // The endpoint falls back to the cleanup scope, so the key that opens it must too,
   // or an inherited endpoint gets called with no credential.
   const borrowsEndpoint = inheritsFallbackEndpoint(
@@ -117,6 +124,7 @@ export const selectResolvedNoteFormatting = (state: InferenceSettingsSnapshot): 
     },
     cleanup.mode
   );
+
   return {
     provider: cfg.provider,
     model: cfg.model,
@@ -125,11 +133,13 @@ export const selectResolvedNoteFormatting = (state: InferenceSettingsSnapshot): 
     cloudBaseUrl: cfg.cloudBaseUrl || "",
     remoteUrl: cfg.remoteUrl || "",
     customApiKey: cfg.customApiKey || (borrowsEndpoint ? cleanup.customApiKey || "" : ""),
-    ...(cfg.mode === "agent" ? {
-      agentProvider: cfg.agentProvider,
-      agentModel: cfg.agentModel,
-      agentReasoningLevel: cfg.agentReasoningLevel,
-    } : {}),
+    ...(cfg.mode === "agent"
+      ? {
+          agentProvider: cfg.agentProvider,
+          agentModel: cfg.agentModel,
+          agentReasoningLevel: cfg.agentReasoningLevel,
+        }
+      : {}),
   };
 };
 
@@ -155,14 +165,27 @@ export const selectResolvedLLMConfig = (
   scope: InferenceScope
 ): ResolvedLLMConfig => {
   const def = inferenceScopeDefinition(scope);
+
   const fallback = def.fallbackScope
     ? selectResolvedLLMConfig(state, def.fallbackScope)
     : undefined;
 
-
-  const readString = (field: "provider" | "model" | "cloudMode" | "cloudBaseUrl" | "remoteUrl" | "customApiKey" | "agentProvider" | "agentModel" | "agentReasoningLevel"): string | undefined => {
+  const readString = (
+    field:
+      | "provider"
+      | "model"
+      | "cloudMode"
+      | "cloudBaseUrl"
+      | "remoteUrl"
+      | "customApiKey"
+      | "agentProvider"
+      | "agentModel"
+      | "agentReasoningLevel"
+  ): string | undefined => {
     const key = def.storeKeys[field];
+
     if (!key) return undefined;
+
     return state[key] || undefined;
   };
 
@@ -182,19 +205,23 @@ export const selectResolvedLLMConfig = (
     // belongs on the request path — see selectResolvedNoteFormatting.
     customApiKey: readString("customApiKey"),
     disableThinking,
-    ...(state[def.storeKeys.mode] === "agent" ? (() => {
-      const selection = resolveBbSelection(state.bbAgentPreferences, {
-        provider: readString("agentProvider"),
-        model: readString("agentModel"),
-        reasoningLevel: readString("agentReasoningLevel"),
-      });
-      return {
-        agentProvider: selection.provider,
-        agentModel: selection.model,
-        agentReasoningLevel: selection.reasoningLevel,
-        agentUsesDefault: !readString("agentProvider"),
-      };
-    })() : {}),
+    ...(state[def.storeKeys.mode] === "agent"
+      ? (() => {
+          const selection = resolveBbSelection(state.bbAgentPreferences, {
+            provider: readString("agentProvider"),
+            model: readString("agentModel"),
+            reasoningLevel: readString("agentReasoningLevel"),
+          });
+
+          return {
+            agentProvider: selection.provider,
+            agentModel: selection.model,
+            agentReasoningLevel: selection.reasoningLevel,
+            agentUsesDefault: !readString("agentProvider"),
+          };
+        })()
+      : {}),
   };
+
   return localConfig;
 };

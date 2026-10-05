@@ -37,6 +37,7 @@ const MODIFIER_NAMES = new Set([
 
 export function isModifierOnlyHotkey(hotkey: string): boolean {
   if (!hotkey || !hotkey.includes("+")) return false;
+
   return hotkey.split("+").every((part) => MODIFIER_NAMES.has(part.toLowerCase()));
 }
 
@@ -137,12 +138,16 @@ export class HotkeyManager extends EventEmitter {
   // Ensure a slot exists and return it (slots always use the list shape).
   _ensureSlot(slotName: string): HotkeySlot {
     let slot = this.slots.get(slotName);
+
     if (!slot) {
       slot = { hotkeys: [], callback: null, accelerators: [] };
       this.slots.set(slotName, slot);
     }
+
     if (!Array.isArray(slot.hotkeys)) slot.hotkeys = [];
+
     if (!Array.isArray(slot.accelerators)) slot.accelerators = [];
+
     return slot;
   }
 
@@ -214,6 +219,7 @@ export class HotkeyManager extends EventEmitter {
     options?: { atomic?: boolean }
   ): Promise<HotkeyRegistrationResult> {
     const hotkeys = parseHotkeyList(hotkeyInput);
+
     if (hotkeys.length === 0) {
       return {
         success: false,
@@ -222,28 +228,34 @@ export class HotkeyManager extends EventEmitter {
         }),
       };
     }
+
     const result = this.setupShortcuts(hotkeys, callback, slotName, options);
+
     if (result.success) {
       const slot = this._ensureSlot(slotName);
       slot.callback = callback;
       this.slots.set(slotName, slot);
     }
+
     return result;
   }
 
   unregisterSlot(slotName: string): void {
     const slot = this.slots.get(slotName);
+
     if (!slot || !(slot.hotkeys?.length || slot.accelerators?.length)) return;
 
     // Release what was actually registered; native-listener entries are null.
     for (const accel of slot.accelerators || []) {
       if (!accel) continue;
+
       try {
         globalShortcut.unregister(accel);
       } catch {
         // already unregistered
       }
     }
+
     slot.hotkeys = [];
     slot.accelerators = [];
   }
@@ -262,15 +274,18 @@ export class HotkeyManager extends EventEmitter {
   // True if `key` is one of the hotkeys bound to `slotName`.
   slotHasHotkey(slotName: string, key?: string | null): boolean {
     if (!key) return false;
+
     return (this.slots.get(slotName)?.hotkeys ?? []).includes(key);
   }
 
   // Name of the slot that owns `key`, or null. First match wins.
   findSlotByHotkey(key?: string | null): string | null {
     if (!key) return null;
+
     for (const [slotName, slot] of this.slots) {
       if ((slot.hotkeys ?? []).includes(key)) return slotName;
     }
+
     return null;
   }
 
@@ -278,6 +293,7 @@ export class HotkeyManager extends EventEmitter {
     if (process.platform === "darwin" && hotkey && lacksMacReleaseSignal(hotkey)) {
       return false;
     }
+
     return true;
   }
 
@@ -285,24 +301,29 @@ export class HotkeyManager extends EventEmitter {
     if (process.platform === "darwin" && hotkey && lacksMacReleaseSignal(hotkey)) {
       return i18nMain.t("hotkey.errors.holdNeedsReleaseKey", { hotkey });
     }
+
     return i18nMain.t("hotkey.errors.registrationFailed", { hotkey });
   }
 
   async setActivationMode(mode: string): Promise<boolean> {
     const nextMode = mode === "push" ? "push" : "tap";
+
     if (this.activationMode === nextMode) return true;
 
     const hotkey = this.currentHotkey;
+
     if (nextMode === "push" && !this.supportsPushToTalk(hotkey)) {
       if (hotkey) {
         this.notifyHotkeyFailure(hotkey, {
           error: this.getPushToTalkUnavailableReason(hotkey),
         });
       }
+
       return false;
     }
 
     this.activationMode = nextMode;
+
     return true;
   }
 
@@ -337,11 +358,13 @@ export class HotkeyManager extends EventEmitter {
         debugLogger.log(
           `[HotkeyManager] Mouse button "${hotkey}" set - using macOS native listener`
         );
+
         return { success: true, hotkey, accelerator: null };
       }
 
       if (isGlobeLikeHotkey(hotkey)) {
         debugLogger.log(`[HotkeyManager] GLOBE/Fn key "${hotkey}" set successfully`);
+
         return { success: true, hotkey, accelerator: null };
       }
 
@@ -363,6 +386,7 @@ export class HotkeyManager extends EventEmitter {
         debugLogger.log(
           `[HotkeyManager] Right-side modifier "${hotkey}" set - using native listener`
         );
+
         return { success: true, hotkey, accelerator: null };
       }
 
@@ -371,12 +395,14 @@ export class HotkeyManager extends EventEmitter {
       // Pass the triggering hotkey so shared callbacks act on the one that fired.
       const success = globalShortcut.register(accelerator, () => callback(hotkey));
       debugLogger.log(`[HotkeyManager] Registration result for "${hotkey}": ${success}`);
+
       if (success) {
         return { success: true, hotkey, accelerator };
       }
 
       const failureInfo = this.getFailureReason(accelerator);
       debugLogger.error("Failed to register hotkey", { error: hotkey, ...failureInfo }, "hotkey");
+
       return {
         success: false,
         hotkey,
@@ -386,6 +412,7 @@ export class HotkeyManager extends EventEmitter {
       };
     } catch (error) {
       debugLogger.error("Error setting up shortcut", { error: (error as Error).message }, "hotkey");
+
       return { success: false, hotkey, error: (error as Error).message };
     }
   }
@@ -427,6 +454,7 @@ export class HotkeyManager extends EventEmitter {
     // down this slot's current registration.
     for (const hotkey of desired) {
       const conflict = this._findSlotConflict(slotName, hotkey);
+
       if (conflict) return conflict;
     }
 
@@ -436,6 +464,7 @@ export class HotkeyManager extends EventEmitter {
     // Unregister this slot's previous globalShortcut accelerators.
     for (const prevAccel of previousAccelerators) {
       if (!prevAccel) continue;
+
       try {
         debugLogger.log(`[HotkeyManager] Unregistering previous accelerator: "${prevAccel}"`);
         globalShortcut.unregister(prevAccel);
@@ -449,8 +478,10 @@ export class HotkeyManager extends EventEmitter {
     const registeredHotkeys: string[] = [];
     const registeredAccelerators: (string | null)[] = [];
     const failures: SingleHotkeyFailureRecord[] = [];
+
     for (const hotkey of desired) {
       const res = this._registerSingleHotkey(hotkey, callback);
+
       if (res.success) {
         registeredHotkeys.push(res.hotkey);
         registeredAccelerators.push(res.accelerator ?? null);
@@ -469,6 +500,7 @@ export class HotkeyManager extends EventEmitter {
       // previous bindings so the slot keeps working.
       registeredAccelerators.forEach((accel) => {
         if (!accel) return;
+
         try {
           globalShortcut.unregister(accel);
         } catch {
@@ -480,14 +512,18 @@ export class HotkeyManager extends EventEmitter {
       slot.accelerators = previousAccelerators;
 
       const failureInfo: Partial<SingleHotkeyFailureRecord> = failures[0] ?? {};
+
       let errorMessage =
         failureInfo.error || i18nMain.t("hotkey.errors.registrationFailed", { hotkey: desired[0] });
+
       const suggestions = failureInfo.suggestions || [];
+
       if (suggestions.length > 0) {
         errorMessage += ` ${i18nMain.t("hotkey.errors.trySuggestions", {
           suggestions: suggestions.join(", "),
         })}`;
       }
+
       return { success: false, error: errorMessage, reason: failureInfo.reason, suggestions };
     }
 
@@ -503,9 +539,11 @@ export class HotkeyManager extends EventEmitter {
       hotkey: registeredHotkeys[0],
       hotkeys: registeredHotkeys,
     };
+
     if (failures.length > 0) {
       result.failures = failures.map((f) => ({ hotkey: f.hotkey, error: f.error }));
     }
+
     return result;
   }
 
@@ -522,12 +560,15 @@ export class HotkeyManager extends EventEmitter {
       if (otherSlotName === slotName) continue;
       const otherHotkeys = otherSlot.hotkeys || [];
       const otherAccelerators = otherSlot.accelerators || [];
+
       const match =
         otherHotkeys.includes(hotkey) || (accelerator && otherAccelerators.includes(accelerator));
+
       if (match) {
         debugLogger.warn(
           `[HotkeyManager] Hotkey "${hotkey}" conflicts with slot "${otherSlotName}"`
         );
+
         return {
           success: false,
           error: i18nMain.t("hotkey.errors.slotConflict", {
@@ -539,6 +580,7 @@ export class HotkeyManager extends EventEmitter {
         };
       }
     }
+
     return null;
   }
 
@@ -551,9 +593,12 @@ export class HotkeyManager extends EventEmitter {
       // Native-listener entries (null accelerator) are re-armed by the macOS
       // listener instead.
       const prevAccel = previousAccelerators?.[i];
+
       if (!prevAccel) return;
+
       try {
         const restored = globalShortcut.register(prevAccel, () => callback(previousHotkey));
+
         if (restored) {
           debugLogger.log(
             `[HotkeyManager] Restored previous hotkey "${previousHotkey}" after failed registration`
@@ -569,7 +614,10 @@ export class HotkeyManager extends EventEmitter {
     });
   }
 
-  async initializeHotkey(mainWindow: BrowserWindow, callback: HotkeyActivationCallback): Promise<void> {
+  async initializeHotkey(
+    mainWindow: BrowserWindow,
+    callback: HotkeyActivationCallback
+  ): Promise<void> {
     if (!mainWindow || !callback) {
       throw new Error("mainWindow and callback are required");
     }
@@ -579,8 +627,10 @@ export class HotkeyManager extends EventEmitter {
 
     // Register from env var immediately if available, otherwise wait for page load.
     const envHotkey = process.env.DICTATION_KEY || "";
+
     if (envHotkey) {
       const result = this.setupShortcuts(envHotkey, callback);
+
       if (result.success) {
         this._notifyStartupRegistration(envHotkey, result);
         debugLogger.log(`[HotkeyManager] Hotkey "${envHotkey}" registered from env`);
@@ -590,6 +640,7 @@ export class HotkeyManager extends EventEmitter {
       }
     } else {
       const loadHotkey = () => this.loadSavedHotkeyOrDefault(mainWindow, callback);
+
       if (mainWindow.webContents.isLoading()) {
         mainWindow.webContents.once("did-finish-load", loadHotkey);
       } else {
@@ -630,11 +681,14 @@ export class HotkeyManager extends EventEmitter {
 
       if (savedHotkey && savedHotkey.trim() !== "") {
         const result = this.setupShortcuts(savedHotkey, callback);
+
         if (result.success) {
           this._notifyStartupRegistration(savedHotkey, result);
           debugLogger.log(`[HotkeyManager] Restored saved hotkey: "${savedHotkey}"`);
+
           return;
         }
+
         debugLogger.log(`[HotkeyManager] Saved hotkey "${savedHotkey}" failed to register`);
         this.notifyHotkeyFailure(savedHotkey, result);
       }
@@ -645,22 +699,27 @@ export class HotkeyManager extends EventEmitter {
         this.currentHotkey = "GLOBE";
         debugLogger.log("[HotkeyManager] Using GLOBE key as default on macOS");
         await this._persistHotkeyToEnvFile("GLOBE");
+
         return;
       }
 
       const result = this.setupShortcuts(defaultHotkey, callback);
+
       if (result.success) {
         debugLogger.log(
           `[HotkeyManager] Default hotkey "${defaultHotkey}" registered successfully`
         );
+
         return;
       }
 
       debugLogger.log(
         `[HotkeyManager] Default hotkey "${defaultHotkey}" failed, trying fallbacks...`
       );
+
       for (const fallback of FALLBACK_HOTKEYS) {
         const fallbackResult = this.setupShortcuts(fallback, callback);
+
         if (fallbackResult.success) {
           debugLogger.log(`[HotkeyManager] Fallback hotkey "${fallback}" registered successfully`);
           // Only persist to .env (for loadSavedHotkeyOrDefault fallback path).
@@ -669,6 +728,7 @@ export class HotkeyManager extends EventEmitter {
           await this._persistHotkeyToEnvFile(fallback);
           this.notifyActiveHotkey(fallback);
           this.notifyHotkeyFallback(defaultHotkey, fallback);
+
           return;
         }
       }
@@ -684,6 +744,7 @@ export class HotkeyManager extends EventEmitter {
 
   async _persistHotkeyToEnvFile(hotkey: string): Promise<void> {
     process.env.DICTATION_KEY = hotkey;
+
     try {
       const EnvironmentManagerCtor = require("./environment") as EnvironmentManagerCtor;
       const envManager = new EnvironmentManagerCtor();
@@ -706,20 +767,29 @@ export class HotkeyManager extends EventEmitter {
       envManager.saveDictationKey(hotkey);
       debugLogger.log(`[HotkeyManager] Persisted hotkey "${hotkey}" to .env file`);
     } catch (err) {
-      debugLogger.warn("[HotkeyManager] Failed to save dictation key to env:", (err as Error).message);
+      debugLogger.warn(
+        "[HotkeyManager] Failed to save dictation key to env:",
+        (err as Error).message
+      );
     }
 
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       try {
         this.mainWindow.webContents.send("setting-updated", { key: "dictationKey", value: hotkey });
         debugLogger.log(`[HotkeyManager] Sent dictationKey update to main window`);
+
         return true;
       } catch (err) {
-        debugLogger.error("[HotkeyManager] Failed to send dictationKey update:", (err as Error).message);
+        debugLogger.error(
+          "[HotkeyManager] Failed to send dictationKey update:",
+          (err as Error).message
+        );
+
         return false;
       }
     } else {
       debugLogger.warn("[HotkeyManager] Main window not available for setting sync");
+
       return false;
     }
   }
@@ -734,6 +804,7 @@ export class HotkeyManager extends EventEmitter {
         const lsKey = (await this.mainWindow.webContents.executeJavaScript(
           `localStorage.getItem("dictationKey") || ""`
         )) as string;
+
         if (lsKey && lsKey.trim() !== "") return lsKey;
       } catch (err) {
         debugLogger.log(
@@ -747,9 +818,13 @@ export class HotkeyManager extends EventEmitter {
       const EnvironmentManagerCtor = require("./environment") as EnvironmentManagerCtor;
       const envManager = new EnvironmentManagerCtor();
       const envKey = envManager.getDictationKey();
+
       if (envKey && envKey.trim() !== "") return envKey;
     } catch (err) {
-      debugLogger.log("[HotkeyManager] Failed to read dictationKey from .env:", (err as Error).message);
+      debugLogger.log(
+        "[HotkeyManager] Failed to read dictationKey from .env:",
+        (err as Error).message
+      );
     }
 
     return DEFAULT_HOTKEY;
@@ -771,6 +846,7 @@ export class HotkeyManager extends EventEmitter {
   // Tell the renderer which hotkeys actually registered and which failed.
   _notifyStartupRegistration(requestedHotkey: string, result: HotkeyRegistrationResult): void {
     this.notifyActiveHotkey(result.hotkeys ? result.hotkeys.join(",") : requestedHotkey);
+
     for (const failure of result.failures || []) {
       this.notifyHotkeyFailure(failure.hotkey, failure);
     }
@@ -808,12 +884,14 @@ export class HotkeyManager extends EventEmitter {
 
     try {
       const hotkeys = parseHotkeyList(hotkeyInput);
+
       if (hotkeys.length === 0) {
         return {
           success: false,
           message: i18nMain.t("hotkey.errors.registrationFailed", { hotkey: "" }),
         };
       }
+
       const hotkeyStr = hotkeys.join(",");
       const primary = hotkeys[0];
 
@@ -826,38 +904,40 @@ export class HotkeyManager extends EventEmitter {
 
       for (const hotkey of hotkeys) {
         const conflict = this._findSlotConflict("dictation", hotkey);
+
         if (conflict) {
           return {
             success: false,
-            message:
-              conflict.error ??
-              i18nMain.t("hotkey.errors.registrationFailed", { hotkey }),
+            message: conflict.error ?? i18nMain.t("hotkey.errors.registrationFailed", { hotkey }),
             reason: conflict.reason,
           };
         }
       }
 
       const result = this.setupShortcuts(hotkeys, callback, "dictation", { atomic: true });
+
       if (result.success) {
         this.notifyActiveHotkey(hotkeyStr);
         const saved = await this.saveHotkeyToRenderer(hotkeyStr);
+
         if (!saved) {
           debugLogger.warn(
             "[HotkeyManager] Hotkey registered but failed to persist to localStorage"
           );
         }
+
         return { success: true, message: `Hotkey updated to: ${hotkeyStr}` };
       } else {
         return {
           success: false,
           message:
-            result.error ??
-            i18nMain.t("hotkey.errors.registrationFailed", { hotkey: hotkeyStr }),
+            result.error ?? i18nMain.t("hotkey.errors.registrationFailed", { hotkey: hotkeyStr }),
           suggestions: result.suggestions,
         };
       }
     } catch (error) {
       debugLogger.error("[HotkeyManager] Failed to update hotkey:", (error as Error).message);
+
       return {
         success: false,
         message: `Failed to update hotkey: ${(error as Error).message}`,
@@ -872,11 +952,13 @@ export class HotkeyManager extends EventEmitter {
   unregisterAll(): void {
     for (const slotName of this.slots.keys()) {
       const slot = this.slots.get(slotName);
+
       if (slot) {
         slot.hotkeys = [];
         slot.accelerators = [];
       }
     }
+
     globalShortcut.unregisterAll();
   }
 
@@ -890,8 +972,13 @@ export class HotkeyManager extends EventEmitter {
 }
 
 module.exports = HotkeyManager;
+
 module.exports.HotkeyManager = HotkeyManager;
+
 module.exports.isGlobeLikeHotkey = isGlobeLikeHotkey;
+
 module.exports.isModifierOnlyHotkey = isModifierOnlyHotkey;
+
 module.exports.isRightSideModifier = isRightSideModifier;
+
 module.exports.isMouseButtonHotkey = isMouseButtonHotkey;

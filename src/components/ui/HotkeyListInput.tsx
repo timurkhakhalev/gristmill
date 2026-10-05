@@ -55,6 +55,7 @@ export function HotkeyListInput({
   useEffect(() => {
     setItems((current) => {
       const incoming = parseHotkeyList(value);
+
       return serializeHotkeyList(incoming) === serializeHotkeyList(current) ? current : incoming;
     });
   }, [value]);
@@ -68,6 +69,7 @@ export function HotkeyListInput({
     if (items.some((existing, i) => i !== excludeIndex && isSameHotkey(existing, hotkey))) {
       return t("hotkeyInput.duplicate");
     }
+
     return validate?.(hotkey);
   };
 
@@ -77,6 +79,7 @@ export function HotkeyListInput({
     const previous = items;
     setItems(next);
     const result = await onChange(serializeHotkeyList(next));
+
     if (result === false) setItems((current) => (current === next ? previous : current));
   };
 
@@ -86,18 +89,23 @@ export function HotkeyListInput({
 
   const removeAt = async (index: number) => {
     const remaining = items.filter((_, i) => i !== index);
+
     if (remaining.length > 0) {
       void commit(remaining);
+
       return;
     }
+
     const previous = items;
     setItems(remaining);
     const result = await onClear?.();
+
     if (result === false) setItems((current) => (current === remaining ? previous : current));
   };
 
   const addHotkey = (hotkey: string) => {
     setAdding(false);
+
     if (!hotkey || items.some((existing) => isSameHotkey(existing, hotkey))) return;
     void commit([...items, hotkey]);
   };

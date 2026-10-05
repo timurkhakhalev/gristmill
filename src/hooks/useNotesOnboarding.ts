@@ -9,7 +9,9 @@ interface UseNotesOnboardingReturn {
 }
 
 export function useNotesOnboarding(): UseNotesOnboardingReturn {
-  const effectiveModel = useSettingsStore((settings) => selectResolvedLLMConfig(settings, "noteFormatting").model);
+  const effectiveModel = useSettingsStore(
+    (settings) => selectResolvedLLMConfig(settings, "noteFormatting").model
+  );
 
   const [isComplete, setIsComplete] = useState(
     () => localStorage.getItem("notesOnboardingComplete") === "true"

@@ -1,10 +1,12 @@
 import { z } from "zod";
 import type { MeetingJsonValidation } from "./meetingJsonRepair.js";
 
-const meetingRecapSchema = z.object({
-  title: z.string().min(1),
-  bullets: z.array(z.string()).max(3),
-}).strict();
+const meetingRecapSchema = z
+  .object({
+    title: z.string().min(1),
+    bullets: z.array(z.string()).max(3),
+  })
+  .strict();
 
 export type MeetingRecap = z.infer<typeof meetingRecapSchema>;
 
@@ -29,38 +31,73 @@ interface MarkdownHeading {
   end: number;
 }
 
-export function validateMeetingTasks(text: string): { success: true; value: string } | { success: false; error: string } {
+export function validateMeetingTasks(
+  text: string
+): { success: true; value: string } | { success: false; error: string } {
   const markdown = text.trim();
+
   if (!markdown) return { success: true, value: "" };
-  if (/^(?:\{|\[)/.test(markdown) || /^```/m.test(markdown) || /^#{1,2} /m.test(markdown) || !/^[-*] \S/m.test(markdown)) {
-    return { success: false, error: "Expected Markdown task bullets, optionally grouped under ### priority headings, or an empty response." };
+
+  if (
+    /^(?:\{|\[)/.test(markdown) ||
+    /^```/m.test(markdown) ||
+    /^#{1,2} /m.test(markdown) ||
+    !/^[-*] \S/m.test(markdown)
+  ) {
+    return {
+      success: false,
+      error:
+        "Expected Markdown task bullets, optionally grouped under ### priority headings, or an empty response.",
+    };
   }
+
   return { success: true, value: markdown };
 }
 
 export function validateMeetingRecap(text: string): MeetingJsonValidation<MeetingRecap> {
   let json: unknown;
+
   try {
     json = JSON.parse(text);
   } catch {
     return { success: false, error: "Expected a JSON object with title and bullets." };
   }
+
   const parsed = meetingRecapSchema.safeParse(json);
-  if (!parsed.success) return { success: false, error: "Expected exactly a nonempty title and up to three bullet strings." };
+
+  if (!parsed.success)
+    return {
+      success: false,
+      error: "Expected exactly a nonempty title and up to three bullet strings.",
+    };
 
   const title = parsed.data.title.trim();
+
   if (!title || /[\r\n]/.test(title) || codePointLength(title) > 58) {
-    return { success: false, error: "The title must be one nonempty line of at most 58 Unicode code points." };
+    return {
+      success: false,
+      error: "The title must be one nonempty line of at most 58 Unicode code points.",
+    };
   }
+
   const bullets = parsed.data.bullets.map((value) => value.trim());
+
   if (bullets.some((bullet) => !bullet || /[\r\n]/.test(bullet) || codePointLength(bullet) > 88)) {
-    return { success: false, error: "Each bullet must be one nonempty line of at most 88 Unicode code points." };
+    return {
+      success: false,
+      error: "Each bullet must be one nonempty line of at most 88 Unicode code points.",
+    };
   }
+
   return { success: true, value: { title, bullets } };
 }
 
-export function readMeetingSummarySection(markdown: string, heading: "Action Items" | "Recap"): string | null {
+export function readMeetingSummarySection(
+  markdown: string,
+  heading: "Action Items" | "Recap"
+): string | null {
   const matches = getHeadings(markdown).filter((item) => item.name === heading);
+
   return matches.length === 1
     ? markdown.slice(matches[0].start, matches[0].end).replace(/(?:\r?\n)+$/, "")
     : null;
@@ -70,57 +107,83 @@ export function replaceMeetingTasks(markdown: string, tasks: string): SummarySec
   const headings = getHeadings(markdown);
   const matches = headings.filter((item) => item.name === "Action Items");
   const hasTasks = tasks.trim().length > 0;
+
   if (matches.length > 1 || (hasTasks && matches.length !== 1)) {
     return { success: false, error: "meeting-summary-section-invalid" };
   }
+
   if (!matches.length) return { success: true, markdown };
 
   const actionIndex = headings.indexOf(matches[0]);
   const recapIndex = headings.findIndex((item) => item.name === "Recap");
   const recapCount = headings.filter((item) => item.name === "Recap").length;
-  if (recapCount > 1 || (recapIndex >= 0 && recapIndex !== actionIndex + 1) ||
-    (recapIndex < 0 && actionIndex !== headings.length - 1)) {
+
+  if (
+    recapCount > 1 ||
+    (recapIndex >= 0 && recapIndex !== actionIndex + 1) ||
+    (recapIndex < 0 && actionIndex !== headings.length - 1)
+  ) {
     return { success: false, error: "meeting-summary-section-invalid" };
   }
 
   if (!hasTasks) return { success: true, markdown: removeSection(markdown, matches[0]) };
+
   return { success: true, markdown: replaceSection(markdown, matches[0], tasks.trim()) };
 }
 
 export function replaceMeetingRecap(markdown: string, recap: MeetingRecap): SummarySectionResult {
   const matches = getHeadings(markdown).filter((item) => item.name === "Recap");
+
   if (matches.length > 1) return { success: false, error: "meeting-summary-section-invalid" };
+
   const content = [
     `**${escapeMarkdownInline(recap.title)}**`,
     ...recap.bullets.map((bullet) => `- ${escapeMarkdownInline(bullet)}`),
   ].join("\n\n");
-  if (matches.length) return { success: true, markdown: replaceSection(markdown, matches[0], content) };
+
+  if (matches.length)
+    return { success: true, markdown: replaceSection(markdown, matches[0], content) };
   const prefix = markdown.trimEnd();
+
   return { success: true, markdown: `${prefix ? `${prefix}\n\n` : ""}## Recap\n\n${content}` };
 }
 
 function getHeadings(markdown: string): MarkdownHeading[] {
   const raw: Array<{ name: string; start: number; contentStart: number }> = [];
+
   for (const match of markdown.matchAll(/^## ([^\r\n]+)[ \t]*$/gm)) {
-    raw.push({ name: match[1].trim(), start: match.index!, contentStart: match.index! + match[0].length });
+    raw.push({
+      name: match[1].trim(),
+      start: match.index!,
+      contentStart: match.index! + match[0].length,
+    });
   }
-  return raw.map((heading, index) => ({ ...heading, end: raw[index + 1]?.start ?? markdown.length }));
+
+  return raw.map((heading, index) => ({
+    ...heading,
+    end: raw[index + 1]?.start ?? markdown.length,
+  }));
 }
 
 function replaceSection(markdown: string, section: MarkdownHeading, content: string): string {
   const hasFollowingSection = section.end < markdown.length;
-  return markdown.slice(0, section.contentStart) + `\n\n${content}` +
-    (hasFollowingSection ? `\n\n${markdown.slice(section.end)}` : "");
+
+  return (
+    markdown.slice(0, section.contentStart) +
+    `\n\n${content}` +
+    (hasFollowingSection ? `\n\n${markdown.slice(section.end)}` : "")
+  );
 }
 
 function removeSection(markdown: string, section: MarkdownHeading): string {
   const left = markdown.slice(0, section.start).trimEnd();
   const right = markdown.slice(section.end).trimStart();
+
   return [left, right].filter(Boolean).join("\n\n");
 }
 
 function escapeMarkdownInline(value: string): string {
-  return value.replace(/([\\`*_{}\[\]<>#+\-|])/g, "\\$1");
+  return value.replace(/([\\`*_{}[\]<>#+\-|])/g, "\\$1");
 }
 
 function codePointLength(value: string): number {

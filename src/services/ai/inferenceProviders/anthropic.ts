@@ -21,6 +21,7 @@ export const anthropicProvider: InferenceProvider = {
     // Claude models from Opus 4.7 onward reject `temperature` with a 400, so
     // unknown models default to omitting it, which every model accepts.
     const supportsTemperature = getCloudModel(model)?.supportsTemperature ?? false;
+
     const result = await window.electronAPI.processAnthropicReasoning(
       userContent,
       model,
@@ -46,6 +47,7 @@ export const anthropicProvider: InferenceProvider = {
       processingTimeMs,
       resultLength: outputText.length,
     });
+
     return outputText;
   },
 };

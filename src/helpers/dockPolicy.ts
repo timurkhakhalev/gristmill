@@ -20,5 +20,6 @@ export function resolveDockVisibility({
   controlPanelVisible,
 }: DockVisibilityInput): boolean | null {
   if (platform !== "darwin") return null;
+
   return !!controlPanelVisible;
 }

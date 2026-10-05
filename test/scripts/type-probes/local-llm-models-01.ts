@@ -3,7 +3,9 @@
 // @probe-origin test/scripts/localLlmModelsTypeProbe.test.js
 import { registerLocalLlmModelHandlers } from "./src/helpers/localLlmModelIpcHandlers.ts";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerLocalLlmModelHandlers(ipcMain, {
   modelManager: {

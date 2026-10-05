@@ -5,14 +5,18 @@ export function supportedMeetingFileProvider(
   model: string | undefined
 ): "deepgram" | "elevenlabs" | "gemini" | "openai" | null {
   if (provider === "deepgram" && (!model || model.startsWith("nova-"))) return "deepgram";
+
   if (provider === "elevenlabs" && (!model || model === "scribe_v2")) return "elevenlabs";
+
   if (provider === "gemini" && (!model || model === "gemini-3.5-transcribe")) return "gemini";
+
   if (
     provider === "openai" &&
     (!model ||
       ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-4o-transcribe-diarize"].includes(model))
   )
     return "openai";
+
   return null;
 }
 

@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 // Requires Node's native TypeScript type-stripping (Node >= 22.6 with
@@ -71,6 +72,7 @@ test("withRetry stops after one attempt when the strategy refuses to retry", asy
   const { withRetry, createApiRetryStrategy } = await load();
 
   let attempts = 0;
+
   const failWith400 = async () => {
     attempts += 1;
     throw Object.assign(new Error("groq rejected the request"), { status: 400 });
@@ -87,6 +89,7 @@ test("withRetry keeps retrying a 5xx up to maxRetries", async () => {
   const { withRetry, createApiRetryStrategy } = await load();
 
   let attempts = 0;
+
   const failWith503 = async () => {
     attempts += 1;
     throw Object.assign(new Error("unavailable"), { status: 503 });

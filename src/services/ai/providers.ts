@@ -11,12 +11,5 @@ export async function getAIModel(
   baseURL?: string,
   opts?: { disableThinking?: boolean; omitAuthorization?: boolean }
 ): Promise<LanguageModel> {
-  return createAIModel(
-    provider,
-    model,
-    apiKey,
-    baseURL,
-    opts,
-    getTinfoilLanguageModel
-  );
+  return createAIModel(provider, model, apiKey, baseURL, opts, getTinfoilLanguageModel);
 }

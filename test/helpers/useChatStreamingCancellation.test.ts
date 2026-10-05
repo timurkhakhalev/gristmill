@@ -1,19 +1,30 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const React = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
+
 const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
   reloadSettingsStore,
 } = require("../lib/rendererTestHarness.ts");
-type ChatStreamingHandle = ReturnType<typeof import("../../src/components/chat/useChatStreaming").useChatStreaming>;
+
+type ChatStreamingHandle = ReturnType<
+  typeof import("../../src/components/chat/useChatStreaming").useChatStreaming
+>;
 
 let vitePromise;
+
 const cleanup: any[] = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
@@ -56,7 +67,14 @@ const EMPTY_RESPONSE_TEXT = JSON.parse(
 
 async function renderChatStreaming(
   t: import("node:test").TestContext,
-  { electronAPI = {}, settings = {}, onStreamComplete, live = false, noteId, noteContext }: {
+  {
+    electronAPI = {},
+    settings = {},
+    onStreamComplete,
+    live = false,
+    noteId,
+    noteContext,
+  }: {
     electronAPI?: Record<string, unknown>;
     settings?: Record<string, unknown>;
     onStreamComplete?: (id: string, content: string) => void;
@@ -67,17 +85,24 @@ async function renderChatStreaming(
 ) {
   installBrowserGlobals(t, { window: { electronAPI } });
   const container = live ? installHookDom(t) : null;
-  const vite = await (vitePromise ??= createRendererServer({ after: (close: unknown) => cleanup.push(close) }, {
-    cachePrefix: "openwhispr-chat-streaming-cancellation-test-",
-  }));
+
+  const vite = await (vitePromise ??= createRendererServer(
+    { after: (close: unknown) => cleanup.push(close) },
+    {
+      cachePrefix: "openwhispr-chat-streaming-cancellation-test-",
+    }
+  ));
+
   const [{ default: viteI18next }, { initReactI18next }] = await Promise.all([
     vite.ssrLoadModule("i18next"),
     vite.ssrLoadModule("react-i18next"),
   ]);
+
   if (!viteI18next.isInitialized) {
     const translation = JSON.parse(
       fs.readFileSync(path.join(__dirname, "../../src/locales/en/translation.json"), "utf8")
     );
+
     await viteI18next.use(initReactI18next).init({
       lng: "en",
       resources: { en: { translation } },
@@ -98,19 +123,29 @@ async function renderChatStreaming(
     ...settings,
   });
 
-  const { useChatStreaming } = (await vite.ssrLoadModule("/components/chat/useChatStreaming.ts") as typeof import("../../src/components/chat/useChatStreaming.ts"));
-  const reasoningService = ((await vite.ssrLoadModule("/services/ReasoningService.ts") as typeof import("../../src/services/ReasoningService.ts"))).default;
+  const { useChatStreaming } = (await vite.ssrLoadModule(
+    "/components/chat/useChatStreaming.ts"
+  )) as typeof import("../../src/components/chat/useChatStreaming.ts");
+
+  const reasoningService = (
+    (await vite.ssrLoadModule(
+      "/services/ReasoningService.ts"
+    )) as typeof import("../../src/services/ReasoningService.ts")
+  ).default;
+
   // useChatStreaming imports ReasoningService.ts, whose default export is a
   // singleton constructed at import time; its API-key cache starts a real
   // setInterval that otherwise keeps the process alive after the test ends.
   t.after(() => reasoningService.destroy());
 
   let messages: any[] = [];
+
   const setMessages = (updater: unknown) => {
     messages = typeof updater === "function" ? updater(messages) : updater;
   };
 
   let captured: ChatStreamingHandle | null = null;
+
   function Harness() {
     captured = useChatStreaming({
       messages,
@@ -118,10 +153,12 @@ async function renderChatStreaming(
       noteId,
       noteContext,
     });
+
     return null;
   }
 
   let unmount;
+
   if (live) {
     const { createRoot } = require("react-dom/client");
     const root = createRoot(container);
@@ -132,14 +169,27 @@ async function renderChatStreaming(
       unmounted = true;
       await React.act(async () => root.unmount());
     };
+
     t.after(unmount);
   } else {
     renderToStaticMarkup(React.createElement(Harness));
   }
 
   if (!captured) throw new Error("Chat streaming hook did not render");
+
   return {
-    captured: { ...(captured as ChatStreamingHandle), sendToAI: (text: string, history: import("../../src/components/chat/types.ts").Message[], options?: import("../../src/components/chat/useChatStreaming.ts").ChatSendOptions) => (captured as ChatStreamingHandle).sendToAI(text, history, {...options, onComplete: onStreamComplete}) },
+    captured: {
+      ...(captured as ChatStreamingHandle),
+      sendToAI: (
+        text: string,
+        history: import("../../src/components/chat/types.ts").Message[],
+        options?: import("../../src/components/chat/useChatStreaming.ts").ChatSendOptions
+      ) =>
+        (captured as ChatStreamingHandle).sendToAI(text, history, {
+          ...options,
+          onComplete: onStreamComplete,
+        }),
+    },
     getMessages: () => messages,
     unmount,
   };
@@ -154,6 +204,7 @@ test("a genuine empty completion still shows the empty-response fallback", async
   // think-only/empty-completion shape the fallback exists for.
   globalThis.fetch = async () => {
     const finishEvent = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+
     return new Response(`${finishEvent}data: [DONE]\n\n`, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -171,15 +222,20 @@ test("a genuine empty completion still shows the empty-response fallback", async
 
 test("API Chat omits dictionary hints and BB CLI instructions", async (t: import("node:test").TestContext) => {
   const originalFetch = globalThis.fetch;
-  t.after(() => { globalThis.fetch = originalFetch; });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
   let request: { messages: Array<{ role: string; content: string }> } | undefined;
   globalThis.fetch = async (_input, init) => {
     request = JSON.parse(String(init?.body));
     const stop = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+
     return new Response(`${stop}data: [DONE]\n\n`, {
-      status: 200, headers: { "content-type": "text/event-stream" },
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
     });
   };
+
   const { captured } = await renderChatStreaming(t, {
     settings: {
       customDictionary: ["UniqueDictionaryTerm"],
@@ -187,32 +243,44 @@ test("API Chat omits dictionary hints and BB CLI instructions", async (t: import
       customPrompts: { cleanup: "", chatAgent: "" },
     },
   });
+
   await captured.sendToAI("hello", []);
   assert.ok(request);
   const system = request.messages.find((message) => message.role === "system");
   assert.ok(system);
-  assert.doesNotMatch(system.content, /UniqueDictionaryTerm|UniqueSnippetTrigger|Custom Dictionary|Пользовательский словарь|gristmill --help/);
+  assert.doesNotMatch(
+    system.content,
+    /UniqueDictionaryTerm|UniqueSnippetTrigger|Custom Dictionary|Пользовательский словарь|gristmill --help/
+  );
 });
 
 test("one-off action turns use only the current message and cannot invoke tools", async (t: import("node:test").TestContext) => {
   const originalFetch = globalThis.fetch;
-  t.after(() => { globalThis.fetch = originalFetch; });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
   let request: Record<string, any> | undefined;
   globalThis.fetch = async (_input, init) => {
     request = JSON.parse(String(init?.body));
     const finish = `data: ${JSON.stringify(createOpenAiChunk({ content: "Draft ready" }))}\n\n`;
     const stop = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+
     return new Response(`${finish}${stop}data: [DONE]\n\n`, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
     });
   };
+
   const { captured } = await renderChatStreaming(t);
   const actionPrompt = "Editable Follow-up prompt and selected meeting JSON.";
-  await captured.sendToAI("Draft a follow-up", [
-    { id: "old", role: "assistant", content: "Old Chat context", isStreaming: false },
-    { id: "action", role: "user", content: "Draft a follow-up", isStreaming: false },
-  ], { systemPrompt: actionPrompt, disableTools: true, includeConversationHistory: false });
+  await captured.sendToAI(
+    "Draft a follow-up",
+    [
+      { id: "old", role: "assistant", content: "Old Chat context", isStreaming: false },
+      { id: "action", role: "user", content: "Draft a follow-up", isStreaming: false },
+    ],
+    { systemPrompt: actionPrompt, disableTools: true, includeConversationHistory: false }
+  );
 
   assert.ok(request);
   assert.deepEqual(request!.messages, [
@@ -225,19 +293,29 @@ test("one-off action turns use only the current message and cannot invoke tools"
 for (const provider of ["lan", "bedrock", "ollama"]) {
   test(`Self-Hosted Chat with ${provider} selection exposes tools without the Local size threshold`, async (t) => {
     const originalFetch = globalThis.fetch;
-    t.after(() => { globalThis.fetch = originalFetch; });
+    t.after(() => {
+      globalThis.fetch = originalFetch;
+    });
     let request: Record<string, unknown> | undefined;
     globalThis.fetch = async (_input, init) => {
       request = JSON.parse(String(init?.body));
       const stop = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+
       return new Response(`${stop}data: [DONE]\n\n`, {
-        status: 200, headers: { "content-type": "text/event-stream" },
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
       });
     };
+
     const { captured } = await renderChatStreaming(t, {
       settings: { chatAgentProvider: provider, chatAgentModel: "qwen3-0.6b" },
-      electronAPI: { llamaServerStart: async () => { throw new Error("Self-Hosted must not start Local"); } },
+      electronAPI: {
+        llamaServerStart: async () => {
+          throw new Error("Self-Hosted must not start Local");
+        },
+      },
     });
+
     await captured.sendToAI("hello", []);
     assert.ok(request);
     assert.ok(Array.isArray(request.tools) && request.tools.length > 0);
@@ -246,19 +324,30 @@ for (const provider of ["lan", "bedrock", "ollama"]) {
 
 test("Local Chat below 4B still omits application tools", async (t) => {
   const originalFetch = globalThis.fetch;
-  t.after(() => { globalThis.fetch = originalFetch; });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
   let request: Record<string, unknown> | undefined;
   globalThis.fetch = async (_input, init) => {
     request = JSON.parse(String(init?.body));
     const stop = `data: ${JSON.stringify(createOpenAiChunk({}, "stop"))}\n\n`;
+
     return new Response(`${stop}data: [DONE]\n\n`, {
-      status: 200, headers: { "content-type": "text/event-stream" },
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
     });
   };
+
   const { captured } = await renderChatStreaming(t, {
-    settings: { chatAgentMode: "local", chatAgentProvider: "ollama", chatAgentModel: "qwen3-0.6b", chatAgentRemoteUrl: "" },
+    settings: {
+      chatAgentMode: "local",
+      chatAgentProvider: "ollama",
+      chatAgentModel: "qwen3-0.6b",
+      chatAgentRemoteUrl: "",
+    },
     electronAPI: { llamaServerStart: async () => ({ success: true, port: 11434 }) },
   });
+
   await captured.sendToAI("hello", []);
   assert.ok(request);
   assert.equal("tools" in request, false);
@@ -269,6 +358,7 @@ test("bb Chat seeds instructions once and sends the next user message verbatim",
   let prompt = "";
   let initialPrompt = "";
   let conversationId = 0;
+
   const { captured, getMessages } = await renderChatStreaming(t, {
     noteId: 42,
     noteContext: "Private full transcript that BB should read on demand",
@@ -278,16 +368,25 @@ test("bb Chat seeds instructions once and sends the next user message verbatim",
       snippets: [{ trigger: "UniqueSnippetTrigger", replacement: "Saved text" }],
       customPrompts: { cleanup: "", chatAgent: "" },
       bbAgentPreferences: {
-        order: ["codex"], disabled: [], defaultProvider: "codex",
+        order: ["codex"],
+        disabled: [],
+        defaultProvider: "codex",
         defaults: { codex: { model: "gpt-6-luna", reasoningLevel: "low" } },
       },
     },
     electronAPI: {
       onBbStreamPart: (callback: typeof listener) => {
         listener = callback;
-        return () => { listener = undefined; };
+
+        return () => {
+          listener = undefined;
+        };
       },
-      bbStreamStart: async (request: import("zod").z.infer<typeof import("../../src/contracts/bb.ts").bbStreamStartSchema>) => {
+      bbStreamStart: async (
+        request: import("zod").z.infer<
+          typeof import("../../src/contracts/bb.ts").bbStreamStartSchema
+        >
+      ) => {
         prompt = request.prompt;
         initialPrompt = request.initialPrompt;
         conversationId = request.conversationId;
@@ -297,22 +396,36 @@ test("bb Chat seeds instructions once and sends the next user message verbatim",
       bbStreamCancel: async () => {},
     },
   });
+
   const userText = "  хмм ок спасибо\nЧто ещё решили?  ";
-  await captured.sendToAI(userText, [
-    { id: "earlier-user", role: "user", content: "Earlier question", isStreaming: false },
-    { id: "earlier-assistant", role: "assistant", content: "Earlier answer", isStreaming: false },
-    { id: "current", role: "user", content: userText, isStreaming: false },
-  ], { conversationId: 12 });
+  await captured.sendToAI(
+    userText,
+    [
+      { id: "earlier-user", role: "user", content: "Earlier question", isStreaming: false },
+      { id: "earlier-assistant", role: "assistant", content: "Earlier answer", isStreaming: false },
+      { id: "current", role: "user", content: userText, isStreaming: false },
+    ],
+    { conversationId: 12 }
+  );
   assert.match(initialPrompt, /You are a helpful assistant in Gristmill app\./);
-  assert.match(initialPrompt, /Use gristmill, a helper client, to retrieve additional information about meetings when needed\./);
+  assert.match(
+    initialPrompt,
+    /Use gristmill, a helper client, to retrieve additional information about meetings when needed\./
+  );
   assert.match(initialPrompt, /Run gristmill --help for usage and options\./);
   assert.match(initialPrompt, /Current Note ID: 42\./);
   assert.equal(conversationId, 12);
   assert.match(initialPrompt, /Earlier question[\s\S]*Earlier answer/);
   assert.ok(initialPrompt.endsWith(`USER:\n${userText}`));
   assert.equal(prompt, userText);
-  assert.doesNotMatch(initialPrompt, /voice assistant|node |GRISTMILL_PROFILE|--profile|gristmill-tools|AGENTS\.md|Private full transcript/);
-  assert.doesNotMatch(initialPrompt, /UniqueDictionaryTerm|UniqueSnippetTrigger|Custom Dictionary|Пользовательский словарь/);
+  assert.doesNotMatch(
+    initialPrompt,
+    /voice assistant|node |GRISTMILL_PROFILE|--profile|gristmill-tools|AGENTS\.md|Private full transcript/
+  );
+  assert.doesNotMatch(
+    initialPrompt,
+    /UniqueDictionaryTerm|UniqueSnippetTrigger|Custom Dictionary|Пользовательский словарь/
+  );
   assert.equal(getMessages()[0].content, "Answer");
   assert.equal(listener, undefined);
 });
@@ -327,6 +440,7 @@ test("cancelling before any token arrives never shows the empty-response fallbac
   // once the request's AbortSignal fires — i.e. once cancelStream() runs.
   globalThis.fetch = async (_input, init) => {
     fetchStarted = true;
+
     const body = new ReadableStream({
       start(controller) {
         init?.signal?.addEventListener(
@@ -336,10 +450,12 @@ test("cancelling before any token arrives never shows the empty-response fallbac
         );
       },
     });
+
     return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
   };
 
   let streamCompleteCalls = 0;
+
   const { captured, getMessages } = await renderChatStreaming(t, {
     onStreamComplete: () => {
       streamCompleteCalls += 1;
@@ -349,6 +465,7 @@ test("cancelling before any token arrives never shows the empty-response fallbac
   const sendPromise = captured.sendToAI("hello", []);
 
   const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
+
   for (let i = 0; i < 50 && !fetchStarted; i++) await waitForMicrotasks();
   assert.equal(fetchStarted, true, "fixture setup: fetch must have started before cancelling");
 
@@ -375,9 +492,11 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
 
   const encoder = new TextEncoder();
   let releaseTail!: () => void;
+
   const tailGate = new Promise<void>((resolve) => {
     releaseTail = resolve;
   });
+
   globalThis.fetch = async () =>
     new Response(
       new ReadableStream({
@@ -401,6 +520,7 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
     );
 
   const persisted: unknown[] = [];
+
   const { captured, getMessages, unmount } = await renderChatStreaming(t, {
     live: true,
     onStreamComplete: (_id: unknown, content: string) => persisted.push(content),
@@ -410,11 +530,8 @@ test("an unmount mid-stream persists the partial reply without delivering it", a
   const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
   await React.act(async () => {
     sendPromise = captured.sendToAI("hello", []);
-    for (
-      let i = 0;
-      i < 50 && !getMessages().some((m) => m.content === "Partial reply");
-      i++
-    ) {
+
+    for (let i = 0; i < 50 && !getMessages().some((m) => m.content === "Partial reply"); i++) {
       await waitForMicrotasks();
     }
   });
@@ -456,6 +573,7 @@ test("cancelling a tool-ineligible raw stream after reading starts shows no erro
         );
       },
     });
+
     return new Response(body, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -465,8 +583,10 @@ test("cancelling a tool-ineligible raw stream after reading starts shows no erro
   const { captured, getMessages } = await renderChatStreaming(t, {
     settings: { chatAgentModel: "qwen3-1.7b-q4_k_m" },
   });
+
   const sendPromise = captured.sendToAI("hello", []);
   const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
+
   for (let i = 0; i < 50 && !readerStarted; i++) await waitForMicrotasks();
   assert.equal(readerStarted, true, "fixture setup: the raw response reader must be pending");
 

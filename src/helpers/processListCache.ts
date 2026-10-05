@@ -9,6 +9,7 @@ class ProcessListCache {
 
   async getProcessList(): Promise<string[]> {
     const now = Date.now();
+
     if (this._cache && now - this._cacheTime < CACHE_TTL_MS) {
       return this._cache;
     }
@@ -16,6 +17,7 @@ class ProcessListCache {
     if (this._pending) return this._pending;
 
     this._pending = this._fetch(now);
+
     try {
       return await this._pending;
     } finally {
@@ -31,6 +33,7 @@ class ProcessListCache {
       this._cache = names;
       this._cacheTime = now;
       debugLogger.debug("Process list refreshed", { count: names.length }, "meeting");
+
       return names;
     } catch (err) {
       debugLogger.warn(
@@ -38,6 +41,7 @@ class ProcessListCache {
         { error: err instanceof Error ? err.message : String(err) },
         "meeting"
       );
+
       return [];
     }
   }
@@ -50,6 +54,8 @@ class ProcessListCache {
 }
 
 export const processListCache = new ProcessListCache();
+
 module.exports = processListCache;
+
 // Named re-attach for TS consumers importing { processListCache }.
 module.exports.processListCache = processListCache;

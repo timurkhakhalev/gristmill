@@ -7,9 +7,10 @@ import { cn } from "./lib/utils";
 import { getCachedPlatform } from "../utils/platform";
 import type { NotesDebugScenario } from "./notes/NotesDebugControls";
 
-const NotesDebugControls = (import.meta.env.DEV || import.meta.env.VITE_GRISTMILL_DEV_BUILD === "true")
-  ? React.lazy(() => import("./notes/NotesDebugControls"))
-  : null;
+const NotesDebugControls =
+  import.meta.env.DEV || import.meta.env.VITE_GRISTMILL_DEV_BUILD === "true"
+    ? React.lazy(() => import("./notes/NotesDebugControls"))
+    : null;
 
 const platform = getCachedPlatform();
 
@@ -143,7 +144,10 @@ export default function ControlPanelTopBar({
         {showNotesDebug && NotesDebugControls && (
           <div data-no-window-drag="" style={noDragStyle}>
             <React.Suspense fallback={null}>
-              <NotesDebugControls scenario={notesDebugScenario} onChange={onNotesDebugScenarioChange} />
+              <NotesDebugControls
+                scenario={notesDebugScenario}
+                onChange={onNotesDebugScenarioChange}
+              />
             </React.Suspense>
           </div>
         )}

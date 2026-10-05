@@ -49,6 +49,7 @@ function EditSnippetDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
     if (!canSave) return;
     onSave({ trigger: trimmedTrigger, replacement: replacement.trim() });
   }
@@ -117,8 +118,10 @@ export default function SnippetsView() {
   const triggerExists = (value: string, except?: string) => {
     const lower = value.toLowerCase();
     const exceptLower = except?.toLowerCase();
+
     return snippets.some((s) => {
       const existing = s.trigger.toLowerCase();
+
       return existing === lower && existing !== exceptLower;
     });
   };
@@ -127,6 +130,7 @@ export default function SnippetsView() {
   const duplicate = !!trimmedTrigger && triggerExists(trimmedTrigger);
 
   const searchQuery = trimmedTrigger.toLowerCase();
+
   const visibleSnippets =
     searchQuery && !panelOpen
       ? snippets.filter(
@@ -215,6 +219,7 @@ export default function SnippetsView() {
             onChange={(e) => setExpansion(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") closePanel();
+
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canCreate) handleCreate();
             }}
             placeholder={t("dictionary.snippets.replacementPlaceholder")}
@@ -246,9 +251,7 @@ export default function SnippetsView() {
       <div className="rounded-md border border-foreground/8 dark:border-white/10 bg-foreground/[0.02] dark:bg-white/[0.03] px-4 py-3">
         {snippets.length > 0 && (
           <>
-            <h3 className="text-xs font-semibold text-muted">
-              {t("dictionary.snippets.title")}
-            </h3>
+            <h3 className="text-xs font-semibold text-muted">{t("dictionary.snippets.title")}</h3>
             <div className="mt-2.5 border-t border-dashed border-foreground/10 dark:border-white/10" />
           </>
         )}

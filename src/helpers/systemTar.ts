@@ -6,8 +6,11 @@ const TAR_KILL_GRACE_MS = 1000;
 
 function tarExtractionFlags(archivePath: string): string {
   const lower = archivePath.toLowerCase();
+
   if (lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2")) return "-xjf";
+
   if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return "-xzf";
+
   // bsdtar and modern GNU tar auto-detect the format on extraction (zip included).
   return "-xf";
 }
@@ -30,6 +33,7 @@ export function resolveSystemTarExecutable({
   // is not normally present. Sysnative is Windows' alias for the native
   // system directory in that situation.
   const systemDir = arch === "ia32" && env.PROCESSOR_ARCHITEW6432 ? "Sysnative" : "System32";
+
   return path.win32.join(windowsDir, systemDir, "tar.exe");
 }
 
@@ -88,6 +92,7 @@ export function runSystemTar(
       );
     } catch (err) {
       reject(new Error(`Failed to start tar process: ${(err as Error).message}`));
+
       return;
     }
 
@@ -100,6 +105,7 @@ export function runSystemTar(
       if (settled) return;
       settled = true;
       clearTimeout(timeoutTimer);
+
       if (killGraceTimer) clearTimeout(killGraceTimer);
       settle();
     };
@@ -116,10 +122,13 @@ export function runSystemTar(
     }, timeoutMs);
 
     const stderrStream = tarProcess.stderr;
+
     if (!stderrStream) {
       finish(() => reject(new Error("tar process produced no stderr stream")));
+
       return;
     }
+
     stderrStream.on("data", (data: Buffer) => {
       stderr += data.toString();
     });
@@ -139,4 +148,3 @@ export function runSystemTar(
     });
   });
 }
-

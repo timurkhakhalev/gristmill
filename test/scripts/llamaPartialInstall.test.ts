@@ -5,14 +5,21 @@
 // any published output on failure, and its skip check requires binary +
 // libraries; the runtime likewise refuses a bare executable.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("fs");
+
 const os = require("os");
+
 const path = require("path");
+
 const vm = require("vm");
+
 const { stripTypeScriptTypes }: typeof import("node:module") = require("node:module");
 
 const SCRIPT = path.join(__dirname, "../../scripts/download-llama-server.cts");
+
 const OUTPUT_NAME = "llama-server-darwin-arm64";
 
 interface RunOptions {
@@ -20,7 +27,10 @@ interface RunOptions {
   seedOutputOnly?: boolean;
 }
 
-async function runInstaller(t: import("node:test").TestContext, { failLibraryCopy = false, seedOutputOnly = false }: RunOptions = {}) {
+async function runInstaller(
+  t: import("node:test").TestContext,
+  { failLibraryCopy = false, seedOutputOnly = false }: RunOptions = {}
+) {
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "llama-partial-"));
   t.after(() => fs.rmSync(binDir, { recursive: true, force: true }));
 
@@ -39,10 +49,12 @@ async function runInstaller(t: import("node:test").TestContext, { failLibraryCop
       return {
         copyLibraries: (extractDir: string, destDir: string, _pattern: string) => {
           copyCalls += 1;
+
           if (failLibraryCopy) throw new Error("injected: library copy failed (disk full)");
           // Real behavior: copy matching libs from the archive into destDir.
           const lib = path.join(extractDir, "libggml.dylib");
           fs.copyFileSync(lib, path.join(destDir, "libggml.dylib"));
+
           return ["libggml.dylib"];
         },
         downloadFile: async (url: string, file: string) => {
@@ -55,40 +67,62 @@ async function runInstaller(t: import("node:test").TestContext, { failLibraryCop
         },
         fetchLatestRelease: async () => ({
           tag: "b-test",
-          assets: [{ name: "llama-b-test-bin-macos-arm64.tar.gz", url: "https://example.invalid/llama.tar.gz" }],
+          assets: [
+            {
+              name: "llama-b-test-bin-macos-arm64.tar.gz",
+              url: "https://example.invalid/llama.tar.gz",
+            },
+          ],
         }),
         findBinaryInDir: () => null,
         findLibrariesInDir: (dir: string) =>
           fs.existsSync(dir)
-            ? fs.readdirSync(dir).filter((f: string) => f.endsWith(".dylib")).map((f: string) => path.join(dir, f))
+            ? fs
+                .readdirSync(dir)
+                .filter((f: string) => f.endsWith(".dylib"))
+                .map((f: string) => path.join(dir, f))
             : [],
         matchesPattern: () => true,
-        parseArgs: () => ({ isCurrent: true, platformArch: "darwin-arm64", isForce: false, shouldCleanup: false }),
+        parseArgs: () => ({
+          isCurrent: true,
+          platformArch: "darwin-arm64",
+          isForce: false,
+          shouldCleanup: false,
+        }),
         setExecutable: () => {},
         cleanupFiles: () => {},
       };
     }
+
     return require(name);
   };
+
   (injectedRequire as unknown as { main: unknown }).main = module;
 
   vm.runInNewContext(scriptSource, {
     module,
     require: injectedRequire,
-    console: { log: (line: string) => consoleLines.push(line), error: (line: string) => consoleLines.push(line) },
+    console: {
+      log: (line: string) => consoleLines.push(line),
+      error: (line: string) => consoleLines.push(line),
+    },
     process: { ...process, env: { ...process.env, GRISTMILL_LOCAL_BIN_DIR: binDir }, exitCode: 0 },
     __dirname: path.dirname(SCRIPT),
   });
 
   // main() runs with awaits; let it settle before the caller inspects the FS.
   await new Promise((resolve) => setTimeout(resolve, 100));
+
   return {
     binDir,
     consoleLines,
     copyCalls: () => copyCalls,
     outputExists: () => fs.existsSync(path.join(binDir, OUTPUT_NAME)),
     libExists: () => fs.existsSync(path.join(binDir, "libggml.dylib")),
-    outputContent: () => (fs.existsSync(path.join(binDir, OUTPUT_NAME)) ? fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8") : null),
+    outputContent: () =>
+      fs.existsSync(path.join(binDir, OUTPUT_NAME))
+        ? fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8")
+        : null,
   };
 }
 
@@ -134,7 +168,11 @@ test("an interrupted publish (libs renamed, binary missing) is incomplete and th
     if (name === "./lib/download-utils.cts") {
       return {
         copyLibraries: (extractDir: string, destDir: string) => {
-          fs.copyFileSync(path.join(extractDir, "libggml.dylib"), path.join(destDir, "libggml.dylib"));
+          fs.copyFileSync(
+            path.join(extractDir, "libggml.dylib"),
+            path.join(destDir, "libggml.dylib")
+          );
+
           return ["libggml.dylib"];
         },
         downloadFile: async (url: string, file: string) => {
@@ -147,32 +185,53 @@ test("an interrupted publish (libs renamed, binary missing) is incomplete and th
         },
         fetchLatestRelease: async () => ({
           tag: "b-test",
-          assets: [{ name: "llama-b-test-bin-macos-arm64.tar.gz", url: "https://example.invalid/llama.tar.gz" }],
+          assets: [
+            {
+              name: "llama-b-test-bin-macos-arm64.tar.gz",
+              url: "https://example.invalid/llama.tar.gz",
+            },
+          ],
         }),
         findBinaryInDir: () => null,
         findLibrariesInDir: (dir: string, pattern: string, options: { maxDepth?: number } = {}) => {
           // Real semantics: maxDepth 1 = only the top level of dir.
           if ((options.maxDepth ?? 5) <= 1) {
             return fs.existsSync(dir)
-              ? fs.readdirSync(dir).filter((f: string) => f.endsWith(".dylib")).map((f: string) => path.join(dir, f))
+              ? fs
+                  .readdirSync(dir)
+                  .filter((f: string) => f.endsWith(".dylib"))
+                  .map((f: string) => path.join(dir, f))
               : [];
           }
+
           return fs.existsSync(dir)
-            ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry: { isDirectory: () => boolean; name: string }) =>
-                entry.isDirectory()
-                  ? fs.readdirSync(path.join(dir, entry.name)).filter((f: string) => f.endsWith(".dylib")).map((f: string) => path.join(dir, entry.name, f))
-                  : []
-              )
+            ? fs
+                .readdirSync(dir, { withFileTypes: true })
+                .flatMap((entry: { isDirectory: () => boolean; name: string }) =>
+                  entry.isDirectory()
+                    ? fs
+                        .readdirSync(path.join(dir, entry.name))
+                        .filter((f: string) => f.endsWith(".dylib"))
+                        .map((f: string) => path.join(dir, entry.name, f))
+                    : []
+                )
             : [];
         },
         matchesPattern: () => true,
-        parseArgs: () => ({ isCurrent: true, platformArch: "darwin-arm64", isForce: false, shouldCleanup: false }),
+        parseArgs: () => ({
+          isCurrent: true,
+          platformArch: "darwin-arm64",
+          isForce: false,
+          shouldCleanup: false,
+        }),
         setExecutable: () => {},
         cleanupFiles: () => {},
       };
     }
+
     return require(name);
   };
+
   (injectedRequire as unknown as { main: unknown }).main = { exports: {} };
   const consoleLines: string[] = [];
   const vmModule: { exports: unknown } = { exports: {} };
@@ -180,7 +239,10 @@ test("an interrupted publish (libs renamed, binary missing) is incomplete and th
   vm.runInNewContext(stripTypeScriptTypes(fs.readFileSync(SCRIPT, "utf8")), {
     module: vmModule,
     require: injectedRequire,
-    console: { log: (line: string) => consoleLines.push(line), error: (line: string) => consoleLines.push(line) },
+    console: {
+      log: (line: string) => consoleLines.push(line),
+      error: (line: string) => consoleLines.push(line),
+    },
     process: { ...process, env: { ...process.env, GRISTMILL_LOCAL_BIN_DIR: binDir }, exitCode: 0 },
     __dirname: path.dirname(SCRIPT),
   });
@@ -194,13 +256,25 @@ test("an interrupted publish (libs renamed, binary missing) is incomplete and th
     false,
     "the interrupted install did not satisfy the skip check"
   );
-  assert.equal(fs.existsSync(path.join(binDir, OUTPUT_NAME)), true, "the binary was published by the retry");
-  assert.equal(fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8"), "fresh-binary", "the repaired binary is the new one");
+  assert.equal(
+    fs.existsSync(path.join(binDir, OUTPUT_NAME)),
+    true,
+    "the binary was published by the retry"
+  );
+  assert.equal(
+    fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8"),
+    "fresh-binary",
+    "the repaired binary is the new one"
+  );
   // The staging directory never satisfied the completeness check: without it
   // the top level held exactly one lib and no binary (incomplete), and the
   // skip did not fire — staging content was not read as kit content.
   assert.equal(fs.existsSync(staging), false, "the leftover staging directory was cleaned");
-  assert.equal(fs.existsSync(path.join(binDir, "libggml.dylib")), true, "the orphaned lib was overwritten by the fresh one");
+  assert.equal(
+    fs.existsSync(path.join(binDir, "libggml.dylib")),
+    true,
+    "the orphaned lib was overwritten by the fresh one"
+  );
 });
 
 // R160-1 discrimination: binary present, zero top-level libs, libraries only
@@ -215,11 +289,16 @@ test("staging-directory libraries never satisfy the skip check", async (t) => {
   fs.writeFileSync(path.join(staging, "libggml.dylib"), "staged-lib");
 
   let ran = false;
+
   const injectedRequire = (name: string) => {
     if (name === "./lib/download-utils.cts") {
       return {
         copyLibraries: (extractDir: string, destDir: string) => {
-          fs.copyFileSync(path.join(extractDir, "libggml.dylib"), path.join(destDir, "libggml.dylib"));
+          fs.copyFileSync(
+            path.join(extractDir, "libggml.dylib"),
+            path.join(destDir, "libggml.dylib")
+          );
+
           return ["libggml.dylib"];
         },
         downloadFile: async (url: string, file: string) => {
@@ -232,33 +311,58 @@ test("staging-directory libraries never satisfy the skip check", async (t) => {
         },
         fetchLatestRelease: async () => ({
           tag: "b-test",
-          assets: [{ name: "llama-b-test-bin-macos-arm64.tar.gz", url: "https://example.invalid/llama.tar.gz" }],
+          assets: [
+            {
+              name: "llama-b-test-bin-macos-arm64.tar.gz",
+              url: "https://example.invalid/llama.tar.gz",
+            },
+          ],
         }),
         findBinaryInDir: () => null,
         findLibrariesInDir: (dir: string, pattern: string, options: { maxDepth?: number } = {}) => {
           if ((options.maxDepth ?? 5) <= 1) {
             return fs.existsSync(dir)
-              ? fs.readdirSync(dir).filter((f: string) => f.endsWith(".dylib")).map((f: string) => path.join(dir, f))
+              ? fs
+                  .readdirSync(dir)
+                  .filter((f: string) => f.endsWith(".dylib"))
+                  .map((f: string) => path.join(dir, f))
               : [];
           }
+
           // Recursive variant (pre-fix): would also see staging content.
           return fs.existsSync(dir)
-            ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry: { isDirectory: () => boolean; name: string }) =>
-                entry.isDirectory()
-                  ? fs.readdirSync(path.join(dir, entry.name)).filter((f: string) => f.endsWith(".dylib")).map((f: string) => path.join(dir, entry.name, f))
-                  : fs.readdirSync(dir).filter((f: string) => f.endsWith(".dylib")).map((f: string) => path.join(dir, f))
-              )
+            ? fs
+                .readdirSync(dir, { withFileTypes: true })
+                .flatMap((entry: { isDirectory: () => boolean; name: string }) =>
+                  entry.isDirectory()
+                    ? fs
+                        .readdirSync(path.join(dir, entry.name))
+                        .filter((f: string) => f.endsWith(".dylib"))
+                        .map((f: string) => path.join(dir, entry.name, f))
+                    : fs
+                        .readdirSync(dir)
+                        .filter((f: string) => f.endsWith(".dylib"))
+                        .map((f: string) => path.join(dir, f))
+                )
             : [];
         },
         matchesPattern: () => true,
-        parseArgs: () => ({ isCurrent: true, platformArch: "darwin-arm64", isForce: false, shouldCleanup: false }),
+        parseArgs: () => ({
+          isCurrent: true,
+          platformArch: "darwin-arm64",
+          isForce: false,
+          shouldCleanup: false,
+        }),
         setExecutable: () => {},
         cleanupFiles: () => {},
       };
     }
+
     ran = true;
+
     return require(name);
   };
+
   (injectedRequire as unknown as { main: unknown }).main = { exports: {} };
   const vmModule: { exports: unknown } = { exports: {} };
   const lines: string[] = [];
@@ -267,8 +371,12 @@ test("staging-directory libraries never satisfy the skip check", async (t) => {
     module: vmModule,
     require: injectedRequire,
     console: {
-      log: (line: string) => { lines.push(line); },
-      error: (line: string) => { lines.push(line); },
+      log: (line: string) => {
+        lines.push(line);
+      },
+      error: (line: string) => {
+        lines.push(line);
+      },
     },
     process: { ...process, env: { ...process.env, GRISTMILL_LOCAL_BIN_DIR: binDir }, exitCode: 0 },
     __dirname: path.dirname(SCRIPT),
@@ -277,8 +385,16 @@ test("staging-directory libraries never satisfy the skip check", async (t) => {
 
   assert.equal(ran, true, "the installer ran instead of skipping");
   console.log("DEBUGO lines:", JSON.stringify(lines));
-  assert.equal(fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8"), "fresh-binary", "the kit was repaired");
-  assert.equal(fs.existsSync(path.join(binDir, "libggml.dylib")), true, "the libraries were installed at the top level");
+  assert.equal(
+    fs.readFileSync(path.join(binDir, OUTPUT_NAME), "utf8"),
+    "fresh-binary",
+    "the kit was repaired"
+  );
+  assert.equal(
+    fs.existsSync(path.join(binDir, "libggml.dylib")),
+    true,
+    "the libraries were installed at the top level"
+  );
 });
 
 // R160-3: executability is part of completeness. A truncated binary with full
@@ -286,7 +402,10 @@ test("staging-directory libraries never satisfy the skip check", async (t) => {
 // libraries (missed chmod from an older revision) both used to read as
 // complete; the skip check must report them incomplete and the retry must
 // repair them.
-async function seedAndRepair(t: import("node:test").TestContext, seedBinary: (outputPath: string) => void) {
+async function seedAndRepair(
+  t: import("node:test").TestContext,
+  seedBinary: (outputPath: string) => void
+) {
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "llama-execheck-"));
   t.after(() => fs.rmSync(binDir, { recursive: true, force: true }));
   seedBinary(path.join(binDir, OUTPUT_NAME));
@@ -294,11 +413,16 @@ async function seedAndRepair(t: import("node:test").TestContext, seedBinary: (ou
 
   const vmModule: { exports: unknown } = { exports: {} };
   const lines: string[] = [];
+
   const injectedRequire = (name: string) => {
     if (name === "./lib/download-utils.cts") {
       return {
         copyLibraries: (extractDir: string, destDir: string) => {
-          fs.copyFileSync(path.join(extractDir, "libggml.dylib"), path.join(destDir, "libggml.dylib"));
+          fs.copyFileSync(
+            path.join(extractDir, "libggml.dylib"),
+            path.join(destDir, "libggml.dylib")
+          );
+
           return ["libggml.dylib"];
         },
         downloadFile: async (url: string, file: string) => {
@@ -311,33 +435,53 @@ async function seedAndRepair(t: import("node:test").TestContext, seedBinary: (ou
         },
         fetchLatestRelease: async () => ({
           tag: "b-test",
-          assets: [{ name: "llama-b-test-bin-macos-arm64.tar.gz", url: "https://example.invalid/llama.tar.gz" }],
+          assets: [
+            {
+              name: "llama-b-test-bin-macos-arm64.tar.gz",
+              url: "https://example.invalid/llama.tar.gz",
+            },
+          ],
         }),
         findBinaryInDir: () => null,
         findLibrariesInDir: (dir: string) =>
           fs.existsSync(dir)
-            ? fs.readdirSync(dir).filter((f: string) => f.endsWith(".dylib")).map((f: string) => path.join(dir, f))
+            ? fs
+                .readdirSync(dir)
+                .filter((f: string) => f.endsWith(".dylib"))
+                .map((f: string) => path.join(dir, f))
             : [],
         matchesPattern: () => true,
-        parseArgs: () => ({ isCurrent: true, platformArch: "darwin-arm64", isForce: false, shouldCleanup: false }),
+        parseArgs: () => ({
+          isCurrent: true,
+          platformArch: "darwin-arm64",
+          isForce: false,
+          shouldCleanup: false,
+        }),
         setExecutable: () => {},
         cleanupFiles: () => {},
       };
     }
+
     return require(name);
   };
+
   (injectedRequire as unknown as { main: unknown }).main = vmModule;
   vm.runInNewContext(stripTypeScriptTypes(fs.readFileSync(SCRIPT, "utf8")), {
     module: vmModule,
     require: injectedRequire,
     console: {
-      log: (line: string) => { lines.push(line); },
-      error: (line: string) => { lines.push(line); },
+      log: (line: string) => {
+        lines.push(line);
+      },
+      error: (line: string) => {
+        lines.push(line);
+      },
     },
     process: { ...process, env: { ...process.env, GRISTMILL_LOCAL_BIN_DIR: binDir }, exitCode: 0 },
     __dirname: path.dirname(SCRIPT),
   });
   await new Promise((resolve) => setTimeout(resolve, 100));
+
   return {
     repaired: () =>
       fs.existsSync(path.join(binDir, OUTPUT_NAME)) &&

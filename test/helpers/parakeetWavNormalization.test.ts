@@ -1,10 +1,18 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const fs = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
-const { getRequiredModelFiles }: typeof import("../../src/helpers/parakeetModelInfo") = require("../../src/helpers/parakeetModelInfo");
+
+const {
+  getRequiredModelFiles,
+}: typeof import("../../src/helpers/parakeetModelInfo") = require("../../src/helpers/parakeetModelInfo");
 
 const MODEL_NAME = "parakeet-tdt-0.6b-v3";
 
@@ -62,7 +70,11 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-parakeet-wav-test-"));
   const originalLoad = Module._load;
   let ffmpegUtils: any;
-  Module._load = function loadWithElectronStub(request: string, parent: { filename?: string } | undefined, isMain: boolean) {
+  Module._load = function loadWithElectronStub(
+    request: string,
+    parent: { filename?: string } | undefined,
+    isMain: boolean
+  ) {
     if (request === "electron") {
       return {
         app: {
@@ -71,6 +83,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
         },
       };
     }
+
     if (request === "./ffmpegUtils" && parent?.filename?.endsWith("parakeetServer.js")) {
       return {
         ...ffmpegUtils,
@@ -80,10 +93,12 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
         },
       };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
   let ParakeetServerManager;
+
   try {
     ffmpegUtils = require("../../src/helpers/ffmpegUtils");
     ParakeetServerManager = require("../../src/helpers/parakeetServer");
@@ -94,6 +109,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
   try {
     const modelDir = path.join(tempHome, ".cache", "gristmill", "parakeet-models", MODEL_NAME);
     fs.mkdirSync(modelDir, { recursive: true });
+
     for (const file of getRequiredModelFiles(MODEL_NAME)) {
       fs.writeFileSync(path.join(modelDir, file), "");
     }
@@ -104,6 +120,7 @@ test("transcribes audible mono 16 kHz float32 WAV input", async () => {
       start: async () => {},
       transcribe: async (samples: any) => {
         receivedSamples = Buffer.from(samples);
+
         return { text: "audible", elapsed: 0 };
       },
     };

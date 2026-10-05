@@ -1,13 +1,19 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/utils/llmTranscript.js");
-type TranscriptSegment = import("../../src/contracts/meetingCoordinator.js").MeetingTranscriptSegment;
+
+type TranscriptSegment =
+  import("../../src/contracts/meetingCoordinator.js").MeetingTranscriptSegment;
 
 const t = (key: string, options: { n?: number } = {}) => {
   if (key === "notes.speaker.label") return `Speaker ${options.n}`;
+
   if (key === "notes.speaker.them") return "Them";
+
   if (key === "notes.speaker.you") return "You";
+
   return key;
 };
 
@@ -18,19 +24,33 @@ const attendee = (email: string, displayName: string | null, self = false) => ({
   self,
 });
 
-const seg = (segment: Omit<TranscriptSegment, "id" | "text" | "source">): TranscriptSegment => ({ id: "seg", text: "hi", source: "system", ...segment });
+const seg = (segment: Omit<TranscriptSegment, "id" | "text" | "source">): TranscriptSegment => ({
+  id: "seg",
+  text: "hi",
+  source: "system",
+  ...segment,
+});
 
 test("mic segments carry the note owner's label", async () => {
   const { resolveLlmSpeakerLabel } = await load();
-  assert.equal(resolveLlmSpeakerLabel(seg({ source: "mic", text: "hi" }), {}, "Gabriel Stein", t), "Gabriel Stein");
   assert.equal(
-    resolveLlmSpeakerLabel(seg({ source: "system", speaker: "you", text: "hi" }), {}, "Gabriel Stein", t),
+    resolveLlmSpeakerLabel(seg({ source: "mic", text: "hi" }), {}, "Gabriel Stein", t),
+    "Gabriel Stein"
+  );
+  assert.equal(
+    resolveLlmSpeakerLabel(
+      seg({ source: "system", speaker: "you", text: "hi" }),
+      {},
+      "Gabriel Stein",
+      t
+    ),
     "Gabriel Stein"
   );
 });
 
 test("system segments resolve name → mapping → Speaker N → Them", async () => {
   const { resolveLlmSpeakerLabel } = await load();
+
   const locked = seg({
     source: "system",
     speaker: "speaker_0",
@@ -38,13 +58,24 @@ test("system segments resolve name → mapping → Speaker N → Them", async ()
     speakerLocked: true,
     text: "hi",
   });
+
   assert.equal(resolveLlmSpeakerLabel(locked, { speaker_0: "Wrong" }, "You", t), "Michael");
   assert.equal(
-    resolveLlmSpeakerLabel(seg({ source: "system", speaker: "speaker_1", text: "hi" }), { speaker_1: "Sean" }, "You", t),
+    resolveLlmSpeakerLabel(
+      seg({ source: "system", speaker: "speaker_1", text: "hi" }),
+      { speaker_1: "Sean" },
+      "You",
+      t
+    ),
     "Sean"
   );
   assert.equal(
-    resolveLlmSpeakerLabel(seg({ source: "system", speaker: "speaker_2", text: "hi" }), {}, "You", t),
+    resolveLlmSpeakerLabel(
+      seg({ source: "system", speaker: "speaker_2", text: "hi" }),
+      {},
+      "You",
+      t
+    ),
     "Speaker 3"
   );
   assert.equal(resolveLlmSpeakerLabel(seg({ source: "system", text: "hi" }), {}, "You", t), "Them");
@@ -52,10 +83,12 @@ test("system segments resolve name → mapping → Speaker N → Them", async ()
 
 test("buildLlmTranscript prefixes every line with the resolved label", async () => {
   const { buildLlmTranscript } = await load();
+
   const segments: TranscriptSegment[] = [
     seg({ source: "mic", text: "Morning everyone" }),
     seg({ source: "system", speaker: "speaker_0", text: "Morning" }),
   ];
+
   assert.equal(
     buildLlmTranscript(segments, { speaker_0: "Michael" }, "Gabriel", t),
     "Gabriel: Morning everyone\nMichael: Morning"
@@ -64,6 +97,7 @@ test("buildLlmTranscript prefixes every line with the resolved label", async () 
 
 test("buildMeetingContext names the owner and invited participants", async () => {
   const { buildMeetingContext } = await load();
+
   const identity = {
     selfName: "Gabriel Stein",
     selfEmail: "gabe@openwhispr.com",
@@ -73,6 +107,7 @@ test("buildMeetingContext names the owner and invited participants", async () =>
       attendee("sean@acme.com", null),
     ],
   };
+
   assert.equal(
     buildMeetingContext(identity, "Gabriel Stein"),
     [
@@ -85,7 +120,10 @@ test("buildMeetingContext names the owner and invited participants", async () =>
 
 test("buildMeetingContext omits what it does not know", async () => {
   const { buildMeetingContext } = await load();
-  assert.equal(buildMeetingContext({ selfName: null, selfEmail: null, participants: [] }, "You"), "");
+  assert.equal(
+    buildMeetingContext({ selfName: null, selfEmail: null, participants: [] }, "You"),
+    ""
+  );
   assert.equal(
     buildMeetingContext(
       { selfName: null, selfEmail: null, participants: [attendee("a@b.com", "Ada")] },
@@ -97,6 +135,7 @@ test("buildMeetingContext omits what it does not know", async () => {
 
 test("collectKnownPeople merges owner, participants, mappings, and named segments", async () => {
   const { collectKnownPeople } = await load();
+
   const people = collectKnownPeople(
     {
       selfName: "Gabriel Stein",
@@ -108,8 +147,16 @@ test("collectKnownPeople merges owner, participants, mappings, and named segment
       ],
     },
     { speaker_0: "Michael Chen", speaker_1: "Priya" },
-    [{ source: "system", speaker: "speaker_2", speakerName: "Ada", text: "hi" } as TranscriptSegment]
+    [
+      {
+        source: "system",
+        speaker: "speaker_2",
+        speakerName: "Ada",
+        text: "hi",
+      } as TranscriptSegment,
+    ]
   );
+
   assert.deepEqual(people, [
     { name: "Gabriel Stein", email: "gabe@openwhispr.com" },
     { name: "Michael Chen", email: "michael@acme.com" },
@@ -121,7 +168,18 @@ test("collectKnownPeople merges owner, participants, mappings, and named segment
 
 test("LLM transcript includes the concrete platform only for an accepted platform name", async () => {
   const { buildLlmTranscript } = await load();
-  const segment = seg({ speaker: "system:guest", speakerName: "Guest", speakerLocked: true, speakerLockSource: "platform", speakerPlatform: "google-meet" });
+
+  const segment = seg({
+    speaker: "system:guest",
+    speakerName: "Guest",
+    speakerLocked: true,
+    speakerLockSource: "platform",
+    speakerPlatform: "google-meet",
+  });
+
   assert.equal(buildLlmTranscript([segment], {}, "You", t), "Guest [name from Google Meet]: hi");
-  assert.equal(buildLlmTranscript([{ ...segment, speakerLockSource: "user" }], {}, "You", t), "Guest: hi");
+  assert.equal(
+    buildLlmTranscript([{ ...segment, speakerLockSource: "user" }], {}, "You", t),
+    "Guest: hi"
+  );
 });

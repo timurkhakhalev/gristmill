@@ -1,13 +1,21 @@
 const test: typeof import("node:test") = require("node:test");
+
 const { afterEach }: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const { EventEmitter } = require("node:events");
+
 const childProcess: typeof import("node:child_process") = require("node:child_process");
 
 const openerModulePath = require.resolve("../../src/helpers/externalUrlOpener");
+
 const originalLoad = Module._load;
+
 const originalPlatform = process.platform;
+
 const originalSystemRoot = process.env.SystemRoot;
 
 function setPlatform(platform: string) {
@@ -25,6 +33,7 @@ function makeChild() {
   child.unref = () => {
     child.unrefCalls += 1;
   };
+
   return child;
 }
 
@@ -35,6 +44,7 @@ function loadOpener({ spawnOutcome = "spawn" } = {}) {
 
   const spawnCalls: unknown[] = [];
   const openExternalCalls: unknown[] = [];
+
   const spawn = (command: string, args: unknown, options: unknown) => {
     const child = makeChild();
     spawnCalls.push({ command, args, options, child });
@@ -45,6 +55,7 @@ function loadOpener({ spawnOutcome = "spawn" } = {}) {
         child.emit("spawn");
       }
     });
+
     return child;
   };
 
@@ -54,19 +65,25 @@ function loadOpener({ spawnOutcome = "spawn" } = {}) {
         shell: {
           openExternal: (url: string) => {
             openExternalCalls.push(url);
+
             return Promise.resolve();
           },
         },
       };
     }
+
     if (request === "child_process") {
       return { ...childProcess, spawn };
     }
+
     return originalLoad(request, parent, isMain);
   };
 
   try {
-    const { openExternalUrl }: typeof import("../../src/helpers/externalUrlOpener.ts") = require(openerModulePath);
+    const { openExternalUrl }: typeof import("../../src/helpers/externalUrlOpener.ts") = require(
+      openerModulePath
+    );
+
     return { openExternalUrl, spawnCalls, openExternalCalls };
   } finally {
     Module._load = originalLoad;

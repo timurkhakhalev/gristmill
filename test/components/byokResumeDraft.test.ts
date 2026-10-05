@@ -1,7 +1,11 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react");
+
 const { createRoot } = require("react-dom/client");
+
 const {
   createRendererServer,
   installBrowserGlobals,
@@ -10,7 +14,9 @@ const {
 } = require("../lib/rendererTestHarness.ts");
 
 let vitePromise;
+
 const cleanup: Array<() => Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
@@ -28,44 +34,60 @@ const SECRETS = {
 
 const ALLOWED_DRAFT_KEYS = ["baseUrl", "customModel", "selectedModel", "selectedProvider"];
 
-interface ResumeState { selectedProvider: string; selectedModel: string; baseUrl: string; customModel: string; }
+interface ResumeState {
+  selectedProvider: string;
+  selectedModel: string;
+  baseUrl: string;
+  customModel: string;
+}
+
 type DraftOptions = { selfHostedRequested: boolean; resumeState?: ResumeState };
 
 const capturedConfigs: Array<Record<string, unknown>> = [];
+
 const capturedDrafts: Array<Record<string, unknown>> = [];
 
 function captureConnectionConfig(config: Record<string, unknown>) {
   capturedConfigs.push(config);
 }
 
-async function setupByokStep(t: import("node:test").TestContext, { selfHostedRequested, resumeState }: DraftOptions, storeOverrides: Record<string, unknown> = {}) {
+async function setupByokStep(
+  t: import("node:test").TestContext,
+  { selfHostedRequested, resumeState }: DraftOptions,
+  storeOverrides: Record<string, unknown> = {}
+) {
   capturedConfigs.length = 0;
   capturedDrafts.length = 0;
   installBrowserGlobals(t, {
     window: { electronAPI: { getPlatform: () => "linux" } },
   });
-  const vite = await (vitePromise ??= createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) } as unknown as import("node:test").TestContext, {
-    cachePrefix: "openwhispr-byok-resume-draft-",
-    noExternal: ["react-i18next"],
-    mockModules: {
-      "react-i18next": `
+
+  const vite = await (vitePromise ??= createRendererServer(
+    {
+      after: (close: () => Promise<void>) => cleanup.push(close),
+    } as unknown as import("node:test").TestContext,
+    {
+      cachePrefix: "openwhispr-byok-resume-draft-",
+      noExternal: ["react-i18next"],
+      mockModules: {
+        "react-i18next": `
         const t = (key) => key;
         export function useTranslation() { return { t }; }
         export const initReactI18next = { type: "3rdParty", init() {} };
       `,
-      "/ProviderConnectionTest": `
+        "/ProviderConnectionTest": `
         export default function ProviderConnectionTest({ config }) {
           globalThis.__gristmillTestCaptureConnectionConfig(config);
           return null;
         }
       `,
-      "/OnboardingShell": `export function BrandMark() { return null; }`,
-      "/ui/ProviderIcon": `export function ProviderIcon() { return null; }`,
-      "/ui/SelectField": `export function SelectField() { return null; }`,
-      // The step's child resolves here: render the REAL connection test while
-      // recording its props, so the run-test click is drivable and the
-      // parent+child pair is the production one.
-      "./ProviderConnectionTest": `
+        "/OnboardingShell": `export function BrandMark() { return null; }`,
+        "/ui/ProviderIcon": `export function ProviderIcon() { return null; }`,
+        "/ui/SelectField": `export function SelectField() { return null; }`,
+        // The step's child resolves here: render the REAL connection test while
+        // recording its props, so the run-test click is drivable and the
+        // parent+child pair is the production one.
+        "./ProviderConnectionTest": `
         import React from "react";
         let lastSuccess = null;
         export default function ProviderConnectionTest(props) {
@@ -77,9 +99,9 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
           return Real ? React.createElement(Real, props) : null;
         }
       `,
-      // The connection-test button is drivable through this capture: every
-      // Button's onClick lands here.
-      "../ui/button": `
+        // The connection-test button is drivable through this capture: every
+        // Button's onClick lands here.
+        "../ui/button": `
         import React from "react";
         export function Button({ children, onClick, disabled, ...rest }) {
           globalThis.__realPairButtons = globalThis.__realPairButtons || [];
@@ -92,11 +114,15 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
           }, children);
         }
       `,
-    },
-  }));
-  (globalThis as Record<string, unknown>).__gristmillTestCaptureConnectionConfig = captureConnectionConfig;
+      },
+    }
+  ));
+
+  (globalThis as Record<string, unknown>).__gristmillTestCaptureConnectionConfig =
+    captureConnectionConfig;
   const { useSettingsStore } = await reloadSettingsStore(vite);
   useSettingsStore.setState({ ...SECRETS, ...storeOverrides });
+
   const { ByokProviderStep } = await vite.ssrLoadModule(
     "/components/onboarding/ProviderSetupStep.tsx"
   );
@@ -115,10 +141,12 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
       onResumeStateChange: (draft: Record<string, unknown>) => capturedDrafts.push(draft),
     });
   }
+
   const root = createRoot(installHookDom(t) as unknown as Element);
   await React.act(async () => {
     root.render(React.createElement(Harness));
   });
+
   return {
     drafts: capturedDrafts,
     unmount: async () => {
@@ -135,6 +163,7 @@ async function setupByokStep(t: import("node:test").TestContext, { selfHostedReq
 // provider credential, so the captured payload asserts on it directly.
 test("the self-hosted connection test payload carries the drafted API key", async (t: import("node:test").TestContext) => {
   const ui = await setupByokStep(t, { selfHostedRequested: true });
+
   try {
     assert.ok(capturedConfigs.length > 0, "the connection test receives a config");
     const latest = capturedConfigs[capturedConfigs.length - 1];
@@ -148,6 +177,7 @@ test("the self-hosted connection test payload carries the drafted API key", asyn
 
 test("an empty key keeps the self-hosted payload anonymous-compatible", async (t: import("node:test").TestContext) => {
   const ui = await setupByokStep(t, { selfHostedRequested: true }, { openaiApiKey: "" });
+
   try {
     const latest = capturedConfigs[capturedConfigs.length - 1];
     assert.equal(latest.apiKey, "", "an empty key is passed through, not dropped");
@@ -169,6 +199,7 @@ for (const [name, options] of [
 ]) {
   test(`the resume draft for ${name} carries no credential`, async (t: import("node:test").TestContext) => {
     const ui = await setupByokStep(t, options as DraftOptions);
+
     try {
       assert.ok(capturedConfigs.length > 0, "the connection test receives a config");
     } finally {
@@ -177,6 +208,7 @@ for (const [name, options] of [
 
     const drafts = ui.drafts;
     assert.ok(drafts.length > 0, "the step persists a draft so the session can restore it");
+
     for (const draft of drafts) {
       assert.deepEqual(
         Object.keys(draft).sort(),
@@ -184,6 +216,7 @@ for (const [name, options] of [
         "a draft may only carry the four fields the session schema declares"
       );
       const serialized = JSON.stringify(draft);
+
       for (const [field, secret] of Object.entries(SECRETS)) {
         assert.doesNotMatch(serialized, new RegExp(secret), `${field} reached the draft`);
       }
@@ -197,7 +230,13 @@ for (const [name, options] of [
 // handoff, and captures Proceed/save calls for the assertions.
 async function setupRealPair(
   t: import("node:test").TestContext,
-  { testResult, captured = false, saveFailsAfter: _saveFailsAfter, saveResult, selfHosted = true }: {
+  {
+    testResult,
+    captured = false,
+    saveFailsAfter: _saveFailsAfter,
+    saveResult,
+    selfHosted = true,
+  }: {
     testResult: Record<string, unknown> | undefined;
     captured?: boolean;
     saveFailsAfter?: number;
@@ -206,24 +245,29 @@ async function setupRealPair(
   }
 ) {
   (globalThis as Record<string, unknown>).__realPairButtons = [];
+
   // A fresh server: the earlier tests' cached one maps /ProviderConnectionTest
   // to a config-capture stub, and module graphs can't be re-mapped.
-  const vite = await createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) } as unknown as import("node:test").TestContext, {
-    cachePrefix: "openwhispr-byok-real-pair-",
-    noExternal: ["react-i18next"],
-    mockModules: {
-      "react-i18next": `
+  const vite = await createRendererServer(
+    {
+      after: (close: () => Promise<void>) => cleanup.push(close),
+    } as unknown as import("node:test").TestContext,
+    {
+      cachePrefix: "openwhispr-byok-real-pair-",
+      noExternal: ["react-i18next"],
+      mockModules: {
+        "react-i18next": `
         const t = (key) => key;
         export function useTranslation() { return { t }; }
         export const initReactI18next = { type: "3rdParty", init() {} };
       `,
-      "/OnboardingShell": `export function BrandMark() { return null; }`,
-      "/ui/ProviderIcon": `export function ProviderIcon() { return null; }`,
-      "/ui/SelectField": `export function SelectField() { return null; }`,
-      // The step's child resolves here: render the REAL connection test while
-      // recording its props, so the run-test click is drivable and the
-      // parent+child pair is the production one.
-      "./ProviderConnectionTest": `
+        "/OnboardingShell": `export function BrandMark() { return null; }`,
+        "/ui/ProviderIcon": `export function ProviderIcon() { return null; }`,
+        "/ui/SelectField": `export function SelectField() { return null; }`,
+        // The step's child resolves here: render the REAL connection test while
+        // recording its props, so the run-test click is drivable and the
+        // parent+child pair is the production one.
+        "./ProviderConnectionTest": `
         import React from "react";
         let lastSuccess = null;
         export default function ProviderConnectionTest(props) {
@@ -235,9 +279,9 @@ async function setupRealPair(
           return Real ? React.createElement(Real, props) : null;
         }
       `,
-      // The connection-test button is drivable through this capture: every
-      // Button's onClick lands here.
-      "../ui/button": `
+        // The connection-test button is drivable through this capture: every
+        // Button's onClick lands here.
+        "../ui/button": `
         import React from "react";
         export function Button({ children, onClick, disabled, ...rest }) {
           globalThis.__realPairButtons = globalThis.__realPairButtons || [];
@@ -250,8 +294,10 @@ async function setupRealPair(
           }, children);
         }
       `,
-    },
-  });
+      },
+    }
+  );
+
   const { useSettingsStore } = await reloadSettingsStore(vite);
   useSettingsStore.setState({
     ...SECRETS,
@@ -259,23 +305,41 @@ async function setupRealPair(
     setCustomTranscriptionApiKey: async (key: string) => {
       savedKeys.push("custom");
       void key;
+
       if (saveResult) return await saveResult;
+
       if (_saveFailsAfter != null && savedKeys.length > _saveFailsAfter) {
         return { success: false };
       }
+
       return { success: true };
     },
-    setOpenaiApiKey: async () => { savedKeys.push("openai"); return saveResult ? await saveResult : { success: true }; },
+    setOpenaiApiKey: async () => {
+      savedKeys.push("openai");
+
+      return saveResult ? await saveResult : { success: true };
+    },
     cloudTranscriptionProvider: "openai",
-    setCloudTranscriptionBaseUrl: (value: unknown) => { routeChanges.push(value); },
-    setCloudTranscriptionModel: (value: unknown) => { routeChanges.push(value); },
-    setCloudTranscriptionProvider: (value: unknown) => { routeChanges.push(value); },
-    setCloudTranscriptionMode: (value: unknown) => { routeChanges.push(value); },
+    setCloudTranscriptionBaseUrl: (value: unknown) => {
+      routeChanges.push(value);
+    },
+    setCloudTranscriptionModel: (value: unknown) => {
+      routeChanges.push(value);
+    },
+    setCloudTranscriptionProvider: (value: unknown) => {
+      routeChanges.push(value);
+    },
+    setCloudTranscriptionMode: (value: unknown) => {
+      routeChanges.push(value);
+    },
   });
-  const { default: RealConnectionTest } = await vite.ssrLoadModule(
+
+  const { default: RealConnectionTest } = (await vite.ssrLoadModule(
     "/components/onboarding/ProviderConnectionTest.tsx"
-  ) as { default: (props: Record<string, unknown>) => unknown };
+  )) as { default: (props: Record<string, unknown>) => unknown };
+
   (globalThis as Record<string, unknown>).__RealConnectionTest = RealConnectionTest;
+
   const { ByokProviderStep } = await vite.ssrLoadModule(
     "/components/onboarding/ProviderSetupStep.tsx"
   );
@@ -294,14 +358,20 @@ async function setupRealPair(
         getPlatform: () => "linux",
         testProviderConnection: async (config: Record<string, unknown>) => {
           if (captured) captureConnectionConfig(config);
+
           if (testResult) return testResult;
+
           if (!pendingTest) {
-            pendingTest = new Promise((resolve) => { releaseTest = resolve; });
+            pendingTest = new Promise((resolve) => {
+              releaseTest = resolve;
+            });
           }
+
           return pendingTest;
         },
         saveCustomTranscriptionKey: async () => {
-            savedKeys.push("custom");
+          savedKeys.push("custom");
+
           return { success: true };
         },
       },
@@ -315,86 +385,148 @@ async function setupRealPair(
     function Harness() {
       const [, force] = React.useState(0);
       rerender = () => force((value: number) => value + 1);
+
       // Stable identity, like OnboardingFlow's setProviderConnected: an
       // unstable onConnectionChange would itself reset the child (issue #180).
       const onConnectionChange = React.useCallback((connected: boolean) => {
         state.connected = connected;
       }, []);
+
       // The tree is built against a re-mapped module graph: ProviderConnectionTest
       // resolves to the capture wrapper (below), not the plain import.
       capturedTree.tree = ByokProviderStep({
         selfHostedRequested: selfHosted,
-        resumeState: selfHosted ? { selectedProvider: "", selectedModel: "", baseUrl: "https://example.invalid", customModel: "model" } : { selectedProvider: "openai", selectedModel: "whisper-1", baseUrl: "", customModel: "" },
+        resumeState: selfHosted
+          ? {
+              selectedProvider: "",
+              selectedModel: "",
+              baseUrl: "https://example.invalid",
+              customModel: "model",
+            }
+          : {
+              selectedProvider: "openai",
+              selectedModel: "whisper-1",
+              baseUrl: "",
+              customModel: "",
+            },
         onSelfHostedChange() {},
         onConnectionChange: onConnectionChange,
-        onProceed() { proceeds.push("proceed"); },
+        onProceed() {
+          proceeds.push("proceed");
+        },
         onFooterContinue(commit: () => Promise<void>, saving: boolean) {
           footerCommit = commit;
           footerSaving = saving;
         },
         onResumeStateChange() {},
       });
+
       return capturedTree.tree;
     }
+
     root.render(React.createElement(Harness));
     await Promise.resolve();
   });
 
-  const findNodes = (node: unknown, predicate: (n: { props?: Record<string, unknown> }) => boolean, depth = 0): Array<{ props?: Record<string, unknown> }> => {
+  const findNodes = (
+    node: unknown,
+    predicate: (n: { props?: Record<string, unknown> }) => boolean,
+    depth = 0
+  ): Array<{ props?: Record<string, unknown> }> => {
     if (Array.isArray(node)) return node.flatMap((item) => findNodes(item, predicate, depth));
+
     if (!node || typeof node !== "object") return [];
     const n = node as { props?: Record<string, unknown>; type?: unknown };
     const found = predicate(n) ? [n] : [];
+
     // Unwrap one function-component level (e.g. the connection-test child).
     if (typeof n.type === "function" && depth < 2) {
       try {
-        return [...found, ...findNodes((n.type as (props: unknown) => unknown)(n.props), predicate, depth + 1)];
+        return [
+          ...found,
+          ...findNodes((n.type as (props: unknown) => unknown)(n.props), predicate, depth + 1),
+        ];
       } catch {
         // Hooks-only component: leave it unexpanded.
       }
     }
-    return [ ...found, ...Object.values(n.props ?? {}).flatMap((value) => findNodes(value, predicate, depth)) ];
+
+    return [
+      ...found,
+      ...Object.values(n.props ?? {}).flatMap((value) => findNodes(value, predicate, depth)),
+    ];
   };
+
   const textOf = (value: unknown): string => {
     if (Array.isArray(value)) return value.map(textOf).join("");
-    if (!value || typeof value !== "object") return typeof value === "string" || typeof value === "number" ? String(value) : "";
+
+    if (!value || typeof value !== "object")
+      return typeof value === "string" || typeof value === "number" ? String(value) : "";
     const props = (value as { props?: { children?: unknown } }).props;
+
     return textOf(props?.children);
   };
 
   // The real child renders its own host nodes into the fake DOM (the wrapper
   // above maps the step's child to the real component). Walk the host tree.
-  const walkDom = (node: unknown, visit: (n: { textContent: string; props: { onClick?: () => void } }) => void): void => {
-    const n = node as { childNodes?: unknown[]; __fakeNode?: { textContent: string; onClick?: () => void; childNodes?: unknown[] } };
+  const walkDom = (
+    node: unknown,
+    visit: (n: { textContent: string; props: { onClick?: () => void } }) => void
+  ): void => {
+    const n = node as {
+      childNodes?: unknown[];
+      __fakeNode?: { textContent: string; onClick?: () => void; childNodes?: unknown[] };
+    };
+
     void n;
   };
+
   // The real child's status flows through the captured Button labels (the
   // button is the only place the child renders its state).
   // The real child's status flows through the captured Button children (the
   // button label is where the child renders its state). The registry is
   // rebuilt on every render, so read the latest entries.
   const globals = globalThis as Record<string, unknown>;
-  const buttonsNow = () => (globals.__realPairButtons as Array<{ children: unknown; onClick?: () => void; disabled?: boolean }> | undefined) ?? [];
+
+  const buttonsNow = () =>
+    (globals.__realPairButtons as
+      | Array<{ children: unknown; onClick?: () => void; disabled?: boolean }>
+      | undefined) ?? [];
+
   const statusFromDom = () => {
     // The registry is append-per-render: only the newest child button carries
     // the child's current status.
     const candidates = buttonsNow().map((b) => textOf(b.children));
+
     // The child's button label is exactly its status word; the step's Proceed
     // also carries the prefix, so match the status labels specifically.
-    const newest = [...candidates].reverse().find((label) =>
-      label === "onboarding.rehaul.provider.testing" ||
-      label === "onboarding.rehaul.provider.connected" ||
-      label === "onboarding.rehaul.provider.runTest"
-    );
+    const newest = [...candidates]
+      .reverse()
+      .find(
+        (label) =>
+          label === "onboarding.rehaul.provider.testing" ||
+          label === "onboarding.rehaul.provider.connected" ||
+          label === "onboarding.rehaul.provider.runTest"
+      );
+
     const label = newest ?? "";
+
     if (label.includes("onboarding.rehaul.provider.testing")) return "testing";
+
     if (label.includes("onboarding.rehaul.provider.connected")) return "success";
+
     return "idle";
   };
+
   const findButton = (label: string) => {
-    const node = findNodes(capturedTree.tree, (n) => typeof n.props?.onClick === "function" && textOf(n.props?.children).includes(label))[0];
+    const node = findNodes(
+      capturedTree.tree,
+      (n) => typeof n.props?.onClick === "function" && textOf(n.props?.children).includes(label)
+    )[0];
+
     if (node) return { click: () => (node.props!.onClick as () => void)() };
     const match = [...buttonsNow()].reverse().find((b) => textOf(b.children).includes(label));
+
     return match && !match.disabled ? { click: () => match.onClick?.() } : null;
   };
 
@@ -405,12 +537,28 @@ async function setupRealPair(
     changeField: async (field: "provider" | "model" | "key" | "url" | "custom-model") => {
       const select = field === "provider" || field === "model";
       const label = field === "provider" ? "providerLabel" : "modelLabel";
-      const candidates = findNodes(capturedTree.tree, n => typeof n.props?.onChange === "function");
+
+      const candidates = findNodes(
+        capturedTree.tree,
+        (n) => typeof n.props?.onChange === "function"
+      );
+
       const node = select
-        ? candidates.find(n => n.props?.ariaLabel === `onboarding.rehaul.provider.${label}`)
-        : candidates.filter(n => !("ariaLabel" in (n.props ?? {})))[field === "url" ? 0 : field === "custom-model" ? 1 : selfHosted ? 2 : 0];
+        ? candidates.find((n) => n.props?.ariaLabel === `onboarding.rehaul.provider.${label}`)
+        : candidates.filter((n) => !("ariaLabel" in (n.props ?? {})))[
+            field === "url" ? 0 : field === "custom-model" ? 1 : selfHosted ? 2 : 0
+          ];
+
       assert.ok(node);
-      await React.act(async () => { (node!.props!.onChange as (value: unknown) => void)(select ? field === "provider" ? "deepgram" : "different-model" : { target: { value: "changed" } }); });
+      await React.act(async () => {
+        (node!.props!.onChange as (value: unknown) => void)(
+          select
+            ? field === "provider"
+              ? "deepgram"
+              : "different-model"
+            : { target: { value: "changed" } }
+        );
+      });
     },
     connected: () => state.connected,
     status: statusFromDom,
@@ -421,7 +569,10 @@ async function setupRealPair(
       const runButton = findButton("onboarding.rehaul.provider.runTest");
       assert.ok(runButton, "the run-test button is rendered");
       console.log("DEBUGM clicking runTest:", JSON.stringify(runButton));
-      await React.act(async () => { runButton.click(); await Promise.resolve(); });
+      await React.act(async () => {
+        runButton.click();
+        await Promise.resolve();
+      });
       console.log("DEBUGM after click, status:", statusFromDom());
     },
     resolveTest: async (result: Record<string, unknown>) => {
@@ -433,21 +584,36 @@ async function setupRealPair(
       });
     },
     changeModel: async (model: string) => {
-      const input = findNodes(capturedTree.tree, (n) => typeof n.props?.onChange === "function" && typeof n.props?.value === "string")[0];
+      const input = findNodes(
+        capturedTree.tree,
+        (n) => typeof n.props?.onChange === "function" && typeof n.props?.value === "string"
+      )[0];
+
       assert.ok(input, "the model input is rendered");
       await React.act(async () => {
-        (input.props!.onChange as (event: { target: { value: string } }) => void)({ target: { value: model } });
+        (input.props!.onChange as (event: { target: { value: string } }) => void)({
+          target: { value: model },
+        });
         await Promise.resolve();
       });
     },
     clickStepProceed: async () => {
       const proceed = findButton("onboarding.rehaul.provider.proceed");
       assert.ok(proceed, "the step Proceed button is rendered");
-      await React.act(async () => { proceed.click(); await Promise.resolve(); await Promise.resolve(); });
+      await React.act(async () => {
+        proceed.click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
     },
     clickFooterContinue: async () => {
       assert.ok(footerCommit, "the footer holds the step's commit");
-      await React.act(async () => { await footerCommit!(); rerender?.(); await Promise.resolve(); await Promise.resolve(); });
+      await React.act(async () => {
+        await footerCommit!();
+        rerender?.();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
     },
     unmount: async () => {
       await React.act(async () => root.unmount());
@@ -467,6 +633,7 @@ test("connection success survives parent re-renders; config change and failed sa
     captured: true,
     saveFailsAfter: 1, // the second save attempt fails (failed-save case)
   });
+
   try {
     assert.equal(ui.connected(), false, "starts unconnected");
 
@@ -511,68 +678,121 @@ test("connection success survives parent re-renders; config change and failed sa
 });
 
 for (const field of ["provider", "model", "key", "url", "custom-model"] as const) {
-  test(`late secure save after ${field} change cannot apply the old transcription route`, async t => {
+  test(`late secure save after ${field} change cannot apply the old transcription route`, async (t) => {
     let resolve!: (value: { success: boolean }) => void;
-    const saveResult = new Promise<{ success: boolean }>(done => { resolve = done; });
-    const ui = await setupRealPair(t, { testResult: { success: true }, saveResult, selfHosted: field === "url" || field === "custom-model" });
+
+    const saveResult = new Promise<{ success: boolean }>((done) => {
+      resolve = done;
+    });
+
+    const ui = await setupRealPair(t, {
+      testResult: { success: true },
+      saveResult,
+      selfHosted: field === "url" || field === "custom-model",
+    });
+
     try {
       await ui.runTest();
       assert.equal(ui.connected(), true);
       let saving!: Promise<void>;
-      await React.act(async () => { saving = ui.beginSave(); });
+      await React.act(async () => {
+        saving = ui.beginSave();
+      });
       await ui.changeField(field);
-      await React.act(async () => { resolve({ success: true }); await saving; });
+      await React.act(async () => {
+        resolve({ success: true });
+        await saving;
+      });
       assert.deepEqual(ui.routeChanges(), []);
       assert.deepEqual(ui.proceeds(), []);
-    } finally { await ui.unmount(); }
+    } finally {
+      await ui.unmount();
+    }
   });
 }
 
-test("late secure save after leaving the provider step cannot apply route or proceed", async t => {
+test("late secure save after leaving the provider step cannot apply route or proceed", async (t) => {
   let resolve!: (value: { success: boolean }) => void;
-  const saveResult = new Promise<{ success: boolean }>(done => { resolve = done; });
+
+  const saveResult = new Promise<{ success: boolean }>((done) => {
+    resolve = done;
+  });
+
   const ui = await setupRealPair(t, { testResult: { success: true }, saveResult });
   await ui.runTest();
   assert.equal(ui.connected(), true);
   let saving!: Promise<void>;
-  await React.act(async () => { saving = ui.beginSave(); });
+  await React.act(async () => {
+    saving = ui.beginSave();
+  });
   await ui.unmount();
-  await React.act(async () => { resolve({ success: true }); await saving; });
+  await React.act(async () => {
+    resolve({ success: true });
+    await saving;
+  });
   assert.deepEqual(ui.routeChanges(), []);
   assert.deepEqual(ui.proceeds(), []);
 });
 
-test("same-tick and pending Continue clicks have one secure save and transition", async t => {
+test("same-tick and pending Continue clicks have one secure save and transition", async (t) => {
   let resolve!: (value: { success: boolean }) => void;
-  const saveResult = new Promise<{ success: boolean }>(done => { resolve = done; });
+
+  const saveResult = new Promise<{ success: boolean }>((done) => {
+    resolve = done;
+  });
+
   const ui = await setupRealPair(t, { testResult: { success: true }, saveResult });
+
   try {
     await ui.runTest();
     let first!: Promise<void>, duplicate!: Promise<void>;
-    await React.act(async () => { first = ui.beginSave(); duplicate = ui.beginSave(); });
+    await React.act(async () => {
+      first = ui.beginSave();
+      duplicate = ui.beginSave();
+    });
     assert.equal(ui.footerSaving(), true);
     assert.equal(ui.savedKeys().length, 1);
-    await React.act(async () => { await ui.beginSave(); });
+    await React.act(async () => {
+      await ui.beginSave();
+    });
     assert.equal(ui.savedKeys().length, 1);
-    await React.act(async () => { resolve({ success: true }); await first; await duplicate; });
+    await React.act(async () => {
+      resolve({ success: true });
+      await first;
+      await duplicate;
+    });
     assert.deepEqual(ui.proceeds(), ["proceed"]);
     assert.equal(ui.footerSaving(), false);
-  } finally { await ui.unmount(); }
+  } finally {
+    await ui.unmount();
+  }
 });
 
-test("a failed secure save releases the submit guard for Retry", async t => {
+test("a failed secure save releases the submit guard for Retry", async (t) => {
   let resolve!: (value: { success: boolean }) => void;
-  const saveResult = new Promise<{ success: boolean }>(done => { resolve = done; });
+
+  const saveResult = new Promise<{ success: boolean }>((done) => {
+    resolve = done;
+  });
+
   const ui = await setupRealPair(t, { testResult: { success: true }, saveResult });
+
   try {
     await ui.runTest();
     let first!: Promise<void>;
-    await React.act(async () => { first = ui.beginSave(); });
-    await React.act(async () => { resolve({ success: false }); await first; });
+    await React.act(async () => {
+      first = ui.beginSave();
+    });
+    await React.act(async () => {
+      resolve({ success: false });
+      await first;
+    });
     assert.equal(ui.saveErrorShown(), true);
     assert.equal(ui.footerSaving(), false);
     await ui.clickFooterContinue();
     assert.equal(ui.savedKeys().length, 2);
     assert.deepEqual(ui.proceeds(), []);
-  } finally { await ui.unmount(); }
+  } finally {
+    await ui.unmount();
+  }
 });

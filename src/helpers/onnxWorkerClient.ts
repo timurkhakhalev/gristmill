@@ -1,6 +1,9 @@
 const path = require("path");
+
 const { app, utilityProcess, MessageChannelMain } = require("electron");
+
 const debugLogger = require("./debugLogger.js");
+
 import {
   parseOnnxWorkerReply,
   type OnnxWorkerMethod,
@@ -9,9 +12,13 @@ import {
 } from "../contracts/onnxWorker.js";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+
 const MAX_PENDING_REQUESTS = 1000;
+
 const RESPAWN_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
+
 const MAX_RESPAWN_ATTEMPTS = 5;
+
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
 // Forked via the asar-virtual path: Electron redirects the unpacked file read
@@ -91,11 +98,13 @@ export class OnnxWorkerClient {
 
   async _spawn(): Promise<void> {
     if (this.child) return;
+
     if (this.spawnPromise) return this.spawnPromise;
 
     this.spawnPromise = (async () => {
       const env = { ...process.env };
       const logPath = this._logPath();
+
       if (logPath) env.GRISTMILL_ONNX_WORKER_LOG = logPath;
 
       const child = utilityProcess.fork(WORKER_SCRIPT, [], {
@@ -107,10 +116,12 @@ export class OnnxWorkerClient {
 
       const forwardStderr = (chunk: Buffer) => {
         const text = chunk.toString();
+
         for (const line of text.split(/\r?\n/)) {
           if (line) debugLogger.warn("onnx worker stderr", { line });
         }
       };
+
       child.stderr?.on("data", forwardStderr);
       child.stdout?.on("data", forwardStderr);
 
@@ -119,10 +130,12 @@ export class OnnxWorkerClient {
           child.removeListener("error", onError);
           resolve();
         };
+
         const onError = (err: Error) => {
           child.removeListener("spawn", onSpawn);
           reject(err);
         };
+
         child.once("spawn", onSpawn);
         child.once("error", onError);
       });
@@ -151,12 +164,15 @@ export class OnnxWorkerClient {
     // Unknown or malformed replies are dropped before any pending entry is
     // touched; a late or forged reply must never settle someone's request.
     const reply: OnnxWorkerReply | null = parseOnnxWorkerReply(raw);
+
     if (!reply) return;
 
     const entry = this.pending.get(reply.id);
+
     if (!entry) return;
     this.pending.delete(reply.id);
     clearTimeout(entry.timeout);
+
     if (reply.error) {
       entry.reject(new Error(reply.error.message));
     } else {
@@ -173,33 +189,41 @@ export class OnnxWorkerClient {
     });
 
     this.child = null;
+
     if (this.port) {
       try {
         this.port.close();
       } catch {
         // already closed
       }
+
       this.port = null;
     }
 
     const err = new WorkerCrashedError();
+
     for (const entry of this.pending.values()) {
       clearTimeout(entry.timeout);
       entry.reject(err);
     }
+
     this.pending.clear();
 
     if (this.shuttingDown) return;
 
     if (code !== 0) {
       this.crashCount += 1;
+
       if (this.crashCount > MAX_RESPAWN_ATTEMPTS) {
         this.gaveUp = true;
         debugLogger.error("onnx worker giving up", { crashCount: this.crashCount });
+
         return;
       }
+
       const delay =
         RESPAWN_BACKOFF_MS[Math.min(this.crashCount - 1, RESPAWN_BACKOFF_MS.length - 1)];
+
       debugLogger.info("onnx worker respawn scheduled", {
         delayMs: delay,
         crashCount: this.crashCount,
@@ -213,7 +237,11 @@ export class OnnxWorkerClient {
     }
   }
 
-  async request(method: OnnxWorkerMethod, payload?: unknown, transferList?: unknown[]): Promise<OnnxWorkerResult> {
+  async request(
+    method: OnnxWorkerMethod,
+    payload?: unknown,
+    transferList?: unknown[]
+  ): Promise<OnnxWorkerResult> {
     if (this.shuttingDown) {
       throw new WorkerCrashedError("worker shutting down");
     }
@@ -229,6 +257,7 @@ export class OnnxWorkerClient {
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
       const oldestId = this.pending.keys().next().value as number | undefined;
       const oldest = oldestId === undefined ? undefined : this.pending.get(oldestId);
+
       if (oldest) {
         this.pending.delete(oldestId as number);
         clearTimeout(oldest.timeout);
@@ -239,13 +268,16 @@ export class OnnxWorkerClient {
     await this._spawn();
 
     const id = this.nextRequestId++;
+
     return new Promise<OnnxWorkerResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         if (this.pending.delete(id)) {
           reject(new Error(`onnx worker request timeout: ${method}`));
         }
       }, REQUEST_TIMEOUT_MS);
+
       this.pending.set(id, { resolve, reject, timeout });
+
       try {
         this.port?.postMessage({ id, method, payload }, transferList || []);
       } catch (err) {
@@ -258,13 +290,16 @@ export class OnnxWorkerClient {
 
   async stop(): Promise<void> {
     this.shuttingDown = true;
+
     if (this.respawnTimer) {
       clearTimeout(this.respawnTimer);
       this.respawnTimer = null;
     }
+
     if (!this.child) return;
 
     const child = this.child;
+
     try {
       this.port?.postMessage({ id: 0, method: "shutdown", payload: {} });
     } catch {
@@ -278,8 +313,10 @@ export class OnnxWorkerClient {
         } catch {
           // already dead
         }
+
         resolve();
       }, SHUTDOWN_TIMEOUT_MS);
+
       child.once("exit", () => {
         clearTimeout(timer);
         resolve();
@@ -289,7 +326,11 @@ export class OnnxWorkerClient {
 }
 
 const instance = new OnnxWorkerClient();
+
 module.exports = instance;
+
 module.exports.OnnxWorkerClient = OnnxWorkerClient;
+
 module.exports.WorkerCrashedError = WorkerCrashedError;
+
 module.exports.WorkerOverloadedError = WorkerOverloadedError;

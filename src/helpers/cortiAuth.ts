@@ -1,10 +1,14 @@
 const { net } = require("electron");
+
 import { createHash } from "crypto";
 
 const CORTI_ENVIRONMENTS: ReadonlySet<string> = new Set(["eu", "us"]);
+
 const TENANT_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
 // Corti access tokens live 5 minutes; refresh early so in-flight requests never race expiry.
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
+
 // Matches the per-endpoint cap in providerConnectionTest.js, so a stalled
 // auth server fails the connection test instead of hanging it.
 const TOKEN_FETCH_TIMEOUT_MS = 12_000;
@@ -24,7 +28,10 @@ interface MinimalFetchResponse {
   json(): Promise<{ access_token?: string; expires_in?: number }>;
 }
 
-export type CortiFetch = (url: string, init?: Record<string, unknown>) => Promise<MinimalFetchResponse>;
+export type CortiFetch = (
+  url: string,
+  init?: Record<string, unknown>
+) => Promise<MinimalFetchResponse>;
 
 const tokenCache = new Map<string, { value: string; expiresAt: number }>();
 
@@ -32,6 +39,7 @@ export function assertValidTarget(environment: string, tenant: string): void {
   if (!CORTI_ENVIRONMENTS.has(environment)) {
     throw new Error(`Invalid Corti environment: ${environment}`);
   }
+
   if (!TENANT_PATTERN.test(tenant)) {
     throw new Error("Invalid Corti tenant name");
   }
@@ -46,12 +54,11 @@ export async function getCortiToken(
   // The secret is part of the key (digested, never stored raw) so edited
   // credentials always re-authenticate; a key without it makes a connection
   // test pass on a cached token minted by the previous, different secret.
-  const secretDigest = createHash("sha256")
-    .update(clientSecret)
-    .digest("hex")
-    .slice(0, 16);
+  const secretDigest = createHash("sha256").update(clientSecret).digest("hex").slice(0, 16);
+
   const cacheKey = `${environment}/${tenant}/${clientId}/${secretDigest}`;
   const cached = tokenCache.get(cacheKey);
+
   if (cached && Date.now() < cached.expiresAt) {
     return cached.value;
   }
@@ -62,6 +69,7 @@ export async function getCortiToken(
   // A cancelled upload aborts the token request together with the work it
   // was minted for; the timeout stays the authority otherwise.
   const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+
   try {
     const response = await doFetch(
       `https://auth.${environment}.corti.app/realms/${tenant}/protocol/openid-connect/token`,
@@ -84,6 +92,7 @@ export async function getCortiToken(
     }
 
     const data = await response.json();
+
     if (!data.access_token) {
       throw new Error("Corti authentication failed: no access token in response");
     }
@@ -92,6 +101,7 @@ export async function getCortiToken(
       value: data.access_token,
       expiresAt: Date.now() + (data.expires_in || 300) * 1000 - TOKEN_REFRESH_MARGIN_MS,
     });
+
     return data.access_token;
   } finally {
     clearTimeout(timeoutHandle);

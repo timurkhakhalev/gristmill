@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 // Requires Node's native TypeScript type-stripping (Node >= 22.6 with
@@ -40,6 +41,7 @@ test("buildAzureTranscriptionUrl respects a full transcription URL the user alre
 
   const full =
     "https://r.cognitiveservices.azure.com/openai/deployments/gpt-4o-transcribe/audio/transcriptions?api-version=2025-03-01-preview";
+
   assert.equal(buildAzureTranscriptionUrl(full, "ignored"), full);
 });
 

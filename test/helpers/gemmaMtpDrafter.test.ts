@@ -1,16 +1,25 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const fs: typeof import("node:fs/promises") = require("node:fs/promises");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
 
 const modelManagerModulePath = require.resolve("../../src/helpers/modelManagerBridge.ts");
+
 const modelDirUtilsModulePath = require.resolve("../../src/helpers/modelDirUtils.ts");
+
 const originalLoad = Module._load;
+
 let electronHome = os.tmpdir();
 
 const QAT_ID = "gemma-4-e2b-it-qat-q4_0";
+
 const NON_QAT_ID = "gemma-4-e2b-it-q4_k_m";
 
 function loadModelManager() {
@@ -23,11 +32,13 @@ function loadModelManager() {
         app: {
           isReady: () => true,
           getAppPath: () => process.cwd(),
-          getPath: (name: string) => (name === "home" ? electronHome : path.join(electronHome, name)),
+          getPath: (name: string) =>
+            name === "home" ? electronHome : path.join(electronHome, name),
         },
         net: {},
       };
     }
+
     return originalLoad.apply(this, arguments);
   };
 
@@ -37,6 +48,7 @@ function loadModelManager() {
     // the stub and modelsDir resolves inside the per-test temp home instead of
     // the real ~/.cache/openwhispr (where deleteModel would touch real files).
     require("../../src/helpers/modelDirUtils.ts");
+
     return require("../../src/helpers/modelManagerBridge.ts").default;
   } finally {
     Module._load = originalLoad;
@@ -46,6 +58,7 @@ function loadModelManager() {
 async function withHome(prefix: string, fn: (home: string) => Promise<void>) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   electronHome = home;
+
   try {
     return await fn(home);
   } finally {
@@ -54,6 +67,7 @@ async function withHome(prefix: string, fn: (home: string) => Promise<void>) {
 }
 
 const OVER_MIN = Buffer.alloc(1_000_001, 1); // > MIN_FILE_SIZE (1MB)
+
 const UNDER_MIN = Buffer.alloc(500, 1);
 
 test("modelHasDrafter is true only for entries declaring a drafter", () => {

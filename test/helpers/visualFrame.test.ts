@@ -1,12 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 test("visual work waits for the requested number of compositor frames", async () => {
   const { waitForVisualFrames } = await import("../../src/utils/visualFrame.ts");
   const queued: Array<(time: number) => void> = [];
   let resolved = false;
+
   const waiting = waitForVisualFrames(2, (callback) => {
     queued.push(callback);
+
     return queued.length;
   }).then(() => {
     resolved = true;
@@ -31,6 +34,7 @@ test("a background-throttled rAF cannot stall the wait past the per-frame timeou
     2,
     () => {
       scheduled += 1;
+
       return scheduled;
     },
     5
@@ -46,6 +50,7 @@ test("a frame that does render advances immediately and cancels its fallback tim
     (callback) => {
       scheduled += 1;
       callback(0);
+
       return scheduled;
     },
     1
@@ -61,6 +66,7 @@ test("zero visual frames resolves without scheduling work", async () => {
   let scheduled = false;
   await waitForVisualFrames(0, () => {
     scheduled = true;
+
     return 0;
   });
   assert.equal(scheduled, false);

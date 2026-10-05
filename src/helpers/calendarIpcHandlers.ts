@@ -72,6 +72,7 @@ export interface CalendarIntegrationDeps {
 
 function parseOr<T>(raw: unknown, parse: (value: unknown) => T | null, fallback: T): T {
   const parsed = parse(raw);
+
   return parsed === null ? fallback : parsed;
 }
 
@@ -81,31 +82,40 @@ export function registerCalendarIntegrationHandlers(
 ): void {
   // --- Google Calendar ---
 
-  ipcMain.handle(calendarIntegrationChannels.gcalStartOAuth, async (): Promise<CalendarOAuthResult> => {
-    try {
-      const result = await deps.googleManager.startOAuth();
-      const parsed = oauthResultSchema.safeParse(result);
-      return parsed.success ? parsed.data : { success: false };
-    } catch (error) {
-      const err = error as { message?: string };
-      deps.logError("Google Calendar OAuth failed", { error: err?.message }, "calendar");
-      return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
+  ipcMain.handle(
+    calendarIntegrationChannels.gcalStartOAuth,
+    async (): Promise<CalendarOAuthResult> => {
+      try {
+        const result = await deps.googleManager.startOAuth();
+        const parsed = oauthResultSchema.safeParse(result);
+
+        return parsed.success ? parsed.data : { success: false };
+      } catch (error) {
+        const err = error as { message?: string };
+        deps.logError("Google Calendar OAuth failed", { error: err?.message }, "calendar");
+
+        return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
+      }
     }
-  });
+  );
 
   ipcMain.handle(
     calendarIntegrationChannels.gcalDisconnect,
     async (_event, ...args: unknown[]): Promise<CalendarCommandResult> => {
       const parsedArgs = disconnectArgsSchema.safeParse(args);
+
       if (!parsedArgs.success) {
         return { success: false, error: "Invalid disconnect request" };
       }
+
       try {
         deps.googleManager.disconnect(parsedArgs.data[0]);
+
         return { success: true };
       } catch (error) {
         const err = error as { message?: string };
         deps.logError("Google Calendar disconnect failed", { error: err?.message }, "calendar");
+
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
     }
@@ -117,6 +127,7 @@ export function registerCalendarIntegrationHandlers(
       try {
         const status = deps.googleManager.getConnectionStatus();
         const parsed = googleConnectionStatusSchema.safeParse(status);
+
         // Absence versus false is signal: the unconfigured fallback keeps
         // exactly its own field set.
         return parsed.success ? parsed.data : { connected: false, email: null };
@@ -134,6 +145,7 @@ export function registerCalendarIntegrationHandlers(
           .getCalendars()
           .map(projectGoogleCalendarSummary)
           .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
         return googleCalendarsResultSchema.parse({ success: true, calendars });
       } catch {
         return { success: false, calendars: [] };
@@ -145,15 +157,20 @@ export function registerCalendarIntegrationHandlers(
     calendarIntegrationChannels.gcalSetCalendarSelection,
     async (_event, ...args: unknown[]): Promise<CalendarCommandResult> => {
       const parsedArgs = calendarSelectionArgsSchema.safeParse(args);
+
       if (!parsedArgs.success) {
         return { success: false, error: "Invalid calendar selection request" };
       }
+
       const [calendarId, isSelected] = parsedArgs.data;
+
       try {
         await deps.googleManager.setCalendarSelection(calendarId, isSelected);
+
         return { success: true };
       } catch (error) {
         const err = error as { message?: string };
+
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
     }
@@ -163,14 +180,18 @@ export function registerCalendarIntegrationHandlers(
     calendarIntegrationChannels.gcalSetPrimaryOnly,
     async (_event, ...args: unknown[]): Promise<CalendarCommandResult> => {
       const parsedArgs = primaryOnlyArgsSchema.safeParse(args);
+
       if (!parsedArgs.success) {
         return { success: false, error: "Invalid request" };
       }
+
       try {
         await deps.googleManager.setPrimaryOnly(parsedArgs.data[0]);
+
         return { success: true };
       } catch (error) {
         const err = error as { message?: string };
+
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
     }
@@ -181,17 +202,21 @@ export function registerCalendarIntegrationHandlers(
     async (): Promise<CalendarCommandResult> => {
       try {
         const outcome = await deps.googleManager.syncEvents();
+
         if (outcome && outcome.failed > 0) {
           // Every calendar failed: no successful update, report failure.
           if (outcome.succeeded === 0) {
             return { success: false, error: outcome.errors[0] || "Calendar sync failed" };
           }
+
           // Some calendars updated, others failed: incomplete but not false.
           return { success: true, partial: true };
         }
+
         return { success: true };
       } catch (error) {
         const err = error as { message?: string };
+
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
     }
@@ -204,13 +229,16 @@ export function registerCalendarIntegrationHandlers(
     calendarIntegrationChannels.gcalGetUpcomingEvents,
     async (_event, ...args: unknown[]): Promise<UpcomingEventsResult> => {
       const parsedArgs = upcomingEventsArgsSchema.safeParse(args);
+
       if (!parsedArgs.success) {
         return { success: false, events: [] };
       }
+
       try {
         const events = (await deps.getUpcomingEvents(parsedArgs.data[0]))
           .map(projectCalendarEvent)
           .filter((event): event is NonNullable<typeof event> => event !== null);
+
         return { success: true, events };
       } catch {
         return { success: false, events: [] };
@@ -222,9 +250,11 @@ export function registerCalendarIntegrationHandlers(
     calendarIntegrationChannels.gcalGetEvent,
     async (_event, ...args: unknown[]): Promise<CalendarEventResult> => {
       const parsedArgs = calendarEventArgsSchema.safeParse(args);
+
       if (!parsedArgs.success) {
         return { success: false, event: null };
       }
+
       try {
         return {
           success: true,
@@ -238,31 +268,40 @@ export function registerCalendarIntegrationHandlers(
 
   // --- Microsoft Calendar ---
 
-  ipcMain.handle(calendarIntegrationChannels.mcalStartOAuth, async (): Promise<CalendarOAuthResult> => {
-    try {
-      const result = await deps.microsoftManager.startOAuth();
-      const parsed = oauthResultSchema.safeParse(result);
-      return parsed.success ? parsed.data : { success: false };
-    } catch (error) {
-      const err = error as { message?: string };
-      deps.logError("Microsoft Calendar OAuth failed", { error: err?.message }, "calendar");
-      return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
+  ipcMain.handle(
+    calendarIntegrationChannels.mcalStartOAuth,
+    async (): Promise<CalendarOAuthResult> => {
+      try {
+        const result = await deps.microsoftManager.startOAuth();
+        const parsed = oauthResultSchema.safeParse(result);
+
+        return parsed.success ? parsed.data : { success: false };
+      } catch (error) {
+        const err = error as { message?: string };
+        deps.logError("Microsoft Calendar OAuth failed", { error: err?.message }, "calendar");
+
+        return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
+      }
     }
-  });
+  );
 
   ipcMain.handle(
     calendarIntegrationChannels.mcalDisconnect,
     async (_event, ...args: unknown[]): Promise<CalendarCommandResult> => {
       const parsedArgs = disconnectArgsSchema.safeParse(args);
+
       if (!parsedArgs.success) {
         return { success: false, error: "Invalid disconnect request" };
       }
+
       try {
         deps.microsoftManager.disconnect(parsedArgs.data[0]);
+
         return { success: true };
       } catch (error) {
         const err = error as { message?: string };
         deps.logError("Microsoft Calendar disconnect failed", { error: err?.message }, "calendar");
+
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
     }
@@ -274,11 +313,17 @@ export function registerCalendarIntegrationHandlers(
       try {
         const status = deps.microsoftManager.getConnectionStatus();
         const parsed = microsoftConnectionStatusSchema.safeParse(status);
+
         // The unconfigured fallback omits `configured`; keep its exact shape.
         return parsed.success ? parsed.data : { connected: false, accounts: [] };
       } catch (error) {
         const err = error as { message?: string };
-        deps.logError("Microsoft Calendar connection status failed", { error: err?.message }, "calendar");
+        deps.logError(
+          "Microsoft Calendar connection status failed",
+          { error: err?.message },
+          "calendar"
+        );
+
         return { connected: false, accounts: [] };
       }
     }
@@ -288,14 +333,18 @@ export function registerCalendarIntegrationHandlers(
     calendarIntegrationChannels.mcalSetPrimaryOnly,
     async (_event, ...args: unknown[]): Promise<CalendarCommandResult> => {
       const parsedArgs = primaryOnlyArgsSchema.safeParse(args);
+
       if (!parsedArgs.success) {
         return { success: false, error: "Invalid request" };
       }
+
       try {
         await deps.microsoftManager.setPrimaryOnly(parsedArgs.data[0]);
+
         return { success: true };
       } catch (error) {
         const err = error as { message?: string };
+
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
     }
@@ -307,10 +356,12 @@ export function registerCalendarIntegrationHandlers(
     try {
       const result = await deps.appleManager.connect();
       const parsed = appleConnectResultSchema.safeParse(result);
+
       return parsed.success ? parsed.data : { success: false };
     } catch (error) {
       const err = error as { message?: string };
       deps.logError("Apple Calendar connect failed", { error: err?.message }, "acal");
+
       return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
     }
   });
@@ -321,10 +372,12 @@ export function registerCalendarIntegrationHandlers(
       try {
         const result = deps.appleManager.disconnect();
         const parsed = calendarCommandResultSchema.safeParse(result);
+
         return parsed.success ? parsed.data : { success: false };
       } catch (error) {
         const err = error as { message?: string };
         deps.logError("Apple Calendar disconnect failed", { error: err?.message }, "acal");
+
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
     }
@@ -336,10 +389,12 @@ export function registerCalendarIntegrationHandlers(
       try {
         const status = deps.appleManager.getConnectionStatus();
         const parsed = appleConnectionStatusSchema.safeParse(status);
+
         return parsed.success ? parsed.data : { connected: false, sourceNames: [] };
       } catch (error) {
         const err = error as { message?: string };
         deps.logError("Apple Calendar connection status failed", { error: err?.message }, "acal");
+
         return { connected: false, sourceNames: [] };
       }
     }
@@ -352,6 +407,7 @@ export function registerCalendarIntegrationHandlers(
         return await deps.openCalendarPrivacySettings();
       } catch (error) {
         const err = error as { message?: string };
+
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
     }

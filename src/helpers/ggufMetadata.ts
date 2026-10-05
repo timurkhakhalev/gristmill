@@ -18,15 +18,21 @@
 const fs = require("fs");
 
 const GGUF_MAGIC = 0x46554747; // "GGUF" little-endian
+
 const MIN_SUPPORTED_VERSION = 2; // v1 used 32-bit lengths; no bundled model uses it
+
 const MAX_SUPPORTED_VERSION = 3;
 
 const READ_CHUNK_BYTES = 1024 * 1024;
+
 // A real header is ~10 MiB, dominated by the tokenizer token array. These are
 // guards against a corrupt file steering us into an unbounded allocation.
 const MAX_METADATA_BYTES = 64 * 1024 * 1024;
+
 const MAX_KV_COUNT = 4096;
+
 const MAX_STRING_BYTES = 64 * 1024 * 1024;
+
 const MAX_CAPTURED_ARRAY_LENGTH = 1024;
 
 const TYPE = {
@@ -95,12 +101,15 @@ class HeaderCursor {
     if (this.position + length > MAX_METADATA_BYTES) {
       throw new Error("gguf metadata section is implausibly large");
     }
+
     const withinChunk =
       this.position >= this.chunkStart &&
       this.position + length <= this.chunkStart + this.chunk.length;
+
     if (withinChunk) return;
 
     const buffer = await this.source.read(this.position, Math.max(length, READ_CHUNK_BYTES));
+
     if (!buffer || buffer.length < length) throw new Error("unexpected end of gguf header");
     this.chunk = buffer;
     this.chunkStart = this.position;
@@ -110,6 +119,7 @@ class HeaderCursor {
     await this.ensure(length);
     const start = this.position - this.chunkStart;
     this.position += length;
+
     return this.chunk.subarray(start, start + length);
   }
 
@@ -125,24 +135,30 @@ class HeaderCursor {
 
   async readUint64(): Promise<number> {
     const value = (await this.take(8)).readBigUInt64LE(0);
+
     if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("gguf length out of range");
+
     return Number(value);
   }
 
   async readString(): Promise<string> {
     const length = await this.readUint64();
+
     if (length > MAX_STRING_BYTES) throw new Error("gguf string is implausibly long");
+
     return (await this.take(length)).toString("utf8");
   }
 
   async skipString(): Promise<void> {
     const length = await this.readUint64();
+
     if (length > MAX_STRING_BYTES) throw new Error("gguf string is implausibly long");
     this.skip(length);
   }
 
   async readScalar(type: number): Promise<number | boolean> {
     const buffer = await this.take(SCALAR_BYTES[type]);
+
     switch (type) {
       case TYPE.UINT8:
         return buffer.readUInt8(0);
@@ -182,39 +198,54 @@ async function readArray(cursor: HeaderCursor, capture: boolean): Promise<GgufVa
     // Each element carries its own length prefix, so it must be walked rather
     // than skipped wholesale. This is tokenizer.ggml.tokens, ~150k entries.
     for (let index = 0; index < length; index += 1) await cursor.skipString();
+
     return null;
   }
 
   const elementBytes = SCALAR_BYTES[elementType];
+
   if (elementBytes === undefined) throw new Error(`unsupported gguf array type ${elementType}`);
 
   if (!capture || length > MAX_CAPTURED_ARRAY_LENGTH) {
     cursor.skip(length * elementBytes);
+
     return null;
   }
 
   const values = [];
+
   for (let index = 0; index < length; index += 1) values.push(await cursor.readScalar(elementType));
+
   return values;
 }
 
-async function readValue(cursor: HeaderCursor, type: number, capture: boolean): Promise<GgufValue | null> {
+async function readValue(
+  cursor: HeaderCursor,
+  type: number,
+  capture: boolean
+): Promise<GgufValue | null> {
   if (type === TYPE.STRING) {
     if (capture) return cursor.readString();
     await cursor.skipString();
+
     return null;
   }
+
   if (type === TYPE.ARRAY) return readArray(cursor, capture);
 
   const bytes = SCALAR_BYTES[type];
+
   if (bytes === undefined) throw new Error(`unsupported gguf value type ${type}`);
+
   if (capture) return cursor.readScalar(type);
   cursor.skip(bytes);
+
   return null;
 }
 
 function isWantedKey(key: string): boolean {
   if (key === "general.architecture") return true;
+
   return WANTED_SUFFIXES.some((suffix) => key.endsWith(suffix));
 }
 
@@ -248,10 +279,12 @@ export async function readGgufMetadata(source: GgufSource): Promise<GgufMetadata
 
     if ((await cursor.readUint32()) !== GGUF_MAGIC) return null;
     const version = await cursor.readUint32();
+
     if (version < MIN_SUPPORTED_VERSION || version > MAX_SUPPORTED_VERSION) return null;
 
     await cursor.readUint64(); // tensor_count, unused
     const kvCount = await cursor.readUint64();
+
     if (kvCount > MAX_KV_COUNT) return null;
 
     const entries = new Map<string, GgufValue>();
@@ -260,13 +293,16 @@ export async function readGgufMetadata(source: GgufSource): Promise<GgufMetadata
     for (let index = 0; index < kvCount; index += 1) {
       const key = await cursor.readString();
       const type = await cursor.readUint32();
+
       if (key.includes(".ssm.")) hasRecurrentState = true;
 
       const value = await readValue(cursor, type, isWantedKey(key));
+
       if (value !== null) entries.set(key, value);
     }
 
     const architecture = entries.get("general.architecture");
+
     if (typeof architecture !== "string" || architecture.length === 0) return null;
 
     return {
@@ -288,17 +324,21 @@ export async function readGgufMetadata(source: GgufSource): Promise<GgufMetadata
 /** Convenience wrapper over a file on disk. */
 export async function readGgufMetadataFromFile(filePath: string): Promise<GgufMetadata | null> {
   let handle: import("fs").promises.FileHandle | null = null;
+
   try {
     const opened = await fs.promises.open(filePath, "r");
     handle = opened;
     const { size } = await opened.stat();
     const file = opened;
+
     return await readGgufMetadata({
       size,
       read: async (offset, length) => {
         const buffer = Buffer.alloc(Math.min(length, Math.max(0, size - offset)));
+
         if (buffer.length === 0) return buffer;
         const { bytesRead } = await file.read(buffer, 0, buffer.length, offset);
+
         return buffer.subarray(0, bytesRead);
       },
     });

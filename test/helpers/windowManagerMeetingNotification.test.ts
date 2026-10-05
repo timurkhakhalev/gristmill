@@ -1,25 +1,37 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { EventEmitter } = require("node:events");
+
 const Module = require("node:module");
 
 function createDeferred<T = void>() {
   let resolve!: (value?: T) => void;
   let reject!: (reason?: unknown) => void;
+
   const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = (value) => resolvePromise(value!);
     reject = rejectPromise;
   });
+
   return { promise, reject, resolve };
 }
 
 const createdWindows: any[] = [];
+
 const appListeners = new Map();
+
 const hotkeyManagers: any[] = [];
+
 let appQuitCount = 0;
+
 let dialogResponse = 1;
+
 const dialogCalls: any[] = [];
+
 const dialogParents: unknown[] = [];
+
 let devServerWaitPromise: Promise<void> = Promise.resolve();
 
 class FakeBrowserWindow extends EventEmitter {
@@ -56,6 +68,7 @@ class FakeBrowserWindow extends EventEmitter {
 
   loadURL() {
     this.loadUrlCount += 1;
+
     return Promise.resolve();
   }
 
@@ -69,35 +82,67 @@ class FakeBrowserWindow extends EventEmitter {
     return this.destroyed;
   }
 
-  showInactive() { this.show(); }
+  showInactive() {
+    this.show();
+  }
 
   show() {
     this.showCount += 1;
     this.visible = true;
   }
-  hide() { this.visible = false; }
+  hide() {
+    this.visible = false;
+  }
   focus() {}
-  isMinimized() { return false; }
-  restore() { this.visible = true; }
+  isMinimized() {
+    return false;
+  }
+  restore() {
+    this.visible = true;
+  }
   setTitle() {}
-  setMinimumSize(width: number, height: number) { this.minimumSize = [width, height]; }
-  getMinimumSize() { return this.minimumSize; }
-  getBounds() { return this.bounds; }
-  getContentBounds() { return this.bounds; }
-  setContentBounds(bounds: unknown) { this.bounds = bounds; }
-  isFullScreen() { return false; }
-  isMaximized() { return false; }
+  setMinimumSize(width: number, height: number) {
+    this.minimumSize = [width, height];
+  }
+  getMinimumSize() {
+    return this.minimumSize;
+  }
+  getBounds() {
+    return this.bounds;
+  }
+  getContentBounds() {
+    return this.bounds;
+  }
+  setContentBounds(bounds: unknown) {
+    this.bounds = bounds;
+  }
+  isFullScreen() {
+    return false;
+  }
+  isMaximized() {
+    return false;
+  }
   setResizable() {}
   setMinimizable() {}
   setMaximizable() {}
   setClosable() {}
   setFullScreenable() {}
   setWindowButtonVisibility() {}
-  isResizable() { return true; }
-  isMinimizable() { return true; }
-  isMaximizable() { return true; }
-  isClosable() { return true; }
-  isFullScreenable() { return true; }
+  isResizable() {
+    return true;
+  }
+  isMinimizable() {
+    return true;
+  }
+  isMaximizable() {
+    return true;
+  }
+  isClosable() {
+    return true;
+  }
+  isFullScreenable() {
+    return true;
+  }
 
   isVisible() {
     return this.visible && !this.destroyed;
@@ -106,7 +151,9 @@ class FakeBrowserWindow extends EventEmitter {
 
 class FakeHotkeyManager {
   unregisterCount: number;
-  static isGlobeLikeHotkey() { return false; }
+  static isGlobeLikeHotkey() {
+    return false;
+  }
   constructor() {
     this.unregisterCount = 0;
     hotkeyManagers.push(this);
@@ -126,39 +173,58 @@ class FakeDragManager {
 }
 
 const originalLoad = Module._load;
+
 const appStub = {
   on: (event: unknown, listener: unknown) => appListeners.set(event, listener),
-  quit: () => { appQuitCount += 1; },
+  quit: () => {
+    appQuitCount += 1;
+  },
 };
+
 const dialogStub = {
   showMessageBox: async (windowOrOptions: unknown, options?: unknown) => {
     dialogCalls.push(options ?? windowOrOptions);
     dialogParents.push(options ? windowOrOptions : null);
+
     return { response: dialogResponse };
   },
 };
-Module._load = function loadWindowManagerWithStubs(request: string, parent: unknown, isMain: boolean) {
+
+Module._load = function loadWindowManagerWithStubs(
+  request: string,
+  parent: unknown,
+  isMain: boolean
+) {
   if (request === "electron") {
     return {
       app: appStub,
-      screen: { getPrimaryDisplay: () => ({}), getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }), on: () => undefined },
+      screen: {
+        getPrimaryDisplay: () => ({}),
+        getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }),
+        on: () => undefined,
+      },
       BrowserWindow: FakeBrowserWindow,
       shell: {},
       dialog: dialogStub,
     };
   }
+
   if (request === "./debugLogger" || request === "./debugLogger.js") {
     return { info: () => undefined, warn: () => undefined, error: () => undefined };
   }
+
   if (request === "./hotkeyManager" || request === "./hotkeyManager.js") {
     return { HotkeyManager: FakeHotkeyManager };
   }
+
   if (request === "./dragManager" || request === "./dragManager.js") {
     return { DragManager: FakeDragManager };
   }
+
   if (request === "./menuManager" || request === "./menuManager.js") {
     return { MenuManager: { setupMainMenu() {}, setupControlPanelMenu() {} } };
   }
+
   if (request === "./devServerManager" || request === "./devServerManager.js") {
     return {
       DevServerManager: {
@@ -169,13 +235,18 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
       },
     };
   }
-  if (request === "./dockManager" || request === "./dockManager.js") return { setControlPanelVisible() {} };
+
+  if (request === "./dockManager" || request === "./dockManager.js")
+    return { setControlPanelVisible() {} };
+
   if (request === "./i18nMain" || request === "./i18nMain.js") {
     return { i18nMain: { t: (key: string) => key } };
   }
+
   if (request === "./windowConfig" || request === "./windowConfig.js") {
     const detectionSize = { width: 392, height: 92 };
     const autoEndSize = { width: 620, height: 116 };
+
     return {
       MAIN_WINDOW_CONFIG: {},
       CONTROL_PANEL_CONFIG: { width: 1200, height: 800 },
@@ -199,10 +270,14 @@ Module._load = function loadWindowManagerWithStubs(request: string, parent: unkn
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 const WindowManager = require("../../src/helpers/windowManager");
+
 const TrayManager = require("../../src/helpers/tray.ts");
+
 Module._load = originalLoad;
 
 const notificationWindowFor = (index: number) => createdWindows[index];
@@ -210,6 +285,7 @@ const notificationWindowFor = (index: number) => createdWindows[index];
 function createNormalWindowManager() {
   const manager = new WindowManager();
   manager.setOnboardingActive(false);
+
   return manager;
 }
 
@@ -220,13 +296,17 @@ function installFakeTimers() {
   const timers = new Map();
 
   // Node and DOM overloads disagree on the timer handle; this fake only uses numeric IDs.
-  global.setTimeout = Object.assign((callback: string | ((...args: unknown[]) => void), delay = 0, ...args: unknown[]) => {
-    if (typeof callback !== "function") throw new TypeError("Expected timer callback");
-    const timerId = nextTimerId;
-    nextTimerId += 1;
-    timers.set(timerId, { callback: () => callback(...args), delay });
-    return timerId;
-  }, { __promisify__: originalSetTimeout.__promisify__ }) as unknown as typeof setTimeout;
+  global.setTimeout = Object.assign(
+    (callback: string | ((...args: unknown[]) => void), delay = 0, ...args: unknown[]) => {
+      if (typeof callback !== "function") throw new TypeError("Expected timer callback");
+      const timerId = nextTimerId;
+      nextTimerId += 1;
+      timers.set(timerId, { callback: () => callback(...args), delay });
+
+      return timerId;
+    },
+    { __promisify__: originalSetTimeout.__promisify__ }
+  ) as unknown as typeof setTimeout;
   global.clearTimeout = (timerId) => timers.delete(timerId);
 
   return {
@@ -266,7 +346,10 @@ test("quit confirmation uses the capture window's asynchronous sheet", async () 
   const manager = createNormalWindowManager();
   const parent = new FakeBrowserWindow({});
   manager.controlPanelWindow = parent;
-  manager.setMeetingCaptureQuitGuard({ isRecording: () => true, stop: async () => ({ success: true }) });
+  manager.setMeetingCaptureQuitGuard({
+    isRecording: () => true,
+    stop: async () => ({ success: true }),
+  });
   appListeners.get("before-quit")({ preventDefault() {} });
   await manager._quitConfirmationPromise;
   assert.equal(dialogParents[0], parent);
@@ -279,11 +362,19 @@ test("canceling quit during capture preserves capture and hotkeys", async () => 
   let stopCount = 0;
   manager.setMeetingCaptureQuitGuard({
     isRecording: () => true,
-    stop: async () => { stopCount += 1; return { success: true }; },
+    stop: async () => {
+      stopCount += 1;
+
+      return { success: true };
+    },
   });
   let prevented = false;
 
-  appListeners.get("before-quit")({ preventDefault: () => { prevented = true; } });
+  appListeners.get("before-quit")({
+    preventDefault: () => {
+      prevented = true;
+    },
+  });
   await manager._quitConfirmationPromise;
 
   assert.equal(prevented, true);
@@ -300,12 +391,20 @@ test("confirming quit waits for safe capture stop before shutdown", async () => 
   let stopCount = 0;
   manager.setMeetingCaptureQuitGuard({
     isRecording: () => true,
-    stop: () => { stopCount += 1; return stopDeferred.promise; },
+    stop: () => {
+      stopCount += 1;
+
+      return stopDeferred.promise;
+    },
   });
   dialogResponse = 0;
   let prevented = false;
 
-  appListeners.get("before-quit")({ preventDefault: () => { prevented = true; } });
+  appListeners.get("before-quit")({
+    preventDefault: () => {
+      prevented = true;
+    },
+  });
   const pendingQuit = manager._quitConfirmationPromise;
   await Promise.resolve();
 
@@ -339,8 +438,6 @@ test("failed safe stop keeps the app open", async () => {
   assert.equal(dialogCalls[1].type, "error");
 });
 
-
-
 test("window manager starts fail-closed and suppresses normal-app popup surfaces", async () => {
   const manager = new WindowManager();
 
@@ -358,6 +455,7 @@ test("window creation uses the auto-end dimensions and variant-aware position", 
       expiresAt: 70_000,
       reason: "silence",
     });
+
     const notificationWindow = createdWindows[0];
 
     assert.deepEqual(
@@ -397,6 +495,7 @@ test("unexpected auto-end window closure invalidates that restart offer", async 
     expiresAt: 70_000,
     reason: "silence",
   });
+
   const notificationWindow = createdWindows[0];
   notificationWindow.loadDeferred.resolve();
   await showPromise;
@@ -418,6 +517,7 @@ test("replacing an auto-end notification invalidates its restart offer", async (
     expiresAt: Date.now() + 30_000,
     reason: "silence",
   });
+
   createdWindows[0].loadDeferred.resolve();
   await autoEndPromise;
 
@@ -438,11 +538,13 @@ test("replacing an auto-end notification invalidates its restart offer", async (
 test("auto-end notification loading has a fail-safe timeout", async () => {
   const timers = installFakeTimers();
   const manager = createNormalWindowManager();
+
   const showPromise = manager.showMeetingAutoEndNotification({
     sessionId: "meeting-1",
     expiresAt: 70_000,
     reason: "silence",
   });
+
   const notificationWindow = createdWindows[0];
 
   try {
@@ -478,6 +580,7 @@ test("auto-end recovery subtracts load time from its expiry and hover cannot ext
     expiresAt: 70_000,
     reason: "silence",
   };
+
   const showPromise = manager.showMeetingAutoEndNotification(notification);
   const notificationWindow = createdWindows[0];
 
@@ -506,22 +609,34 @@ test("only the active detection card can pause and resume its countdown", async 
   Date.now = () => 50_000;
   const timers = installFakeTimers();
   const manager = createNormalWindowManager();
+
   try {
-    const showing = manager.showMeetingNotification({ kind: "detection", detectionId: "meeting-1", source: "audio" });
+    const showing = manager.showMeetingNotification({
+      kind: "detection",
+      detectionId: "meeting-1",
+      source: "audio",
+    });
+
     const window = createdWindows[0];
     window.loadDeferred.resolve();
     await showing;
     assert.equal(timers.pendingDelays().includes(60_000), true);
     const before = window.ignoreMouseEvents.length;
     manager.setNotificationInteractivity({ send() {} }, true);
-    assert.equal(timers.pendingDelays().includes(60_000), true, "another overlay cannot pause the card");
+    assert.equal(
+      timers.pendingDelays().includes(60_000),
+      true,
+      "another overlay cannot pause the card"
+    );
     assert.equal(window.ignoreMouseEvents.length, before);
+
     for (let i = 0; i < 3; i++) {
       manager.setNotificationInteractivity(window.webContents, true);
       assert.equal(timers.pendingDelays().includes(60_000), false);
       manager.setNotificationInteractivity(window.webContents, false);
       assert.equal(timers.pendingDelays().includes(60_000), true);
     }
+
     assert.equal(window.ignoreMouseEvents.length, before + 6);
   } finally {
     Date.now = originalDateNow;
@@ -540,6 +655,7 @@ test("a replaced deferred notification cannot send its payload to the newer wind
       { detectionId: "first" },
       { autoDismiss: false }
     );
+
     const firstWindow = createdWindows[0];
     secondShowPromise = manager.showMeetingNotification(
       { detectionId: "second" },
@@ -624,6 +740,7 @@ test("a stale ready callback cannot show the replacement notification window", a
       { detectionId: "first" },
       { autoDismiss: false }
     );
+
     const firstWindow = createdWindows[0];
     firstWindow.loadDeferred.resolve();
     await firstShowPromise;
@@ -632,6 +749,7 @@ test("a stale ready callback cannot show the replacement notification window", a
       { detectionId: "second" },
       { autoDismiss: false }
     );
+
     const secondWindow = createdWindows[1];
     secondWindow.loadDeferred.resolve();
     await secondShowPromise;
@@ -655,6 +773,7 @@ test("an auto-end notification dismissed while loading reports that it was not s
     expiresAt: Date.now() + 30_000,
     reason: "silence",
   });
+
   manager.dismissMeetingNotification();
   createdWindows[0].loadDeferred.resolve();
 
@@ -669,6 +788,7 @@ test("an auto-end notification whose load fails after dismissal reports that it 
     expiresAt: Date.now() + 30_000,
     reason: "silence",
   });
+
   manager.dismissMeetingNotification();
   createdWindows[0].loadDeferred.reject(new Error("load failed"));
 
@@ -682,7 +802,7 @@ test("a notification raised from the timeout handler survives the dismissal that
   const timers = installFakeTimers();
   const manager = createNormalWindowManager();
   const originalDateNow = Date.now;
-  let now = 40_000;
+  const now = 40_000;
   Date.now = () => now;
   let replacementPromise = null;
   manager.meetingDetectionEngine = {
@@ -732,6 +852,7 @@ test("unexpected detection card closure releases that detection", async () => {
     detectionId: "audio:sustained-audio",
     source: "audio",
   });
+
   const notificationWindow = createdWindows[0];
   notificationWindow.loadDeferred.resolve();
   await showPromise;
@@ -744,9 +865,13 @@ test("unexpected detection card closure releases that detection", async () => {
 
 test("ending a call closes only its own detection card", async () => {
   const manager = createNormalWindowManager();
+
   const showPromise = manager.showMeetingNotification({
-    kind: "detection", detectionId: "audio:zoom:123", source: "audio",
+    kind: "detection",
+    detectionId: "audio:zoom:123",
+    source: "audio",
   });
+
   const window = createdWindows[0];
   window.loadDeferred.resolve();
   await showPromise;
@@ -774,6 +899,7 @@ test("an expired detection reports the timeout once, not also as a close", async
     detectionId: "audio:sustained-audio",
     source: "audio",
   });
+
   createdWindows[0].loadDeferred.resolve();
   await showPromise;
 
@@ -799,6 +925,7 @@ test("a detection card whose load fails releases that detection", async () => {
     detectionId: "audio:sustained-audio",
     source: "audio",
   });
+
   createdWindows[0].loadDeferred.reject(new Error("load failed"));
 
   // The card never appeared and no countdown ever started, so nothing else
@@ -850,6 +977,7 @@ for (const completed of [false, true]) {
       loads++;
       manager.controlPanelWindow.webContents.emit("did-finish-load");
     };
+
     assert.equal(manager.isMeetingInputAllowed(), false);
     await manager.createControlPanelWindow({ show: false });
     const panel = manager.controlPanelWindow;
@@ -863,9 +991,14 @@ for (const completed of [false, true]) {
     assert.equal(panel.isVisible(), false);
     manager.setNotificationPreferences({ notificationsEnabled: false });
     assert.equal(manager.notificationsGateDetection(), false);
+
     if (!completed) {
-      assert.equal(await manager.showMeetingNotification({ kind: "detection", id: "tray-gated" }), false);
+      assert.equal(
+        await manager.showMeetingNotification({ kind: "detection", id: "tray-gated" }),
+        false
+      );
     }
+
     await manager.createControlPanelWindow(); // Explicit tray/open action.
     assert.equal(manager.controlPanelWindow, panel);
     assert.equal(loads, 1);
@@ -888,6 +1021,7 @@ test("visible startup keeps the load backstop and explicit hide cancels it", asy
   const manager = new WindowManager();
   t.after(() => manager._clearControlPanelVisibilityTimer());
   manager.loadControlPanel = async () => {};
+
   await manager.createControlPanelWindow();
   assert.equal(manager.controlPanelWindow.showCount, 0);
   timers.runDelay(10000);
@@ -906,11 +1040,13 @@ test("hidden load rejection settles bootstrap gated and actual tray open retries
   let loads = 0;
   manager.loadControlPanel = async () => {
     loads++;
+
     if (loads === 1) throw new Error("renderer unavailable");
     manager.controlPanelWindow.webContents.emit("did-finish-load");
     manager.setOnboardingActive(false);
     manager.setOnboardingWindowMode("restore");
   };
+
   await manager.createControlPanelWindow({ show: false });
   assert.equal(manager._controlPanelLoadFailed, true);
   assert.equal(manager.isMeetingInputAllowed(), false);
@@ -925,34 +1061,40 @@ test("hidden load rejection settles bootstrap gated and actual tray open retries
 });
 
 for (const action of ["tray", "new-note", "calendar-event"]) {
- test(`hide during ${action} deferred retry remains authoritative when load completes`, async (t) => {
-  const timers = installFakeTimers();
-  t.after(() => timers.restore());
-  const manager = new WindowManager();
-  t.after(() => manager._clearControlPanelVisibilityTimer());
-  manager.loadControlPanel = async () => {};
-  await manager.createControlPanelWindow();
-  manager.setOnboardingWindowMode("restore");
-  const panel = manager.controlPanelWindow;
-  const shownBefore = panel.showCount;
-  const load = createDeferred();
-  manager._controlPanelLoadFailed = true;
-  manager.loadControlPanel = async () => {
-    await load.promise;
-    manager.setOnboardingActive(false);
-    manager.setOnboardingWindowMode("restore");
-  };
-  const tray = new TrayManager();
-  tray.setWindowManager(manager);
-  const opening = action === "tray" ? tray.showControlPanelFromTray()
-    : action === "new-note" ? manager.requestNewNote()
-    : manager.requestOpenCalendarEvent({ id: "event" });
-  manager.hideControlPanelToTray();
-  load.resolve();
-  await opening;
-  timers.runAll();
-  assert.equal(panel.isVisible(), false);
-  assert.equal(panel.showCount, shownBefore);
-});
+  test(`hide during ${action} deferred retry remains authoritative when load completes`, async (t) => {
+    const timers = installFakeTimers();
+    t.after(() => timers.restore());
+    const manager = new WindowManager();
+    t.after(() => manager._clearControlPanelVisibilityTimer());
+    manager.loadControlPanel = async () => {};
 
+    await manager.createControlPanelWindow();
+    manager.setOnboardingWindowMode("restore");
+    const panel = manager.controlPanelWindow;
+    const shownBefore = panel.showCount;
+    const load = createDeferred();
+    manager._controlPanelLoadFailed = true;
+    manager.loadControlPanel = async () => {
+      await load.promise;
+      manager.setOnboardingActive(false);
+      manager.setOnboardingWindowMode("restore");
+    };
+
+    const tray = new TrayManager();
+    tray.setWindowManager(manager);
+
+    const opening =
+      action === "tray"
+        ? tray.showControlPanelFromTray()
+        : action === "new-note"
+          ? manager.requestNewNote()
+          : manager.requestOpenCalendarEvent({ id: "event" });
+
+    manager.hideControlPanelToTray();
+    load.resolve();
+    await opening;
+    timers.runAll();
+    assert.equal(panel.isVisible(), false);
+    assert.equal(panel.showCount, shownBefore);
+  });
 }

@@ -38,10 +38,15 @@ export default function NoteViewSwitch<T extends string>({
   versionMenu?: NoteViewVersionMenu;
 }) {
   return (
-    <div role="group" aria-label={ariaLabel} className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-default p-0.5">
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-default p-0.5"
+    >
       {options.map((option) => {
         const Icon = option.icon;
         const active = option.id === value;
+
         if (!versionMenu?.items.length || !active) {
           // One stable element per option, so switching animates the label's
           // width in place instead of remounting and flashing the icon.
@@ -74,13 +79,19 @@ export default function NoteViewSwitch<T extends string>({
             </button>
           );
         }
+
         const content = (
           <>
             <Icon size={15} className="shrink-0 text-primary" />
             <span>{option.label}</span>
           </>
         );
-        const activeClass = cn(SEGMENT, "overflow-hidden bg-segment px-2.5 text-segment-foreground shadow-sm");
+
+        const activeClass = cn(
+          SEGMENT,
+          "overflow-hidden bg-segment px-2.5 text-segment-foreground shadow-sm"
+        );
+
         return (
           <Dropdown key={option.id}>
             <Button

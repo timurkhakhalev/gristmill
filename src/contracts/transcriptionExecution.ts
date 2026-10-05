@@ -12,6 +12,7 @@ import {
 import { transcriptionItemSchema } from "./transcriptionData.js";
 
 export type TranscriptionResponse = z.infer<typeof transcriptionResponseSchema>;
+
 export { transcriptionResponseSchema };
 
 export type BufferLike = ArrayBuffer | ArrayBufferView;
@@ -30,9 +31,11 @@ export const whisperOptionsSchema = transcriptionOptionsSchema
     skipVad: z.boolean().optional(),
   })
   .passthrough();
+
 export type WhisperOptions = z.infer<typeof whisperOptionsSchema>;
 
 export const parakeetOptionsSchema = transcriptionOptionsSchema;
+
 export type ParakeetOptions = z.infer<typeof parakeetOptionsSchema>;
 
 // ---- main-proxied provider transports --------------------------------------
@@ -47,23 +50,27 @@ export const proxyXaiArgsSchema = z.object({
   language: z.string().optional(),
   keyterms: z.array(z.string()).optional(),
 });
+
 export const proxyMistralArgsSchema = z.object({
   audioBuffer: binaryArg,
   model: z.string().optional(),
   language: z.string().optional(),
   contextBias: z.array(z.string()).optional(),
 });
+
 export const proxyCortiArgsSchema = z.object({
   audioBuffer: binaryArg,
   language: z.string().optional(),
   environment: z.string().optional(),
   tenant: z.string().optional(),
 });
+
 export const proxyTinfoilArgsSchema = z.object({
   audioBuffer: binaryArg,
   language: z.string().optional(),
   prompt: z.string().optional(),
 });
+
 export const proxyGeminiArgsSchema = z.object({
   audioBuffer: binaryArg,
   model: z.string().optional(),
@@ -86,6 +93,7 @@ export const proxyTranscriptionResultSchema = z
   .refine((value) => value.text !== undefined || value.error !== undefined, {
     message: "Proxy transcription returned neither text nor a serialized error",
   });
+
 export type ProxyTranscriptionResult = z.infer<typeof proxyTranscriptionResultSchema>;
 
 // ---- voice draft temp audio -------------------------------------------------
@@ -94,6 +102,7 @@ export const saveTempAudioResultSchema = z.object({
   success: z.literal(true),
   path: z.string(),
 });
+
 export const deleteTempAudioResultSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
@@ -115,12 +124,14 @@ export const retryTranscriptionSettingsSchema = z.object({
   cortiTenant: z.string().optional(),
   preferredLanguage: z.string().optional(),
 });
+
 export type RetryTranscriptionSettings = z.infer<typeof retryTranscriptionSettingsSchema>;
 
 export const retryTranscriptionArgsSchema = z.object({
   id: z.number().int(),
   settings: retryTranscriptionSettingsSchema.optional(),
 });
+
 export type RetryTranscriptionArgs = z.infer<typeof retryTranscriptionArgsSchema>;
 
 export const retryTranscriptionResultSchema = z.union([
@@ -137,6 +148,7 @@ export const retryTranscriptionResultSchema = z.union([
     })
     .passthrough(),
 ]);
+
 export type RetryTranscriptionResult = z.infer<typeof retryTranscriptionResultSchema>;
 
 // ---- provider connection / model discovery ----------------------------------
@@ -151,6 +163,7 @@ export const providerConnectionConfigSchema = z
     tenant: z.string().optional(),
   })
   .passthrough();
+
 export type ProviderConnectionConfig = z.infer<typeof providerConnectionConfigSchema>;
 
 export const providerConnectionResultSchema = z
@@ -161,6 +174,7 @@ export const providerConnectionResultSchema = z
     status: z.number().optional(),
   })
   .passthrough();
+
 export type ProviderConnectionResult = z.infer<typeof providerConnectionResultSchema>;
 
 export const enterpriseConnectionArgsSchema = z.object({
@@ -173,6 +187,7 @@ export const enterpriseConnectionArgsSchema = z.object({
     .passthrough()
     .optional(),
 });
+
 export type EnterpriseConnectionArgs = z.infer<typeof enterpriseConnectionArgsSchema>;
 
 export const enterpriseConnectionResultSchema = z
@@ -188,6 +203,7 @@ export const enterpriseConnectionResultSchema = z
     technicalDetails: z.unknown().optional(),
   })
   .passthrough();
+
 export type EnterpriseConnectionResult = z.infer<typeof enterpriseConnectionResultSchema>;
 
 export const bedrockModelsConfigSchema = z
@@ -210,6 +226,7 @@ export const bedrockModelsResultSchema = z.object({
     .optional(),
   error: z.string().optional(),
 });
+
 export type BedrockModelsResult = z.infer<typeof bedrockModelsResultSchema>;
 
 export const tinfoilChatModelsResultSchema = z.array(

@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/services/ai/chatRequestBody.js");
@@ -11,12 +12,16 @@ function jsonResponse(status: number, body: unknown): [number, unknown] {
 
 function fetcher(...specs: [number, unknown][]) {
   const calls: number[] = [];
+
   const doFetch = () => {
     calls.push(1);
     const [status, body] = specs[Math.min(calls.length - 1, specs.length - 1)];
+
     return Promise.resolve(new Response(JSON.stringify(body), { status }));
   };
+
   doFetch.count = () => calls.length;
+
   return doFetch;
 }
 
@@ -46,10 +51,12 @@ test("400 with a reasoning object strips it blind and retries (old Ollama proxie
 
 test("400 naming a shaped param strips exactly that param and retries (#1611 class)", async () => {
   const { fetchWithParamFallback } = await load();
+
   const doFetch = fetcher(
     jsonResponse(400, { error: "Harmony does not support reasoning_effort='none'" }),
     jsonResponse(200, {})
   );
+
   const body = { reasoning_effort: "none", chat_template_kwargs: {}, max_tokens: 10 };
   const logged: unknown[] = [];
 
@@ -63,10 +70,12 @@ test("400 naming a shaped param strips exactly that param and retries (#1611 cla
 
 test("422 naming temperature strips it (#1417 class)", async () => {
   const { fetchWithParamFallback } = await load();
+
   const doFetch = fetcher(
     jsonResponse(422, { error: "`temperature` is deprecated for this model" }),
     jsonResponse(200, {})
   );
+
   const body = { temperature: 0.3, max_tokens: 10 };
 
   const res = await fetchWithParamFallback(doFetch, body, () => {});

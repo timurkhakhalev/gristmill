@@ -3,7 +3,9 @@
 // @probe-origin test/scripts/containersTypeProbe.test.js
 import { registerContainerHandlers } from "./src/helpers/containerIpcHandlers.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 // A database missing updateSpace would leave the space channel dead while
 // every folder channel keeps working; the compiler must reject the

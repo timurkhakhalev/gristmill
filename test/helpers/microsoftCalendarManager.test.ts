@@ -1,20 +1,29 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 import type { CalendarEventInput } from "../../src/helpers/database.ts";
 
 const managerModulePath = require.resolve("../../src/helpers/microsoftCalendarManager.ts");
+
 const originalLoad = Module._load;
 
 test("getConnectionStatus reports Microsoft OAuth registration state", () => {
   const MicrosoftCalendarManager = loadManagerModule();
   const previousId = process.env.MICROSOFT_CALENDAR_CLIENT_ID;
   delete process.env.MICROSOFT_CALENDAR_CLIENT_ID;
+
   try {
-    const manager = new MicrosoftCalendarManager({ getMicrosoftAccounts: () => [] }, {
-      scheduleNextMeeting: () => {},
-      reset: () => {},
-    });
+    const manager = new MicrosoftCalendarManager(
+      { getMicrosoftAccounts: () => [] },
+      {
+        scheduleNextMeeting: () => {},
+        reset: () => {},
+      }
+    );
+
     assert.equal(manager.getConnectionStatus().configured, false);
     process.env.MICROSOFT_CALENDAR_CLIENT_ID = "client-id";
     assert.equal(manager.getConnectionStatus().configured, true);
@@ -30,8 +39,10 @@ function loadManagerModule() {
     if (request === "electron") {
       return { net: {}, BrowserWindow: { getAllWindows: () => [] } };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
+
   try {
     return require(managerModulePath);
   } finally {
@@ -156,7 +167,12 @@ test("_mapEvent falls back to a meeting link found in location or body text", ()
   assert.equal(mapped.attendees, null);
 });
 
-function createManager(MicrosoftCalendarManager: any, upserted: CalendarEventInput[], contacts: { email?: string; displayName?: string | null }[] = [], overrides = {}) {
+function createManager(
+  MicrosoftCalendarManager: any,
+  upserted: CalendarEventInput[],
+  contacts: { email?: string; displayName?: string | null }[] = [],
+  overrides = {}
+) {
   return new MicrosoftCalendarManager(
     {
       getMicrosoftTokensByEmail: () => ({ id: 1 }),
@@ -164,7 +180,8 @@ function createManager(MicrosoftCalendarManager: any, upserted: CalendarEventInp
       upsertCalendarEvents: (events: CalendarEventInput[]) => upserted.push(...events),
       removeCalendarEvents: () => {},
       updateMicrosoftCalendarSyncToken: () => {},
-      upsertContacts: (rows: { email?: string; displayName?: string | null }[]) => contacts.push(...rows),
+      upsertContacts: (rows: { email?: string; displayName?: string | null }[]) =>
+        contacts.push(...rows),
       getCalendarEventById: () => null,
       ...overrides,
     },
@@ -185,6 +202,7 @@ test("_syncCalendar backfills stripped recurring occurrences from their series m
   const upserted: CalendarEventInput[] = [];
   const contacts: { email?: string; displayName?: string | null }[] = [];
   const tokenWrites: { id: unknown; token: string; expiresAt: number }[] = [];
+
   const manager = createManager(MicrosoftCalendarManager, upserted, contacts, {
     updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt: number) =>
       tokenWrites.push({ id, token, expiresAt }),
@@ -212,7 +230,9 @@ test("_syncCalendar backfills stripped recurring occurrences from their series m
         ],
       };
     }
+
     masterFetches.push(url);
+
     return {
       id: "master-1",
       subject: "Standup",
@@ -259,6 +279,7 @@ test("_syncCalendar inserts a never-seen stripped occurrence bare when the serie
     if (url.includes("/calendarView/delta")) {
       return { "@odata.deltaLink": "delta-link", value: [STRIPPED_OCCURRENCE] };
     }
+
     throw new Error("master gone");
   };
 
@@ -274,6 +295,7 @@ test("_syncCalendar shortens the delta token TTL when a master fetch fails", asy
   const MicrosoftCalendarManager = loadManagerModule();
   const upserted: CalendarEventInput[] = [];
   const tokenWrites: { id: unknown; token: string; expiresAt: number }[] = [];
+
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
     updateMicrosoftCalendarSyncToken: (id: unknown, token: string, expiresAt: number) =>
       tokenWrites.push({ id, token, expiresAt }),
@@ -283,6 +305,7 @@ test("_syncCalendar shortens the delta token TTL when a master fetch fails", asy
     if (url.includes("/calendarView/delta")) {
       return { "@odata.deltaLink": "delta-link", value: [STRIPPED_OCCURRENCE] };
     }
+
     throw new Error("master gone");
   };
 
@@ -300,12 +323,14 @@ test("_syncCalendar shortens the delta token TTL when a master fetch fails", asy
 // real manager must return an explicit whole-pass outcome.
 test("syncEvents reports a full failure when every selected calendar errors", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
+
   const manager = createManager(MicrosoftCalendarManager, [], [], {
     getSelectedMicrosoftCalendars: () => [
       { id: "cal-1", account_email: "me@example.com" },
       { id: "cal-2", account_email: "me@example.com" },
     ],
   });
+
   manager._apiGet = async () => {
     throw new Error("graph down");
   };
@@ -321,14 +346,17 @@ test("syncEvents reports a full failure when every selected calendar errors", as
 test("syncEvents keeps successful updates and reports a partial outcome", async () => {
   const MicrosoftCalendarManager = loadManagerModule();
   const upserted: CalendarEventInput[] = [];
+
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
     getSelectedMicrosoftCalendars: () => [
       { id: "cal-ok", account_email: "me@example.com" },
       { id: "cal-bad", account_email: "me@example.com" },
     ],
   });
+
   manager._apiGet = async (url: string) => {
     if (url.includes("cal-bad")) throw new Error("calendar b failed");
+
     return {
       "@odata.deltaLink": "delta",
       value: [
@@ -361,9 +389,11 @@ test("_syncCalendar keeps the stored row when a stripped occurrence's master fet
   const MicrosoftCalendarManager = loadManagerModule();
   const upserted: CalendarEventInput[] = [];
   const staleKeepLists: unknown[] = [];
+
   const manager = createManager(MicrosoftCalendarManager, upserted, [], {
     getCalendarEventById: (id: unknown) => (id === "occ-1" ? { id, summary: "Standup" } : null),
-    removeStaleCalendarEvents: (_provider: unknown, _calendarId: unknown, keepIds: unknown) => staleKeepLists.push(keepIds),
+    removeStaleCalendarEvents: (_provider: unknown, _calendarId: unknown, keepIds: unknown) =>
+      staleKeepLists.push(keepIds),
   });
 
   manager._apiGet = async (url: string) => {
@@ -381,6 +411,7 @@ test("_syncCalendar keeps the stored row when a stripped occurrence's master fet
         ],
       };
     }
+
     throw new Error("master gone");
   };
 

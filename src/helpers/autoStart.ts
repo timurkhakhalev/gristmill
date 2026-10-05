@@ -1,11 +1,7 @@
 // Launch at login for macOS. Decisions live in autoStartPolicy.ts.
 
 import { app } from "electron";
-import {
-  getLoginItemArgs,
-  resolveAutoStartState,
-  wasLaunchedHidden,
-} from "./autoStartPolicy.js";
+import { getLoginItemArgs, resolveAutoStartState, wasLaunchedHidden } from "./autoStartPolicy.js";
 
 function readLoginItemSettings() {
   return app.getLoginItemSettings({ args: getLoginItemArgs() });

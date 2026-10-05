@@ -1,6 +1,9 @@
 const { app } = require("electron");
+
 const fs = require("fs");
+
 const path = require("path");
+
 const debugLogger = require("./debugLogger");
 
 // Resolves a bundled helper binary across the dev layout (resources/) and the
@@ -26,11 +29,13 @@ export function resolveBundledBinary(binaryName: string, logContext?: string): s
       if (fs.existsSync(candidate)) {
         fs.accessSync(candidate, fs.constants.X_OK);
         debugLogger.info("Resolved binary", { name: binaryName, path: candidate }, logContext);
+
         return candidate;
       }
     } catch {
       // continue
     }
   }
+
   return null;
 }

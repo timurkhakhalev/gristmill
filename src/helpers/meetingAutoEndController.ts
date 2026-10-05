@@ -1,7 +1,9 @@
 // Fallback mode: both channels must stay quiet this long before stopping.
 export const SILENCE_WINDOW_MS = 60_000;
+
 // Fallback mode after the tracked meeting app exits — a much stronger signal.
 export const FAST_SILENCE_MS = 10_000;
+
 // A mic release must stay uncontradicted this long before it stops a recording.
 // The OS reports a release for things that are not the call ending: a device
 // flap emits MIC_STOP and MIC_START in one reconcile pass, an app rebuilds its
@@ -10,10 +12,12 @@ export const FAST_SILENCE_MS = 10_000;
 // ends a live recording, and the stop is irreversible. A flap has no gap at all,
 // so a few seconds absorbs it while keeping the stop prompt.
 export const OWNERSHIP_CONFIRM_MS = 5_000;
+
 // An external mic hold shorter than this (Siri, a permission prompt, the Sound
 // settings input meter) is incidental — it must not arm the mic-ignoring
 // ownership path on what is really an in-person recording.
 export const OWNERSHIP_MIN_ACTIVE_MS = 30_000;
+
 // A tick gap longer than this means the machine slept; silence accumulated
 // before the gap is stale and must not stop the recording on wake.
 export const TICK_GAP_MS = 5_000;
@@ -97,10 +101,12 @@ export function createMeetingAutoEndController({
     const nowMs = now();
     const gap = lastSeenAt === null ? 0 : nowMs - lastSeenAt;
     lastSeenAt = nowMs;
+
     if (gap > TICK_GAP_MS && session) {
       session.quietSince = nowMs;
       session.fastArmAt = null;
       session.ownershipQuietSince = null;
+
       if (session.externalMicActive) {
         // Ownership observed before sleep is stale. Count it again from wake so
         // a release delivered with the first resumed poll cannot stop at once.
@@ -110,6 +116,7 @@ export function createMeetingAutoEndController({
         session.externalMicActiveSince = null;
       }
     }
+
     return nowMs;
   };
 
@@ -131,6 +138,7 @@ export function createMeetingAutoEndController({
       session.quietSince = nowMs;
       session.fastArmAt = null;
       session.ownershipQuietSince = null;
+
       return;
     }
 
@@ -139,19 +147,26 @@ export function createMeetingAutoEndController({
       // resuming — restarts the window rather than merely deferring the stop.
       if (session.externalMicActive || session.systemActive) {
         session.ownershipQuietSince = null;
+
         return;
       }
+
       if (session.ownershipQuietSince === null) session.ownershipQuietSince = nowMs;
+
       if (nowMs - session.ownershipQuietSince >= OWNERSHIP_CONFIRM_MS) stop("mic-released");
+
       return;
     }
 
     if (session.micActive || session.systemActive) return;
     const fastArmed = session.fastArmAt !== null;
+
     const quietStart = fastArmed
       ? Math.max(session.quietSince, session.fastArmAt ?? 0)
       : session.quietSince;
+
     const windowMs = fastArmed ? FAST_SILENCE_MS : SILENCE_WINDOW_MS;
+
     if (nowMs - quietStart >= windowMs) stop(fastArmed ? "process-exit" : "silence");
   };
 
@@ -190,6 +205,7 @@ export function createMeetingAutoEndController({
     externalMicActive,
   }: { sessionId: string } & AutoEndExternalMicState): void => {
     const nowMs = observeClock();
+
     if (!isLive(sessionId) || !session) return;
 
     if (!reliable) {
@@ -199,6 +215,7 @@ export function createMeetingAutoEndController({
       session.quietSince = nowMs;
       session.fastArmAt = null;
       evaluate();
+
       return;
     }
 
@@ -208,6 +225,7 @@ export function createMeetingAutoEndController({
       session.mode = "ownership";
       session.fastArmAt = null;
       evaluate();
+
       return;
     }
 
@@ -215,11 +233,13 @@ export function createMeetingAutoEndController({
       session.externalMicActive = false;
       const heldMs = nowMs - (session.externalMicActiveSince ?? nowMs);
       session.externalMicActiveSince = null;
+
       if (heldMs < OWNERSHIP_MIN_ACTIVE_MS) {
         session.mode = "fallback";
         session.quietSince = nowMs;
       }
     }
+
     evaluate();
   };
 
@@ -229,6 +249,7 @@ export function createMeetingAutoEndController({
     systemActive,
   }: { sessionId: string } & AutoEndAudioActivityInput): void => {
     const nowMs = observeClock();
+
     if (!isLive(sessionId) || !session) return;
     const micBecameActive = micActive && !session.micActive;
     const systemBecameActive = systemActive && !session.systemActive;
@@ -239,12 +260,14 @@ export function createMeetingAutoEndController({
     if (session.mode === "fallback" && (micBecameActive || systemBecameActive)) {
       session.fastArmAt = null;
     }
+
     if (!wasQuiet && !micActive && !systemActive) session.quietSince = nowMs;
     evaluate();
   };
 
   const handleMeetingProcessExit = ({ sessionId }: { sessionId: string }): void => {
     const nowMs = observeClock();
+
     if (!isLive(sessionId) || !session || session.mode !== "fallback") return;
     session.fastArmAt = nowMs;
     evaluate();
@@ -271,11 +294,17 @@ export function createMeetingAutoEndController({
 }
 
 module.exports = createMeetingAutoEndController;
+
 // Named re-attach: TS consumers (the detection engine) import the factory by
 // name, and without this the CJS module.exports reassignment above hides it.
 module.exports.createMeetingAutoEndController = createMeetingAutoEndController;
+
 module.exports.SILENCE_WINDOW_MS = SILENCE_WINDOW_MS;
+
 module.exports.FAST_SILENCE_MS = FAST_SILENCE_MS;
+
 module.exports.OWNERSHIP_MIN_ACTIVE_MS = OWNERSHIP_MIN_ACTIVE_MS;
+
 module.exports.OWNERSHIP_CONFIRM_MS = OWNERSHIP_CONFIRM_MS;
+
 module.exports.TICK_GAP_MS = TICK_GAP_MS;

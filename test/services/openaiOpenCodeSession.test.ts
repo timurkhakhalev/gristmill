@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/services/ai/inferenceProviders/openai.js");
@@ -15,7 +16,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // shared between tests would make them order-dependent: the first test's fallback
 // pins "chat" and the next one never attempts /responses. One base per test.
 const APEX_BASE = "https://opencode.ai/zen/go/v1";
+
 const SUBDOMAIN_BASE = "https://api.opencode.ai/zen/go/v1";
+
 const OTHER_BASE = "https://responses-only.example/v1";
 
 function makeCtx() {
@@ -49,24 +52,28 @@ function installFetchRecorder(t: import("node:test").TestContext, requests: Reco
         headers: { "Content-Type": "application/json" },
       });
     }
+
     if (endpoint.endsWith("/responses")) {
       return new Response(JSON.stringify({ error: { message: "not found" } }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
       });
     }
+
     if (endpoint.endsWith("/chat/completions")) {
       return new Response(
         JSON.stringify({ choices: [{ message: { content: "Cleaned" }, finish_reason: "stop" }] }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
+
     throw new Error(`Unexpected request: ${method} ${endpoint}`);
   };
 }
 
 async function callWithBase(baseUrl: string) {
   const { openaiProvider } = await load();
+
   return openaiProvider.call({
     text: "Clean this transcript please",
     model: "kimi-k2.5",
@@ -133,6 +140,7 @@ test("other custom endpoints do not get the OpenCode header", async (t: import("
     posts.map((r) => r.endpoint),
     [`${OTHER_BASE}/responses`, `${OTHER_BASE}/chat/completions`]
   );
+
   for (const r of posts) {
     assert.equal("x-opencode-session" in r.headers, false, `${r.endpoint} carried the header`);
   }

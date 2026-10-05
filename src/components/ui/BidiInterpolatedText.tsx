@@ -15,6 +15,7 @@ interface BidiInterpolatedTextProps {
  */
 export function BidiInterpolatedText({ text, value, dir = "ltr" }: BidiInterpolatedTextProps) {
   const parts = text.split(BIDI_VALUE_TOKEN);
+
   if (parts.length === 1) return <>{text}</>;
 
   return (

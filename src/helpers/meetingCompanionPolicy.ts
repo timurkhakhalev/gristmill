@@ -5,6 +5,7 @@
 // A vertical pill: app mark on top, live voice bars, mute button below. The window adds a
 // few px around the pill so its shadow isn't clipped.
 export const MEETING_COMPANION_SIZE: Size = { width: 42, height: 112 };
+
 const EDGE_MARGIN = 12;
 
 export interface Point {

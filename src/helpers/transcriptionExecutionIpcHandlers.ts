@@ -184,6 +184,7 @@ function serializeIpcError(fn: (event: unknown, payload: unknown) => Promise<unk
       return await fn(event, payload);
     } catch (error) {
       const err = error as { message?: string; code?: string; messageKey?: string };
+
       return { error: err?.message, code: err?.code, messageKey: err?.messageKey };
     }
   };
@@ -193,6 +194,7 @@ function toBuffer(value: BufferLike): Buffer {
   if (value instanceof ArrayBuffer) {
     return Buffer.from(new Uint8Array(value));
   }
+
   return Buffer.from(value.buffer as ArrayBuffer, value.byteOffset, value.byteLength);
 }
 
@@ -202,14 +204,17 @@ function toBlobPart(value: BufferLike): Uint8Array<ArrayBuffer> {
   if (value instanceof ArrayBuffer) {
     return new Uint8Array(value);
   }
+
   return new Uint8Array(value.buffer as ArrayBuffer, value.byteOffset, value.byteLength);
 }
 
 function parseProxyResult(raw: unknown): ProxyTranscriptionResult {
   const result = proxyTranscriptionResultSchema.safeParse(raw);
+
   if (!result.success) {
     throw new Error("Provider returned an unexpected response shape");
   }
+
   return result.data;
 }
 
@@ -237,15 +242,19 @@ export function registerTranscriptionExecutionHandlers(
         const parsedOptions = whisperOptionsSchema.safeParse(
           rawOptions === undefined ? {} : rawOptions
         );
+
         if (!parsedOptions.success) {
           return { success: false, error: "Invalid transcription options" };
         }
+
         // skipVad: dictionary-echo rescue retries decode VAD-free, since VAD
         // stripping the speech is what turned the transcript into prompt echo.
         const { skipVad, ...requestOptions } = parsedOptions.data;
+
         const vadOptions = skipVad
           ? { vadEnabled: false }
           : deps.resolveWhisperVadOptions("noteRecording");
+
         const result = await deps.whisperManager.transcribeLocalWhisper(audioBlob, {
           ...requestOptions,
           ...vadOptions,
@@ -259,9 +268,11 @@ export function registerTranscriptionExecutionHandlers(
         });
 
         const parsed = transcriptionResponseSchema.safeParse(result);
+
         if (!parsed.success) {
           throw new Error("Whisper returned an unexpected result shape");
         }
+
         return parsed.data;
       } catch (error) {
         logger.error("Local Whisper transcription error", error);
@@ -275,6 +286,7 @@ export function registerTranscriptionExecutionHandlers(
             message: "FFmpeg is missing. Please reinstall the app or install FFmpeg manually.",
           };
         }
+
         if (
           errorMessage.includes("FFmpeg conversion failed") ||
           errorMessage.includes("FFmpeg process error")
@@ -285,6 +297,7 @@ export function registerTranscriptionExecutionHandlers(
             message: "Audio conversion failed. The recording may be corrupted.",
           };
         }
+
         if (
           errorMessage.includes("whisper.cpp not found") ||
           errorMessage.includes("whisper-cpp")
@@ -295,6 +308,7 @@ export function registerTranscriptionExecutionHandlers(
             message: "Whisper binary is missing. Please reinstall the app.",
           };
         }
+
         if (
           errorMessage.includes("Audio buffer is empty") ||
           errorMessage.includes("Audio data too small")
@@ -305,6 +319,7 @@ export function registerTranscriptionExecutionHandlers(
             message: "No audio detected",
           };
         }
+
         if (errorMessage.includes("model") && errorMessage.includes("not downloaded")) {
           return {
             success: false,
@@ -334,9 +349,11 @@ export function registerTranscriptionExecutionHandlers(
         const parsedOptions = parakeetOptionsSchema.safeParse(
           rawOptions === undefined ? {} : rawOptions
         );
+
         if (!parsedOptions.success) {
           return { success: false, error: "Invalid transcription options" };
         }
+
         const result = await deps.parakeetManager.transcribeLocalParakeet(
           audioBlob,
           parsedOptions.data
@@ -350,9 +367,11 @@ export function registerTranscriptionExecutionHandlers(
         });
 
         const parsed = transcriptionResponseSchema.safeParse(result);
+
         if (!parsed.success) {
           throw new Error("Parakeet returned an unexpected result shape");
         }
+
         return parsed.data;
       } catch (error) {
         logger.error("Local Parakeet transcription error", error);
@@ -365,6 +384,7 @@ export function registerTranscriptionExecutionHandlers(
             message: "Parakeet binary is missing. Please reinstall the app.",
           };
         }
+
         if (errorMessage.includes("model") && errorMessage.includes("not downloaded")) {
           return {
             success: false,
@@ -372,6 +392,7 @@ export function registerTranscriptionExecutionHandlers(
             message: errorMessage,
           };
         }
+
         if ((error as { code?: string })?.code === PARAKEET_UNSUPPORTED_OS_CODE) {
           return {
             success: false,
@@ -391,11 +412,14 @@ export function registerTranscriptionExecutionHandlers(
     transcriptionExecutionChannels.proxyXaiTranscription,
     serializeIpcError(async (_event, payload) => {
       const parsed = proxyXaiArgsSchema.safeParse(payload);
+
       if (!parsed.success) {
         throw new Error("Invalid transcription request");
       }
+
       const { audioBuffer, language, keyterms } = parsed.data;
       const apiKey = deps.environmentManager.getXaiKey();
+
       if (!apiKey) {
         throw new Error("xAI API key not configured");
       }
@@ -403,10 +427,12 @@ export function registerTranscriptionExecutionHandlers(
       const formData = new FormData();
       const audioBlob = new Blob([toBlobPart(audioBuffer)], { type: "audio/webm" });
       formData.append("file", audioBlob, "audio.webm");
+
       if (language && language !== "auto" && XAI_STT_LANGUAGES.has(language)) {
         formData.append("language", language);
         formData.append("format", "true");
       }
+
       if (keyterms && keyterms.length > 0) {
         for (const term of keyterms) {
           formData.append("keyterm", term);
@@ -432,11 +458,14 @@ export function registerTranscriptionExecutionHandlers(
     transcriptionExecutionChannels.proxyMistralTranscription,
     serializeIpcError(async (_event, payload) => {
       const parsed = proxyMistralArgsSchema.safeParse(payload);
+
       if (!parsed.success) {
         throw new Error("Invalid transcription request");
       }
+
       const { audioBuffer, model, language, contextBias } = parsed.data;
       const apiKey = deps.environmentManager.getMistralKey();
+
       if (!apiKey) {
         throw new Error("Mistral API key not configured");
       }
@@ -445,9 +474,11 @@ export function registerTranscriptionExecutionHandlers(
       const audioBlob = new Blob([toBlobPart(audioBuffer)], { type: "audio/webm" });
       formData.append("file", audioBlob, "audio.webm");
       formData.append("model", model || "voxtral-mini-latest");
+
       if (language && language !== "auto") {
         formData.append("language", language);
       }
+
       if (contextBias && contextBias.length > 0) {
         for (const token of contextBias) {
           formData.append("context_bias", token);
@@ -475,12 +506,15 @@ export function registerTranscriptionExecutionHandlers(
     transcriptionExecutionChannels.proxyCortiTranscription,
     serializeIpcError(async (_event, payload) => {
       const parsed = proxyCortiArgsSchema.safeParse(payload);
+
       if (!parsed.success) {
         throw new Error("Invalid transcription request");
       }
+
       const { audioBuffer, language, environment, tenant } = parsed.data;
       const clientId = deps.environmentManager.getCortiClientId();
       const clientSecret = deps.environmentManager.getCortiClientSecret();
+
       if (!clientId || !clientSecret) {
         throw new Error("Corti credentials not configured");
       }
@@ -493,6 +527,7 @@ export function registerTranscriptionExecutionHandlers(
         audioBuffer: toBuffer(audioBuffer),
         language,
       });
+
       return parseProxyResult(result);
     })
   );
@@ -502,10 +537,13 @@ export function registerTranscriptionExecutionHandlers(
     transcriptionExecutionChannels.proxyTinfoilTranscription,
     serializeIpcError(async (_event, payload) => {
       const parsed = proxyTinfoilArgsSchema.safeParse(payload);
+
       if (!parsed.success) {
         throw new Error("Invalid transcription request");
       }
+
       const { audioBuffer, language, prompt } = parsed.data;
+
       const result = await transcribeWithTinfoil({
         audioBuffer: toBuffer(audioBuffer),
         fileName: "audio.webm",
@@ -514,6 +552,7 @@ export function registerTranscriptionExecutionHandlers(
         prompt,
         apiKey: deps.environmentManager.getTinfoilKey(),
       });
+
       return parseProxyResult(result);
     })
   );
@@ -524,10 +563,13 @@ export function registerTranscriptionExecutionHandlers(
     transcriptionExecutionChannels.proxyGeminiTranscription,
     serializeIpcError(async (_event, payload) => {
       const parsed = proxyGeminiArgsSchema.safeParse(payload);
+
       if (!parsed.success) {
         throw new Error("Invalid transcription request");
       }
+
       const { audioBuffer, model, language, keyterms } = parsed.data;
+
       const result = await transcribeWithGemini({
         audioBuffer: toBuffer(audioBuffer),
         model: model ?? null,
@@ -536,6 +578,7 @@ export function registerTranscriptionExecutionHandlers(
         keyterms,
         apiKey: deps.environmentManager.getGeminiKey(),
       });
+
       return parseProxyResult(result);
     })
   );
@@ -544,14 +587,18 @@ export function registerTranscriptionExecutionHandlers(
 
   ipcMain.handle(transcriptionExecutionChannels.saveTempAudio, async (_event, buffer: unknown) => {
     const parsed = binaryLikeSchema.safeParse(buffer);
+
     if (!parsed.success) {
       return { success: false as const, error: "Invalid audio data" };
     }
+
     const tempPath = path.join(
       os.tmpdir(),
       `ow-voice-draft-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.webm`
     );
+
     fs.writeFileSync(tempPath, toBuffer(parsed.data));
+
     return { success: true as const, path: tempPath };
   });
 
@@ -561,17 +608,21 @@ export function registerTranscriptionExecutionHandlers(
       if (typeof tempPath !== "string") {
         return { success: false, error: "Invalid temp path" };
       }
+
       // Only files this handler family created are deletable.
       const resolved = path.resolve(tempPath);
       const validPrefix = path.join(os.tmpdir(), "ow-voice-draft-");
+
       if (!resolved.startsWith(validPrefix)) {
         return { success: false, error: "Invalid temp path" };
       }
+
       try {
         fs.unlinkSync(resolved);
       } catch {
         // Already gone — fine.
       }
+
       return { success: true };
     }
   );
@@ -582,20 +633,26 @@ export function registerTranscriptionExecutionHandlers(
     transcriptionExecutionChannels.retryTranscription,
     async (_event, id: unknown, settings: unknown): Promise<RetryTranscriptionResult> => {
       const parsedArgs = retryTranscriptionArgsSchema.safeParse({ id, settings });
+
       if (!parsedArgs.success) {
         return { success: false, error: "Invalid retry request" };
       }
+
       const retryId = parsedArgs.data.id;
       const retrySettings = parsedArgs.data.settings;
       const buffer = deps.audioStorage.getAudioBuffer(retryId);
+
       if (!buffer) return { success: false, error: "Audio file not found" };
+
       try {
         let result: { text: string; source?: string; model?: string } | undefined;
         const preferredLanguage = retrySettings?.preferredLanguage;
+
         const language =
           preferredLanguage && preferredLanguage !== "auto"
             ? preferredLanguage.split("-")[0]
             : undefined;
+
         // Renderer pre-flight owns policy; retry re-routes stored audio through
         // whatever is selected NOW.
         const route = resolveTranscriptionRoute({
@@ -607,7 +664,9 @@ export function registerTranscriptionExecutionHandlers(
         // A misconfigured direct route fails closed.
         if (route.transport === "error") {
           const err: Error & { code?: string; messageKey?: string } = new Error(route.message);
+
           if (route.code) err.code = route.code;
+
           if (route.messageKey) err.messageKey = route.messageKey;
           throw err;
         }
@@ -621,15 +680,18 @@ export function registerTranscriptionExecutionHandlers(
             language: route.language,
             apiKey: deps.environmentManager.getTinfoilKey(),
           });
+
           if (text) result = { text, source: "tinfoil", model };
         } else if (route.transport === "proxied" && route.provider === "corti") {
           // Corti uses OAuth + an interaction-based REST flow, so it can't use
           // the generic fetch below.
           const clientId = deps.environmentManager.getCortiClientId();
           const clientSecret = deps.environmentManager.getCortiClientSecret();
+
           if (!clientId || !clientSecret) {
             throw new Error("Corti credentials not configured. Add them in Settings.");
           }
+
           const { text } = await deps.transcribeWithCorti({
             environment: route.cortiEnvironment,
             tenant: route.cortiTenant,
@@ -638,15 +700,19 @@ export function registerTranscriptionExecutionHandlers(
             audioBuffer: buffer,
             language: route.language,
           });
+
           if (text) result = { text, source: "corti", model: route.model ?? undefined };
         } else if (route.transport === "proxied" && route.provider === "gemini") {
           if (route.sizeCapBytes && buffer.byteLength > route.sizeCapBytes) {
             throw new Error(byokSizeCapError(route.sizeCapBytes));
           }
+
           const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-gemini-retry-"));
+
           try {
             const filePath = path.join(tempDir, "recording.webm");
             fs.writeFileSync(filePath, buffer);
+
             const transcription = await deps.transcribeGeminiFile({
               filePath,
               fileSizeBytes: buffer.byteLength,
@@ -655,13 +721,19 @@ export function registerTranscriptionExecutionHandlers(
               apiKey: deps.environmentManager.getGeminiKey(),
               diarize: false,
             });
+
             if (!transcription.success) {
               throw Object.assign(new Error(transcription.error || "Gemini transcription failed"), {
                 code: transcription.code,
               });
             }
+
             if (transcription.text) {
-              result = { text: transcription.text, source: "gemini", model: route.model ?? undefined };
+              result = {
+                text: transcription.text,
+                source: "gemini",
+                model: route.model ?? undefined,
+              };
             }
           } finally {
             fs.rmSync(tempDir, { recursive: true, force: true });
@@ -670,8 +742,11 @@ export function registerTranscriptionExecutionHandlers(
           if (buffer.byteLength > route.sizeCapBytes) {
             throw new Error(byokSizeCapError(route.sizeCapBytes));
           }
+
           const apiKey = deps.environmentManager.getDeepgramKey();
+
           if (!apiKey) throw new Error("Deepgram API key not configured. Add it in Settings.");
+
           const response = await deps.proxyFetch(
             deepgramFileUrl(route.model || "nova-3", route.language, false),
             {
@@ -680,25 +755,33 @@ export function registerTranscriptionExecutionHandlers(
               body: buffer,
             }
           );
+
           if (!response.ok) {
             throw new Error(`Deepgram API Error: ${response.status} ${await response.text()}`);
           }
+
           const parsed = parseDeepgramFileResponse(await response.json(), false);
+
           if (!parsed.success) throw new Error(parsed.error);
+
           if (parsed.text)
             result = { text: parsed.text, source: "deepgram", model: route.model ?? undefined };
         } else if (route.transport === "proxied" && route.provider === "elevenlabs") {
           if (buffer.byteLength > route.sizeCapBytes) {
             throw new Error(byokSizeCapError(route.sizeCapBytes));
           }
+
           const apiKey = deps.environmentManager.getElevenLabsKey();
+
           if (!apiKey) throw new Error("ElevenLabs API key not configured. Add it in Settings.");
+
           const { body, boundary } = buildMultipartBody(
             buffer,
             "recording.webm",
             "audio/webm",
             elevenLabsFields(route.model || "scribe_v2", route.language, false)
           );
+
           const response = await deps.proxyFetch(ELEVENLABS_TRANSCRIPTION_URL, {
             method: "POST",
             headers: {
@@ -707,11 +790,15 @@ export function registerTranscriptionExecutionHandlers(
             },
             body,
           });
+
           if (!response.ok) {
             throw new Error(`ElevenLabs API Error: ${response.status} ${await response.text()}`);
           }
+
           const parsed = parseElevenLabsFileResponse(await response.json(), false);
+
           if (!parsed.success) throw new Error(parsed.error);
+
           if (parsed.text)
             result = { text: parsed.text, source: "elevenlabs", model: route.model ?? undefined };
         } else {
@@ -727,13 +814,16 @@ export function registerTranscriptionExecutionHandlers(
             language?: string;
             auth?: { scheme?: string; keyRef?: string | null };
           };
+
           const provider = loose.provider;
+
           const endpoint =
             provider === "mistral"
               ? MISTRAL_TRANSCRIPTION_URL
               : provider === "xai"
                 ? XAI_STT_URL
                 : loose.endpoint;
+
           const apiKey =
             provider === "mistral"
               ? deps.environmentManager.getMistralKey()
@@ -744,6 +834,7 @@ export function registerTranscriptionExecutionHandlers(
                   : loose.auth?.keyRef === "groq"
                     ? deps.environmentManager.getGroqKey()
                     : deps.environmentManager.getOpenAIKey();
+
           if (!apiKey && provider !== "custom") {
             throw new Error(`${provider} API key not configured`);
           }
@@ -754,6 +845,7 @@ export function registerTranscriptionExecutionHandlers(
             new Blob([toBlobPart(buffer)], { type: "audio/webm" }),
             "audio.webm"
           );
+
           if (provider === "xai") {
             // xAI STT does not accept a model field; the route pre-filters language
             if (loose.language) {
@@ -762,9 +854,12 @@ export function registerTranscriptionExecutionHandlers(
             }
           } else {
             formData.append("model", (loose.model ?? undefined) as string);
+
             if (loose.language) formData.append("language", loose.language);
           }
+
           const headers: Record<string, string> = {};
+
           if (provider === "mistral") {
             headers["x-api-key"] = apiKey;
           } else if (apiKey) {
@@ -780,11 +875,14 @@ export function registerTranscriptionExecutionHandlers(
             headers,
             body: formData,
           });
+
           if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`${provider} API Error: ${response.status} ${errorText}`);
           }
+
           const data = (await response.json()) as { text?: string };
+
           if (data?.text) {
             result = { text: data.text, source: provider, model: loose.model ?? undefined };
           }
@@ -806,12 +904,14 @@ export function registerTranscriptionExecutionHandlers(
           model: modelName,
         });
         const updated = deps.database.getTranscriptionById(retryId);
+
         if (updated) {
           setImmediate(() => {
             deps.broadcast("transcription-updated", updated);
             // A row that just reached "completed" is newly eligible.
           });
         }
+
         return { success: true, transcription: updated };
       } catch (error) {
         const err = error as Error & { code?: string; messageKey?: string };
@@ -820,9 +920,11 @@ export function registerTranscriptionExecutionHandlers(
           { id: retryId, error: err?.message, code: err?.code },
           "audio-storage"
         );
+
         if (err?.code) {
           return { success: false, error: err?.message, code: err.code, ...err };
         }
+
         return { success: false, error: err?.message };
       }
     }
@@ -834,14 +936,18 @@ export function registerTranscriptionExecutionHandlers(
     transcriptionExecutionChannels.testProviderConnection,
     async (_event, config: unknown) => {
       const parsed = providerConnectionConfigSchema.safeParse(config);
+
       if (!parsed.success) {
         return { success: false, error: "Invalid connection test request" };
       }
+
       const cfg = parsed.data;
+
       if (cfg.provider === "corti" && cfg.scope === "transcription") {
         try {
           const clientId = String(cfg.clientId || "").trim();
           const clientSecret = String(cfg.clientSecret || "").trim();
+
           if (clientId && clientSecret) {
             await getCortiToken({
               environment: cfg.environment || "us",
@@ -855,6 +961,7 @@ export function registerTranscriptionExecutionHandlers(
               tenant: cfg.tenant,
             });
           }
+
           return { success: true };
         } catch (error) {
           // errorCode is the machine-readable field the renderer maps to i18n;
@@ -870,6 +977,7 @@ export function registerTranscriptionExecutionHandlers(
               error: "The connection test timed out.",
             };
           }
+
           if (
             !/^(Corti authentication failed|Invalid Corti)/.test((error as Error)?.message || "")
           ) {
@@ -879,6 +987,7 @@ export function registerTranscriptionExecutionHandlers(
               error: "The provider could not be reached.",
             };
           }
+
           return {
             success: false,
             errorCode: "credentialsRejected",
@@ -886,6 +995,7 @@ export function registerTranscriptionExecutionHandlers(
           };
         }
       }
+
       return testProviderConnection(cfg);
     }
   );
@@ -894,11 +1004,14 @@ export function registerTranscriptionExecutionHandlers(
     transcriptionExecutionChannels.testEnterpriseConnection,
     async (_event, provider: unknown, config: unknown): Promise<EnterpriseConnectionResult> => {
       const parsed = enterpriseConnectionArgsSchema.safeParse({ provider, config });
+
       if (!parsed.success) {
         return { success: false, error: "Invalid connection test request" };
       }
+
       const { provider: enterpriseProvider, config: enterpriseConfig } = parsed.data;
       let runtime: ReturnType<typeof resolveEnterpriseRuntime> | undefined;
+
       try {
         const resolveModel = (abortSignal?: AbortSignal) =>
           runAbortableOperation(async () => {
@@ -909,6 +1022,7 @@ export function registerTranscriptionExecutionHandlers(
             );
             abortSignal?.throwIfAborted();
             validateEnterpriseEndpoint(runtime.enterprise.azureEndpoint ?? null);
+
             return deps.getEnterpriseAIModel(
               runtime.provider,
               runtime.model,
@@ -921,6 +1035,7 @@ export function registerTranscriptionExecutionHandlers(
           await runBedrockRequest(async () => {
             const abortSignal = AbortSignal.timeout(enterpriseConfig?.timeoutMs || 30_000);
             const model = await resolveModel(abortSignal);
+
             return deps.generateText({
               model,
               prompt: "Say hello in one word.",
@@ -944,7 +1059,9 @@ export function registerTranscriptionExecutionHandlers(
           runtime?.provider === "bedrock" && runtime.enterprise.bedrockRegion
             ? { ...(enterpriseConfig || {}), bedrockRegion: runtime.enterprise.bedrockRegion }
             : enterpriseConfig;
+
         const mapped = mapEnterpriseError(enterpriseProvider, err, runtimeConfig ?? {});
+
         const result: EnterpriseConnectionResult = {
           success: false,
           error: mapped.message,
@@ -956,6 +1073,7 @@ export function registerTranscriptionExecutionHandlers(
           retryable: mapped.retryable,
           technicalDetails: mapped.technicalDetails,
         };
+
         return result;
       }
     }
@@ -968,18 +1086,22 @@ export function registerTranscriptionExecutionHandlers(
       provider: "bedrock",
       config: config ?? {},
     });
+
     const bedrockConfig = parsed.success ? (parsed.data.config ?? {}) : {};
+
     try {
       const runtime = resolveEnterpriseRuntime(
         "bedrock",
         bedrockConfig.model || "test",
         bedrockConfig
       );
+
       const { BedrockClient, ListFoundationModelsCommand, paginateListInferenceProfiles } =
         await deps.bedrockSdk();
 
       const region = runtime.enterprise.bedrockRegion || "us-east-1";
       let credentials: unknown;
+
       if (runtime.enterprise.bedrockProfile) {
         credentials = deps.bedrockProfileCredentials(runtime.enterprise.bedrockProfile);
       } else if (
@@ -992,19 +1114,23 @@ export function registerTranscriptionExecutionHandlers(
           sessionToken: runtime.enterprise.bedrockSessionToken || undefined,
         };
       }
+
       const client = new BedrockClient({ region, ...(credentials ? { credentials } : {}) });
 
       const [foundationModels, profileSummaries] = await Promise.all([
         client.send(new ListFoundationModelsCommand({ byOutputModality: "TEXT" })),
         (async () => {
           const summaries: unknown[] = [];
+
           const paginator = paginateListInferenceProfiles(
             { client },
             { typeEquals: "SYSTEM_DEFINED" }
           );
+
           for await (const page of paginator) {
             summaries.push(...(page.inferenceProfileSummaries || []));
           }
+
           return summaries;
         })(),
       ]);
@@ -1019,6 +1145,7 @@ export function registerTranscriptionExecutionHandlers(
     } catch (err) {
       logger.error("Bedrock model listing error:", err);
       const mapped = mapEnterpriseError("bedrock", err, bedrockConfig);
+
       return { success: false as const, error: mapped.message };
     }
   });

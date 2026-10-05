@@ -1,12 +1,16 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { createSerialQueue }: typeof import("../../src/utils/serialQueue.ts") = require("../../src/utils/serialQueue.ts");
+const {
+  createSerialQueue,
+}: typeof import("../../src/utils/serialQueue.ts") = require("../../src/utils/serialQueue.ts");
 
 test("runs tasks one at a time in enqueue order", async () => {
   const run = createSerialQueue();
   const events: string[] = [];
   let releaseFirst!: () => void;
+
   const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
@@ -16,6 +20,7 @@ test("runs tasks one at a time in enqueue order", async () => {
     await firstGate;
     events.push("end1");
   });
+
   const second = run(async () => {
     events.push("start2");
   });
@@ -41,6 +46,7 @@ test("a rejected task does not stall the queue", async () => {
   const failing = run(async () => {
     throw new Error("boom");
   });
+
   const following = run(async () => {
     events.push("ran");
   });

@@ -16,14 +16,17 @@ const snippetListSchema = z.array(snippetSchema);
 
 function parseOrDrop<T>(channel: string, payload: unknown, schema: ZodType<T>): T | null {
   const result = schema.safeParse(payload);
+
   if (!result.success) {
     console.error(
       `[vocabularyEvents] dropped malformed ${channel} payload: ${result.error.issues
         .map((issue) => issue.message)
         .join("; ")}`
     );
+
     return null;
   }
+
   return result.data;
 }
 
@@ -33,14 +36,12 @@ export function sendDictionaryUpdated(words: unknown): void {
     words,
     dictionaryWordsSchema
   );
+
   if (valid) broadcastToWindows(vocabularyEventChannels.dictionaryUpdated, valid);
 }
 
 export function sendSnippetsUpdated(snippets: unknown): void {
-  const valid = parseOrDrop(
-    vocabularyEventChannels.snippetsUpdated,
-    snippets,
-    snippetListSchema
-  );
+  const valid = parseOrDrop(vocabularyEventChannels.snippetsUpdated, snippets, snippetListSchema);
+
   if (valid) broadcastToWindows(vocabularyEventChannels.snippetsUpdated, valid);
 }

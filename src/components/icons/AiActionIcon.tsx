@@ -24,5 +24,6 @@ export function AiActionIcon({
   className?: string;
 }) {
   const Resolved = KEY_ICON[icon ?? ""] ?? WandSparkles;
+
   return <Resolved size={size} className={className} />;
 }

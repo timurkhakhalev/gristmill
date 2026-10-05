@@ -47,10 +47,17 @@ const LEGACY_FOCUS: Record<string, string> = {
 };
 
 /** "models#summary" opens a section focused on one of its anchors. */
-function parseSection(section: string | undefined): { section: SettingsSectionType; focus?: string } {
+function parseSection(section: string | undefined): {
+  section: SettingsSectionType;
+  focus?: string;
+} {
   if (!section) return { section: "general" };
   const [id, anchor] = section.split("#");
-  return { section: (SECTION_ALIASES[id] ?? id) as SettingsSectionType, focus: anchor || LEGACY_FOCUS[id] };
+
+  return {
+    section: (SECTION_ALIASES[id] ?? id) as SettingsSectionType,
+    focus: anchor || LEGACY_FOCUS[id],
+  };
 }
 
 interface SettingsModalProps {
@@ -61,6 +68,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ open, onOpenChange, initialSection }: SettingsModalProps) {
   const { t } = useTranslation();
+
   const sidebarItems: SidebarItem<SettingsSectionType>[] = useMemo(() => {
     const item = (
       id: SettingsSectionType,
@@ -73,6 +81,7 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
       description: t(`settingsModal.sections.${id}.description`),
       group: t(`settingsModal.groups.${group}`),
     });
+
     const items = [
       item("profile", User, "general"),
       item("general", Sliders, "general"),
@@ -86,11 +95,18 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
       item("privacyData", Shield, "system"),
       item("advanced", Terminal, "system"),
     ];
+
     return items;
   }, [t]);
 
-  const [activeSection, setActiveSection] = React.useState<SettingsSectionType>(() => parseSection(initialSection).section);
-  const [initialSubTab, setInitialSubTab] = useState<string | undefined>(() => parseSection(initialSection).focus);
+  const [activeSection, setActiveSection] = React.useState<SettingsSectionType>(
+    () => parseSection(initialSection).section
+  );
+
+  const [initialSubTab, setInitialSubTab] = useState<string | undefined>(
+    () => parseSection(initialSection).focus
+  );
+
   const [prevOpen, setPrevOpen] = useState(open);
 
   if (open && !prevOpen && initialSection) {
@@ -100,6 +116,7 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
     setInitialSubTab(parsed.focus);
   } else if (open !== prevOpen) {
     setPrevOpen(open);
+
     if (!open) setInitialSubTab(undefined);
   }
 

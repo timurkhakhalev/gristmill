@@ -36,23 +36,29 @@ const failure = (displayText: string): ToolResult => ({
 
 function parseRequest(args: Record<string, unknown>): CalendarAvailabilityRequestWire | null {
   if (!args || typeof args !== "object" || Array.isArray(args)) return null;
+
   if (Object.keys(args).some((key) => !ALLOWED_ARGUMENTS.has(key))) return null;
 
   const start = typeof args.start === "string" ? args.start.trim() : "";
   const end = typeof args.end === "string" ? args.end.trim() : "";
+
   if (!isExplicitOffsetRfc3339(start) || !isExplicitOffsetRfc3339(end)) return null;
+
   if (Date.parse(start) >= Date.parse(end)) return null;
 
   const request: CalendarAvailabilityRequestWire = { start, end };
+
   for (const [key, bounds] of [
     ["minimumSlotMinutes", MINIMUM_SLOT_MINUTES_BOUNDS],
     ["bufferMinutes", BUFFER_MINUTES_BOUNDS],
     ["maxResults", MAX_RESULTS_BOUNDS],
   ] as const) {
     const value = args[key];
+
     // Models often send explicit null for optional arguments; the service's
     // ?? defaults treat null as absent, so accept it here too.
     if (value === undefined || value === null) continue;
+
     if (
       !Number.isSafeInteger(value) ||
       (value as number) < bounds.minimum ||
@@ -60,6 +66,7 @@ function parseRequest(args: Record<string, unknown>): CalendarAvailabilityReques
     ) {
       return null;
     }
+
     request[key] = value as number;
   }
 
@@ -69,10 +76,13 @@ function parseRequest(args: Record<string, unknown>): CalendarAvailabilityReques
 function toInterval(value: unknown): AvailabilityInterval | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const { start, end } = value as Record<string, unknown>;
+
   if (typeof start !== "string" || typeof end !== "string") return null;
   const startMs = Date.parse(start);
   const endMs = Date.parse(end);
+
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs >= endMs) return null;
+
   return { start, end };
 }
 
@@ -81,10 +91,12 @@ function projectAvailability(value: unknown): AvailabilityResult | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const payload = value as Record<string, unknown>;
   const range = toInterval(payload.range);
+
   const lookaheadDays =
     payload.coverage && typeof payload.coverage === "object"
       ? (payload.coverage as Record<string, unknown>).lookaheadDays
       : null;
+
   if (
     !range ||
     typeof payload.timezone !== "string" ||
@@ -99,12 +111,15 @@ function projectAvailability(value: unknown): AvailabilityResult | null {
   }
 
   const availableSlots: AvailabilitySlot[] = [];
+
   for (const item of payload.availableSlots) {
     const interval = toInterval(item);
     const durationMinutes = (item as Record<string, unknown> | null)?.durationMinutes;
+
     if (!interval || !Number.isSafeInteger(durationMinutes) || (durationMinutes as number) < 1) {
       return null;
     }
+
     availableSlots.push({ ...interval, durationMinutes: durationMinutes as number });
   }
 
@@ -128,6 +143,7 @@ function localizeInstant(
       .filter(({ type }) => type !== "literal")
       .map(({ type, value }) => [type, value])
   );
+
   return {
     date: `${parts.year}-${parts.month}-${parts.day}`,
     weekday: parts.weekday,
@@ -214,6 +230,7 @@ export const calendarAvailabilityTool: ToolDefinition = {
 
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const request = parseRequest(args);
+
     if (!request) {
       return failure(
         "Invalid calendar availability request. Use supported options and timezone-aware start and end times."
@@ -221,19 +238,24 @@ export const calendarAvailabilityTool: ToolDefinition = {
     }
 
     const getAvailability = window.electronAPI.calendarGetAvailability;
+
     if (!getAvailability) return failure("Calendar availability is unavailable");
 
     try {
       const response = await getAvailability(request);
+
       if (!response?.success) {
         const error = response && response.success === false ? response.error : "";
+
         return failure(RELAYED_ERRORS.has(error) ? error : "Failed to fetch calendar availability");
       }
 
       const availability = projectAvailability(response.availability);
+
       if (!availability) return failure("Failed to fetch calendar availability");
 
       const count = availability.availableSlots.length;
+
       const displayText =
         count === 0
           ? "No available time slots meet the requested minimum duration"

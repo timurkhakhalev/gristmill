@@ -26,6 +26,7 @@ export function isBuiltInMicrophone(label: string): boolean {
   // inside "microphone" itself.
   if (lowerLabel.includes("microphone")) {
     const labelWithoutMicrophone = lowerLabel.replace(/microphone/g, " ");
+
     const externalIndicators = [
       "bluetooth",
       "airpods",
@@ -47,6 +48,7 @@ export function isBuiltInMicrophone(label: string): boolean {
       "phone",
       "continuity",
     ];
+
     return !externalIndicators.some((indicator) => labelWithoutMicrophone.includes(indicator));
   }
 

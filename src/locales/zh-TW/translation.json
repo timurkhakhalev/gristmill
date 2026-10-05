@@ -1481,6 +1481,7 @@
       }
     },
     "editor": {
+      "saveFailed": "筆記未儲存。您的編輯仍可用。",
       "untitled": "未命名",
       "noteTitle": "筆記標題",
       "stop": "停止",

@@ -1557,6 +1557,7 @@
       }
     },
     "editor": {
+      "saveFailed": "Note was not saved. Your edits are still available.",
       "untitled": "Untitled",
       "noteTitle": "Note title",
       "stop": "Stop",

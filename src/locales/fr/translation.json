@@ -1557,6 +1557,7 @@
       }
     },
     "editor": {
+      "saveFailed": "La note n’a pas été enregistrée. Vos modifications restent disponibles.",
       "untitled": "Sans titre",
       "noteTitle": "Titre de la note",
       "stop": "Arrêter",

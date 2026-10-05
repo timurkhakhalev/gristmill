@@ -4524,7 +4524,7 @@ export class DatabaseManager {
     conversationId: number,
     role: AgentMessageRow["role"],
     content: string,
-    metadata: unknown
+    metadata: { toolCalls?: Array<Record<string, unknown>> } | null | undefined
   ): AgentMessageRow | null {
     if (!this.getAgentConversation(conversationId)) return null;
 

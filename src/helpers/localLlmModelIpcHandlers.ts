@@ -86,7 +86,9 @@ function failure(error: unknown): LlmActionResult {
     success: false,
     error: err?.message,
     code: err?.code,
-    details: err?.details,
+    // The renderer reads neither details nor absolute paths; only a readable
+    // summary crosses the wire.
+    details: err?.details === undefined ? undefined : String(err.details),
   };
 }
 
@@ -232,7 +234,9 @@ export function registerLocalLlmModelHandlers(
         available: false,
         error: err?.message,
         code: err?.code,
-        details: err?.details,
+        // The renderer reads neither details nor absolute paths; only a
+        // readable summary crosses the wire.
+        details: err?.details === undefined ? undefined : String(err.details),
       };
     }
   });

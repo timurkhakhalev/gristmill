@@ -17,9 +17,9 @@ import {
 } from "../contracts/noteFiles.js";
 import { z, type ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-}
+const zString = z.string();
+
+import type { IpcRendererLike } from "./ipcTransport.js";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -36,6 +36,9 @@ const showResultSchema = z.object({ success: z.boolean() });
 // The return type is the shared NoteFilesApi, so any drift between this
 // implementation and the contract fails compilation.
 export function createNoteFilesBridge(ipcRenderer: IpcRendererLike): NoteFilesApi {
+  const invokeParse = <T>(schema: ZodType<T>, channel: string, ...args: unknown[]): Promise<T> =>
+    ipcRenderer.invoke(channel, ...args).then((raw) => parseResult(schema, raw, channel));
+
   return {
     noteFilesSetEnabled: (
       enabled: boolean,
@@ -59,15 +62,7 @@ export function createNoteFilesBridge(ipcRenderer: IpcRendererLike): NoteFilesAp
         .then((raw) => parseResult(commandResultSchema, raw, noteFilesChannels.noteFilesRebuild)),
 
     noteFilesGetDefaultPath: (): Promise<string> =>
-      ipcRenderer.invoke(noteFilesChannels.noteFilesGetDefaultPath).then((raw) => {
-        if (typeof raw !== "string") {
-          throw new Error(
-            `Unexpected response shape from ${noteFilesChannels.noteFilesGetDefaultPath}`
-          );
-        }
-
-        return raw;
-      }),
+      invokeParse(zString, noteFilesChannels.noteFilesGetDefaultPath),
 
     noteFilesPickFolder: (): Promise<PickFolderResult> =>
       ipcRenderer

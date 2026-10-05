@@ -9,7 +9,8 @@ import {
   activationModeSchema,
   hotkeyModeInfoSchema,
   hotkeyListeningResultSchema,
-  onboardingWindowModeSchema,
+  hotkeyRegistrationResultSchema,
+  dragOperationResultSchema,
   openExternalResultSchema,
   saveKeyResultSchema,
   simpleSuccessSchema,
@@ -26,13 +27,13 @@ import {
   type SaveKeyWireResult,
 } from "../contracts/desktopSettings.js";
 import { BYOK_API_KEYS } from "../config/secretKeys.js";
+
+import type { IpcRendererLike } from "./ipcTransport.js";
 import { z } from "zod";
 import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-}
-
+// `raw`/`value` are the Electron transport payloads; the schema parse below
+// is the boundary that turns them into contract types.
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
 
@@ -49,32 +50,23 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
   const invokeParse = <T>(schema: ZodType<T>, channel: string, ...args: unknown[]): Promise<T> =>
     ipcRenderer.invoke(channel, ...args).then((raw) => parseResult(schema, raw, channel));
 
-  const saveKey = (channel: string, value: unknown): Promise<SaveKeyWireResult> =>
+  const saveKey = (channel: string, value: string): Promise<SaveKeyWireResult> =>
     invokeParse(saveKeyResultSchema, channel, value);
 
-  const getKey = (channel: string) =>
-    ipcRenderer.invoke(channel).then((raw) => {
-      if (typeof raw !== "string") {
-        throw new Error(`Unexpected response shape from ${channel}`);
-      }
-
-      return raw;
-    });
-
-  // The BYOK key methods are generated from the shared manifest so adding a
-  // provider is one entry; the seed cast only asserts the accumulator type
-  // (same pattern as the generated accessors in environment.ts).
-  const byokApi = BYOK_API_KEYS.reduce<ByokKeySurface>(
-    (surface, k) => ({
-      ...surface,
-      [k.get]: () => getKey(`get-${k.base}-key`),
-      [k.save]: (key: string) => saveKey(`save-${k.base}-key`, key),
-    }),
-    {} as ByokKeySurface
-  );
+  const getKey = (channel: string) => invokeParse(zString, channel);
 
   return {
-    ...byokApi,
+    // The BYOK key methods are generated from the shared manifest so adding
+    // a provider is one entry (same pattern as the generated accessors in
+    // environment.ts).
+    // SAFETY: the entries are built from the BYOK manifest names, which are
+    // exactly the ByokKeySurface method names this object must expose.
+    ...(Object.fromEntries(
+      BYOK_API_KEYS.flatMap((k) => [
+        [k.get, () => getKey(`get-${k.base}-key`)],
+        [k.save, (key: string) => saveKey(`save-${k.base}-key`, key)],
+      ])
+    ) as ByokKeySurface),
     setOnboardingWindowMode: (mode) =>
       ipcRenderer
         .invoke(desktopSettingsChannels.setOnboardingWindowMode, mode)
@@ -146,18 +138,22 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
     getHotkeyModeInfo: (hotkey) =>
       invokeParse(hotkeyModeInfoSchema, desktopSettingsChannels.getHotkeyModeInfo, hotkey),
     registerCancelHotkey: (key) =>
-      ipcRenderer.invoke(desktopSettingsChannels.registerCancelHotkey, key),
+      invokeParse(
+        hotkeyRegistrationResultSchema,
+        desktopSettingsChannels.registerCancelHotkey,
+        key
+      ),
     unregisterCancelHotkey: () =>
       invokeParse(simpleSuccessSchema, desktopSettingsChannels.unregisterCancelHotkey),
     getEffectiveDefaultHotkey: () =>
-      ipcRenderer
-        .invoke(desktopSettingsChannels.getEffectiveDefaultHotkey)
-        .then((raw) => (typeof raw === "string" ? raw : null)),
+      invokeParse(zStringNullable, desktopSettingsChannels.getEffectiveDefaultHotkey),
     getActivationMode: () =>
       invokeParse(activationModeSchema, desktopSettingsChannels.getActivationMode),
     saveActivationMode: (mode) => saveKey(desktopSettingsChannels.saveActivationMode, mode),
-    startControlPanelDrag: () => ipcRenderer.invoke(desktopSettingsChannels.startControlPanelDrag),
-    stopControlPanelDrag: () => ipcRenderer.invoke(desktopSettingsChannels.stopControlPanelDrag),
+    startControlPanelDrag: () =>
+      invokeParse(dragOperationResultSchema, desktopSettingsChannels.startControlPanelDrag),
+    stopControlPanelDrag: () =>
+      invokeParse(dragOperationResultSchema, desktopSettingsChannels.stopControlPanelDrag),
     openExternal: (url) =>
       invokeParse(openExternalResultSchema, desktopSettingsChannels.openExternal, url),
     getAutoStartEnabled: () =>
@@ -177,14 +173,7 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
       invokeParse(simpleSuccessSchema, desktopSettingsChannels.setTimeFormat, format),
     setUiLanguage: (language) =>
       invokeParse(uiLanguageResultSchema, desktopSettingsChannels.setUiLanguage, language),
-    getLogLevel: () =>
-      ipcRenderer.invoke(desktopSettingsChannels.getLogLevel).then((raw) => {
-        if (typeof raw !== "string") {
-          throw new Error("Unexpected response shape from get-log-level");
-        }
-
-        return raw;
-      }),
+    getLogLevel: () => invokeParse(zString, desktopSettingsChannels.getLogLevel),
     log: (entry) => invokeParse(saveKeyResultSchema, desktopSettingsChannels.log, entry),
     getDebugState: () => invokeParse(debugStateSchema, desktopSettingsChannels.getDebugState),
     setDebugLogging: (enabled) =>
@@ -235,14 +224,7 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
       ipcRenderer
         .invoke(desktopSettingsChannels.promptAccessibilityPermission)
         .then((raw) => raw === true),
-    readClipboard: () =>
-      ipcRenderer.invoke(desktopSettingsChannels.readClipboard).then((raw) => {
-        if (typeof raw !== "string") {
-          throw new Error("Unexpected response shape from read-clipboard");
-        }
-
-        return raw;
-      }),
+    readClipboard: () => invokeParse(zString, desktopSettingsChannels.readClipboard),
     writeClipboard: (text) =>
       invokeParse(saveKeyResultSchema, desktopSettingsChannels.writeClipboard, text),
     cleanupApp: () => invokeParse(cleanupAppResultSchema, desktopSettingsChannels.cleanupApp),
@@ -251,36 +233,19 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
       ipcRenderer
         .invoke(desktopSettingsChannels.getOAuthProtocolRegistered)
         .then((raw) => raw === true),
-    getOAuthProtocol: () =>
-      ipcRenderer.invoke(desktopSettingsChannels.getOAuthProtocol).then((raw) => {
-        if (typeof raw !== "string") {
-          throw new Error("Unexpected response shape from get-oauth-protocol");
-        }
-
-        return raw;
-      }),
-    getModelCacheRoot: () =>
-      ipcRenderer.invoke(desktopSettingsChannels.getModelCacheRoot).then((raw) => {
-        if (typeof raw !== "string") {
-          throw new Error("Unexpected response shape from get-model-cache-root");
-        }
-
-        return raw;
-      }),
+    getOAuthProtocol: () => invokeParse(zString, desktopSettingsChannels.getOAuthProtocol),
+    getModelCacheRoot: () => invokeParse(zString, desktopSettingsChannels.getModelCacheRoot),
     openWhisperModelsFolder: () =>
       invokeParse(systemSettingsResultSchema, desktopSettingsChannels.openWhisperModelsFolder),
-    getMD5Hash: (text) =>
-      ipcRenderer.invoke(desktopSettingsChannels.getMD5Hash, text).then((raw) => {
-        if (typeof raw !== "string") {
-          throw new Error("Unexpected response shape from get-md5-hash");
-        }
-
-        return raw;
-      }),
+    getMD5Hash: (text) => invokeParse(zString, desktopSettingsChannels.getMD5Hash, text),
     syncNotificationPreferences: (prefs) =>
       invokeParse(simpleSuccessSchema, desktopSettingsChannels.syncNotificationPreferences, prefs),
   };
 }
+
+const zString = z.string();
+
+const zStringNullable = z.string().nullable();
 
 const autoStartStateSchema = z.object({
   enabled: z.boolean(),

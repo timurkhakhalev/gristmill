@@ -8,13 +8,15 @@ export function createControlPanelActionSubscriptions(ipc: ActionIpc) {
     const pending: T[] = [];
     let current: ((data: T) => void) | null = null;
     ipc.on(channel, (_event, data) => {
-      if (current) current(data as T);
-      else pending.push(data as T);
+      // SAFETY: retain<T> names the payload the main-side sender serializes
+      // for this channel; the queued replay preserves that same type.
+      const value = data as T;
+
+      if (current) current(value);
+      else pending.push(value);
     });
 
     return (callback: (data: T) => void) => {
-      if (typeof callback !== "function") return () => {};
-
       current = callback;
 
       for (const data of pending.splice(0)) callback(data);

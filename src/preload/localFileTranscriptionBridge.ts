@@ -9,11 +9,9 @@ import {
   type TranscriptionResponse,
 } from "../contracts/localFileTranscription.js";
 import type { LocalTranscriptionProvider } from "../contracts/inferenceSettings.js";
-import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
+import type { ZodType } from "zod";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -38,7 +36,7 @@ export function createLocalFileTranscriptionBridge(
         model?: string;
         language?: string;
         requestId?: string;
-        [key: string]: unknown;
+        skipDecoderThresholds?: boolean;
       }
     ): Promise<TranscriptionResponse> =>
       ipcRenderer

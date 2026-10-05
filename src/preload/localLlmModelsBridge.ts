@@ -17,19 +17,21 @@ import {
   type LocalLlmModelsApi,
   type LocalModelDownloadStatusRow,
 } from "../contracts/localLlmModels.js";
+import { z } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-}
+import type { IpcRendererLike } from "./ipcTransport.js";
 
 // The main-side handlers are the only producers of these channels and are
 // strict-typed against the same contract interfaces; this single narrowing at
 // the deserialization boundary therefore adds no new trust — it rejects
 // non-object junk and keeps the shared result types.
+const objectSchema = z.record(z.string(), z.unknown());
+
 function passthroughResult<T extends object>(raw: unknown, channel: string): T {
-  if (typeof raw === "object" && raw !== null) {
+  if (objectSchema.safeParse(raw).success) {
+    // SAFETY: the record parse above rejected non-object transport junk, and
+    // the main-side handlers are strict-typed against these same contract
+    // interfaces — the assertion re-voices the checked result shape.
     return raw as T;
   }
 
@@ -70,6 +72,8 @@ export function createLocalLlmModelsBridge(ipcRenderer: IpcRendererLike): LocalL
     modelGetAll: () => passthroughInvoke<LocalLlmModelStatus[]>(ipcRenderer, c.modelGetAll),
     modelGetActiveDownloads: () =>
       passthroughInvoke<LocalModelDownloadStatusRow[]>(ipcRenderer, c.modelGetActiveDownloads),
+    // SAFETY: the handler parses the id with the shared model-name schema and
+    // answers a plain boolean; the cast re-voices the checked wire shape.
     modelCheck: (modelId: string) => ipcRenderer.invoke(c.modelCheck, modelId) as Promise<boolean>,
     modelDownload: (modelId: string) =>
       passthroughInvoke<LlmDownloadResult>(ipcRenderer, c.modelDownload, modelId),

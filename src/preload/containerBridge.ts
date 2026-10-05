@@ -22,11 +22,7 @@ import {
 } from "../contracts/containers.js";
 import type { ZodType } from "zod";
 
-interface IpcRendererLike {
-  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-}
+import { subscribeDropped, type IpcRendererLike } from "./ipcTransport.js";
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
@@ -94,36 +90,22 @@ export function createContainersBridge(ipcRenderer: IpcRendererLike): Containers
       ipcRenderer
         .invoke(containerChannels.updateSpace, id, updates)
         .then((raw) => parseResult(spaceMutationResultSchema, raw, containerChannels.updateSpace)),
-    onFolderDeleted: (callback: (payload: FolderDeletedPayload) => void) => {
-      if (typeof callback !== "function") {
-        return () => {};
-      }
+    onFolderDeleted: (callback: (payload: FolderDeletedPayload) => void) =>
+      subscribeDropped(
+        ipcRenderer,
+        containerEventChannels.folderDeleted,
+        (raw) => {
+          const result = folderDeletedPayloadSchema.safeParse(raw);
 
-      const listener = (_event: unknown, data: unknown) => {
-        const result = folderDeletedPayloadSchema.safeParse(data);
+          if (result.success) return result.data;
 
-        if (!result.success) {
           console.error(
             `[containersBridge] dropped malformed ${containerEventChannels.folderDeleted} event`
           );
 
-          return;
-        }
-
-        callback(result.data);
-      };
-
-      ipcRenderer.on(
-        containerEventChannels.folderDeleted,
-        listener as (event: unknown, ...args: unknown[]) => void
-      );
-
-      return () => {
-        ipcRenderer.removeListener(
-          containerEventChannels.folderDeleted,
-          listener as (event: unknown, ...args: unknown[]) => void
-        );
-      };
-    },
+          return undefined;
+        },
+        callback
+      ),
   };
 }

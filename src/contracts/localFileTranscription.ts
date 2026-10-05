@@ -11,19 +11,29 @@
 import { z } from "zod";
 import type { LocalTranscriptionProvider } from "./inferenceSettings.js";
 
-const nonNegativeInt = z.number().int();
-
 // Options cross the boundary as a plain object spread. provider/model/
-// language/requestId are the documented fields; unknown extension fields
-// must survive to the managers (they read e.g. skipDecoderThresholds).
-export const transcriptionOptionsSchema = z
-  .object({
-    provider: z.string().optional(),
-    model: z.string().optional(),
-    language: z.string().optional(),
-    requestId: z.string().optional(),
-  })
-  .passthrough();
+// language/requestId are the documented fields; skipDecoderThresholds is the
+// one whisper-server extension field the executors read.
+export const transcriptionOptionsSchema = z.object({
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  language: z.string().optional(),
+  requestId: z.string().optional(),
+  skipDecoderThresholds: z.boolean().optional(),
+  skipVad: z.boolean().optional(),
+  // VAD resolution for the whisper path: vadEnabled plus the sanitized
+  // numeric config keys are merged onto the manager options record.
+  vadEnabled: z.boolean().optional(),
+  threshold: z.number().optional(),
+  minSpeechDurationMs: z.number().optional(),
+  minSilenceDurationMs: z.number().optional(),
+  maxSpeechDurationS: z.number().optional(),
+  speechPadMs: z.number().optional(),
+  samplesOverlap: z.number().optional(),
+  // Main-side cancellation for uploads; the handler attaches the registry
+  // signal after the schema parse, managers read it off the options record.
+  signal: z.custom<AbortSignal>((value) => value instanceof AbortSignal).optional(),
+});
 
 export type TranscriptionOptions = z.infer<typeof transcriptionOptionsSchema>;
 
@@ -51,7 +61,7 @@ export interface LocalFileTranscriptionApi {
       model?: string;
       language?: string;
       requestId?: string;
-      [key: string]: unknown;
+      skipDecoderThresholds?: boolean;
     }
   ): Promise<TranscriptionResponse>;
 }

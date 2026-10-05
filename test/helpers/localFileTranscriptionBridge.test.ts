@@ -149,7 +149,10 @@ async function createFixture(
         managers.whisper ? managers.whisper(audioBuffer, options) : { success: true, text: "w" },
       transcribeLocalParakeet: async (audioBuffer, options) =>
         managers.parakeet ? managers.parakeet(audioBuffer, options) : { success: true, text: "s" },
-      resolveWhisperVadOptions: (context) => ({ vadEnabled: context === "noteRecording" }),
+      resolveWhisperVadOptions: (context) => ({
+        vadEnabled: context === "noteRecording",
+        vadConfig: {},
+      }),
       uploadCancelRegistry: createUploadCancelRegistry(),
       logDebug: () => {},
       logError: () => {},

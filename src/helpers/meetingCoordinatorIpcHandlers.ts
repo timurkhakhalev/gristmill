@@ -73,7 +73,7 @@ export interface CoordinatorWindowLike {
 export interface MeetingCoordinatorDeps {
   companionProfilePath?: string;
   companionEnabled?: boolean;
-  showCompanionReminder?(scope: MeetingRecordingScope): void;
+  showCompanionReminder?(scope: MeetingRecordingScope): Promise<unknown> | void;
   dismissCompanionReminder?(scope: MeetingRecordingScope, sender?: WebContents): boolean;
   databaseManager: MeetingSpeakerRosterDatabase &
     import("./meetingCaptureSession.js").MeetingCaptureDatabase &

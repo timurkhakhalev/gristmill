@@ -111,6 +111,9 @@ async function fixture(t: import("node:test").TestContext) {
 
   const bridge = createNoteFilesBridge({
     invoke: async (channel, ...args) => handlers.get(channel)!(null, ...args),
+    send() {},
+    on() {},
+    removeListener() {},
   });
 
   const space = db.getSpaces()[0];

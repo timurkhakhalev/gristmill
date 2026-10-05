@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const en = require("../../src/locales/en/translation.json");
@@ -29,10 +30,8 @@ test("local sherpa silence resolves to the upload no-speech message, while decod
   const silenceKey = transcriptionErrorKey(silence);
   assert.equal(silenceKey, "noSpeechDetected");
   assert.ok(silenceKey);
-  assert.equal(
-    en.notes.upload[silenceKey],
-    "No speech detected in this audio."
-  );
+  assert.equal(en.notes.upload[silenceKey], "No speech detected in this audio.");
+
   for (const output of [null, { error: "engine failed" }, { text: "", truncated: true }]) {
     assert.equal(transcriptionErrorKey(manager.parseParakeetResult(output)), undefined);
   }
@@ -47,6 +46,7 @@ test("a thrown failure resolves the same key as a returned one", async () => {
   const thrown = Object.assign(new Error("12 of 19 audio segments were lost"), {
     code: "CHUNK_LOSS_EXCEEDED",
   });
+
   assert.equal(transcriptionErrorKey(thrown), "chunkLossExceeded");
   assert.equal(transcriptionErrorKey({ code: "CHUNK_LOSS_EXCEEDED" }), "chunkLossExceeded");
 });

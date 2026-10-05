@@ -15,21 +15,38 @@ const LAST_API_MODE_KEY = "chatAgentLastApiMode";
 
 function lastApiMode(): InferenceMode {
   const stored = localStorage.getItem(LAST_API_MODE_KEY);
-  return stored === "local" || stored === "self-hosted" || stored === "enterprise" ? stored : "providers";
+
+  return stored === "local" || stored === "self-hosted" || stored === "enterprise"
+    ? stored
+    : "providers";
 }
 
 /** Composer model picker: bb harness tabs plus an "API" tab for the configured non-bb route. */
-export default function ChatModelPicker({ disabled, className, onOpenChange }: { disabled?: boolean; className?: string; onOpenChange?: (open: boolean) => void }) {
+export default function ChatModelPicker({
+  disabled,
+  className,
+  onOpenChange,
+}: {
+  disabled?: boolean;
+  className?: string;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const { t } = useTranslation();
-  const config = useSettingsStore(useShallow((state) => selectResolvedLLMConfig(state, "chatIntelligence")));
+
+  const config = useSettingsStore(
+    useShallow((state) => selectResolvedLLMConfig(state, "chatIntelligence"))
+  );
+
   const { enabled, error } = useBbCatalog();
   const isBb = config.mode === "agent";
   const harness = enabled.find((item) => item.id === config.agentProvider);
+
   const modeLabels: Partial<Record<InferenceMode, string>> = {
     providers: t("settingsPage.aiModels.modes.providers"),
     local: t("settingsPage.aiModels.modes.local"),
     "self-hosted": t("settingsPage.aiModels.modes.selfHosted"),
   };
+
   const apiMode = isBb ? lastApiMode() : config.mode;
   const apiLabel = modeLabels[apiMode] ?? apiMode;
 
@@ -47,7 +64,11 @@ export default function ChatModelPicker({ disabled, className, onOpenChange }: {
           )}
         >
           {isBb ? (
-            <BbSelectionLabel harness={harness} model={config.agentModel ?? ""} reasoningLevel={config.agentReasoningLevel ?? ""} />
+            <BbSelectionLabel
+              harness={harness}
+              model={config.agentModel ?? ""}
+              reasoningLevel={config.agentReasoningLevel ?? ""}
+            />
           ) : (
             <span className="flex min-w-0 items-center gap-1.5">
               <Key size={13} className="shrink-0" />
@@ -60,7 +81,15 @@ export default function ChatModelPicker({ disabled, className, onOpenChange }: {
       <PopoverContent side="top" align="start" className="p-2">
         <BbModelPanel
           harnesses={enabled}
-          selection={isBb && config.agentProvider ? { provider: config.agentProvider, model: config.agentModel ?? "", reasoningLevel: config.agentReasoningLevel ?? "" } : null}
+          selection={
+            isBb && config.agentProvider
+              ? {
+                  provider: config.agentProvider,
+                  model: config.agentModel ?? "",
+                  reasoningLevel: config.agentReasoningLevel ?? "",
+                }
+              : null
+          }
           onSelect={(selection) => {
             if (!isBb) localStorage.setItem(LAST_API_MODE_KEY, config.mode);
             setResolvedLLMConfig("chatIntelligence", {
@@ -70,20 +99,30 @@ export default function ChatModelPicker({ disabled, className, onOpenChange }: {
               agentReasoningLevel: selection.reasoningLevel,
             });
           }}
-          leadingTabs={[{
-            id: "api",
-            label: t("bbAgent.apiTab"),
-            icon: <Key size={14} />,
-            active: !isBb,
-            onSelect: () => { if (isBb) setResolvedLLMConfig("chatIntelligence", { mode: apiMode }); },
-          }]}
+          leadingTabs={[
+            {
+              id: "api",
+              label: t("bbAgent.apiTab"),
+              icon: <Key size={14} />,
+              active: !isBb,
+              onSelect: () => {
+                if (isBb) setResolvedLLMConfig("chatIntelligence", { mode: apiMode });
+              },
+            },
+          ]}
           leadingContent={
             <p className="px-1 py-3 text-xs text-muted">
-              {t("bbAgent.apiRoute", { route: config.model ? `${apiLabel} · ${config.model}` : apiLabel })}
+              {t("bbAgent.apiRoute", {
+                route: config.model ? `${apiLabel} · ${config.model}` : apiLabel,
+              })}
             </p>
           }
         />
-        {error && <p role="alert" className="px-1 pt-2 text-xs text-danger">{error}</p>}
+        {error && (
+          <p role="alert" className="px-1 pt-2 text-xs text-danger">
+            {error}
+          </p>
+        )}
       </PopoverContent>
     </Popover>
   );

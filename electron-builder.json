@@ -5,9 +5,7 @@
   "productName": "Gristmill",
   "protocols": {
     "name": "Gristmill Protocol",
-    "schemes": [
-      "gristmill"
-    ]
+    "schemes": ["gristmill"]
   },
   "directories": {
     "output": "dist"
@@ -78,10 +76,7 @@
     {
       "from": "src/assets",
       "to": "src/assets",
-      "filter": [
-        "**/*",
-        "!iconDev*"
-      ]
+      "filter": ["**/*", "!iconDev*"]
     },
     {
       "from": "resources/bin/",
@@ -97,9 +92,7 @@
     {
       "from": "resources/local-engine-installers/",
       "to": "local-engine-installers/",
-      "filter": [
-        "*.cjs"
-      ]
+      "filter": ["*.cjs"]
     },
     {
       "from": "resources/cli/gristmill-cli.cjs",
@@ -108,9 +101,7 @@
     {
       "from": "build/companion",
       "to": "companion",
-      "filter": [
-        "**/*"
-      ]
+      "filter": ["**/*"]
     }
   ],
   "mac": {
@@ -118,15 +109,11 @@
     "target": [
       {
         "target": "dmg",
-        "arch": [
-          "arm64"
-        ]
+        "arch": ["arm64"]
       },
       {
         "target": "zip",
-        "arch": [
-          "arm64"
-        ]
+        "arch": ["arm64"]
       }
     ],
     "icon": "src/assets/icon.icns",

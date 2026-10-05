@@ -52,6 +52,7 @@ type LLMDownloadProgressData = LocalLLMDownloadProgressEvent & { sequence?: numb
 export function formatETA(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
   const minutes = Math.floor(seconds / 60);
+
   return `${minutes}m ${Math.round(seconds % 60)}s`;
 }
 
@@ -59,25 +60,33 @@ function getDownloadErrorMessage(t: TFunction, error: string, code?: string): st
   if (code === "EXTRACTION_FAILED" || error.includes("installation failed")) {
     return t("hooks.modelDownload.errors.extractionFailed");
   }
+
   if (code === "TLS_ERROR" || error.includes("certificate") || error.includes("issuer")) {
     return t("hooks.modelDownload.errors.tlsError");
   }
+
   if (code === "ETIMEDOUT" || error.includes("timeout") || error.includes("stalled")) {
     return t("hooks.modelDownload.errors.timeout");
   }
+
   if (code === "ENOTFOUND" || error.includes("ENOTFOUND")) {
     return t("hooks.modelDownload.errors.notFound");
   }
+
   if (error.includes("disk space")) return error;
+
   if (error.includes("corrupted") || error.includes("incomplete") || error.includes("too small")) {
     return t("hooks.modelDownload.errors.corrupted");
   }
+
   if (error.includes("HTTP 429") || error.includes("rate limit")) {
     return t("hooks.modelDownload.errors.rateLimited");
   }
+
   if (error.includes("HTTP 4") || error.includes("HTTP 5")) {
     return t("hooks.modelDownload.errors.server", { error });
   }
+
   return t("hooks.modelDownload.errors.generic", { error });
 }
 
@@ -119,6 +128,7 @@ export function useModelDownload({
   useEffect(() => {
     const handleModelsCleared = () => onModelsClearedRef.current?.();
     window.addEventListener("gristmill-models-cleared", handleModelsCleared);
+
     return () => window.removeEventListener("gristmill-models-cleared", handleModelsCleared);
   }, []);
 
@@ -127,9 +137,12 @@ export function useModelDownload({
       if (status.modelType !== modelType) return;
       setDownloads((current) => {
         const terminalSequence = terminalSequencesRef.current[status.modelId] || 0;
+
         if (status.sequence !== 0 && status.sequence <= terminalSequence) return current;
         const existing = current[status.modelId];
+
         if (existing && existing.sequence > status.sequence) return current;
+
         return { ...current, [status.modelId]: status };
       });
     },
@@ -139,8 +152,10 @@ export function useModelDownload({
   const removeDownload = useCallback((modelId: string, sequence?: number) => {
     setDownloads((current) => {
       const existing = current[modelId];
+
       if (!existing || (sequence !== undefined && existing.sequence > sequence)) return current;
       const { [modelId]: _removed, ...remaining } = current;
+
       return remaining;
     });
   }, []);
@@ -150,6 +165,7 @@ export function useModelDownload({
       if (!current.has(modelId)) return current;
       const next = new Set(current);
       next.delete(modelId);
+
       return next;
     });
   }, []);
@@ -158,6 +174,7 @@ export function useModelDownload({
     async (modelId: string, sequence?: number) => {
       if (settlingDownloadsRef.current.has(modelId)) return;
       settlingDownloadsRef.current.add(modelId);
+
       try {
         await onDownloadCompleteRef.current?.();
       } catch {
@@ -185,17 +202,22 @@ export function useModelDownload({
           sequence
         );
       }
+
       if (ownedRequestsRef.current.has(modelId)) {
         ownedRequestsRef.current.set(modelId, { type, error, code, sequence });
+
         return;
       }
+
       if (type === "complete") notifyLocalModelsChanged();
+
       if (type === "error" && !isCancellation(error, code)) {
         const message = getDownloadErrorMessage(
           t,
           error || t("hooks.modelDownload.errors.unknown"),
           code
         );
+
         setDownloadErrors((current) => ({ ...current, [modelId]: message }));
         showAlertDialog({
           title:
@@ -205,6 +227,7 @@ export function useModelDownload({
           description: message,
         });
       }
+
       await settleDownload(modelId, sequence);
     },
     [settleDownload, showAlertDialog, t]
@@ -214,17 +237,22 @@ export function useModelDownload({
     (data: WhisperDownloadProgressData) => {
       if (data.type === "complete" || data.type === "error") {
         void handleTerminalDownload(data.model, data.type, data.error, data.code, data.sequence);
+
         return;
       }
+
       if (data.type !== "progress" && data.type !== "installing") return;
 
       const isInstalling = data.type === "installing";
+
       if (!isInstalling) {
         const now = Date.now();
         const lastUpdate = lastProgressUpdateRef.current[data.model] || 0;
+
         if (now - lastUpdate < PROGRESS_THROTTLE_MS) return;
         lastProgressUpdateRef.current[data.model] = now;
       }
+
       updateDownload({
         modelType,
         modelId: data.model,
@@ -253,16 +281,22 @@ export function useModelDownload({
       sequence?: number;
     }) => {
       const data = raw as LLMDownloadProgressData;
+
       if (data.type === "complete") {
         void handleTerminalDownload(data.modelId, data.type, undefined, undefined, data.sequence);
+
         return;
       }
+
       if (data.type === "error") {
         void handleTerminalDownload(data.modelId, data.type, data.error, data.code, data.sequence);
+
         return;
       }
+
       const now = Date.now();
       const lastUpdate = lastProgressUpdateRef.current[data.modelId] || 0;
+
       if ((data.progress || 0) < 100 && now - lastUpdate < PROGRESS_THROTTLE_MS) return;
       lastProgressUpdateRef.current[data.modelId] = now;
       updateDownload({
@@ -281,14 +315,11 @@ export function useModelDownload({
   useEffect(() => {
     const dispose =
       modelType === "whisper"
-        ? window.electronAPI?.onWhisperDownloadProgress((data) =>
-            handleNativeProgress(data)
-          )
+        ? window.electronAPI?.onWhisperDownloadProgress((data) => handleNativeProgress(data))
         : modelType === "parakeet"
-          ? window.electronAPI?.onParakeetDownloadProgress((data) =>
-              handleNativeProgress(data)
-            )
+          ? window.electronAPI?.onParakeetDownloadProgress((data) => handleNativeProgress(data))
           : window.electronAPI?.onModelDownloadProgress(handleLLMProgress);
+
     return () => dispose?.();
   }, [handleLLMProgress, handleNativeProgress, modelType]);
 
@@ -300,6 +331,7 @@ export function useModelDownload({
         if (!disposed) activeDownloads.forEach(updateDownload);
       })
       .catch(() => {});
+
     return () => {
       disposed = true;
     };
@@ -316,6 +348,7 @@ export function useModelDownload({
           title: t("hooks.modelDownload.downloadInProgress.title"),
           description: t("hooks.modelDownload.downloadInProgress.description"),
         });
+
         return;
       }
 
@@ -323,6 +356,7 @@ export function useModelDownload({
       setDownloadErrors((current) => {
         if (!(modelId in current)) return current;
         const { [modelId]: _removed, ...remaining } = current;
+
         return remaining;
       });
       updateDownload({
@@ -357,15 +391,19 @@ export function useModelDownload({
         } else if (result?.code === "DOWNLOAD_IN_PROGRESS") {
           isDuplicateRequest = true;
           const activeDownloads = await window.electronAPI?.modelGetActiveDownloads?.();
+
           if (ownedRequestsRef.current.get(modelId)) return;
+
           const activeDownload = activeDownloads?.find(
             (status) =>
               status.modelType === modelType && (modelType !== "llm" || status.modelId === modelId)
           );
+
           if (activeDownload) {
             updateDownload(activeDownload);
             keepActiveDownloadState = activeDownload.modelId === modelId;
           }
+
           toast({
             title: t("hooks.modelDownload.downloadInProgress.title"),
             description: t("hooks.modelDownload.downloadInProgress.description"),
@@ -376,6 +414,7 @@ export function useModelDownload({
             result?.error || t("hooks.modelDownload.errors.unknown"),
             result?.code
           );
+
           setDownloadErrors((current) => ({ ...current, [modelId]: message }));
           showAlertDialog({
             title:
@@ -387,6 +426,7 @@ export function useModelDownload({
         }
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+
         if (!isCancellation(errorMessage)) {
           const message = getDownloadErrorMessage(t, errorMessage);
           setDownloadErrors((current) => ({ ...current, [modelId]: message }));
@@ -398,6 +438,7 @@ export function useModelDownload({
       } finally {
         const terminalEvent = ownedRequestsRef.current.get(modelId);
         ownedRequestsRef.current.delete(modelId);
+
         if (isDuplicateRequest && terminalEvent) {
           // A duplicate response cannot carry the original transfer's terminal result.
           await handleTerminalDownload(
@@ -429,6 +470,7 @@ export function useModelDownload({
       try {
         if (modelType === "whisper") {
           const result = await window.electronAPI?.deleteWhisperModel(modelId);
+
           if (result?.success) {
             toast({
               title: t("hooks.modelDownload.modelDeleted.title"),
@@ -439,6 +481,7 @@ export function useModelDownload({
           }
         } else if (modelType === "parakeet") {
           const result = await window.electronAPI?.deleteParakeetModel(modelId);
+
           if (result?.success) {
             toast({
               title: t("hooks.modelDownload.modelDeleted.title"),
@@ -451,6 +494,7 @@ export function useModelDownload({
           // model-delete reports failure by resolving, not throwing — leaving the
           // model on disk, so the scopes pointing at it must stay untouched.
           const result = await window.electronAPI?.modelDelete?.(modelId);
+
           if (!result?.success) throw new Error(result?.error ?? "");
           clearMissingLocalModelSelections((id) => id !== modelId);
           toast({
@@ -458,6 +502,7 @@ export function useModelDownload({
             description: t("hooks.modelDownload.modelDeleted.description"),
           });
         }
+
         notifyLocalModelsChanged();
         onComplete?.();
       } catch (error: unknown) {
@@ -474,10 +519,13 @@ export function useModelDownload({
   const cancelDownload = useCallback(
     async (modelId?: string) => {
       const targetModel = modelId || Object.keys(downloads)[0];
+
       if (!targetModel || cancellingModels.has(targetModel)) return;
+
       if (downloads[targetModel]?.phase === "installing") return;
 
       setCancellingModels((current) => new Set(current).add(targetModel));
+
       try {
         const result =
           modelType === "whisper"
@@ -485,16 +533,19 @@ export function useModelDownload({
             : modelType === "parakeet"
               ? await window.electronAPI?.cancelParakeetDownload()
               : await window.electronAPI?.modelCancelDownload?.(targetModel);
+
         if (result?.success) {
           toast({
             title: t("hooks.modelDownload.downloadCancelled.title"),
             description: t("hooks.modelDownload.downloadCancelled.description"),
           });
+
           return;
         }
       } catch (error) {
         console.error("Failed to cancel download:", error);
       }
+
       clearCancelling(targetModel);
     },
     [cancellingModels, clearCancelling, downloads, modelType, t, toast]

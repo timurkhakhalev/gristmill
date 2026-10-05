@@ -1,15 +1,25 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs/promises") = require("node:fs/promises");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
 
 type GeminiFileModule = typeof import("../../src/helpers/geminiFileTranscription.js");
+
 let transcribeGeminiFile: GeminiFileModule["transcribeGeminiFile"];
+
 let parseGeminiFileResponse: GeminiFileModule["parseGeminiFileResponse"];
+
 let probeGeminiAudioDuration: GeminiFileModule["probeGeminiAudioDuration"];
+
 let tempDir!: string;
+
 let audioPath!: string;
+
 test.before(async () => {
   ({ transcribeGeminiFile, parseGeminiFileResponse, probeGeminiAudioDuration } =
     await import("../../src/helpers/geminiFileTranscription.ts"));
@@ -17,11 +27,15 @@ test.before(async () => {
   audioPath = path.join(tempDir, "recording.webm");
   await fs.writeFile(audioPath, Buffer.alloc(12_345));
 });
+
 test.after(async () => fs.rm(tempDir, { recursive: true, force: true }));
 
 const FILE_NAME = "files/audio-123";
+
 const FILE_URI = "https://generativelanguage.googleapis.com/v1beta/files/audio-123";
+
 const UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=abc";
+
 const RESPONSE = {
   status: "completed",
   output_text: "Hello world. Reply.",
@@ -61,7 +75,10 @@ const RESPONSE = {
   ],
 };
 
-function fakeResponse(body: unknown, { status = 200, headers = {} }: { status?: number; headers?: Record<string, string> } = {}) {
+function fakeResponse(
+  body: unknown,
+  { status = 200, headers = {} }: { status?: number; headers?: Record<string, string> } = {}
+) {
   return {
     ok: status >= 200 && status < 300,
     status,
@@ -71,33 +88,53 @@ function fakeResponse(body: unknown, { status = 200, headers = {} }: { status?: 
   };
 }
 
-type FetchInit = { method?: string; headers: Record<string, string>; body?: { length: number } | string };
+type FetchInit = {
+  method?: string;
+  headers: Record<string, string>;
+  body?: { length: number } | string;
+};
+
 type FetchCall = { kind: "fetch"; url: string; init: FetchInit };
+
 type ProbeCall = { kind: "probe"; path: string; signal: unknown };
-function setup({ duration = 60, interaction = RESPONSE, initialState = "ACTIVE" }: { duration?: number | null; interaction?: unknown; initialState?: string } = {}) {
+
+function setup({
+  duration = 60,
+  interaction = RESPONSE,
+  initialState = "ACTIVE",
+}: { duration?: number | null; interaction?: unknown; initialState?: string } = {}) {
   const calls: Array<FetchCall | ProbeCall> = [];
+
   const deps = {
     probeDuration: async (path: string, signal: unknown) => {
       calls.push({ kind: "probe", path, signal });
+
       return duration;
     },
     fetch: async (url: string, init: FetchInit) => {
       calls.push({ kind: "fetch", url, init });
+
       if (url.endsWith("/upload/v1beta/files")) {
         return fakeResponse({}, { headers: { "x-goog-upload-url": UPLOAD_URL } });
       }
+
       if (url === UPLOAD_URL) {
         return fakeResponse({ file: { name: FILE_NAME, uri: FILE_URI, state: initialState } });
       }
+
       if (url.endsWith("/v1beta/interactions")) return fakeResponse(interaction);
+
       if (init.method === "DELETE") return fakeResponse({}, { status: 204 });
+
       if (url.endsWith("/v1beta/files/audio-123")) {
         return fakeResponse({ name: FILE_NAME, uri: FILE_URI, state: "ACTIVE" });
       }
+
       throw new Error("Unexpected request " + url);
     },
     wait: async () => {},
   };
+
   const request = {
     filePath: audioPath,
     fileSizeBytes: 12_345,
@@ -106,12 +143,18 @@ function setup({ duration = 60, interaction = RESPONSE, initialState = "ACTIVE" 
     apiKey: "secret",
     diarize: true,
   };
+
   return { deps, request, calls };
 }
 
 test("uploads via Files API, requests word timestamps and diarization, then deletes the file", async () => {
   const { deps, request, calls } = setup();
-  const result = await transcribeGeminiFile(request, deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps);
+
+  const result = await transcribeGeminiFile(
+    request,
+    deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps
+  );
+
   assert.equal(result.success, true);
   assert.equal(result.diarized, true);
   assert.deepEqual(
@@ -121,16 +164,22 @@ test("uploads via Files API, requests word timestamps and diarization, then dele
   assert.equal(result.segments![0].text, "Hello world.");
   assert.equal(result.segments![0].start, 0.1);
   assert.equal(result.segments![0].end, 0.85);
-  const start = calls.find((c): c is FetchCall => c.kind === "fetch" && c.url.endsWith("/upload/v1beta/files"));
+
+  const start = calls.find(
+    (c): c is FetchCall => c.kind === "fetch" && c.url.endsWith("/upload/v1beta/files")
+  );
+
   assert.equal(start!.init.headers["x-goog-api-key"], "secret");
   assert.equal(start!.init.headers["X-Goog-Upload-Header-Content-Length"], "12345");
   const upload = calls.find((c): c is FetchCall => c.kind === "fetch" && c.url === UPLOAD_URL)!;
   assert.equal((upload!.init.body as { length: number }).length, 12_345);
   assert.equal(upload.init.headers["X-Goog-Upload-Offset"], "0");
   assert.equal(upload.init.headers["X-Goog-Upload-Command"], "upload, finalize");
+
   const interaction = calls.find(
     (c): c is FetchCall => c.kind === "fetch" && c.url.endsWith("/v1beta/interactions")
   )!;
+
   const body = JSON.parse(interaction.init.body as string);
   assert.equal(body.input[0].uri, FILE_URI);
   assert.equal(body.model, "gemini-3.5-transcribe");
@@ -144,7 +193,15 @@ test("uploads via Files API, requests word timestamps and diarization, then dele
 
 test("processing files are polled before transcription", async () => {
   const { deps, request, calls } = setup({ initialState: "PROCESSING" });
-  assert.equal((await transcribeGeminiFile(request, deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps)).success, true);
+  assert.equal(
+    (
+      await transcribeGeminiFile(
+        request,
+        deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps
+      )
+    ).success,
+    true
+  );
   assert.equal(
     calls.filter(
       (c) =>
@@ -159,7 +216,12 @@ test("processing files are polled before transcription", async () => {
 test("unsupported duration fails before any API call or file upload", async () => {
   for (const duration of [null, 1800.1]) {
     const { deps, request, calls } = setup({ duration });
-    const result = await transcribeGeminiFile(request, deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps);
+
+    const result = await transcribeGeminiFile(
+      request,
+      deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps
+    );
+
     assert.equal(result.success, false);
     assert.equal(
       result.code,
@@ -179,8 +241,20 @@ test("large files upload in bounded chunks with consecutive offsets", async () =
   await fs.writeFile(largePath, Buffer.alloc(size));
   request.filePath = largePath;
   request.fileSizeBytes = size;
-  assert.equal((await transcribeGeminiFile(request, deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps)).success, true);
-  const uploads = calls.filter((call): call is FetchCall => call.kind === "fetch" && call.url === UPLOAD_URL);
+  assert.equal(
+    (
+      await transcribeGeminiFile(
+        request,
+        deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps
+      )
+    ).success,
+    true
+  );
+
+  const uploads = calls.filter(
+    (call): call is FetchCall => call.kind === "fetch" && call.url === UPLOAD_URL
+  );
+
   assert.deepEqual(
     uploads.map((call) => [
       call.init.headers["X-Goog-Upload-Offset"],
@@ -234,18 +308,27 @@ test("missing annotations or speaker labels fail closed and still delete the fil
     },
   ]) {
     const { deps, request, calls } = setup({ interaction });
-    const result = await transcribeGeminiFile(request, deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps);
+
+    const result = await transcribeGeminiFile(
+      request,
+      deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps
+    );
+
     assert.equal(result.success, false);
-    assert.ok(["GEMINI_TIMESTAMPS_MISSING", "GEMINI_DIARIZATION_MISSING"].includes(result.code as string));
+    assert.ok(
+      ["GEMINI_TIMESTAMPS_MISSING", "GEMINI_DIARIZATION_MISSING"].includes(result.code as string)
+    );
     assert.equal((calls.at(-1) as FetchCall).init.method, "DELETE");
   }
 });
 
 test("incomplete interactions and invalid offsets are rejected", () => {
-  assert.deepEqual(
-    parseGeminiFileResponse({ status: "completed", output_text: "" }, true),
-    { success: true, text: "", diarized: false, segments: [] }
-  );
+  assert.deepEqual(parseGeminiFileResponse({ status: "completed", output_text: "" }, true), {
+    success: true,
+    text: "",
+    diarized: false,
+    segments: [],
+  });
   assert.equal(
     parseGeminiFileResponse({ status: "failed", output_text: "partial" }, true).code,
     "GEMINI_INCOMPLETE"
@@ -280,22 +363,37 @@ test("incomplete interactions and invalid offsets are rejected", () => {
 
 test("meeting raw interaction is saved before validation and Gemini file cleanup", async () => {
   const events: unknown[] = [];
+
   const { deps, request } = setup({
     interaction: { status: "completed", output_text: "Hello without word timestamps." },
   });
+
   const fetch = deps.fetch;
   deps.fetch = async (url, init) => {
     const response = await fetch(url, init);
+
     if (url.endsWith("/v1beta/interactions")) events.push("interaction-response");
+
     if (init.method === "DELETE") events.push("delete-uploaded-file");
+
     return response;
   };
-  (request as { onRawResponse?: (raw: unknown) => Promise<void> }).onRawResponse = async (raw: unknown) => {
+
+  (request as { onRawResponse?: (raw: unknown) => Promise<void> }).onRawResponse = async (
+    raw: unknown
+  ) => {
     events.push("raw-saved");
     assert.deepEqual(raw, { status: "completed", output_text: "Hello without word timestamps." });
     throw new Error("durable save failed");
   };
 
-  await assert.rejects(() => transcribeGeminiFile(request, deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps), /durable save failed/);
+  await assert.rejects(
+    () =>
+      transcribeGeminiFile(
+        request,
+        deps as unknown as import("../../src/helpers/geminiFileTranscription.js").GeminiFileDeps
+      ),
+    /durable save failed/
+  );
   assert.deepEqual(events, ["interaction-response", "raw-saved", "delete-uploaded-file"]);
 });

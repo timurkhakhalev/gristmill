@@ -1,10 +1,12 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
 
 const load = () => import("../../src/utils/i18nDocument.ts");
 
 function createI18n(language: string) {
   const listeners = new Set<(language: string) => void>();
+
   return {
     language,
     resolvedLanguage: language,
@@ -20,6 +22,7 @@ function createI18n(language: string) {
     emit(nextLanguage: any) {
       this.language = nextLanguage;
       this.resolvedLanguage = nextLanguage;
+
       for (const listener of listeners) listener(nextLanguage);
     },
     listenerCount: () => listeners.size,
@@ -46,6 +49,7 @@ test("HMR disposal removes the exact language listener and remains idempotent", 
   const i18n = createI18n("en");
   const root = { lang: "", dir: "" };
   let hotDispose: (() => void) | undefined;
+
   const hot = {
     dispose(callback: () => void) {
       hotDispose = callback;

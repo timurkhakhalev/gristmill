@@ -41,7 +41,9 @@ export function emailDomain(email: string): string {
   const angle = /<([^<>]+)>/.exec(trimmed);
   const addr = (angle ? angle[1] : trimmed).trim();
   const at = addr.lastIndexOf("@");
+
   if (at === -1) return "";
+
   return addr
     .slice(at + 1)
     .trim()
@@ -50,5 +52,6 @@ export function emailDomain(email: string): string {
 
 export function isPersonalEmailDomain(domain: string): boolean {
   if (typeof domain !== "string") return false;
+
   return PERSONAL_EMAIL_DOMAINS.has(domain.toLowerCase());
 }

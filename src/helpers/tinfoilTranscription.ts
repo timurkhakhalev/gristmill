@@ -1,4 +1,5 @@
 const debugLogger = require("./debugLogger");
+
 import modelRegistryData from "../models/modelRegistryData.json";
 import { tinfoilSecureFetch } from "./tinfoilSecureClient.js";
 
@@ -9,9 +10,11 @@ const TINFOIL_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
 function getBatchModel(): string {
   const provider = (modelRegistryData.transcriptionProviders || []).find((p) => p.id === "tinfoil");
   const model = provider?.batchModel;
+
   if (!model) {
     throw new Error("No batch transcription model configured for Tinfoil");
   }
+
   return model;
 }
 
@@ -46,20 +49,19 @@ export async function transcribeWithTinfoil({
       new Error("Tinfoil API key not configured. Add your key in Settings."),
       { code: "API_KEY_MISSING" }
     ) as CodedTranscriptionError;
+
     throw error;
   }
 
   const model = getBatchModel();
   const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([new Uint8Array(audioBuffer)], { type: contentType }),
-    fileName
-  );
+  formData.append("file", new Blob([new Uint8Array(audioBuffer)], { type: contentType }), fileName);
   formData.append("model", model);
+
   if (language && language !== "auto") {
     formData.append("language", language);
   }
+
   if (prompt?.trim()) {
     formData.append("prompt", prompt.trim());
   }
@@ -78,21 +80,26 @@ export async function transcribeWithTinfoil({
       code: "INVALID_KEY",
     }) as CodedTranscriptionError;
   }
+
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
+
     const error = Object.assign(
       new Error(`Tinfoil API Error: ${response.status} ${errorText}`.trim()),
       {} as Record<string, unknown>
     ) as CodedTranscriptionError;
+
     if (response.status === 429) {
       error.code = "PROVIDER_RATE_LIMITED";
       error.messageKey = "hooks.audioRecording.errorDescriptions.providerRateLimited";
     } else if (response.status >= 500) {
       error.code = "SERVER_ERROR";
     }
+
     throw error;
   }
 
   const data = (await response.json()) as { text?: string } | null;
+
   return { text: data?.text || "", model };
 }

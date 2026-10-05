@@ -1,6 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-import type { MeetingAutoEndRestartContext, MeetingAutoEndRestartDeps } from "../../src/helpers/meetingRecordingSession";
+
+import type {
+  MeetingAutoEndRestartContext,
+  MeetingAutoEndRestartDeps,
+} from "../../src/helpers/meetingRecordingSession";
 import type { StartRecordingArgs, TranscriptSegment } from "../../src/stores/meetingRecordingStore";
 
 const load = () => import("../../src/helpers/meetingRecordingSession.ts");
@@ -8,10 +13,12 @@ const load = () => import("../../src/helpers/meetingRecordingSession.ts");
 function createDeferred<T = void>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
+
   const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
+
   return { promise, reject, resolve };
 }
 
@@ -21,6 +28,7 @@ test("creates one opaque session ID for a recording start", async () => {
 
   const sessionId = createMeetingRecordingSessionId(() => {
     calls += 1;
+
     return "recording-session-1";
   });
 
@@ -42,20 +50,20 @@ test("auto-end stop requests acknowledge only a completed scoped stop", async ()
   const requestedSessions: unknown[] = [];
   const completedSessions: unknown[] = [];
   const errors: unknown[] = [];
+
   const stopRecording = async (sessionId: unknown) => {
     requestedSessions.push(sessionId);
+
     return { stopped: sessionId === "meeting-2" };
   };
-  const onStopped = (sessionId: string, stopped: unknown) => completedSessions.push({ sessionId, stopped });
+
+  const onStopped = (sessionId: string, stopped: unknown) =>
+    completedSessions.push({ sessionId, stopped });
+
   const onError = (error: unknown, sessionId: string) => errors.push({ error, sessionId });
 
   assert.equal(
-    requestMeetingRecordingAutoEnd(
-      { sessionId: "meeting-2" },
-      stopRecording,
-      onStopped,
-      onError
-    ),
+    requestMeetingRecordingAutoEnd({ sessionId: "meeting-2" }, stopRecording, onStopped, onError),
     true
   );
   assert.equal(
@@ -84,6 +92,7 @@ test("a rejected auto-end stop is reported instead of swallowed", async () => {
   const { requestMeetingRecordingAutoEnd } = await load();
   const errors: unknown[] = [];
   const stopFailure = new Error("stop failed");
+
   const stopRecording = async () => {
     throw stopFailure;
   };
@@ -134,17 +143,20 @@ test("restart context preserves note identity and session speaker settings", asy
       },
     }
   );
-  assert.equal(createMeetingAutoEndRestartContext("meeting-2", "meeting-2", {
-    recordingNoteId: 42,
-    recordingNoteTitle: "Planning",
-    recordingFolderId: 8,
-    meetingGroupId: "saved-meeting-group",
-    sessionDiarizationEnabled: false,
-    sessionExpectedCount: 5,
-    userTouchedStepper: true,
-    manualMicMuted: false,
-    segments: seedSegments,
-  })?.args.groupId, "saved-meeting-group");
+  assert.equal(
+    createMeetingAutoEndRestartContext("meeting-2", "meeting-2", {
+      recordingNoteId: 42,
+      recordingNoteTitle: "Planning",
+      recordingFolderId: 8,
+      meetingGroupId: "saved-meeting-group",
+      sessionDiarizationEnabled: false,
+      sessionExpectedCount: 5,
+      userTouchedStepper: true,
+      manualMicMuted: false,
+      segments: seedSegments,
+    })?.args.groupId,
+    "saved-meeting-group"
+  );
   assert.equal(
     createMeetingAutoEndRestartContext("meeting-1", "meeting-2", {
       recordingNoteId: 42,
@@ -162,6 +174,7 @@ test("restart context preserves note identity and session speaker settings", asy
 
 test("restart context preserves an active manual microphone mute", async () => {
   const { createMeetingAutoEndRestartContext } = await load();
+
   const context = createMeetingAutoEndRestartContext("meeting-2", "meeting-2", {
     recordingNoteId: 42,
     recordingNoteTitle: "Planning",
@@ -172,6 +185,7 @@ test("restart context preserves an active manual microphone mute", async () => {
     manualMicMuted: true,
     segments: [],
   });
+
   assert.equal(context?.args.manualMicMuted, true);
 });
 
@@ -187,16 +201,20 @@ test("only meeting notes are eligible for automatic ending", async () => {
 test("a new renderer start waits for the accepted stop to finish", async () => {
   const { createMeetingRecordingStopBarrier } = await load();
   let finishStop!: (value: string) => void;
+
   const stopDeferred = new Promise<string>((resolve) => {
     finishStop = resolve;
   });
+
   const barrier = createMeetingRecordingStopBarrier();
   let nextStartBegan = false;
 
   const stopPromise = barrier.runStop(() => stopDeferred);
+
   const nextStartPromise = barrier.waitForPendingStop().then(() => {
     nextStartBegan = true;
   });
+
   await Promise.resolve();
 
   assert.equal(nextStartBegan, false);
@@ -210,13 +228,17 @@ test("a new renderer start waits for the accepted stop to finish", async () => {
 test("renderer setup failure teardown blocks retry and deduplicates concurrent stop cleanup", async () => {
   const { createMeetingRecordingStopBarrier, teardownFailedMeetingRecordingSetup } = await load();
   let finishMainStop!: () => void;
+
   const mainStopDeferred = new Promise<void>((resolve) => {
     finishMainStop = resolve;
   });
+
   let markMainStopBegan!: () => void;
+
   const mainStopBegan = new Promise<void>((resolve) => {
     markMainStopBegan = resolve;
   });
+
   const barrier = createMeetingRecordingStopBarrier();
   const events: unknown[] = [];
   let activeSessionId: string | null = "meeting-1";
@@ -237,14 +259,17 @@ test("renderer setup failure teardown blocks retry and deduplicates concurrent s
       events.push("release-session");
     },
   });
+
   const retryPromise = barrier.waitForPendingStop().then(() => {
     assert.equal(activeSessionId, null);
     retryCaptureCount += 1;
     events.push("retry-capture");
   });
+
   const concurrentStopPromise = barrier.runStop(async () => {
     events.push("duplicate-cleanup");
   });
+
   await mainStopBegan;
 
   assert.deepEqual(events, ["cleanup", "main-stop"]);
@@ -265,7 +290,9 @@ test("same-turn stop cancels an admitted start before its first continuation", a
   const firstStart = coordinator.runStart("meeting-1", async (operation) => {
     events.push(operation.isCurrent() ? "capture:meeting-1" : "canceled:meeting-1");
   });
+
   const canceledStart = coordinator.cancelActiveStart("meeting-1");
+
   const replacementStart = coordinator.runStart("meeting-2", async () => {
     events.push("capture:meeting-2");
   });
@@ -287,6 +314,7 @@ test("a committed renderer start is no longer cancelable", async () => {
     committed.resolve();
     await finishStart.promise;
   });
+
   await committed.promise;
 
   assert.equal(coordinator.cancelActiveStart("meeting-1"), null);
@@ -308,11 +336,14 @@ test("stop during deferred preparation cancels the old start before admitting re
     await preparation.promise;
     events.push(operation.isCurrent() ? "capture:meeting-1" : "canceled:meeting-1");
   });
+
   await firstStartBegan.promise;
   const canceledStart = coordinator.cancelActiveStart("meeting-1");
+
   const replacementStart = coordinator.runStart("meeting-2", async () => {
     events.push("capture:meeting-2");
   });
+
   await Promise.resolve();
 
   assert.deepEqual(events, ["prepare:meeting-1"]);
@@ -335,9 +366,11 @@ test("system-audio rejection settles a canceled start before replacement", async
     systemAudioBegan.resolve();
     await systemAudio.promise;
   });
+
   const firstStartRejection = assert.rejects(firstStart, /system audio denied/);
   await systemAudioBegan.promise;
   const canceledStart = coordinator.cancelActiveStart("meeting-1");
+
   const replacementStart = coordinator.runStart("meeting-2", async () => {
     events.push("capture:meeting-2");
   });
@@ -361,20 +394,25 @@ test("cancellation after deferred main start stops the old session once before r
     events.push("main-start:meeting-1");
     mainStartBegan.resolve();
     await mainStart.promise;
+
     if (!operation.isCurrent()) {
       const stopMain = async () => {
         scopedStopCount += 1;
         events.push("main-stop:meeting-1");
       };
+
       await Promise.all([operation.stopMainOnce(stopMain), operation.stopMainOnce(stopMain)]);
       events.push("canceled:meeting-1");
     }
   });
+
   await mainStartBegan.promise;
   const canceledStart = coordinator.cancelActiveStart("meeting-1");
+
   const replacementStart = coordinator.runStart("meeting-2", async () => {
     events.push("capture:meeting-2");
   });
+
   await Promise.resolve();
 
   assert.deepEqual(events, ["main-start:meeting-1"]);
@@ -403,6 +441,7 @@ test("main-start rejection releases cancellation and replacement after one scope
     operation.markMainStartAttempted();
     events.push("main-start:meeting-1");
     mainStartBegan.resolve();
+
     try {
       await mainStart.promise;
     } catch (error) {
@@ -413,9 +452,11 @@ test("main-start rejection releases cancellation and replacement after one scope
       throw error;
     }
   });
+
   const firstStartRejection = assert.rejects(firstStart, /main start failed/);
   await mainStartBegan.promise;
   const canceledStart = coordinator.cancelActiveStart("meeting-1");
+
   const replacementStart = coordinator.runStart("meeting-2", async () => {
     events.push("capture:meeting-2");
   });
@@ -448,10 +489,10 @@ test("restart refuses a note that was deleted during the restart window", async 
   const { resolveMeetingAutoEndRestartSeed } = await load();
 
   // A deleted note reads back as null — there is no tombstone row anymore.
-  assert.deepEqual(
-    resolveMeetingAutoEndRestartSeed(7, null, parseSegments, []),
-    { ok: false, reason: "note-missing" }
-  );
+  assert.deepEqual(resolveMeetingAutoEndRestartSeed(7, null, parseSegments, []), {
+    ok: false,
+    reason: "note-missing",
+  });
 });
 
 test("restart refuses a note that no longer exists", async () => {
@@ -488,6 +529,7 @@ test("restart starts empty when the note has no transcript yet", async () => {
 // all of them instead of dropping some silently.
 function createRestartDeps(overrides: Partial<MeetingAutoEndRestartDeps> = {}) {
   const started: StartRecordingArgs[] = [];
+
   return {
     started,
     deps: {
@@ -497,6 +539,7 @@ function createRestartDeps(overrides: Partial<MeetingAutoEndRestartDeps> = {}) {
       parseSegments,
       startRecording: async (args: StartRecordingArgs) => {
         started.push(args);
+
         return true;
       },
       ...overrides,
@@ -504,13 +547,24 @@ function createRestartDeps(overrides: Partial<MeetingAutoEndRestartDeps> = {}) {
   };
 }
 
-const restartContext = (sessionId = "meeting-1", args: Partial<StartRecordingArgs> = {}): MeetingAutoEndRestartContext => ({
+const restartContext = (
+  sessionId = "meeting-1",
+  args: Partial<StartRecordingArgs> = {}
+): MeetingAutoEndRestartContext => ({
   sessionId,
-  args: { noteId: 7, noteTitle: "Standup", folderId: 3, seedSegments: [], autoEndEligible: true, ...args },
+  args: {
+    noteId: 7,
+    noteTitle: "Standup",
+    folderId: 3,
+    seedSegments: [],
+    autoEndEligible: true,
+    ...args,
+  },
 });
 
 test("a delivered restart starts a recording seeded from the note", async () => {
   const { runMeetingAutoEndRestart } = await load();
+
   const { deps, started } = createRestartDeps({
     getNote: async () => ({
       transcript: JSON.stringify([{ id: "a", text: "hi" }]),
@@ -562,6 +616,7 @@ test("a recording that starts while the note is being read cancels the restart",
   const { runMeetingAutoEndRestart } = await load();
   let activeSessionId: string | null = null;
   const noteRead = createDeferred<{ transcript: string }>();
+
   const { deps, started } = createRestartDeps({
     getActiveSessionId: () => activeSessionId,
     getNote: () => noteRead.promise,

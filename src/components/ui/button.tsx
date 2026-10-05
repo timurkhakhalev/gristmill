@@ -10,7 +10,8 @@ const buttonVariants = cva("button [&_svg:not([class*='size-'])]:size-4 [&_svg]:
   variants: {
     variant: {
       default: "button--primary",
-      success: "button--primary [--button-bg:var(--success)] [--button-fg:var(--success-foreground)]",
+      success:
+        "button--primary [--button-bg:var(--success)] [--button-fg:var(--success-foreground)]",
       destructive: "button--danger",
       outline: "button--outline",
       "outline-flat": "button--outline text-muted-foreground hover:text-foreground",

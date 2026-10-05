@@ -1,6 +1,10 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { deriveConversationTitle }: typeof import("../../src/lib/conversationTitle.ts") = require("../../src/lib/conversationTitle.ts");
+
+const {
+  deriveConversationTitle,
+}: typeof import("../../src/lib/conversationTitle.ts") = require("../../src/lib/conversationTitle.ts");
 
 test("short messages become the title verbatim", () => {
   assert.equal(deriveConversationTitle("Catch me up", "Growth"), "Catch me up");

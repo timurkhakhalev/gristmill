@@ -1,7 +1,10 @@
 const { describe, it }: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { classifyNetworkError }: typeof import("../../src/helpers/networkErrors") = require("../../src/helpers/networkErrors");
+const {
+  classifyNetworkError,
+}: typeof import("../../src/helpers/networkErrors") = require("../../src/helpers/networkErrors");
 
 describe("classifyNetworkError", () => {
   it("treats ENOTFOUND as a DNS failure", () => {

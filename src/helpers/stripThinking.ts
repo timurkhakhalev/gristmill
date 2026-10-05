@@ -9,10 +9,12 @@ export function stripThinkingTags(text: unknown): unknown {
   const innermostClosed = /<think>(?:(?!<think>)[\s\S])*?<\/think>/i;
   let out = text;
   let next = out.replace(innermostClosed, "");
+
   while (next !== out) {
     out = next;
     next = out.replace(innermostClosed, "");
   }
+
   return next
     .replace(/<think>[\s\S]*$/i, "")
     .replace(/<\/think>/gi, "")

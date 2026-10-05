@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -34,9 +35,11 @@ test("auto-end uses a larger positioned window while detection keeps its existin
 
 test("auto-end dimensions fit every supported localized title, body, and action", () => {
   const locales = ["en", "es", "fr", "de", "pt", "it", "ru", "ja", "zh-CN", "zh-TW"];
+
   const translations = locales.map(
     (locale) => require(`../../src/locales/${locale}/translation.json`).meetingNotification.autoEnd
   );
+
   const displayColumns = (value: string) =>
     [...value].reduce(
       (columns, character) =>
@@ -44,6 +47,7 @@ test("auto-end dimensions fit every supported localized title, body, and action"
         (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(character) ? 2 : 1),
       0
     );
+
   const longestActionColumns = Math.max(
     ...translations.map(({ restart }) => displayColumns(restart))
   );
@@ -52,10 +56,12 @@ test("auto-end dimensions fit every supported localized title, body, and action"
   const actionWidth = longestActionColumns * 6 + 20;
   const textWidth = AUTO_END_NOTIFICATION_WINDOW_SIZE.width - 24 - 20 - 26 - 20 - actionWidth;
   const columnsPerLine = Math.floor(textWidth / 6);
+
   // Every reason-specific body must fit, not just the longest per locale.
   const worstCase = translations.flatMap(({ title, body }, index) =>
     Object.entries(body).map(([reason, text]) => {
       assert.ok(typeof text === "string");
+
       return {
         locale: locales[index],
         reason,
@@ -65,6 +71,7 @@ test("auto-end dimensions fit every supported localized title, body, and action"
       };
     })
   );
+
   const maximumTextLines = Math.max(...worstCase.map(({ lines }) => lines));
   const requiredHeight = 24 + 20 + maximumTextLines * 14;
 

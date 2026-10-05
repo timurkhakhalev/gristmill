@@ -32,6 +32,7 @@ export class ToolRegistry {
 
   toAISDKFormat(): Record<string, Tool> {
     const result: Record<string, Tool> = {};
+
     for (const def of this.getAll()) {
       result[def.name] = {
         description: def.description,
@@ -39,6 +40,7 @@ export class ToolRegistry {
         execute: async (args: unknown) => {
           try {
             const toolResult = await def.execute(args as Record<string, unknown>);
+
             return toolResult.success ? toolResult.data : { error: toolResult.displayText };
           } catch (error) {
             return { error: (error as Error).message || "Tool execution failed" };
@@ -46,6 +48,7 @@ export class ToolRegistry {
         },
       } as Tool;
     }
+
     return result;
   }
 }

@@ -1,11 +1,17 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const CalendarSyncInterval = require("../../src/helpers/calendarSyncInterval.ts");
+
 const { FOCUS_SYNC_THROTTLE_MS } = CalendarSyncInterval;
 
 type Outcome = { total: number; succeeded: number; failed: number; errors: string[] };
-function createRunner(syncFn: () => Promise<Outcome | void>, overrides: Record<string, unknown> = {}) {
+
+function createRunner(
+  syncFn: () => Promise<Outcome | void>,
+  overrides: Record<string, unknown> = {}
+) {
   return new CalendarSyncInterval(syncFn, {
     intervalMs: 1000,
     maxIntervalMs: 4000,
@@ -19,6 +25,7 @@ function flushPromises() {
 }
 
 const FAILURE = { total: 2, succeeded: 0, failed: 2, errors: ["provider down", "provider down"] };
+
 const PARTIAL = { total: 2, succeeded: 1, failed: 1, errors: ["calendar b failed"] };
 
 test("backoff doubles the interval per consecutive failure up to the cap", () => {
@@ -49,8 +56,10 @@ test("notifySuccess resets the backoff to the base interval", () => {
 test("a resolved outcome with failures backs off even though the promise fulfilled", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   let calls = 0;
+
   const runner = createRunner(() => {
     calls += 1;
+
     return Promise.resolve(FAILURE);
   });
 
@@ -74,8 +83,10 @@ test("a resolved outcome with failures backs off even though the promise fulfill
 test("a partially failed outcome backs off", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   let calls = 0;
+
   const runner = createRunner(() => {
     calls += 1;
+
     return Promise.resolve(PARTIAL);
   });
 
@@ -95,8 +106,10 @@ test("a clean outcome after failures restores the normal interval", async (t: im
   t.mock.timers.enable({ apis: ["setInterval"] });
   let calls = 0;
   let fail = true;
+
   const runner = createRunner(() => {
     calls += 1;
+
     return Promise.resolve(fail ? FAILURE : { total: 2, succeeded: 2, failed: 0, errors: [] });
   });
 
@@ -123,9 +136,12 @@ test("a clean outcome after failures restores the normal interval", async (t: im
 test("a late resolved failure after stop does not restart the timer", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   let resolveSync: (value: Outcome) => void = () => {};
+
   let calls = 0;
+
   const runner = createRunner(() => {
     calls += 1;
+
     return new Promise<Outcome>((resolve) => {
       resolveSync = resolve;
     });
@@ -153,9 +169,12 @@ test("a late resolved failure after stop does not restart the timer", async (t: 
 test("an explicit out-of-band outcome schedules after stop while a racing tick completion does not", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   let resolveTick: (value: Outcome) => void = () => {};
+
   let calls = 0;
+
   const runner = createRunner(() => {
     calls += 1;
+
     return new Promise<Outcome>((resolve) => {
       resolveTick = resolve;
     });
@@ -186,8 +205,10 @@ test("an explicit out-of-band outcome schedules after stop while a racing tick c
 // failure shape as the interval tick.
 test("a rejected focus sync records a failure and backs off", async () => {
   let calls = 0;
+
   const runner = createRunner(() => {
     calls += 1;
+
     return Promise.reject(new Error("boom"));
   });
 
@@ -205,8 +226,10 @@ test("a rejected focus sync records a failure and backs off", async () => {
 test("a failed sync reschedules the next run at the backed-off interval", async (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   let calls = 0;
+
   const runner = createRunner(() => {
     calls += 1;
+
     return Promise.reject(new Error("boom"));
   });
 
@@ -226,8 +249,10 @@ test("a failed sync reschedules the next run at the backed-off interval", async 
 
 test("focus syncs are throttled to one per window", async () => {
   let calls = 0;
+
   const runner = createRunner(() => {
     calls += 1;
+
     return Promise.resolve();
   });
 
@@ -244,20 +269,29 @@ test("focus syncs are throttled to one per window", async () => {
 });
 
 for (const outcome of ["failed", "rejected", "clean"] as const) {
-  test(`late focus ${outcome} outcome cannot re-arm a stopped timer`, async t => {
+  test(`late focus ${outcome} outcome cannot re-arm a stopped timer`, async (t) => {
     t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 100_000 });
     let resolve!: (value: Outcome) => void, reject!: (error: Error) => void;
     let calls = 0;
-    const runner = createRunner(() => ++calls === 1
-      ? new Promise<Outcome>((done, fail) => { resolve = done; reject = fail; })
-      : Promise.resolve(FAILURE));
+
+    const runner = createRunner(() =>
+      ++calls === 1
+        ? new Promise<Outcome>((done, fail) => {
+            resolve = done;
+            reject = fail;
+          })
+        : Promise.resolve(FAILURE)
+    );
+
     t.after(() => runner.stop());
     runner.notifyOutcome(FAILURE);
     runner.syncOnFocus();
     assert.equal(calls, 1);
     runner.stop();
+
     if (outcome === "rejected") reject(new Error("provider down"));
-    else resolve(outcome === "failed" ? FAILURE : { total: 1, succeeded: 1, failed: 0, errors: [] });
+    else
+      resolve(outcome === "failed" ? FAILURE : { total: 1, succeeded: 1, failed: 0, errors: [] });
     await flushPromises();
     assert.equal(runner.timer, null);
     assert.equal(runner._consecutiveFailures, 1, "old outcome cannot change backoff");

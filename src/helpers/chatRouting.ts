@@ -37,6 +37,7 @@ export function resolveChatRoute({
   // An explicit self-hosted URL is the caller's declared route — it wins even
   // over a stale enterprise provider id left in settings.
   const baseUrl = lanUrl?.trim() || "";
+
   if (baseUrl) {
     return {
       kind: "self-hosted",

@@ -1,11 +1,14 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const path: typeof import("node:path") = require("node:path");
 
 // The contract is renderer/main-neutral; loading it under plain node only needs
 // zod to resolve, so no electron stub is required. The probe helper reuses the
 // compiler-program approach of test/scripts/mainBuild.test.js.
 const root = path.resolve(__dirname, "../..");
+
 const ts: typeof import("typescript") = require("typescript");
 
 const rendererProbes = {
@@ -42,6 +45,7 @@ async function check(api: NotesApi): Promise<string | undefined> {
 export { check };
 `,
 };
+
 let rendererProbeResults: Record<string, number[]> | undefined;
 
 function compileRendererProbes() {
@@ -49,35 +53,51 @@ function compileRendererProbes() {
   const configPath = path.join(root, "src", "tsconfig.json");
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.join(root, "src"));
-  const sources = new Map(Object.entries(rendererProbes).map(([name, source]) => [
-    path.join(root, "src", `notes-type-probe-${name}.ts`), source,
-  ]));
+
+  const sources = new Map(
+    Object.entries(rendererProbes).map(([name, source]) => [
+      path.join(root, "src", `notes-type-probe-${name}.ts`),
+      source,
+    ])
+  );
+
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
   host.getSourceFile = (file, languageVersion, onError, shouldCreateNewSourceFile) => {
     const source = sources.get(file);
+
     return source !== undefined
       ? ts.createSourceFile(file, source, languageVersion, true)
       : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
   };
+
   const program = ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host);
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  assert.deepEqual(diagnostics.filter((d) => !d.file || !sources.has(d.file.fileName)), []);
-  rendererProbeResults = Object.fromEntries(Object.keys(rendererProbes).map((name) => [
-    name,
-    diagnostics.filter((d) => d.file?.fileName === path.join(root, "src", `notes-type-probe-${name}.ts`))
-      .map((d) => d.code),
-  ]));
+  assert.deepEqual(
+    diagnostics.filter((d) => !d.file || !sources.has(d.file.fileName)),
+    []
+  );
+  rendererProbeResults = Object.fromEntries(
+    Object.keys(rendererProbes).map((name) => [
+      name,
+      diagnostics
+        .filter((d) => d.file?.fileName === path.join(root, "src", `notes-type-probe-${name}.ts`))
+        .map((d) => d.code),
+    ])
+  );
+
   return rendererProbeResults;
 }
 
 test("noteUpdateSchema strips unknown keys and keeps known ones", async () => {
   const { noteUpdateSchema } = await import("../../src/contracts/notes.ts");
+
   const parsed = noteUpdateSchema.parse({
     title: "T",
     client_note_id: "strip-me",
     cloud_id: "strip-me-too",
   });
+
   assert.deepEqual(parsed, { title: "T" });
 });
 
@@ -106,12 +126,32 @@ test("getNotesArgsSchema accepts a numeric SQLite limit of -1", async () => {
 });
 
 test("event payload schemas reject malformed notes", async () => {
-  const { noteAddedUpdatedPayloadSchema, noteDeletedPayloadSchema } = await import(
-    "../../src/contracts/notes.ts"
-  );
+  const { noteAddedUpdatedPayloadSchema, noteDeletedPayloadSchema } =
+    await import("../../src/contracts/notes.ts");
+
   assert.equal(noteAddedUpdatedPayloadSchema.safeParse({ id: 1 }).success, false);
   assert.equal(
-    noteAddedUpdatedPayloadSchema.safeParse({ id: 1, title: "T", content: "", note_type: "personal", created_at: "", updated_at: "", space_id: 1, source_file: null, audio_duration_seconds: null, enhanced_content: null, enhancement_prompt: null, enhanced_at_content_hash: null, folder_id: null, folder_ids: [], transcript: null, calendar_event_id: null, participants: null, diarization_enabled: null, expected_speaker_count: null }).success,
+    noteAddedUpdatedPayloadSchema.safeParse({
+      id: 1,
+      title: "T",
+      content: "",
+      note_type: "personal",
+      created_at: "",
+      updated_at: "",
+      space_id: 1,
+      source_file: null,
+      audio_duration_seconds: null,
+      enhanced_content: null,
+      enhancement_prompt: null,
+      enhanced_at_content_hash: null,
+      folder_id: null,
+      folder_ids: [],
+      transcript: null,
+      calendar_event_id: null,
+      participants: null,
+      diarization_enabled: null,
+      expected_speaker_count: null,
+    }).success,
     true
   );
   assert.equal(noteDeletedPayloadSchema.safeParse({ id: 3 }).success, true);
@@ -169,6 +209,7 @@ const deps: NotesHandlerDeps = {
 registerNotesHandlers({ handle() {} }, deps);
 `,
 };
+
 let mainProbeResults: Record<string, number[]> | undefined;
 
 function compileMainProbes() {
@@ -176,25 +217,39 @@ function compileMainProbes() {
   const configPath = path.join(root, "tsconfig.main.json");
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
-  const sources = new Map(Object.entries(mainProbes).map(([name, source]) => [
-    path.join(root, `notes-main-probe-${name}.ts`), source,
-  ]));
+
+  const sources = new Map(
+    Object.entries(mainProbes).map(([name, source]) => [
+      path.join(root, `notes-main-probe-${name}.ts`),
+      source,
+    ])
+  );
+
   const host = ts.createCompilerHost(parsed.options);
   const readSource = host.getSourceFile.bind(host);
   host.getSourceFile = (file, languageVersion, onError, shouldCreateNewSourceFile) => {
     const source = sources.get(file);
+
     return source !== undefined
       ? ts.createSourceFile(file, source, languageVersion, true)
       : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
   };
+
   const program = ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host);
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  assert.deepEqual(diagnostics.filter((d) => !d.file || !sources.has(d.file.fileName)), []);
-  mainProbeResults = Object.fromEntries(Object.keys(mainProbes).map((name) => [
-    name,
-    diagnostics.filter((d) => d.file?.fileName === path.join(root, `notes-main-probe-${name}.ts`))
-      .map((d) => d.code),
-  ]));
+  assert.deepEqual(
+    diagnostics.filter((d) => !d.file || !sources.has(d.file.fileName)),
+    []
+  );
+  mainProbeResults = Object.fromEntries(
+    Object.keys(mainProbes).map((name) => [
+      name,
+      diagnostics
+        .filter((d) => d.file?.fileName === path.join(root, `notes-main-probe-${name}.ts`))
+        .map((d) => d.code),
+    ])
+  );
+
   return mainProbeResults;
 }
 
@@ -210,4 +265,6 @@ test("renderer probe: NotesApi exposes the error discriminant on update results"
   assert.deepEqual(compileRendererProbes().updateResult, []);
 });
 
-test("type probe: run output requires its explicit run ID", () => { assert.deepEqual(compileRendererProbes().wrongOutputScope, [2345]); });
+test("type probe: run output requires its explicit run ID", () => {
+  assert.deepEqual(compileRendererProbes().wrongOutputScope, [2345]);
+});

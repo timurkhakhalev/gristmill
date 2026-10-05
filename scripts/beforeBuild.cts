@@ -1,4 +1,5 @@
 const { rebuild }: typeof import("@electron/rebuild") = require("@electron/rebuild");
+
 const installedElectronVersion: string = require("electron/package.json").version;
 
 // Node tests and Electron use different SQLite ABIs. A Node prebuild replaces
@@ -19,6 +20,7 @@ module.exports = async function beforeBuild({
     useCache: false,
     mode: "sequential",
   });
+
   // Keep electron-builder's pnpm dependency collection enabled. Its subsequent
   // cached rebuild check now sees metadata for the binary we actually installed.
   return true;

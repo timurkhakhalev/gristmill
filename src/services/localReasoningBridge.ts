@@ -13,9 +13,11 @@ interface LocalModelManager {
 // The bundle's `default` is the singleton under every loader: the tsx ESM
 // graph resolves the default import to module.exports itself, the CJS graphs
 // interop to the same object. Drill in once, here.
-const modelManager: LocalModelManager = (modelManagerBundle as unknown as {
-  default: LocalModelManager;
-}).default;
+const modelManager: LocalModelManager = (
+  modelManagerBundle as unknown as {
+    default: LocalModelManager;
+  }
+).default;
 
 export class LocalReasoningService {
   private isProcessing = false;
@@ -23,6 +25,7 @@ export class LocalReasoningService {
   async isAvailable(): Promise<boolean> {
     try {
       const models = await modelManager.getAllModels();
+
       return models.some((model) => model.isDownloaded);
     } catch {
       return false;
@@ -72,9 +75,11 @@ export class LocalReasoningService {
 
       const result = await modelManager.runInference(modelId, text, inferenceConfig);
       const stripThinking = config.disableThinking !== false;
+
       const stripped: unknown = stripThinking
         ? (await import("../helpers/stripThinking.js")).stripThinkingTags(result)
         : result.trim();
+
       // runInference returns text; the guard only keeps the historical
       // pass-through from producing a non-string return type.
       const cleanResult = typeof stripped === "string" ? stripped : result.trim();

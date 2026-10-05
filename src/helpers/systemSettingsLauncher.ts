@@ -44,6 +44,7 @@ export async function openSystemSettings(
       screenRecording: i18nMain.t("systemSettings.screenRecording"),
       loginItems: i18nMain.t("systemSettings.loginItems"),
     };
+
     return {
       success: false,
       error: messages[settingType] || `${settingType} settings are not available on this platform.`,
@@ -52,9 +53,11 @@ export async function openSystemSettings(
 
   try {
     await shell.openExternal(url);
+
     return { success: true };
   } catch (error) {
     debugLogger.error(`Failed to open ${settingType} settings:`, error);
+
     return { success: false, error: (error as Error).message };
   }
 }

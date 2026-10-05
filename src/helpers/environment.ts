@@ -38,7 +38,9 @@ const SECRET_KEYS: readonly SecretEnvKey[] = [
   "TRANSLATION_KEY",
 ];
 
-const SECRET_KEY_SET: ReadonlySet<string> = new Set(SECRET_ENV_KEYS.map((key) => key.toUpperCase()));
+const SECRET_KEY_SET: ReadonlySet<string> = new Set(
+  SECRET_ENV_KEYS.map((key) => key.toUpperCase())
+);
 
 function isSecretEnvKey(key: string): boolean {
   return SECRET_KEY_SET.has(key.toUpperCase());
@@ -84,6 +86,7 @@ type SaveKeyResult = {
 // Module-level so writes are serialized across all instances — hotkeyManager
 // creates its own EnvironmentManager alongside the main.js singleton.
 let envWriteQueue: Promise<unknown> = Promise.resolve();
+
 let plaintextSecretEnvironmentCleared = false;
 
 export class EnvironmentManager {
@@ -124,8 +127,10 @@ export class EnvironmentManager {
     try {
       const content = fs.readFileSync(envPath, "utf8");
       const parsed = require("dotenv").parse(content) as Record<string, string>;
+
       for (const [key, value] of Object.entries(parsed)) {
         if (isSecretEnvKey(key)) continue;
+
         if (override || process.env[key] === undefined) process.env[key] = value;
       }
     } catch {
@@ -158,6 +163,7 @@ export class EnvironmentManager {
 
   async _stripPlaintextSecretsFromEnvFile(): Promise<void> {
     const envPath = path.join(app.getPath("userData"), ".env");
+
     try {
       // An interrupted write from an older version may have left secret
       // assignments in its temporary file. It is never authoritative config.
@@ -172,6 +178,7 @@ export class EnvironmentManager {
     }
 
     let content: string;
+
     try {
       content = await fsPromises.readFile(envPath, "utf8");
     } catch (error) {
@@ -183,13 +190,18 @@ export class EnvironmentManager {
       );
       throw new Error("Could not read .env to remove plaintext secrets");
     }
+
     const parsed = require("dotenv").parse(content) as Record<string, string>;
+
     if (!Object.keys(parsed).some(isSecretEnvKey)) return;
+
     const safeContent = Object.entries(parsed)
       .filter(([key]) => !isSecretEnvKey(key))
       .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
       .join("\n");
+
     const tmpPath = `${envPath}.secure.tmp`;
+
     try {
       await fsPromises.writeFile(tmpPath, safeContent ? `${safeContent}\n` : "", { mode: 0o600 });
       await fsPromises.rename(tmpPath, envPath);
@@ -209,10 +221,12 @@ export class EnvironmentManager {
 
   async _loadSecretKey(envVarName: string): Promise<void> {
     const filePath = this._getSecretFilePath(envVarName);
+
     try {
       const buffer = await fsPromises.readFile(filePath);
       const { value, needsReencrypt } = secretCrypto.decrypt(buffer);
       process.env[envVarName] = value;
+
       if (needsReencrypt) await this._saveSecretKey(envVarName, value);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
@@ -230,6 +244,7 @@ export class EnvironmentManager {
   async _saveSecretKey(envVarName: string, value: string): Promise<void> {
     if (!value) {
       await this._deleteSecretKey(envVarName);
+
       return;
     }
 
@@ -249,6 +264,7 @@ export class EnvironmentManager {
       await fsPromises.rm(tmpPath, { force: true }).catch(() => {});
       throw error;
     }
+
     process.env[envVarName] = value;
   }
 
@@ -258,6 +274,7 @@ export class EnvironmentManager {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+
     delete process.env[envVarName];
   }
 
@@ -265,17 +282,21 @@ export class EnvironmentManager {
     // Concurrent write+rename pairs share the same .env.tmp path, and the
     // loser's rename throws ENOENT (#903).
     envWriteQueue = envWriteQueue.catch(() => {}).then(() => this._writeEnvFile(envPath));
+
     return envWriteQueue;
   }
 
   async _writeEnvFile(envPath: string): Promise<void> {
     let envContent = "# Gristmill Environment Variables\n";
+
     for (const key of PERSISTED_KEYS) {
       if (isSecretEnvKey(key)) continue;
+
       if (process.env[key]) {
         envContent += `${key}=${process.env[key]}\n`;
       }
     }
+
     const tmpPath = `${envPath}.tmp`;
     await fsPromises.writeFile(tmpPath, envContent, { encoding: "utf8", mode: 0o600 });
     await fsPromises.chmod(tmpPath, 0o600);
@@ -291,15 +312,18 @@ export class EnvironmentManager {
   _saveKey(envVarName: string, key: string): SaveKeyResult | Promise<SaveKeyResult> {
     if (SECRET_KEYS.includes(envVarName as SecretEnvKey)) {
       if (key && !this._encryptionAvailable()) return Promise.resolve({ success: false });
+
       return this._trackSecretWrite(envVarName, () =>
         key ? this._saveSecretKey(envVarName, key) : this._deleteSecretKey(envVarName)
       );
     }
+
     if (key) {
       process.env[envVarName] = key;
     } else {
       delete process.env[envVarName];
     }
+
     return { success: true };
   }
 
@@ -312,6 +336,7 @@ export class EnvironmentManager {
   _trackSecretWrite(envVarName: string, start: () => Promise<void>): Promise<SaveKeyResult> {
     const previous = this._pendingSecretWrites.get(envVarName) ?? Promise.resolve();
     const operation = previous.catch(() => {}).then(start);
+
     const result = operation.then(
       () => ({ success: true }),
       (error) => {
@@ -320,9 +345,11 @@ export class EnvironmentManager {
           { key: envVarName, code: (error as NodeJS.ErrnoException).code },
           "environment"
         );
+
         return { success: false };
       }
     );
+
     const tracked = result.then(() => {});
     this._pendingSecretWrites.set(envVarName, tracked);
     void tracked.then(() => {
@@ -330,6 +357,7 @@ export class EnvironmentManager {
         this._pendingSecretWrites.delete(envVarName);
       }
     });
+
     return result;
   }
 
@@ -457,6 +485,7 @@ export class EnvironmentManager {
   saveDictationKey(key: string): SaveKeyResult {
     const result = this._saveKey("DICTATION_KEY", key);
     this.saveAllKeysToEnvFile().catch(() => {});
+
     return result;
   }
 
@@ -486,6 +515,7 @@ export class EnvironmentManager {
 
   getActivationMode(): "push" | "tap" {
     const mode = this._getKey("ACTIVATION_MODE");
+
     return mode === "push" ? "push" : "tap";
   }
 
@@ -493,6 +523,7 @@ export class EnvironmentManager {
     const validMode = mode === "push" ? "push" : "tap";
     const result = this._saveKey("ACTIVATION_MODE", validMode);
     this.saveAllKeysToEnvFile().catch(() => {});
+
     return result;
   }
 
@@ -503,6 +534,7 @@ export class EnvironmentManager {
   saveFloatingIconAutoHide(enabled: boolean): SaveKeyResult {
     const result = this._saveKey("FLOATING_ICON_AUTO_HIDE", String(enabled));
     this.saveAllKeysToEnvFile().catch(() => {});
+
     return result;
   }
 
@@ -513,23 +545,28 @@ export class EnvironmentManager {
   saveStartMinimized(enabled: boolean): SaveKeyResult {
     const result = this._saveKey("START_MINIMIZED", String(enabled));
     this.saveAllKeysToEnvFile().catch(() => {});
+
     return result;
   }
 
   getPanelStartPosition(): "bottom-right" | "center" | "bottom-left" {
     const v = this._getKey("PANEL_START_POSITION");
+
     if (v === "bottom-right" || v === "center" || v === "bottom-left") return v;
+
     return "bottom-right";
   }
 
   savePanelStartPosition(position: string): SaveKeyResult {
     const result = this._saveKey("PANEL_START_POSITION", position);
     this.saveAllKeysToEnvFile().catch(() => {});
+
     return result;
   }
 
   getUiLanguage(fallbackLanguage = ""): string {
     const language = this._getKey("UI_LANGUAGE") || fallbackLanguage;
+
     return language ? normalizeUiLanguage(language) : "";
   }
 
@@ -537,6 +574,7 @@ export class EnvironmentManager {
     const normalized = normalizeUiLanguage(language);
     const result = this._saveKey("UI_LANGUAGE", normalized);
     this.saveAllKeysToEnvFile().catch(() => {});
+
     return { ...result, language: normalized };
   }
 
@@ -544,6 +582,7 @@ export class EnvironmentManager {
     const envPath = path.join(app.getPath("userData"), ".env");
     await this._writeEnvFileAtomic(envPath);
     require("dotenv").config({ path: envPath });
+
     return { success: true, path: envPath };
   }
 
@@ -551,6 +590,7 @@ export class EnvironmentManager {
     for (const envVarName of PERSISTED_KEYS) {
       delete process.env[envVarName];
     }
+
     for (const envVarName of SECRET_ENV_KEYS) delete process.env[envVarName];
   }
 
@@ -568,6 +608,7 @@ export class EnvironmentManager {
       fsPromises.rm(path.join(app.getPath("userData"), ".env"), { force: true }),
       fsPromises.rm(this._getSecureKeysDir(), { recursive: true, force: true }),
     ]);
+
     return { success: true };
   }
 
@@ -578,19 +619,23 @@ export class EnvironmentManager {
   removeKeyFromEnvFile(key: string): Promise<unknown> {
     const envPath = path.join(app.getPath("userData"), ".env");
     envWriteQueue = envWriteQueue.catch(() => {}).then(() => this._removeKeyLine(envPath, key));
+
     return envWriteQueue;
   }
 
   async _removeKeyLine(envPath: string, key: string): Promise<void> {
     let content: string;
+
     try {
       content = await fsPromises.readFile(envPath, "utf8");
     } catch {
       return; // No .env — nothing to remove.
     }
+
     const keyLine = new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`);
     const lines = content.split("\n");
     const kept = lines.filter((line) => !keyLine.test(line));
+
     if (kept.length === lines.length) return;
     const tmpPath = `${envPath}.tmp`;
     await fsPromises.writeFile(tmpPath, kept.join("\n"), "utf8");
@@ -604,6 +649,7 @@ export class EnvironmentManager {
 // every get/save name into a literal, so the surface below is exactly the
 // methods the loop attaches (no free string index).
 export type ByokGetterName = (typeof BYOK_API_KEYS)[number]["get"];
+
 export type ByokSetterName = (typeof BYOK_API_KEYS)[number]["save"];
 
 export type ByokAccessorSurface = {
@@ -621,6 +667,7 @@ for (const k of BYOK_API_KEYS) {
   managerPrototype[k.get] = function (this: EnvironmentManager) {
     return this._getKey(k.env);
   };
+
   managerPrototype[k.save] = function (this: EnvironmentManager, key = "") {
     return this._saveKey(k.env, key);
   };
@@ -630,4 +677,5 @@ for (const k of BYOK_API_KEYS) {
 // legacy `require("./environment")` call sites and emitted cross-module
 // imports construct the same constructor.
 module.exports = EnvironmentManager;
+
 module.exports.EnvironmentManager = EnvironmentManager;

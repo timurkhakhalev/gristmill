@@ -5,7 +5,9 @@ import { registerLocalFileTranscriptionHandler } from "./src/helpers/localFileTr
 import { createLocalFileTranscriptionBridge } from "./src/preload/localFileTranscriptionBridge.js";
 import { transcribeLocalFile } from "./src/helpers/localFileTranscription.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerLocalFileTranscriptionHandler(ipcMain, {
   readFile: (p: string) => Buffer.from(p),

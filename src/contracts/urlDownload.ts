@@ -16,7 +16,9 @@ const urlArg = z.string().max(2048);
 // boundary historically passed anything (missing, null, numbers); the main
 // handlers normalize that tolerant id, not the schema.
 export const downloadUrlAudioArgsSchema = z.tuple([urlArg, z.unknown().optional()]);
+
 export const cancelUrlDownloadArgsSchema = z.tuple([z.unknown().optional()]);
+
 export const deleteTempFileArgsSchema = z.tuple([z.string()]);
 
 export const urlDownloadSuccessSchema = z.object({
@@ -55,10 +57,15 @@ export const urlDownloadProgressSchema = z.object({
 });
 
 export type UrlDownloadSuccess = z.infer<typeof urlDownloadSuccessSchema>;
+
 export type UrlDownloadFailure = z.infer<typeof urlDownloadFailureSchema>;
+
 export type UrlDownloadResult = z.infer<typeof urlDownloadResultSchema>;
+
 export type CancelUrlDownloadResult = z.infer<typeof cancelUrlDownloadResultSchema>;
+
 export type DeleteTempFileResult = z.infer<typeof deleteTempFileResultSchema>;
+
 export type UrlDownloadProgress = z.infer<typeof urlDownloadProgressSchema>;
 
 // The renderer-facing surface: three operations, one subscription with a
@@ -68,9 +75,7 @@ export interface UrlDownloadApi {
   downloadUrlAudio(url: string, downloadId?: string): Promise<UrlDownloadResult>;
   cancelUrlDownload(downloadId?: string): Promise<CancelUrlDownloadResult>;
   deleteTempFile(filePath: string): Promise<DeleteTempFileResult>;
-  onUrlDownloadProgress(
-    callback: (progress: UrlDownloadProgress) => void
-  ): () => void;
+  onUrlDownloadProgress(callback: (progress: UrlDownloadProgress) => void): () => void;
 }
 
 export const urlDownloadChannels = {

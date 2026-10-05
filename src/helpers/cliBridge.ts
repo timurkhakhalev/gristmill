@@ -14,10 +14,15 @@ import { NoteReadService } from "./noteReadService.js";
 import { NoteReadError } from "../contracts/noteRead.js";
 
 const PORT_RANGE_START = 8200;
+
 const PORT_RANGE_END = 8219;
+
 const HOST = "127.0.0.1";
+
 const BRIDGE_FILE_VERSION = 1;
+
 const MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024;
+
 const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 export function getBridgeFilePath(userData: string): string {
@@ -28,6 +33,7 @@ async function findPortInRange(): Promise<number> {
   for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
     if (await isPortAvailable(port)) return port;
   }
+
   throw new Error(`No available ports in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
 }
 
@@ -35,27 +41,52 @@ async function findPortInRange(): Promise<number> {
 // dictionary/snippets operations and event senders the IPC handlers use.
 export interface CliBridgeOperations {
   databaseManager: {
-    getNotes(noteType?: string | null, limit?: number, folderId?: number | null, spaceId?: number | null): NoteRow[];
-    searchNotes(query: unknown, limit?: number, spaceId?: number | null, folderId?: number | null): NoteRow[];
+    getNotes(
+      noteType?: string | null,
+      limit?: number,
+      folderId?: number | null,
+      spaceId?: number | null
+    ): NoteRow[];
+    searchNotes(
+      query: unknown,
+      limit?: number,
+      spaceId?: number | null,
+      folderId?: number | null
+    ): NoteRow[];
     getNote(id: number | bigint): NoteRow | null;
     getFolders(spaceId?: number | null): FolderRow[];
-    createFolder(name: unknown, spaceId?: number | null): { success: boolean; error?: string; folder?: FolderRow };
+    createFolder(
+      name: unknown,
+      spaceId?: number | null
+    ): { success: boolean; error?: string; folder?: FolderRow };
     getDictionary(): string[];
-    applyDictionaryChanges(delta: { add?: unknown; remove?: unknown }): { success: boolean; added: number; removed: number };
+    applyDictionaryChanges(delta: { add?: unknown; remove?: unknown }): {
+      success: boolean;
+      added: number;
+      removed: number;
+    };
     getSnippets(): Array<{ trigger: string; replacement: string }>;
     setSnippets(snippets: unknown): { success: boolean };
     getTranscriptions(limit?: number): Array<Record<string, unknown>>;
     getTranscriptionById(id: number | bigint): Record<string, unknown> | null;
     updateTranscriptionAudio(
       id: number,
-      audio: { hasAudio?: boolean | number; audioDurationMs?: number | null; provider?: string | null; model?: string | null }
+      audio: {
+        hasAudio?: boolean | number;
+        audioDurationMs?: number | null;
+        provider?: string | null;
+        model?: string | null;
+      }
     ): { success: boolean };
   };
   deleteNoteInternal(id: number): Promise<{ success: boolean }>;
   deleteTranscriptionInternal(id: number): { success: boolean };
   noteWrites: Pick<NoteWriteService, "saveNote" | "updateNote">;
   approveAudioPath(filePath: string): void;
-  transcribeLocalFile(filePath: string, options?: Record<string, unknown>): Promise<TranscriptionResponse>;
+  transcribeLocalFile(
+    filePath: string,
+    options?: Record<string, unknown>
+  ): Promise<TranscriptionResponse>;
   listLocalTranscriptionModels(): Array<{
     model: string;
     default?: boolean;
@@ -73,6 +104,7 @@ interface CodedRouteError extends Error {
 function routeError(message: string, code: string): CodedRouteError {
   return Object.assign(new Error(message), { code });
 }
+
 void routeError;
 
 function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
@@ -86,18 +118,23 @@ function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown
       if (rejected) return;
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       receivedBytes += buffer.length;
+
       if (receivedBytes > MAX_REQUEST_BODY_BYTES) {
         rejected = true;
         reject(new Error("Request body too large"));
         req.destroy();
+
         return;
       }
+
       chunks.push(buffer);
     });
     req.on("end", () => {
       if (rejected) return;
       const raw = Buffer.concat(chunks, receivedBytes).toString("utf8");
+
       if (!raw) return resolve({});
+
       try {
         resolve(JSON.parse(raw));
       } catch {
@@ -133,7 +170,9 @@ function sendV1Error(
 
 function parseIdParam(value: string | undefined): number | null {
   const id = Number(value);
+
   if (!Number.isInteger(id) || id <= 0) return null;
+
   return id;
 }
 
@@ -142,9 +181,11 @@ function unwrapMutationResult<T>(result: unknown, label: string): T {
     string,
     unknown
   >;
+
   if (!record.success || !record[label]) {
     throw new Error((record.error as string) || `Failed to write ${label}`);
   }
+
   return record[label] as T;
 }
 
@@ -163,6 +204,7 @@ interface RouteEntry {
 
 // 204 responses have no body; this sentinel routes them apart from payloads.
 const NO_CONTENT = Symbol("CliBridge.NoContent");
+
 type RouteResult = unknown;
 
 export class CliBridge {
@@ -186,20 +228,27 @@ export class CliBridge {
     this.token = crypto.randomBytes(32).toString("hex");
     this.readToken = crypto.randomBytes(32).toString("hex");
     this.port = await findPortInRange();
-    const server = this.server = http.createServer((req, res) => {
+
+    const server = (this.server = http.createServer((req, res) => {
       this._handleRequest(req, res).catch((err) => {
-        debugLogger.error("CLI bridge handler error", { error: (err as Error).message }, "cli-bridge");
+        debugLogger.error(
+          "CLI bridge handler error",
+          { error: (err as Error).message },
+          "cli-bridge"
+        );
+
         if (!res.headersSent) {
           sendV1Error(res, 500, "internal_error", "Internal server error");
         }
       });
-    });
+    }));
 
     await new Promise<void>((resolve, reject) => {
       const onError = (err: Error) => {
         this.server = null;
         reject(err);
       };
+
       server.once("error", onError);
       server.listen(this.port as number, HOST, () => {
         server.removeListener("error", onError);
@@ -217,6 +266,7 @@ export class CliBridge {
 
   async stop(): Promise<void> {
     const server = this.server;
+
     if (!server) return;
     await new Promise<void>((resolve) => {
       server.close(() => resolve());
@@ -232,12 +282,15 @@ export class CliBridge {
   _writeBridgeFile(): void {
     const dir = path.dirname(this.bridgeFilePath);
     fs.mkdirSync(dir, { recursive: true });
+
     const payload = JSON.stringify({
       version: BRIDGE_FILE_VERSION,
       port: this.port,
       token: this.readToken,
     });
+
     fs.writeFileSync(this.bridgeFilePath, payload, { mode: 0o600 });
+
     // Re-apply mode in case the filesystem ignored the mode arg on create.
     // No-op on Windows ACLs but harmless; swallow errors from exotic filesystems.
     try {
@@ -252,61 +305,91 @@ export class CliBridge {
       fs.unlinkSync(this.bridgeFilePath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-        debugLogger.debug("CLI bridge file removal failed", { error: (err as Error).message }, "cli-bridge");
+        debugLogger.debug(
+          "CLI bridge file removal failed",
+          { error: (err as Error).message },
+          "cli-bridge"
+        );
       }
     }
   }
 
   async _handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const remote = req.socket?.remoteAddress;
+
     if (!remote || !LOOPBACK_ADDRESSES.has(remote)) {
       sendV1Error(res, 403, "forbidden", "Forbidden");
+
       return;
     }
 
     const auth = req.headers["authorization"] || "";
+
     const authenticated = (token: string | null) => {
       const expected = `Bearer ${token}`;
-      return token !== null && auth.length === expected.length &&
-        crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected));
+
+      return (
+        token !== null &&
+        auth.length === expected.length &&
+        crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected))
+      );
     };
+
     const writeAccess = authenticated(this.token);
+
     if (!writeAccess && !authenticated(this.readToken)) {
       sendV1Error(res, 401, "unauthorized", "Unauthorized");
+
       return;
     }
 
     const url = new URL(req.url || "/", `http://${HOST}:${this.port}`);
     const route = this._matchRoute(req.method, url.pathname);
+
     if (!route) {
       sendV1Error(res, 404, "not_found", "Not found");
+
       return;
     }
-    const readRoute = req.method === "GET" && (
-      url.pathname === "/v1/health" || url.pathname === "/v1/notes" || url.pathname === "/v1/notes/search" ||
-      /^\/v1\/notes\/\d+(?:\/(?:content|summary|transcript))?$/.test(url.pathname)
-    );
+
+    const readRoute =
+      req.method === "GET" &&
+      (url.pathname === "/v1/health" ||
+        url.pathname === "/v1/notes" ||
+        url.pathname === "/v1/notes/search" ||
+        /^\/v1\/notes\/\d+(?:\/(?:content|summary|transcript))?$/.test(url.pathname));
+
     if (!writeAccess && !readRoute) {
       sendV1Error(res, 403, "read_only", "Read-only token cannot access this route");
+
       return;
     }
 
     let body: Record<string, unknown> = {};
+
     if (req.method !== "GET" && req.method !== "DELETE") {
       try {
         body = await readJsonBody(req);
       } catch (err) {
         sendV1Error(res, 400, "validation_error", (err as Error).message);
+
         return;
       }
     }
 
     try {
-      const result: RouteResult = await route.handler({ params: route.params, query: url.searchParams, body });
+      const result: RouteResult = await route.handler({
+        params: route.params,
+        query: url.searchParams,
+        body,
+      });
+
       if (result === NO_CONTENT) {
         sendNoContent(res);
+
         return;
       }
+
       const status = route.status || 200;
       sendJson(res, status, result);
     } catch (err) {
@@ -317,30 +400,43 @@ export class CliBridge {
   _sendError(res: http.ServerResponse, err: CodedRouteError): void {
     if (err.code === "NOTE_NOT_FOUND") {
       sendV1Error(res, 404, "note_not_found", err.message);
+
       return;
     }
+
     if (err instanceof NoteReadError) {
       sendV1Error(res, 400, err.code, err.message);
+
       return;
     }
+
     if (err.code === "NOT_FOUND") {
       sendV1Error(res, 404, "not_found", err.message);
+
       return;
     }
+
     if (err.code === "VALIDATION") {
       sendV1Error(res, 400, "validation_error", err.message);
+
       return;
     }
+
     debugLogger.error("CLI bridge route error", { error: err.message }, "cli-bridge");
     sendV1Error(res, 500, "internal_error", err.message || "Internal server error");
   }
 
-  _matchRoute(method: string | undefined, pathname: string): (RouteEntry & { params: Record<string, string> }) | null {
+  _matchRoute(
+    method: string | undefined,
+    pathname: string
+  ): (RouteEntry & { params: Record<string, string> }) | null {
     for (const route of this.routes) {
       if (route.method !== method) continue;
       const params = route.match(pathname);
+
       if (params) return { ...route, params };
     }
+
     return null;
   }
 
@@ -356,6 +452,7 @@ export class CliBridge {
       handler,
       status,
     });
+
     const param = (
       method: string,
       prefix: string,
@@ -368,13 +465,18 @@ export class CliBridge {
       match: (p) => {
         if (!p.startsWith(prefix)) return null;
         const rest = p.slice(prefix.length);
+
         if (suffix) {
           if (!rest.endsWith(suffix)) return null;
           const value = rest.slice(0, rest.length - suffix.length);
+
           if (!value || value.includes("/")) return null;
+
           return { [paramName]: value };
         }
+
         if (rest.includes("/")) return null;
+
         return { [paramName]: rest };
       },
       handler,
@@ -384,46 +486,70 @@ export class CliBridge {
     const db = this.ops.databaseManager;
     const ipc = this.ops;
     const reader = this.ops.noteReadService;
+
     const requireReader = () => {
       if (!reader) throw routeError("Note reader unavailable", "UNAVAILABLE");
+
       return reader;
     };
+
     const scope = (query: URLSearchParams) => {
       const from = query.get("from") ?? undefined;
       const to = query.get("to") ?? undefined;
-      if ([from, to].some((date) => date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-        Number.isNaN(Date.parse(`${date}T00:00:00Z`)) ||
-        new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date))) {
+
+      if (
+        [from, to].some(
+          (date) =>
+            date &&
+            (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+              Number.isNaN(Date.parse(`${date}T00:00:00Z`)) ||
+              new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date)
+        )
+      ) {
         throw routeError("Dates must use YYYY-MM-DD", "VALIDATION");
       }
+
       if (from && to && from > to) throw routeError("'from' must be before 'to'", "VALIDATION");
       const rawNote = query.get("note");
       const note = rawNote === null ? undefined : Number(rawNote);
-      if (note !== undefined && (!Number.isSafeInteger(note) || note < 1)) throw routeError("Invalid note id", "VALIDATION");
+
+      if (note !== undefined && (!Number.isSafeInteger(note) || note < 1))
+        throw routeError("Invalid note id", "VALIDATION");
+
       return { from, to, note };
     };
+
     const requireNote = (id: number): NoteRow => {
       const note = db.getNote(id);
+
       if (!note) throw routeError(`Note ${id} not found`, "NOTE_NOT_FOUND");
+
       return note;
     };
 
     const requireId = (params: Record<string, string>, label: string): number => {
       const id = parseIdParam(params.id);
+
       if (id == null) throw routeError(`Invalid ${label} id`, "NOT_FOUND");
+
       return id;
     };
 
     const requireWordList = (value: unknown, field: string): string[] => {
       if (value === undefined || value === null) return [];
+
       if (!Array.isArray(value) || value.some((w) => typeof w !== "string")) {
         throw routeError(`'${field}' must be an array of strings`, "VALIDATION");
       }
+
       return value;
     };
 
-    const requireSnippetList = (value: unknown): Array<{ trigger: string; replacement: string }> => {
+    const requireSnippetList = (
+      value: unknown
+    ): Array<{ trigger: string; replacement: string }> => {
       if (value === undefined || value === null) return [];
+
       const valid =
         Array.isArray(value) &&
         value.every(
@@ -434,12 +560,14 @@ export class CliBridge {
             typeof (s as { replacement?: unknown }).replacement === "string" &&
             (s as { replacement: string }).replacement.trim()
         );
+
       if (!valid) {
         throw routeError(
           "'add' must be an array of { trigger, replacement } strings",
           "VALIDATION"
         );
       }
+
       return value as Array<{ trigger: string; replacement: string }>;
     };
 
@@ -447,15 +575,19 @@ export class CliBridge {
       if (typeof value !== "string" || !value.trim()) {
         throw routeError("'path' must be the path of an audio file", "VALIDATION");
       }
+
       let stat: fs.Stats;
+
       try {
         stat = fs.statSync(value);
       } catch {
         throw routeError(`No file at ${value}`, "NOT_FOUND");
       }
+
       if (!stat.isFile()) {
         throw routeError("'path' must point to a file, not a directory", "VALIDATION");
       }
+
       return fs.realpathSync(value);
     };
 
@@ -468,9 +600,11 @@ export class CliBridge {
       if (requested !== undefined && typeof requested !== "string") {
         throw routeError("'model' must be a string", "VALIDATION");
       }
+
       const match = requested
         ? models.find((m) => m.model === requested)
         : models.find((m) => m.default);
+
       if (!match) {
         throw routeError(
           requested
@@ -479,16 +613,21 @@ export class CliBridge {
           "VALIDATION"
         );
       }
+
       if (!match.downloaded) {
         throw routeError(
           `Model '${match.model}' is not downloaded. Open Gristmill and download it under Settings → Transcription.`,
           "VALIDATION"
         );
       }
+
       return match;
     };
 
-    const requireSuccess = (result: { success?: boolean; error?: string } | null | undefined, message: string): void => {
+    const requireSuccess = (
+      result: { success?: boolean; error?: string } | null | undefined,
+      message: string
+    ): void => {
       if (!result?.success) {
         throw routeError(result?.error || message, "NOT_FOUND");
       }
@@ -496,18 +635,27 @@ export class CliBridge {
 
     return [
       exact("GET", "/v1/health", () => ({ data: { ok: true, version: 1 } })),
-      exact("GET", "/v1/notes", ({ query }) => requireReader().list({ ...scope(query), withTranscript: query.get("with_transcript") === "true" })),
+      exact("GET", "/v1/notes", ({ query }) =>
+        requireReader().list({
+          ...scope(query),
+          withTranscript: query.get("with_transcript") === "true",
+        })
+      ),
       exact("GET", "/v1/notes/search", ({ query }) => {
         const q = query.get("q") || "";
+
         if (!q.trim()) throw routeError("Search query is required", "VALIDATION");
+
         return requireReader().search(q, scope(query));
       }),
       param("GET", "/v1/notes/", "/content", "id", ({ params }) => {
         const id = requireId(params, "note");
+
         return requireReader().content(requireNote(id));
       }),
       param("GET", "/v1/notes/", "/summary", "id", ({ params }) => {
         const id = requireId(params, "note");
+
         return requireReader().summary(requireNote(id));
       }),
       param("GET", "/v1/notes/", "/transcript", "id", ({ params, query }) => {
@@ -515,14 +663,23 @@ export class CliBridge {
         requireNote(id);
         const fromMs = query.has("from_ms") ? Number(query.get("from_ms")) : undefined;
         const toMs = query.has("to_ms") ? Number(query.get("to_ms")) : undefined;
-        if ([fromMs, toMs].some((n) => n !== undefined && (!Number.isSafeInteger(n) || n < 0)) ||
-            (fromMs !== undefined && toMs !== undefined && fromMs >= toMs)) {
+
+        if (
+          [fromMs, toMs].some((n) => n !== undefined && (!Number.isSafeInteger(n) || n < 0)) ||
+          (fromMs !== undefined && toMs !== undefined && fromMs >= toMs)
+        ) {
           throw routeError("Invalid transcript interval", "VALIDATION");
         }
-        return requireReader().transcript(id, { fromMs, toMs, speaker: query.get("speaker") ?? undefined });
+
+        return requireReader().transcript(id, {
+          fromMs,
+          toMs,
+          speaker: query.get("speaker") ?? undefined,
+        });
       }),
       param("GET", "/v1/notes/", "", "id", ({ params }) => {
         const id = requireId(params, "note");
+
         return requireReader().show(requireNote(id));
       }),
       exact(
@@ -530,16 +687,29 @@ export class CliBridge {
         "/v1/notes/create",
         ({ body }) => {
           const args = saveNoteArgsSchema.safeParse([
-            body.title ?? "Untitled Note", body.content ?? "", body.note_type ?? "personal",
-            body.source_file ?? null, body.audio_duration_seconds ?? null,
-            body.folder_id ?? null, null,
+            body.title ?? "Untitled Note",
+            body.content ?? "",
+            body.note_type ?? "personal",
+            body.source_file ?? null,
+            body.audio_duration_seconds ?? null,
+            body.folder_id ?? null,
+            null,
           ]);
+
           if (!args.success) throw routeError("Invalid Note creation fields", "VALIDATION");
+
           const result = ipc.noteWrites.saveNote(
-            args.data[0], args.data[1], args.data[2], args.data[3] ?? null,
-            args.data[4] ?? null, args.data[5] ?? null, args.data[6] ?? null
+            args.data[0],
+            args.data[1],
+            args.data[2],
+            args.data[3] ?? null,
+            args.data[4] ?? null,
+            args.data[5] ?? null,
+            args.data[6] ?? null
           );
+
           const note = unwrapMutationResult<NoteRow>(result, "note");
+
           return { data: note };
         },
         201
@@ -547,15 +717,18 @@ export class CliBridge {
       param("PATCH", "/v1/notes/", "", "id", ({ params, body }) => {
         const id = requireId(params, "note");
         const args = updateNoteArgsSchema.safeParse([id, body]);
+
         if (!args.success) throw routeError("Invalid Note update fields", "VALIDATION");
         const result = ipc.noteWrites.updateNote(args.data[0], args.data[1]);
         const note = unwrapMutationResult<NoteRow>(result, "note");
+
         return { data: note };
       }),
       param("DELETE", "/v1/notes/", "", "id", async ({ params }) => {
         const id = requireId(params, "note");
         const result = await ipc.deleteNoteInternal(id);
         requireSuccess(result, `Note ${id} not found`);
+
         return NO_CONTENT;
       }),
       exact("GET", "/v1/folders/list", () => {
@@ -568,6 +741,7 @@ export class CliBridge {
           const result = db.createFolder(body?.name);
           const folder = unwrapMutationResult<FolderRow>(result, "folder");
           setImmediate(() => sendFolderCreated(folder));
+
           return { data: folder };
         },
         201
@@ -581,12 +755,15 @@ export class CliBridge {
       exact("POST", "/v1/dictionary/update", ({ body }) => {
         const add = requireWordList(body?.add, "add");
         const remove = requireWordList(body?.remove, "remove");
+
         if (add.length === 0 && remove.length === 0) {
           throw routeError("Provide at least one word in 'add' or 'remove'", "VALIDATION");
         }
+
         const result = db.applyDictionaryChanges({ add, remove });
         const words = db.getDictionary();
         setImmediate(() => sendDictionaryUpdated(words));
+
         return { data: { words, added: result.added, removed: result.removed } };
       }),
       exact("GET", "/v1/snippets/list", () => {
@@ -597,25 +774,30 @@ export class CliBridge {
       exact("POST", "/v1/snippets/update", ({ body }) => {
         const add = requireSnippetList(body?.add);
         const remove = requireWordList(body?.remove, "remove");
+
         if (add.length === 0 && remove.length === 0) {
           throw routeError(
             "Provide at least one snippet in 'add' or trigger in 'remove'",
             "VALIDATION"
           );
         }
+
         const lower = (trigger: string) => trigger.trim().toLowerCase();
         const removeKeys = new Set(remove.map(lower));
         const addKeys = new Set(add.map((s) => lower(s.trigger)));
         const current = db.getSnippets();
+
         const kept = current.filter(
           (s) => !removeKeys.has(lower(s.trigger)) && !addKeys.has(lower(s.trigger))
         );
+
         db.setSnippets([...kept, ...add]);
         const snippets = db.getSnippets();
         setImmediate(() => sendSnippetsUpdated(snippets));
         // setSnippets drops entries it cannot store (e.g. over-long triggers),
         // so count what landed rather than what was sent.
         const storedKeys = new Set(snippets.map((s) => lower(s.trigger)));
+
         return {
           data: {
             snippets,
@@ -630,30 +812,42 @@ export class CliBridge {
       // models do the work.
       exact("POST", "/v1/transcribe", async ({ body }) => {
         const real = requireAudioFile(body?.path);
-        const selected = requireLocalModel(
-          ipc.listLocalTranscriptionModels(),
-          body?.model
-        );
+
+        const selected = requireLocalModel(ipc.listLocalTranscriptionModels(), body?.model);
+
         const language =
           typeof body?.language === "string" && body.language ? body.language : undefined;
+
         ipc.approveAudioPath(real);
+
         const result = await ipc.transcribeLocalFile(real, {
           provider: selected.provider,
           model: selected.model,
           language,
         });
+
         if (!result?.success) {
           if (result.code === "NO_SPEECH_DETECTED" || result.message === "No audio detected") {
             return {
-              data: { text: "", provider: selected.provider, model: selected.model, warning: "No speech detected" },
+              data: {
+                text: "",
+                provider: selected.provider,
+                model: selected.model,
+                warning: "No speech detected",
+              },
             };
           }
+
           throw new Error(result.error || result.message || "Local transcription failed");
         }
-        return { data: { text: result.text as string, provider: selected.provider, model: selected.model } };
+
+        return {
+          data: { text: result.text as string, provider: selected.provider, model: selected.model },
+        };
       }),
       exact("GET", "/v1/transcriptions/list", ({ query }) => {
         const limit = query.get("limit") ? Number(query.get("limit")) : 50;
+
         return {
           data: db.getTranscriptions(limit),
           has_more: false,
@@ -663,29 +857,35 @@ export class CliBridge {
       param("GET", "/v1/transcriptions/", "", "id", ({ params }) => {
         const id = requireId(params, "transcription");
         const transcription = db.getTranscriptionById(id);
+
         if (!transcription) {
           throw routeError(`Transcription ${id} not found`, "NOT_FOUND");
         }
+
         return { data: transcription };
       }),
       param("DELETE", "/v1/transcriptions/", "", "id", ({ params }) => {
         const id = requireId(params, "transcription");
         const result = ipc.deleteTranscriptionInternal(id);
         requireSuccess(result, `Transcription ${id} not found`);
+
         return NO_CONTENT;
       }),
       param("DELETE", "/v1/transcriptions/", "/audio", "id", ({ params }) => {
         const id = requireId(params, "transcription");
         const result = ipc.audioStorageManager.deleteAudio(id);
+
         if (!result?.success) {
           throw routeError(`Failed to delete audio for transcription ${id}`, "internal_error");
         }
+
         db.updateTranscriptionAudio(id, {
           hasAudio: false,
           audioDurationMs: null,
           provider: null,
           model: null,
         });
+
         return NO_CONTENT;
       }),
     ];
@@ -695,5 +895,7 @@ export class CliBridge {
 // CommonJS passthrough matching the original module shape: the class itself
 // plus the discovery-file path helper on the same exports object.
 module.exports = CliBridge;
+
 module.exports.CliBridge = CliBridge;
+
 module.exports.getBridgeFilePath = getBridgeFilePath;

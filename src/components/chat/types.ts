@@ -19,6 +19,11 @@ export interface Message {
 }
 
 export type AgentState =
-  "idle" | "listening" | "transcribing" | "thinking" | "streaming" | "tool-executing";
+  | "idle"
+  | "listening"
+  | "transcribing"
+  | "thinking"
+  | "streaming"
+  | "tool-executing";
 
 export { toolIcons } from "./toolIcons";

@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/utils/mentionMarkdown.js");
@@ -58,10 +59,12 @@ test("tags by unique first name, case-insensitively", async () => {
 
 test("leaves ambiguous first names untouched", async () => {
   const { tagActionItemOwners } = await load();
+
   const people = [
     { name: "Michael Chen", email: "michael@acme.com" },
     { name: "Michael Ross", email: "mross@acme.com" },
   ];
+
   const line = "- [ ] Review PR — Michael";
   assert.equal(tagActionItemOwners(line, people), line);
 });

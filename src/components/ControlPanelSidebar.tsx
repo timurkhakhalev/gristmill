@@ -10,8 +10,10 @@ import type { ControlPanelView } from "./controlPanelNav";
 
 const rowIconClass =
   "shrink-0 text-foreground/70 group-hover:text-foreground/90 dark:text-foreground/65 dark:group-hover:text-foreground/85 transition-colors duration-150";
+
 const rowLabelClass =
   "text-ui text-foreground/90 group-hover:text-foreground dark:text-foreground/85 dark:group-hover:text-foreground transition-colors duration-150";
+
 const rowButtonClass =
   "group flex items-center gap-2.5 w-full h-8 px-2.5 rounded-md text-start outline-none hover:bg-default dark:hover:bg-white/4 focus-visible:ring-1 focus-visible:ring-primary/30 transition-colors duration-150";
 
@@ -33,12 +35,9 @@ export default function ControlPanelSidebar({
 }: ControlPanelSidebarProps) {
   const { t } = useTranslation();
   const [showActionManager, setShowActionManager] = useState(false);
-  const {
-    handleDelete,
-    handleMoveNote,
-    handleCreateFolderAndMove,
-    handleNewNoteIn,
-  } = useNotesTreeActions();
+
+  const { handleDelete, handleMoveNote, handleCreateFolderAndMove, handleNewNoteIn } =
+    useNotesTreeActions();
 
   return (
     <div className="flex h-full shrink-0 flex-col bg-surface-window" style={{ width }}>

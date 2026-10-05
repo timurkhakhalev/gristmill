@@ -1,15 +1,22 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-cli-dict-"));
+
 const originalLoad = Module._load;
+
 // Routes broadcast through the shared windowBroadcast module, which reaches for
 // Electron's BrowserWindow; capture the calls so they can be asserted here.
-const broadcasts : unknown[] = [];
+const broadcasts: unknown[] = [];
 
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
@@ -21,21 +28,26 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   if (request === "./windowBroadcast" || request === "./windowBroadcast.js") {
     return {
-      broadcastToWindows: (channel: string, payload: unknown) => broadcasts.push({ channel, payload }),
+      broadcastToWindows: (channel: string, payload: unknown) =>
+        broadcasts.push({ channel, payload }),
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 process.env.NODE_ENV = "test";
 
 const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
+
 const CliBridge = require("../../src/helpers/cliBridge.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
   const message = String((error as { message?: unknown })?.message || error);
+
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -47,6 +59,7 @@ function isNativeBindingUnavailable(error: unknown) {
 function createBridge(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-cli-dict-"));
   let db: import("../../src/helpers/database.js").DatabaseManager | null = null;
+
   try {
     const BetterSqlite = require("better-sqlite3");
     const probe = new BetterSqlite(path.join(userDataDir, "probe.db"));
@@ -56,28 +69,40 @@ function createBridge(t: import("node:test").TestContext) {
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return null;
     }
+
     throw error;
   }
 
   broadcasts.length = 0;
   const bridge = new CliBridge({ databaseManager: db }, userDataDir);
+
   return { bridge, db, broadcasts };
 }
 
-function call(bridge: InstanceType<typeof CliBridge>, method: string, pathname: string, body: unknown = undefined): unknown {
+function call(
+  bridge: InstanceType<typeof CliBridge>,
+  method: string,
+  pathname: string,
+  body: unknown = undefined
+): unknown {
   for (const route of bridge.routes) {
     if (route.method !== method) continue;
     const params = route.match(pathname);
+
     if (!params) continue;
+
     return route.handler({ params, query: new URLSearchParams(), body });
   }
+
   throw new Error(`No route for ${method} ${pathname}`);
 }
 
 test("GET /v1/dictionary/list returns the stored words", (t: import("node:test").TestContext) => {
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   ctx.db.setDictionary(["OpenWhispr", "Alice"]);
@@ -87,11 +112,15 @@ test("GET /v1/dictionary/list returns the stored words", (t: import("node:test")
 
 test("POST /v1/dictionary/update bulk-adds words that survive a reload", (t: import("node:test").TestContext) => {
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   ctx.db.setDictionary(["OpenWhispr"]);
   const contacts = ["Ada Lovelace", "Grace Hopper", "Katherine Johnson"];
-  const result = call(ctx.bridge, "POST", "/v1/dictionary/update", { add: contacts }) as { data: { added: number } };
+
+  const result = call(ctx.bridge, "POST", "/v1/dictionary/update", { add: contacts }) as {
+    data: { added: number };
+  };
 
   assert.equal(result.data.added, 3);
   assert.deepEqual(ctx.db.getDictionary(), ["OpenWhispr", ...contacts]);
@@ -104,10 +133,14 @@ test("POST /v1/dictionary/update bulk-adds words that survive a reload", (t: imp
 
 test("POST /v1/dictionary/update removes only the named words", (t: import("node:test").TestContext) => {
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   ctx.db.setDictionary(["OpenWhispr", "Alice", "Bob"]);
-  const result = call(ctx.bridge, "POST", "/v1/dictionary/update", { remove: ["Alice"] }) as { data: { removed: number } };
+
+  const result = call(ctx.bridge, "POST", "/v1/dictionary/update", { remove: ["Alice"] }) as {
+    data: { removed: number };
+  };
 
   assert.equal(result.data.removed, 1);
   assert.deepEqual(ctx.db.getDictionary(), ["OpenWhispr", "Bob"]);
@@ -121,6 +154,7 @@ test("POST /v1/dictionary/update broadcasts the new list to renderers", async (t
   await new Promise((resolve) => setImmediate(resolve));
 
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   ctx.db.setDictionary(["OpenWhispr"]);
@@ -135,6 +169,7 @@ test("POST /v1/dictionary/update broadcasts the new list to renderers", async (t
 
 test("POST /v1/dictionary/update rejects a non-array field", (t: import("node:test").TestContext) => {
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   assert.throws(() => call(ctx.bridge, "POST", "/v1/dictionary/update", { add: "Alice" }), {
@@ -144,6 +179,7 @@ test("POST /v1/dictionary/update rejects a non-array field", (t: import("node:te
 
 test("POST /v1/dictionary/update rejects non-string entries", (t: import("node:test").TestContext) => {
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   assert.throws(() => call(ctx.bridge, "POST", "/v1/dictionary/update", { add: ["Alice", 7] }), {
@@ -153,6 +189,7 @@ test("POST /v1/dictionary/update rejects non-string entries", (t: import("node:t
 
 test("POST /v1/dictionary/update rejects an empty request", (t: import("node:test").TestContext) => {
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   assert.throws(() => call(ctx.bridge, "POST", "/v1/dictionary/update", {}), {
@@ -162,6 +199,7 @@ test("POST /v1/dictionary/update rejects an empty request", (t: import("node:tes
 
 test("route validation errors respond with HTTP 400 validation_error", async (t: import("node:test").TestContext) => {
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   ctx.bridge.token = "test-token";
@@ -191,6 +229,7 @@ test("route validation errors respond with HTTP 400 validation_error", async (t:
     method: "GET",
     url: "/v1/notes/search",
   };
+
   const res = new MockResponse();
 
   await ctx.bridge._handleRequest(req, res);
@@ -203,6 +242,7 @@ test("route validation errors respond with HTTP 400 validation_error", async (t:
 
 test("POST /v1/dictionary/update responds with HTTP 400 validation_error for invalid payload", async (t: import("node:test").TestContext) => {
   const ctx = createBridge(t);
+
   if (!ctx) return;
 
   ctx.bridge.token = "test-token";
@@ -235,11 +275,13 @@ test("POST /v1/dictionary/update responds with HTTP 400 validation_error for inv
       if (event === "data") {
         handler(JSON.stringify({ add: "not-an-array" }));
       }
+
       if (event === "end") {
         handler();
       }
     },
   };
+
   const res = new MockResponse();
 
   await ctx.bridge._handleRequest(req, res);

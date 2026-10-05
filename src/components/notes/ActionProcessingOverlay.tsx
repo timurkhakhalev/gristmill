@@ -19,6 +19,7 @@ export default function ActionProcessingOverlay({
 
   if (state !== prevState) {
     setPrevState(state);
+
     if (state === "processing" || state === "success") {
       setVisible(true);
     }
@@ -27,6 +28,7 @@ export default function ActionProcessingOverlay({
   useEffect(() => {
     if (state !== "idle") return;
     const id = setTimeout(() => setVisible(false), 300);
+
     return () => clearTimeout(id);
   }, [state]);
 

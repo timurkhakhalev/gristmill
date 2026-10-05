@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 test("sanitizeWhisperVadConfig applies defaults and clamps invalid values", async () => {

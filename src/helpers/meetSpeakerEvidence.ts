@@ -28,11 +28,14 @@ export class MeetSpeakerEvidence {
       context.presence !== "in-call"
     ) {
       this.reset();
+
       return;
     }
+
     const previous = this.previous;
     this.previous = { binding, context, mapping };
     const delta = previous ? BigInt(context.sourceNs) - BigInt(previous.context.sourceNs) : 0n;
+
     if (
       !previous ||
       previous.binding.id !== binding.id ||
@@ -42,21 +45,29 @@ export class MeetSpeakerEvidence {
       delta > 2_000_000_000n
     ) {
       this.episodes.clear();
+
       return;
     }
+
     const start = previous.mapping.helperMaximumNs;
     const end = mapping.helperMinimumNs;
+
     if (BigInt(end) <= BigInt(start)) return;
     const active = context.activeParticipantIds;
     const previousActive = previous.context.activeParticipantIds;
+
     const continued =
       active.length === 1 && previousActive.length === 1 && active[0] === previousActive[0];
+
     const currentIds = new Set(context.participants.map((person) => person.id));
+
     for (const id of this.episodes.keys())
       if (!currentIds.has(id) || !active.includes(id)) this.episodes.delete(id);
+
     for (const participant of context.participants) {
       const prior = previous.context.participants.find((person) => person.id === participant.id);
       let episode = this.episodes.get(participant.id);
+
       if (!episode || episode.name !== participant.name) {
         episode = {
           id: randomUUID(),
@@ -65,11 +76,13 @@ export class MeetSpeakerEvidence {
         };
         this.episodes.set(participant.id, episode);
       }
+
       const explicit =
         continued &&
         active[0] === participant.id &&
         prior?.name === participant.name &&
         participant.name.length > 0;
+
       this.save({
         id: randomUUID(),
         platform: binding.ref.platform,

@@ -1,7 +1,9 @@
 export function parseOfflineMessage(message: unknown): string {
   const text = String(message || "").trim();
+
   try {
     const parsed = JSON.parse(text);
+
     return typeof parsed?.text === "string" ? parsed.text.trim() : text;
   } catch {
     return text;
@@ -29,6 +31,7 @@ export function createOnlineAccumulator(): OnlineAccumulator {
 
   const text = (): string => {
     const finalizedText = Array.from(finalizedSegments.values()).join(" ");
+
     return finalizedText && partialText
       ? `${finalizedText} ${partialText}`
       : finalizedText || partialText;
@@ -37,28 +40,36 @@ export function createOnlineAccumulator(): OnlineAccumulator {
   return {
     push(message: string): string {
       let parsed: OnlineMessage;
+
       try {
         parsed = JSON.parse(message) as OnlineMessage;
       } catch {
         parsed = { text: message };
       }
+
       if (!parsed || typeof parsed !== "object") return text();
 
       const messageText = String(parsed.text ?? "").trim();
+
       if (!messageText) return text();
 
       if (!parsed.is_final) {
         partialText = finalizedSegments.has(String(parsed.segment)) ? "" : messageText;
         partialSegment = parsed.segment !== undefined ? String(parsed.segment) : null;
+
         return text();
       }
 
-      const segment = parsed.segment !== undefined ? String(parsed.segment) : `fallback:${fallbackKey++}`;
+      const segment =
+        parsed.segment !== undefined ? String(parsed.segment) : `fallback:${fallbackKey++}`;
+
       finalizedSegments.set(segment, messageText);
+
       if (partialSegment === null || partialSegment === segment) {
         partialText = "";
         partialSegment = null;
       }
+
       return text();
     },
     text,
@@ -67,8 +78,10 @@ export function createOnlineAccumulator(): OnlineAccumulator {
 
 export function parseOnlineMessages(messages: string[]): string {
   const accumulator = createOnlineAccumulator();
+
   for (const message of messages) {
     accumulator.push(message);
   }
+
   return accumulator.text();
 }

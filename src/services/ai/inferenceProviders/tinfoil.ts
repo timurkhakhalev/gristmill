@@ -14,6 +14,7 @@ export const tinfoilProvider: InferenceProvider = {
     logger.logReasoning("TINFOIL_START", { model, agentName });
 
     const apiKey = await ctx.getApiKey("tinfoil");
+
     if (!apiKey?.trim()) throw new Error("Tinfoil API key not configured");
     // A fresh persisted cache is applied synchronously; a network refresh is
     // background work for later operations. Shape this request before SDK setup.
@@ -21,6 +22,7 @@ export const tinfoilProvider: InferenceProvider = {
 
     const systemPrompt = config.systemPrompt || ctx.getSystemPrompt(agentName);
     const userContent = config.systemPrompt ? text : wrapCleanupTranscript(text);
+
     const messages = [
       { role: "system", content: systemPrompt },
       { role: "user", content: userContent },
@@ -47,6 +49,7 @@ export const tinfoilProvider: InferenceProvider = {
 
     // Keep SDK-internal retries off so withRetry stays the single retry layer.
     const timeoutMs = getLlmRequestTimeoutSeconds() * 1000;
+
     const response = await withRetry(
       () =>
         client.chat.completions.create(requestBody as any, {
@@ -81,10 +84,12 @@ export const tinfoilProvider: InferenceProvider = {
       if (config.requireCompleteOutput) {
         throw new Error("Model returned an empty selection edit");
       }
+
       logger.logReasoning("TINFOIL_EMPTY_RESPONSE_FALLBACK", {
         model,
         originalTextLength: text.length,
       });
+
       return text;
     }
 

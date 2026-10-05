@@ -17,9 +17,11 @@ import { wrapCleanupTranscript } from "../../../config/prompts";
 import { openCodeSessionHeaders } from "../openCodeSession";
 
 const OPENAI_ENDPOINT_PREF_STORAGE_KEY = "openAiEndpointPreference";
+
 const PROBE_TIMEOUT_MS = 2_000;
 
 const endpointPreferenceCache = new Map<string, "responses" | "chat">();
+
 const probedBases = new Set<string>();
 
 function readStoredPreference(base: string): "responses" | "chat" | undefined {
@@ -33,12 +35,16 @@ function readStoredPreference(base: string): "responses" | "chat" | undefined {
 
   try {
     const raw = window.localStorage.getItem(OPENAI_ENDPOINT_PREF_STORAGE_KEY);
+
     if (!raw) return undefined;
     const parsed = JSON.parse(raw);
+
     if (typeof parsed !== "object" || parsed === null) return undefined;
     const value = parsed[base];
+
     if (value === "responses" || value === "chat") {
       endpointPreferenceCache.set(base, value);
+
       return value;
     }
   } catch {
@@ -69,10 +75,12 @@ function getEndpointCandidates(base: string): Array<{ url: string; type: "respon
 
   if (lower.endsWith("/responses") || lower.endsWith("/chat/completions")) {
     const type: "responses" | "chat" = lower.endsWith("/responses") ? "responses" : "chat";
+
     return [{ url: base, type }];
   }
 
   const preference = readStoredPreference(base);
+
   if (preference === "chat") {
     return [{ url: buildApiUrl(base, "/chat/completions"), type: "chat" }];
   }
@@ -90,6 +98,7 @@ async function detectServerType(base: string): Promise<void> {
   }
 
   const lower = base.toLowerCase();
+
   if (lower.endsWith("/responses") || lower.endsWith("/chat/completions")) {
     return;
   }
@@ -97,14 +106,17 @@ async function detectServerType(base: string): Promise<void> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+
     const res = await fetch(buildApiUrl(base, "/models"), {
       method: "GET",
       signal: controller.signal,
     });
+
     clearTimeout(timeoutId);
 
     if (!res.ok) {
       probedBases.add(base);
+
       return;
     }
 
@@ -142,6 +154,7 @@ export const openaiProvider: InferenceProvider = {
 
     const overrideKey = isCustomProvider ? config.customApiKey?.trim() : "";
     const canFallBackToSharedKey = !isCustomProvider || canBorrowCleanupCustomKey(config.baseUrl);
+
     const apiKey =
       overrideKey ||
       (canFallBackToSharedKey
@@ -155,9 +168,11 @@ export const openaiProvider: InferenceProvider = {
 
     const systemPrompt = config.systemPrompt || ctx.getSystemPrompt(agentName);
     const userContent = config.systemPrompt ? text : wrapCleanupTranscript(text);
+
     const imageDataUrl = config.screenContext
       ? `data:${config.screenContext.mediaType};base64,${config.screenContext.data}`
       : null;
+
     // The Responses and Chat Completions APIs name image content parts differently.
     const buildMessages = (type: "responses" | "chat") =>
       imageDataUrl
@@ -183,15 +198,18 @@ export const openaiProvider: InferenceProvider = {
     const openAiBase = isOpenRouter
       ? API_ENDPOINTS.OPENROUTER_BASE
       : resolveConfiguredOpenAIBase(resolvedProvider, config.baseUrl);
+
     const dialect = detectEndpointDialect(openAiBase);
     // OpenRouter and known dialect hosts speak Chat Completions only — no /responses probe needed.
     let endpointCandidates: Array<{ url: string; type: "responses" | "chat" }>;
+
     if (isOpenRouter || dialect) {
       endpointCandidates = [{ url: buildApiUrl(openAiBase, "/chat/completions"), type: "chat" }];
     } else {
       await detectServerType(openAiBase);
       endpointCandidates = getEndpointCandidates(openAiBase);
     }
+
     const isCustomEndpoint = openAiBase !== API_ENDPOINTS.OPENAI_BASE;
     // One cleanup call is one conversation: every attempt below (endpoint
     // fallback, parameter fallback, retry) reuses the same session id.
@@ -215,6 +233,7 @@ export const openaiProvider: InferenceProvider = {
     }
 
     const retryStrategy = createApiRetryStrategy();
+
     const response = await withRetry(async () => {
       let lastError: Error | null = null;
       let lastRetryableError: Error | null = null;
@@ -223,6 +242,7 @@ export const openaiProvider: InferenceProvider = {
         const controller = new AbortController();
         const timeoutSeconds = getLlmRequestTimeoutSeconds();
         const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+
         try {
           const maxTokens =
             config.maxTokens ||
@@ -244,6 +264,7 @@ export const openaiProvider: InferenceProvider = {
             requestBody.max_output_tokens = maxTokens;
             // A known endpoint host knows its own request shape better than the model id does.
             const apiConfig = dialect ?? getOpenAiApiConfig(model, resolvedProvider);
+
             if (apiConfig.supportsTemperature) {
               requestBody.temperature = config.temperature ?? (config.systemPrompt ? 0.3 : 0);
             }
@@ -276,6 +297,7 @@ export const openaiProvider: InferenceProvider = {
 
           if (!res.ok) {
             const errorData = await res.json().catch(() => ({ error: res.statusText }));
+
             const errorMessage = extractApiErrorMessage(
               errorData,
               `OpenAI API error: ${res.status}`
@@ -298,15 +320,19 @@ export const openaiProvider: InferenceProvider = {
           }
 
           rememberPreference(openAiBase, type);
+
           return res.json();
         } catch (error) {
           if ((error as Error).name === "AbortError") {
             throw new Error(`Request timed out after ${timeoutSeconds}s`);
           }
+
           lastError = error as Error;
+
           if (retryStrategy.shouldRetry(lastError)) {
             lastRetryableError = lastError;
           }
+
           if (type === "responses") {
             logger.logReasoning("OPENAI_ENDPOINT_FALLBACK", {
               attemptedEndpoint: endpoint,
@@ -314,6 +340,7 @@ export const openaiProvider: InferenceProvider = {
             });
             continue;
           }
+
           throw lastRetryableError || error;
         } finally {
           clearTimeout(timeoutId);
@@ -331,6 +358,7 @@ export const openaiProvider: InferenceProvider = {
         response?.status === "incomplete" ||
         !!response?.incomplete_details ||
         response?.choices?.some((choice: any) => isTruncatedFinishReason(choice?.finish_reason));
+
       if (responseIncomplete) {
         throw new Error("Model output was truncated before the selection edit completed");
       }
@@ -360,6 +388,7 @@ export const openaiProvider: InferenceProvider = {
               break;
             }
           }
+
           if (responseText) break;
         }
       }
@@ -409,11 +438,13 @@ export const openaiProvider: InferenceProvider = {
       if (config.requireCompleteOutput) {
         throw new Error("Model returned an empty selection edit");
       }
+
       logger.logReasoning("OPENAI_EMPTY_RESPONSE_FALLBACK", {
         model,
         originalTextLength: text.length,
         reason: "Empty response from API",
       });
+
       return text;
     }
 

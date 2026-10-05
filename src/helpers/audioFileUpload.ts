@@ -19,11 +19,13 @@ export async function postRawAudioFile(
 ): Promise<{ statusCode: number; data: unknown }> {
   if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
   const boundary = multipart ? `----Gristmill${crypto.randomUUID()}` : null;
+
   const header = multipart
     ? Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${multipart.fileName.replace(/[\r\n"]/g, "_")}"\r\nContent-Type: ${contentType}\r\n\r\n`
       )
     : null;
+
   const footer = multipart
     ? Buffer.from(
         `\r\n${Object.entries(multipart.fields)
@@ -34,11 +36,15 @@ export async function postRawAudioFile(
           .join("")}--${boundary}--\r\n`
       )
     : null;
+
   const size =
     (await fs.promises.stat(filePath)).size + (header?.length ?? 0) + (footer?.length ?? 0);
+
   const transport = url.protocol === "https:" ? https : http;
+
   return new Promise((resolve, reject) => {
     const source = fs.createReadStream(filePath);
+
     const request = transport.request(
       url,
       {
@@ -58,28 +64,35 @@ export async function postRawAudioFile(
         response.on("end", () => {
           const text = Buffer.concat(chunks).toString();
           let data: unknown = text;
+
           try {
             data = JSON.parse(text);
           } catch {
             // Keep non-JSON provider errors for the caller.
           }
+
           finish(undefined, { statusCode: response.statusCode ?? 0, data });
         });
       }
     );
+
     let settled = false;
+
     const finish = (error?: Error, result?: { statusCode: number; data: unknown }) => {
       if (settled) return;
       settled = true;
       source.destroy();
       request.destroy();
+
       if (error) reject(signal?.aborted ? new DOMException("Cancelled", "AbortError") : error);
       else if (result) resolve(result);
     };
+
     request.on("error", finish);
     request.on("close", () => {
       if (!settled) finish(new Error("Audio upload closed before a response"));
     });
+
     if (header) request.write(header);
     void pipeline(source, request, { end: false, signal })
       .then(() => {

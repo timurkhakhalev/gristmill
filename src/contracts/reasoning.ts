@@ -31,6 +31,7 @@ const screenContextSchema = z.object({
   mediaType: z.string(),
   data: z.string(),
 });
+
 export type ScreenContextImage = z.infer<typeof screenContextSchema>;
 
 const baseRequestConfigSchema = z.object({
@@ -40,39 +41,48 @@ const baseRequestConfigSchema = z.object({
   requireCompleteOutput: z.boolean().optional(),
 });
 
-export const localReasoningConfigSchema = baseRequestConfigSchema.extend({
-  topK: z.number().optional(),
-  topP: z.number().optional(),
-  repeatPenalty: z.number().optional(),
-  disableThinking: z.boolean().optional(),
-  contextSize: z.number().optional(),
-}).passthrough();
+export const localReasoningConfigSchema = baseRequestConfigSchema
+  .extend({
+    topK: z.number().optional(),
+    topP: z.number().optional(),
+    repeatPenalty: z.number().optional(),
+    disableThinking: z.boolean().optional(),
+    contextSize: z.number().optional(),
+  })
+  .passthrough();
+
 export type LocalReasoningConfig = z.infer<typeof localReasoningConfigSchema>;
 
-export const anthropicReasoningConfigSchema = baseRequestConfigSchema.extend({
-  supportsTemperature: z.boolean().optional(),
-  screenContext: screenContextSchema.optional(),
-}).passthrough();
+export const anthropicReasoningConfigSchema = baseRequestConfigSchema
+  .extend({
+    supportsTemperature: z.boolean().optional(),
+    screenContext: screenContextSchema.optional(),
+  })
+  .passthrough();
+
 export type AnthropicReasoningConfig = z.infer<typeof anthropicReasoningConfigSchema>;
 
 // Enterprise requests carry the provider id plus the per-provider credential
 ///config subset the runtime picks out (see pickEnterpriseConfig).
-export const enterpriseReasoningConfigSchema = baseRequestConfigSchema.extend({
-  provider: z.string(),
-  apiKey: z.string().optional(),
-  inferenceScope: z.string().optional(),
-  timeoutMs: z.number().optional(),
-  supportsTemperature: z.boolean().optional(),
-  bedrockRegion: z.string().optional(),
-  bedrockProfile: z.string().optional(),
-  bedrockAccessKeyId: z.string().optional(),
-  bedrockSecretAccessKey: z.string().optional(),
-  bedrockSessionToken: z.string().optional(),
-  azureEndpoint: z.string().optional(),
-  azureApiVersion: z.string().optional(),
-  vertexProject: z.string().optional(),
-  vertexLocation: z.string().optional(),
-}).passthrough();
+export const enterpriseReasoningConfigSchema = baseRequestConfigSchema
+  .extend({
+    provider: z.string(),
+    apiKey: z.string().optional(),
+    inferenceScope: z.string().optional(),
+    timeoutMs: z.number().optional(),
+    supportsTemperature: z.boolean().optional(),
+    bedrockRegion: z.string().optional(),
+    bedrockProfile: z.string().optional(),
+    bedrockAccessKeyId: z.string().optional(),
+    bedrockSecretAccessKey: z.string().optional(),
+    bedrockSessionToken: z.string().optional(),
+    azureEndpoint: z.string().optional(),
+    azureApiVersion: z.string().optional(),
+    vertexProject: z.string().optional(),
+    vertexLocation: z.string().optional(),
+  })
+  .passthrough();
+
 export type EnterpriseReasoningConfig = z.infer<typeof enterpriseReasoningConfigSchema>;
 
 // Positional one-shot arguments, preserved from the JS handlers: the agent
@@ -83,12 +93,14 @@ export const localReasoningArgsSchema = z.tuple([
   z.unknown(),
   localReasoningConfigSchema.optional(),
 ]);
+
 export const anthropicReasoningArgsSchema = z.tuple([
   z.string(),
   z.string(),
   z.unknown(),
   anthropicReasoningConfigSchema.optional(),
 ]);
+
 export const enterpriseReasoningArgsSchema = z.tuple([
   z.string(),
   z.string(),
@@ -112,12 +124,14 @@ export const localReasoningResultSchema = z.union([
     details: z.record(z.string(), z.unknown()).optional(),
   }),
 ]);
+
 export type LocalReasoningResult = z.infer<typeof localReasoningResultSchema>;
 
 export const anthropicReasoningResultSchema = z.union([
   z.object({ success: z.literal(true), text: z.string().optional() }),
   z.object({ success: z.literal(false), error: z.string().optional() }),
 ]);
+
 export type AnthropicReasoningResult = z.infer<typeof anthropicReasoningResultSchema>;
 
 const enterpriseTechnicalDetailsSchema = z.object({
@@ -126,6 +140,7 @@ const enterpriseTechnicalDetailsSchema = z.object({
   requestId: z.string().optional(),
   underlyingError: z.string().optional(),
 });
+
 export type EnterpriseTechnicalDetails = z.infer<typeof enterpriseTechnicalDetailsSchema>;
 
 export const enterpriseReasoningResultSchema = z.union([
@@ -142,6 +157,7 @@ export const enterpriseReasoningResultSchema = z.union([
     technicalDetails: enterpriseTechnicalDetailsSchema.optional(),
   }),
 ]);
+
 export type EnterpriseReasoningResult = z.infer<typeof enterpriseReasoningResultSchema>;
 
 // --- Enterprise stream lifecycle ---------------------------------------------
@@ -172,12 +188,14 @@ export const enterpriseStreamStartRequestSchema = z.object({
   config: enterpriseStreamConfigSchema.optional(),
   options: z.record(z.string(), z.unknown()),
 });
+
 export type EnterpriseStreamStartRequest = z.infer<typeof enterpriseStreamStartRequestSchema>;
 
 export const enterpriseStreamStartResultSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
 });
+
 export type EnterpriseStreamStartResult = z.infer<typeof enterpriseStreamStartResultSchema>;
 
 // The stream envelope: streamId plus exactly one of a relayed SDK part, the
@@ -199,6 +217,7 @@ export const enterpriseStreamEnvelopeSchema = z
       1,
     { message: "exactly one of part/done/error must be present" }
   );
+
 export type EnterpriseStreamEnvelope = z.infer<typeof enterpriseStreamEnvelopeSchema>;
 
 // --- Renderer-facing API -----------------------------------------------------
@@ -224,7 +243,9 @@ export interface ReasoningApi {
     config: EnterpriseReasoningConfig
   ): Promise<EnterpriseReasoningResult>;
   cancelEnterpriseReasoning(): void;
-  enterpriseStreamStart(request: EnterpriseStreamStartRequest): Promise<EnterpriseStreamStartResult>;
+  enterpriseStreamStart(
+    request: EnterpriseStreamStartRequest
+  ): Promise<EnterpriseStreamStartResult>;
   enterpriseStreamCancel(streamId: string): Promise<void>;
   onEnterpriseStreamPart(callback: (envelope: EnterpriseStreamEnvelope) => void): () => void;
 }

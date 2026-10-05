@@ -1,0 +1,14 @@
+{
+  "name": "project-setup-typescript-quality",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test verify.test.mjs"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.86.0",
+    "oxlint": "1.86.0",
+    "oxfmt": "0.71.0"
+  }
+}

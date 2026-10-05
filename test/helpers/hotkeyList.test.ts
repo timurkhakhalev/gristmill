@@ -1,7 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { parseHotkeyList, serializeHotkeyList }: typeof import("../../src/helpers/hotkeyList.ts") = require("../../src/helpers/hotkeyList.ts");
+const {
+  parseHotkeyList,
+  serializeHotkeyList,
+}: typeof import("../../src/helpers/hotkeyList.ts") = require("../../src/helpers/hotkeyList.ts");
 
 test("parses a legacy single hotkey into a one-element list", () => {
   assert.deepEqual(parseHotkeyList("Control+Shift+R"), ["Control+Shift+R"]);

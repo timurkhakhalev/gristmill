@@ -1,13 +1,21 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const Module = require("node:module");
+
 import type { NotesApi, NoteItem, NoteDeletedPayload } from "../../src/contracts/notes.js";
 
 const root = path.resolve(__dirname, "../..");
+
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 // The real bundled preload talks to a Map of real registered Notes handlers
@@ -15,12 +23,17 @@ const bundledPreload = path.join(root, "dist-main", "preload.js");
 // into the preload-registered listeners, closing the loop like Electron does,
 // without exposing any event object to renderer callbacks.
 type Handler = (event: unknown, ...args: unknown[]) => unknown;
+
 type Listener = (event: unknown, data: unknown) => void;
+
 let activeHandlers: Map<string, Handler> | null = null;
+
 let dispatchSend: ((channel: string, data: unknown) => void) | null = null;
+
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-bridge-"));
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -45,10 +58,15 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 process.env.NODE_ENV = "test";
-const { NoteReadService }: typeof import("../../src/helpers/noteReadService.ts") = require("../../src/helpers/noteReadService.ts");
+
+const {
+  NoteReadService,
+}: typeof import("../../src/helpers/noteReadService.ts") = require("../../src/helpers/noteReadService.ts");
 
 const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseManager = require("../../src/helpers/database.ts");
 
@@ -58,6 +76,7 @@ test.after(() => {
 
 function isNativeBindingUnavailable(error: unknown) {
   const message = String(error instanceof Error ? error.message : error);
+
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -75,6 +94,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     exports: {},
     require(name: string) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: NotesApi) => {
@@ -92,6 +112,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
           removeListener(channel: string, listener: Listener) {
             const list = listeners.get(channel) || [];
             const index = list.indexOf(listener);
+
             if (index !== -1) list.splice(index, 1);
           },
         },
@@ -102,6 +123,7 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
     console,
   });
   assert.ok(api);
+
   return { api, listeners };
 }
 
@@ -110,15 +132,19 @@ async function createFixture(t: import("node:test").TestContext) {
   dispatchSend = null;
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-notes-bridge-"));
   let db;
+
   try {
     db = new DatabaseManager();
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return null;
     }
+
     throw error;
   }
+
   t.after(() => db.close());
 
   const { NoteWriteService } = await import("../../src/helpers/noteWriteService.ts");
@@ -138,28 +164,47 @@ async function createFixture(t: import("node:test").TestContext) {
       getNotesForSpace: (...args) => db.getNotesForSpace(...args),
       deleteNoteInternal: (id) => {
         const result = db.deleteNote(id);
+
         if (result?.success) {
           setImmediate(() => {
             if (dispatchSend) dispatchSend("note-deleted", { id });
           });
         }
+
         return result;
       },
       searchNotes: (...args) => db.searchNotes(...args),
       searchNoteContent: () => [],
       searchNoteTranscripts: () => [],
-      getNoteOutput: request => new NoteReadService(db, { readRunArtifact: () => null } as never).readOutput(request),
-      getNoteTranscript: () => ({ note_id: 1, status: "absent", timeline: { unit: "ms", duration_ms: null, basis: "concatenated_recording_time", intentional_pauses: "excluded" }, speakers: [], text: null, segments: null, diagnostics: [] }),
-
+      getNoteOutput: (request) =>
+        new NoteReadService(db, { readRunArtifact: () => null } as never).readOutput(request),
+      getNoteTranscript: () => ({
+        note_id: 1,
+        status: "absent",
+        timeline: {
+          unit: "ms",
+          duration_ms: null,
+          basis: "concatenated_recording_time",
+          intentional_pauses: "excluded",
+        },
+        speakers: [],
+        text: null,
+        segments: null,
+        diagnostics: [],
+      }),
     }
   );
 
   const handlersSnapshot = new Map(handlers);
+
   const invoke = async (channel: string, ...args: unknown[]) => {
     const handler = handlersSnapshot.get(channel);
+
     if (!handler) throw new Error(`No handler registered for ${channel}`);
+
     return handler(null, ...args);
   };
+
   const { api, listeners } = loadBundledPreload(invoke);
   // Close the event loop: main-side sends dispatch into the listeners the
   // preload registered, exactly like Electron would.
@@ -168,12 +213,15 @@ async function createFixture(t: import("node:test").TestContext) {
       listener(null, data);
     }
   };
+
   const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
   return { db, api, listeners, flush };
 }
 
 test("the full bundled preload chain round-trips a note", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, flush } = ctx;
 
@@ -207,6 +255,7 @@ test("the full bundled preload chain round-trips a note", async (t: import("node
 
 test("wrong arguments reject through the bridge before the DB runs", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api } = ctx;
 
@@ -217,6 +266,7 @@ test("wrong arguments reject through the bridge before the DB runs", async (t: i
 
 test("independent subscriptions receive events and unsubscribe cleanly", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, flush } = ctx;
 
@@ -246,6 +296,7 @@ test("independent subscriptions receive events and unsubscribe cleanly", async (
 
 test("malformed events are dropped; the next valid one is delivered", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, flush } = ctx;
 
@@ -267,6 +318,7 @@ test("malformed events are dropped; the next valid one is delivered", async (t: 
 
 test("deleted notes are not resurrectable and emit note-deleted once", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
+
   if (!ctx) return;
   const { api, flush } = ctx;
 
@@ -285,17 +337,33 @@ test("deleted notes are not resurrectable and emit note-deleted once", async (t:
   unsub();
 });
 
+test("internal output request crosses the real preload and read owner with validated provenance", async (t) => {
+  const ctx = await createFixture(t);
 
-test("internal output request crosses the real preload and read owner with validated provenance", async t => {
-  const ctx = await createFixture(t); if (!ctx) return;
-  const saved = await ctx.api.saveNote("Output", "Manual"); assert.ok(saved.success);
-  await ctx.api.updateNote(saved.note.id, { enhanced_content: "Edited summary", transcript: "Uploaded text" });
-  const output = await ctx.api.getNoteOutput({noteId:saved.note.id,scope:"note"});
-  assert.equal(output.scope,"note"); if(output.scope!=="note") return;
-  assert.equal(output.summary,"Edited summary");
-  assert.equal(output.transcript.text,"Uploaded text");
-  assert.deepEqual(JSON.parse(JSON.stringify(output.summaryProvenance)),{source:"note-projection",runIds:[]});
-  await assert.rejects(() => ctx.api.getNoteOutput({noteId:saved.note.id,scope:"run"} as never), /Invalid arguments/);
-  const { api } = loadBundledPreload(async () => ({scope:"note",noteId:saved.note.id}));
-  await assert.rejects(() => api.getNoteOutput({noteId:saved.note.id,scope:"note"}), /Unexpected response/);
+  if (!ctx) return;
+  const saved = await ctx.api.saveNote("Output", "Manual");
+  assert.ok(saved.success);
+  await ctx.api.updateNote(saved.note.id, {
+    enhanced_content: "Edited summary",
+    transcript: "Uploaded text",
+  });
+  const output = await ctx.api.getNoteOutput({ noteId: saved.note.id, scope: "note" });
+  assert.equal(output.scope, "note");
+
+  if (output.scope !== "note") return;
+  assert.equal(output.summary, "Edited summary");
+  assert.equal(output.transcript.text, "Uploaded text");
+  assert.deepEqual(JSON.parse(JSON.stringify(output.summaryProvenance)), {
+    source: "note-projection",
+    runIds: [],
+  });
+  await assert.rejects(
+    () => ctx.api.getNoteOutput({ noteId: saved.note.id, scope: "run" } as never),
+    /Invalid arguments/
+  );
+  const { api } = loadBundledPreload(async () => ({ scope: "note", noteId: saved.note.id }));
+  await assert.rejects(
+    () => api.getNoteOutput({ noteId: saved.note.id, scope: "note" }),
+    /Unexpected response/
+  );
 });

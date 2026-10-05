@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const {
   createRendererServer,
   installBrowserGlobals,
@@ -19,9 +21,18 @@ const START_ARGS = {
   autoEndEligible: false,
 };
 
-function createElectronAPI({ systemAudioMode, systemAudioStrategy }: { systemAudioMode: string; systemAudioStrategy: string }) {
-  const listeners: { systemAudioSilent: ((data: { systemAudioStrategy: string }) => void) | null } = { systemAudioSilent: null };
+function createElectronAPI({
+  systemAudioMode,
+  systemAudioStrategy,
+}: {
+  systemAudioMode: string;
+  systemAudioStrategy: string;
+}) {
+  const listeners: { systemAudioSilent: ((data: { systemAudioStrategy: string }) => void) | null } =
+    { systemAudioSilent: null };
+
   const noopListener = () => () => {};
+
   const api = {
     checkSystemAudioAccess: async () => ({
       granted: systemAudioMode !== "unsupported",
@@ -49,11 +60,13 @@ function createElectronAPI({ systemAudioMode, systemAudioStrategy }: { systemAud
     onMeetingTranscriptionFatalError: noopListener,
     onMeetingSystemAudioSilent: (callback: (data: { systemAudioStrategy: string }) => void) => {
       listeners.systemAudioSilent = callback;
+
       return () => {
         if (listeners.systemAudioSilent === callback) listeners.systemAudioSilent = null;
       };
     },
   };
+
   return { api, listeners };
 }
 
@@ -61,10 +74,14 @@ async function loadStore(t: TestContext, api: Record<string, unknown>) {
   installBrowserGlobals(t, {
     window: { electronAPI: api, setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms) },
   });
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-meeting-system-audio-silence-test-",
   });
-  return (vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as Promise<typeof import("../../src/stores/meetingRecordingStore.ts")>);
+
+  return vite.ssrLoadModule("/stores/meetingRecordingStore.ts") as Promise<
+    typeof import("../../src/stores/meetingRecordingStore.ts")
+  >;
 }
 
 test("silence event latches the warning once during a system-audio session", async (t: TestContext) => {
@@ -72,6 +89,7 @@ test("silence event latches the warning once during a system-audio session", asy
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
+
   const store = await loadStore(t, api);
 
   assert.equal(await store.startRecording(START_ARGS), true);
@@ -84,9 +102,11 @@ test("silence event latches the warning once during a system-audio session", asy
 
   // A repeated event must not re-set state (the UI toasts on the transition).
   let notifications = 0;
+
   const unsubscribe = store.useMeetingRecordingStore.subscribe(() => {
     notifications += 1;
   });
+
   listeners.systemAudioSilent!({ systemAudioStrategy: "native" });
   unsubscribe();
   assert.equal(notifications, 0);
@@ -102,6 +122,7 @@ test("a silence event arriving after stop is ignored without crashing", async (t
     systemAudioMode: "native",
     systemAudioStrategy: "native",
   });
+
   const store = await loadStore(t, api);
 
   assert.equal(await store.startRecording(START_ARGS), true);
@@ -114,10 +135,12 @@ test("a silence event arriving after stop is ignored without crashing", async (t
 
 test("no warning when the session had no system audio", async (t: TestContext) => {
   installMicCaptureGlobals(t);
+
   const { api, listeners } = createElectronAPI({
     systemAudioMode: "unsupported",
     systemAudioStrategy: "unsupported",
   });
+
   const store = await loadStore(t, api);
 
   assert.equal(await store.startRecording(START_ARGS), true);

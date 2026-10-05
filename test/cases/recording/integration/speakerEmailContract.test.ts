@@ -1,9 +1,20 @@
 import type { TestContext } from "node:test";
+
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { createDb }: typeof import("../../../helpers/harness/db.ts") = require("../../../helpers/harness/db.ts");
-const { speakerChannels }: typeof import("../../../../src/contracts/speakerProfiles.ts") = require("../../../../src/contracts/speakerProfiles.ts");
-const { registerSpeakerHandlers }: typeof import("../../../../src/helpers/speakerIpcHandlers.ts") = require("../../../../src/helpers/speakerIpcHandlers.ts");
+
+const {
+  createDb,
+}: typeof import("../../../helpers/harness/db.ts") = require("../../../helpers/harness/db.ts");
+
+const {
+  speakerChannels,
+}: typeof import("../../../../src/contracts/speakerProfiles.ts") = require("../../../../src/contracts/speakerProfiles.ts");
+
+const {
+  registerSpeakerHandlers,
+}: typeof import("../../../../src/helpers/speakerIpcHandlers.ts") = require("../../../../src/helpers/speakerIpcHandlers.ts");
 
 // Float32-LE buffers, the storage format the DB returns for embeddings.
 function embedding(values: number[]) {
@@ -19,7 +30,10 @@ function registerWithRealDb(db: any): Harness {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
   const retroactive: Harness["retroactive"] = [];
   registerSpeakerHandlers(
-    { handle: (channel, fn) => handlers.set(channel as string, fn as (...args: unknown[]) => unknown) },
+    {
+      handle: (channel, fn) =>
+        handlers.set(channel as string, fn as (...args: unknown[]) => unknown),
+    },
     {
       databaseManager: db,
       diarizationManager: {
@@ -35,20 +49,29 @@ function registerWithRealDb(db: any): Harness {
       logError: () => {},
     }
   );
+
   return {
-    invoke: (channel, ...args) => Promise.resolve(handlers.get(channel)!({ sender: { isDestroyed: () => true, send() {} } }, ...args)),
+    invoke: (channel, ...args) =>
+      Promise.resolve(
+        handlers.get(channel)!({ sender: { isDestroyed: () => true, send() {} } }, ...args)
+      ),
     retroactive,
   };
 }
 
 test("attach-speaker-email returns the persisted profile and fires retroactive mapping", async (t: TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const profile = db.upsertSpeakerProfile("Alice", null, embedding([1, 0.2, 0]));
   assert.ok(profile);
   const h = registerWithRealDb(db);
 
-  const result = await h.invoke(speakerChannels.attachSpeakerEmail, profile.id, "alice@example.com");
+  const result = await h.invoke(
+    speakerChannels.attachSpeakerEmail,
+    profile.id,
+    "alice@example.com"
+  );
 
   assert.equal(result.success, true);
   assert.equal(result.profile.id, profile.id);
@@ -60,11 +83,15 @@ test("attach-speaker-email returns the persisted profile and fires retroactive m
   assert.ok(Buffer.isBuffer(h.retroactive[0].embedding));
   assert.equal(h.retroactive[0].id, profile.id);
   // And the write is actually persisted.
-  assert.equal(db.getSpeakerProfiles().find((p: any) => p.id === profile.id)?.email, "alice@example.com");
+  assert.equal(
+    db.getSpeakerProfiles().find((p: any) => p.id === profile.id)?.email,
+    "alice@example.com"
+  );
 });
 
 test("attach-speaker-email for a missing profile is a failure, not success", async (t: TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const h = registerWithRealDb(db);
 
@@ -77,6 +104,7 @@ test("attach-speaker-email for a missing profile is a failure, not success", asy
 
 test("attach-speaker-email removal keeps email nullable", async (t: TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const profile = db.upsertSpeakerProfile("Bob", "bob@example.com", embedding([0, 1, 0]));
   assert.ok(profile);
@@ -91,6 +119,7 @@ test("attach-speaker-email removal keeps email nullable", async (t: TestContext)
 
 test("save-note-speaker-embeddings passes the DB row shape and persists buffers", async (t: TestContext) => {
   const db = createDb(t);
+
   if (!db) return;
   const { note } = db.saveNote("Meeting", "content");
   assert.ok(note);

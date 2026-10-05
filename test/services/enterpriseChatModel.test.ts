@@ -4,7 +4,9 @@
 // request, abort racing between subscribe and start, failed invokes and late
 // terminal envelopes after done.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
 
 interface StreamEnvelope {
@@ -15,21 +17,32 @@ interface StreamEnvelope {
 }
 
 type StartPayload = { streamId: string };
+
 type StartBehavior = (payload: StartPayload) => Promise<{ success: boolean; error?: string }>;
 
 let vitePromise: Promise<import("vite").ViteDevServer> | undefined;
+
 const cleanup: Array<() => Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
 
 async function loadModel() {
-  const vite = await (vitePromise ??= createRendererServer({ after: (close: () => Promise<void>) => cleanup.push(close) }, {
-    cachePrefix: "openh-enterprise-chat-model-",
-  }));
+  const vite = await (vitePromise ??= createRendererServer(
+    { after: (close: () => Promise<void>) => cleanup.push(close) },
+    {
+      cachePrefix: "openh-enterprise-chat-model-",
+    }
+  ));
+
   const module = await vite.moduleGraph.getModuleByUrl("/services/ai/enterpriseChatModel.ts");
+
   if (module) vite.moduleGraph.invalidateModule(module);
-  return (vite.ssrLoadModule("/services/ai/enterpriseChatModel.ts") as Promise<typeof import("../../src/services/ai/enterpriseChatModel.ts")>);
+
+  return vite.ssrLoadModule("/services/ai/enterpriseChatModel.ts") as Promise<
+    typeof import("../../src/services/ai/enterpriseChatModel.ts")
+  >;
 }
 
 interface StubApi {
@@ -48,13 +61,17 @@ function stubApi() {
     listeners: new Set<(envelope: StreamEnvelope) => void>(),
     startBehavior: undefined as StartBehavior | undefined,
   };
+
   const push = (envelope: StreamEnvelope) => {
     for (const listener of state.listeners) listener(envelope);
   };
+
   const api: StubApi = {
     enterpriseStreamStart: async (payload: StartPayload) => {
       state.starts.push(payload);
+
       if (state.startBehavior) return state.startBehavior(payload);
+
       return { success: true };
     },
     enterpriseStreamCancel: async (streamId: string) => {
@@ -62,6 +79,7 @@ function stubApi() {
     },
     onEnterpriseStreamPart: (callback: (envelope: StreamEnvelope) => void) => {
       state.listeners.add(callback);
+
       return () => {
         state.unsubscribed += 1;
         state.listeners.delete(callback);
@@ -69,6 +87,7 @@ function stubApi() {
     },
     push,
   };
+
   // startBehavior lives on state (the start stub reads it); mirror assignments
   // to api.startBehavior so tests can set the behavior on either object.
   Object.defineProperty(api, "startBehavior", {
@@ -77,6 +96,7 @@ function stubApi() {
       state.startBehavior = value;
     },
   });
+
   return { api, state };
 }
 
@@ -150,8 +170,10 @@ test("abort between subscribe and start cancels the started stream", async (t: i
   const gate = new Promise<void>((resolve) => (releaseStart = resolve));
   api.startBehavior = async () => {
     await gate;
+
     return { success: true };
   };
+
   installBrowserGlobals(t, { window: { electronAPI: api } });
   const { createEnterpriseChatModel } = await loadModel();
 
@@ -180,8 +202,10 @@ test("abort settles the local read immediately while the start invoke is pending
   const gate = new Promise<void>((resolve) => (releaseStart = resolve));
   api.startBehavior = async () => {
     await gate;
+
     return { success: true };
   };
+
   installBrowserGlobals(t, { window: { electronAPI: api } });
   const { createEnterpriseChatModel } = await loadModel();
 
@@ -193,6 +217,7 @@ test("abort settles the local read immediately while the start invoke is pending
   assert.equal(state.starts.length, 1);
 
   let settled = false;
+
   const read = reader.read().then(
     () => {
       settled = true;

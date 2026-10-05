@@ -16,12 +16,15 @@ const nonNegativeInt = z.number().int();
 // Options cross the boundary as a plain object spread. provider/model/
 // language/requestId are the documented fields; unknown extension fields
 // must survive to the managers (they read e.g. skipDecoderThresholds).
-export const transcriptionOptionsSchema = z.object({
-  provider: z.string().optional(),
-  model: z.string().optional(),
-  language: z.string().optional(),
-  requestId: z.string().optional(),
-}).passthrough();
+export const transcriptionOptionsSchema = z
+  .object({
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    language: z.string().optional(),
+    requestId: z.string().optional(),
+  })
+  .passthrough();
+
 export type TranscriptionOptions = z.infer<typeof transcriptionOptionsSchema>;
 
 export const transcriptionResponseSchema = z.object({
@@ -35,6 +38,7 @@ export const transcriptionResponseSchema = z.object({
   error: z.string().optional(),
   code: z.string().optional(),
 });
+
 export type TranscriptionResponse = z.infer<typeof transcriptionResponseSchema>;
 
 // The renderer-facing surface: one operation. AbortSignal is a Node-side

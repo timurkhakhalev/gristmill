@@ -1,17 +1,27 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react");
+
 const { createRoot } = require("react-dom/client");
+
 const { renderToStaticMarkup } = require("react-dom/server");
+
 const { createInstance } = require("i18next");
+
 const { I18nextProvider } = require("react-i18next");
+
 const { useDirection } = require("@radix-ui/react-direction");
-const { installBrowserGlobals, installHookDom }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  installBrowserGlobals,
+  installHookDom,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 test("the app provider supplies the active i18n direction through real Radix context", async () => {
-  const { I18nDirectionProvider } = await import(
-    "../../src/components/I18nDirectionProvider.tsx"
-  );
+  const { I18nDirectionProvider } = await import("../../src/components/I18nDirectionProvider.tsx");
+
   const i18n = createInstance();
   await i18n.init({
     lng: "ar",
@@ -22,16 +32,13 @@ test("the app provider supplies the active i18n direction through real Radix con
   function DirectionProbe() {
     return React.createElement("span", { "data-radix-direction": useDirection() });
   }
+
   const renderDirection = () =>
     renderToStaticMarkup(
       React.createElement(
         I18nextProvider,
         { i18n },
-        React.createElement(
-          I18nDirectionProvider,
-          null,
-          React.createElement(DirectionProbe)
-        )
+        React.createElement(I18nDirectionProvider, null, React.createElement(DirectionProbe))
       )
     );
 
@@ -47,9 +54,9 @@ test("Radix direction reacts to language changes without remounting the app", as
   });
   installBrowserGlobals(t);
   const container = installHookDom(t);
-  const { I18nDirectionProvider } = await import(
-    "../../src/components/I18nDirectionProvider.tsx"
-  );
+
+  const { I18nDirectionProvider } = await import("../../src/components/I18nDirectionProvider.tsx");
+
   const i18n = createInstance();
   await i18n.init({
     lng: "ar",
@@ -60,6 +67,7 @@ test("Radix direction reacts to language changes without remounting the app", as
 
   function DirectionProbe() {
     observed.push(useDirection());
+
     return null;
   }
 
@@ -69,11 +77,7 @@ test("Radix direction reacts to language changes without remounting the app", as
       React.createElement(
         I18nextProvider,
         { i18n },
-        React.createElement(
-          I18nDirectionProvider,
-          null,
-          React.createElement(DirectionProbe)
-        )
+        React.createElement(I18nDirectionProvider, null, React.createElement(DirectionProbe))
       )
     );
   });

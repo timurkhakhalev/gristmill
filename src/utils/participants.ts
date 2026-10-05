@@ -12,6 +12,7 @@ export const resolveParticipantExpectedSpeakerCount = (
   participants: readonly CalendarAttendee[]
 ): number | null => {
   const others = participants.filter((attendee) => attendee?.self !== true).length;
+
   return others > 0 ? others + 1 : null;
 };
 
@@ -28,6 +29,7 @@ export const resolveParticipantSpeakerCountSync = ({
   if (recordingNoteId !== noteId || userTouchedStepper) return null;
 
   const expectedCount = resolveParticipantExpectedSpeakerCount(participants);
+
   return expectedCount != null && expectedCount > currentExpectedCount ? expectedCount : null;
 };
 
@@ -43,16 +45,20 @@ export const isExplicitSpeakerCount = (value?: number | null): value is number =
 
 // Expected total speaker count for a meeting note: the stored value, else derived from
 // calendar participants (non-self attendees + you), else null so callers use their default.
-export const resolveExpectedSpeakerCount = (note?: {
-  expected_speaker_count?: number | null;
-  participants?: string | null;
-} | null): number | null => {
+export const resolveExpectedSpeakerCount = (
+  note?: {
+    expected_speaker_count?: number | null;
+    participants?: string | null;
+  } | null
+): number | null => {
   if (isExplicitSpeakerCount(note?.expected_speaker_count)) {
     return note.expected_speaker_count;
   }
+
   if (!note?.participants) return null;
 
   let attendees: CalendarAttendee[];
+
   try {
     const parsed = JSON.parse(note.participants);
     attendees = Array.isArray(parsed) ? parsed : [];

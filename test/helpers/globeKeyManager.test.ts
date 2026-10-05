@@ -1,13 +1,21 @@
 const test: typeof import("node:test") = require("node:test");
+
 const { afterEach }: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const path: typeof import("node:path") = require("node:path");
+
 const { EventEmitter } = require("node:events");
+
 const childProcess: typeof import("node:child_process") = require("node:child_process");
 
 const managerModulePath = require.resolve("../../src/helpers/globeKeyManager");
+
 const originalLoad = Module._load;
+
 const originalPlatform = process.platform;
 
 // resolveListenerBinary walks real candidate paths, so the first one is pinned
@@ -35,6 +43,7 @@ function makeChild() {
     writes: [] as string[],
     write(this: { writes: string[] }, chunk: string) {
       this.writes.push(chunk);
+
       return true;
     },
   });
@@ -42,6 +51,7 @@ function makeChild() {
     child.killed = true;
     child.killSignal = signal;
   };
+
   return child;
 }
 
@@ -53,6 +63,7 @@ function installFakeTimers() {
   global.setTimeout = ((callback: (...args: never[]) => void, delay?: number) => {
     const timer = { callback, delay, cleared: false };
     timers.push(timer);
+
     return timer as unknown as ReturnType<typeof setTimeout>;
   }) as unknown as typeof setTimeout;
   global.clearTimeout = ((timer: unknown) => {
@@ -74,21 +85,31 @@ function loadManager({ markerExists = true } = {}) {
   delete require.cache[managerModulePath];
   setPlatform("darwin");
 
-  const spawnCalls: Array<{ command: string; args: string[]; child: ReturnType<typeof makeChild> }> = [];
+  const spawnCalls: Array<{
+    command: string;
+    args: string[];
+    child: ReturnType<typeof makeChild>;
+  }> = [];
+
   const spawn = (command: string, args: string[]) => {
     const child = makeChild();
     spawnCalls.push({ command, args, child });
+
     return child;
   };
 
   Module._load = function loadWithMocks(request: string, parent: unknown, isMain: boolean) {
-    if (request === "electron") return { app: { getAppPath: () => path.resolve(__dirname, "../..") } };
+    if (request === "electron")
+      return { app: { getAppPath: () => path.resolve(__dirname, "../..") } };
+
     if (request === "./debugLogger" || request === "./debugLogger.js") {
       return { info() {}, warn() {}, debug() {}, error() {} };
     }
+
     if (request === "child_process") {
       return { ...childProcess, spawn };
     }
+
     if (request === "fs") {
       return {
         constants: { X_OK: 1 },
@@ -102,11 +123,15 @@ function loadManager({ markerExists = true } = {}) {
         },
       };
     }
+
     return originalLoad(request, parent, isMain);
   };
 
   try {
-    const GlobeKeyManager: typeof import("../../src/helpers/globeKeyManager.ts").GlobeKeyManager = require(managerModulePath);
+    const GlobeKeyManager: typeof import("../../src/helpers/globeKeyManager.ts").GlobeKeyManager = require(
+      managerModulePath
+    );
+
     return { GlobeKeyManager, spawnCalls };
   } finally {
     Module._load = originalLoad;
@@ -152,6 +177,7 @@ test("leftover preference recovery uses a one-shot helper without starting the l
 
 test("timed-out preference recovery waits for the helper to exit", async () => {
   const fakeTimers = installFakeTimers();
+
   try {
     const { GlobeKeyManager, spawnCalls } = loadManager();
     const manager = new GlobeKeyManager({ preferenceStatePath: "/tmp/state.json" });
@@ -184,6 +210,7 @@ test("timed-out preference recovery waits for the helper to exit", async () => {
 
 test("an unconfirmed recovery termination blocks the long-lived listener", async () => {
   const fakeTimers = installFakeTimers();
+
   try {
     const { GlobeKeyManager, spawnCalls } = loadManager();
     const manager = new GlobeKeyManager({ preferenceStatePath: "/tmp/state.json" });
@@ -227,6 +254,7 @@ test("leftover preference recovery is skipped without a marker or off macOS", as
 test("spawn args include mouse buttons, a spaced state path, and the suppression flag", () => {
   const statePath =
     "/Users/a b/Library/Application Support/open whispr/globe-preference-state.json";
+
   const { GlobeKeyManager, spawnCalls } = loadManager();
   const manager = new GlobeKeyManager({ preferenceStatePath: statePath });
 

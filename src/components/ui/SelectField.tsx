@@ -40,6 +40,7 @@ export function SelectField({
   dir?: "ltr" | "rtl" | "auto";
 }) {
   const rowLabel = React.useContext(SettingsRowLabelContext);
+
   return (
     <Select
       aria-label={ariaLabel ?? rowLabel ?? undefined}
@@ -71,7 +72,11 @@ export function SelectField({
               ) : (
                 <Label>{option.label}</Label>
               )}
-              {option.hint && <span className="ms-auto text-3xs font-medium uppercase tracking-wider text-muted">{option.hint}</span>}
+              {option.hint && (
+                <span className="ms-auto text-3xs font-medium uppercase tracking-wider text-muted">
+                  {option.hint}
+                </span>
+              )}
               <ListBox.ItemIndicator />
             </ListBox.Item>
           ))}

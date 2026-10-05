@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const { createUploadCancelRegistry } = require("../../src/helpers/uploadCancelRegistry");
@@ -54,6 +55,7 @@ test("register without a requestId is inert", () => {
     assert.equal(signal, undefined);
     assert.doesNotThrow(release);
   }
+
   assert.equal(registry.cancel(undefined), 0);
 });
 

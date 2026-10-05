@@ -1,18 +1,23 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const { createRendererServer, installBrowserGlobals } = require("../lib/rendererTestHarness.ts");
+
 import type { TestContext } from "node:test";
 import type { ViteDevServer } from "vite";
 
 type ReasoningService = typeof import("../../src/services/ReasoningService.js").default;
+
 type AgentChunk = { type: string; text?: string; finishReason?: string };
 
 function createRawSseResponse(chunks: string[], { includeDone = true } = {}) {
   const events = chunks
     .map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
     .join("");
+
   const done = includeDone ? "data: [DONE]\n\n" : "";
+
   return new Response(`${events}${done}`, {
     status: 200,
     headers: { "content-type": "text/event-stream" },
@@ -31,11 +36,18 @@ function createOpenAiChunk(delta: Record<string, unknown>, finishReason: string 
 
 function createOpenAiSseResponse(
   chunks: string[],
-  { finishReason = "stop", toolCall }: { finishReason?: string | null; toolCall?: { id: string; name: string; arguments: string } } = {}
+  {
+    finishReason = "stop",
+    toolCall,
+  }: {
+    finishReason?: string | null;
+    toolCall?: { id: string; name: string; arguments: string };
+  } = {}
 ) {
   const events = chunks
     .map((content) => `data: ${JSON.stringify(createOpenAiChunk({ content }))}\n\n`)
     .join("");
+
   const toolEvent = toolCall
     ? `data: ${JSON.stringify(
         createOpenAiChunk({
@@ -50,7 +62,9 @@ function createOpenAiSseResponse(
         })
       )}\n\n`
     : "";
+
   const finishEvent = `data: ${JSON.stringify(createOpenAiChunk({}, finishReason))}\n\n`;
+
   return new Response(`${events}${toolEvent}${finishEvent}data: [DONE]\n\n`, {
     status: 200,
     headers: { "content-type": "text/event-stream" },
@@ -58,34 +72,57 @@ function createOpenAiSseResponse(
 }
 
 let sharedVite: ViteDevServer | undefined;
+
 const sharedCleanup: Array<() => Promise<void>> = [];
+
 test.after(async () => {
   for (const cleanup of sharedCleanup) await cleanup();
 });
 
-async function loadReasoningService(t: TestContext, cachePrefix: string, { window = {} }: { window?: Record<string, unknown> } = {}): Promise<{ reasoningService: ReasoningService; vite: ViteDevServer }> {
+async function loadReasoningService(
+  t: TestContext,
+  cachePrefix: string,
+  { window = {} }: { window?: Record<string, unknown> } = {}
+): Promise<{ reasoningService: ReasoningService; vite: ViteDevServer }> {
   installBrowserGlobals(t, { window });
-  const vite = sharedVite ??= await createRendererServer({ after: (cleanup: () => Promise<void>) => sharedCleanup.push(cleanup) }, { cachePrefix });
+
+  const vite = (sharedVite ??= await createRendererServer(
+    { after: (cleanup: () => Promise<void>) => sharedCleanup.push(cleanup) },
+    { cachePrefix }
+  ));
+
   for (const url of ["/services/ReasoningService.ts", "/stores/settingsStore.ts"]) {
     const module = await vite.moduleGraph.getModuleByUrl(url);
+
     if (module) vite.moduleGraph.invalidateModule(module);
   }
-  const reasoningService = ((await vite.ssrLoadModule("/services/ReasoningService.ts") as typeof import("../../src/services/ReasoningService.ts"))).default;
+
+  const reasoningService = (
+    (await vite.ssrLoadModule(
+      "/services/ReasoningService.ts"
+    )) as typeof import("../../src/services/ReasoningService.ts")
+  ).default;
+
   t.after(() => reasoningService.destroy());
+
   return { reasoningService, vite };
 }
 
 async function collectRawText(stream: AsyncIterable<string>) {
   let output = "";
+
   for await (const chunk of stream) output += chunk;
+
   return output;
 }
 
 async function collectAgentText(stream: AsyncIterable<AgentChunk>) {
   let output = "";
+
   for await (const chunk of stream) {
     if (chunk.type === "content") output += chunk.text;
   }
+
   return output;
 }
 
@@ -96,6 +133,7 @@ test("raw self-hosted streaming filters split tags and flushes visible trailing 
     t,
     "openwhispr-raw-streaming-think-test-"
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -121,6 +159,7 @@ test("raw self-hosted streaming flushes visible trailing text at body EOF", asyn
     t,
     "openwhispr-raw-streaming-think-eof-test-"
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -146,7 +185,11 @@ test("tool-enabled self-hosted streaming filters nested tags", async (t: import(
     t,
     "openwhispr-tool-streaming-think-test-"
   );
-  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
+
+  const { ToolRegistry } = (await vite.ssrLoadModule(
+    "/services/tools/ToolRegistry.ts"
+  )) as typeof import("../../src/services/tools/ToolRegistry.ts");
+
   const registry = new ToolRegistry();
   registry.register({
     name: "noop",
@@ -183,7 +226,11 @@ test("tool-loop filtering resets after an unterminated reasoning block", async (
     t,
     "openwhispr-tool-step-streaming-think-test-"
   );
-  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
+
+  const { ToolRegistry } = (await vite.ssrLoadModule(
+    "/services/tools/ToolRegistry.ts"
+  )) as typeof import("../../src/services/tools/ToolRegistry.ts");
+
   const registry = new ToolRegistry();
   registry.register({
     name: "noop",
@@ -200,12 +247,14 @@ test("tool-loop filtering resets after an unterminated reasoning block", async (
   let fetchCalls = 0;
   globalThis.fetch = async () => {
     fetchCalls += 1;
+
     if (fetchCalls === 1) {
       return createOpenAiSseResponse(["<think>secret"], {
         finishReason: "tool_calls",
         toolCall: { id: "call-noop", name: "noop", arguments: "{}" },
       });
     }
+
     return createOpenAiSseResponse(["Answer"]);
   };
 
@@ -230,12 +279,14 @@ test("tool-enabled streaming does not flush buffered text after abort", async (t
     t,
     "openwhispr-abort-streaming-think-test-"
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
   globalThis.fetch = async (_input, init) => {
     const encoder = new TextEncoder();
+
     const body = new ReadableStream({
       start(controller) {
         controller.enqueue(
@@ -250,6 +301,7 @@ test("tool-enabled streaming does not flush buffered text after abort", async (t
         );
       },
     });
+
     return new Response(body, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -277,9 +329,11 @@ test("tool-enabled streaming does not flush buffered text after abort", async (t
 test("cancelling during local model setup stops before streaming begins", async (t: import("node:test").TestContext) => {
   let resolveServer!: (value: { success: boolean; port: number }) => void;
   let serverStarted = false;
+
   const serverReady = new Promise<{ success: boolean; port: number }>((resolve) => {
     resolveServer = resolve;
   });
+
   const { reasoningService } = await loadReasoningService(
     t,
     "openwhispr-model-setup-cancel-test-",
@@ -288,12 +342,14 @@ test("cancelling during local model setup stops before streaming begins", async 
         electronAPI: {
           llamaServerStart: () => {
             serverStarted = true;
+
             return serverReady;
           },
         },
       },
     }
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -307,7 +363,9 @@ test("cancelling during local model setup stops before streaming begins", async 
     { systemPrompt: "Answer the user.", disableThinking: true },
     {}
   );
+
   const first = stream.next();
+
   for (let i = 0; i < 50 && !serverStarted; i++) await waitForMicrotasks();
   assert.equal(serverStarted, true, "fixture setup: local model setup must be pending");
 
@@ -324,9 +382,11 @@ test("cancelling during local model setup stops before streaming begins", async 
 test("cancelling tool-ineligible local setup prevents raw streaming", async (t: import("node:test").TestContext) => {
   let resolveServer!: (value: { success: boolean; port: number }) => void;
   let serverStarted = false;
+
   const serverReady = new Promise<{ success: boolean; port: number }>((resolve) => {
     resolveServer = resolve;
   });
+
   const { reasoningService } = await loadReasoningService(
     t,
     "openwhispr-tool-ineligible-model-setup-cancel-test-",
@@ -335,12 +395,14 @@ test("cancelling tool-ineligible local setup prevents raw streaming", async (t: 
         electronAPI: {
           llamaServerStart: () => {
             serverStarted = true;
+
             return serverReady;
           },
         },
       },
     }
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -348,6 +410,7 @@ test("cancelling tool-ineligible local setup prevents raw streaming", async (t: 
   let fetchCalls = 0;
   globalThis.fetch = async () => {
     fetchCalls += 1;
+
     return createOpenAiSseResponse(["late answer"]);
   };
 
@@ -358,7 +421,9 @@ test("cancelling tool-ineligible local setup prevents raw streaming", async (t: 
     { systemPrompt: "Answer the user.", disableThinking: true },
     undefined
   );
+
   const first = stream.next();
+
   for (let i = 0; i < 50 && !serverStarted; i++) await waitForMicrotasks();
   assert.equal(serverStarted, true, "fixture setup: raw model setup must be pending");
 
@@ -367,6 +432,7 @@ test("cancelling tool-ineligible local setup prevents raw streaming", async (t: 
 
   const firstResult = await first;
   const chunks = firstResult.done ? [] : [firstResult.value];
+
   for await (const chunk of stream) chunks.push(chunk);
 
   assert.deepEqual(chunks, [{ type: "done", finishReason: "stop" }]);
@@ -393,6 +459,7 @@ test("cancelling a raw stream after its reader starts ends normally", async (t: 
         );
       },
     });
+
     return new Response(body, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -410,7 +477,9 @@ test("cancelling a raw stream after its reader starts ends normally", async (t: 
     },
     undefined
   );
+
   const output = collectAgentText(stream);
+
   for (let i = 0; i < 50 && !readerStarted; i++) await waitForMicrotasks();
   assert.equal(readerStarted, true, "fixture setup: the response reader must be pending");
 
@@ -427,9 +496,19 @@ test("a timeout-owned abort during raw response reading remains a timeout error"
     globalThis.fetch = originalFetch;
     globalThis.setTimeout = originalSetTimeout;
   });
-  globalThis.setTimeout = ((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) =>
+  globalThis.setTimeout = ((
+    callback: (...args: unknown[]) => void,
+    delay?: number,
+    ...args: unknown[]
+  ) =>
     // Narrow boundary: setTimeout's Node overload carries __promisify__; the plain callable shape is all we re-implement.
-    (originalSetTimeout as unknown as (cb: (...a: unknown[]) => void, d?: number, ...a: unknown[]) => unknown)(callback, delay === 60_000 ? 0 : delay, ...args)) as typeof globalThis.setTimeout;
+    (
+      originalSetTimeout as unknown as (
+        cb: (...a: unknown[]) => void,
+        d?: number,
+        ...a: unknown[]
+      ) => unknown
+    )(callback, delay === 60_000 ? 0 : delay, ...args)) as typeof globalThis.setTimeout;
   globalThis.fetch = async (_input: unknown, init: { signal?: AbortSignal | null } = {}) => {
     const body = new ReadableStream({
       start(controller) {
@@ -440,6 +519,7 @@ test("a timeout-owned abort during raw response reading remains a timeout error"
         );
       },
     });
+
     return new Response(body, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -469,6 +549,7 @@ test("tool-enabled streaming rejects instead of flushing buffered text after a s
     t,
     "openwhispr-error-streaming-think-test-"
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -476,6 +557,7 @@ test("tool-enabled streaming rejects instead of flushing buffered text after a s
   let failResponse!: () => void;
   globalThis.fetch = async () => {
     const encoder = new TextEncoder();
+
     const body = new ReadableStream({
       start(controller) {
         controller.enqueue(
@@ -491,6 +573,7 @@ test("tool-enabled streaming rejects instead of flushing buffered text after a s
         };
       },
     });
+
     return new Response(body, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -529,6 +612,7 @@ test("self-hosted streaming preserves think tags when thinking is enabled", asyn
     t,
     "openwhispr-enabled-streaming-think-test-"
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -556,6 +640,7 @@ test("non-local streaming remains unfiltered", async (t: import("node:test").Tes
     "openwhispr-cloud-streaming-think-test-",
     { window: { electronAPI: { getGroqKey: async () => "test-key" } } }
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -579,6 +664,7 @@ test("chat cancellation leaves single-shot reasoning alive until all requests ar
     "openwhispr-non-streaming-reason-cancel-test-",
     { window: { electronAPI: { getGroqKey: async () => "test-key" } } }
   );
+
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -590,6 +676,7 @@ test("chat cancellation leaves single-shot reasoning alive until all requests ar
     fetchCalls += 1;
     requestStarted = true;
     requestSignal = init?.signal ?? undefined;
+
     return await new Promise((_resolve, reject) => {
       init?.signal?.addEventListener(
         "abort",
@@ -605,6 +692,7 @@ test("chat cancellation leaves single-shot reasoning alive until all requests ar
     null,
     { provider: "groq" }
   );
+
   while (!requestStarted) await waitForMicrotasks();
   const cancelled = assert.rejects(reasoning, /cancelled/i);
 
@@ -622,7 +710,11 @@ test("a provider error part rejects the agent stream instead of ending it silent
     t,
     "openwhispr-stream-error-part-test-"
   );
-  const { ToolRegistry } = (await vite.ssrLoadModule("/services/tools/ToolRegistry.ts") as typeof import("../../src/services/tools/ToolRegistry.ts"));
+
+  const { ToolRegistry } = (await vite.ssrLoadModule(
+    "/services/tools/ToolRegistry.ts"
+  )) as typeof import("../../src/services/tools/ToolRegistry.ts");
+
   const registry = new ToolRegistry();
   registry.register({
     name: "noop",
@@ -640,7 +732,9 @@ test("a provider error part rejects the agent stream instead of ending it silent
   // closes the stream. The generator must surface that as a rejection.
   globalThis.fetch = async () =>
     new Response(
-      JSON.stringify({ error: { message: "Incorrect API key provided", type: "invalid_request_error" } }),
+      JSON.stringify({
+        error: { message: "Incorrect API key provided", type: "invalid_request_error" },
+      }),
       { status: 401, headers: { "content-type": "application/json" } }
     );
 
@@ -648,7 +742,11 @@ test("a provider error part rejects the agent stream instead of ending it silent
     [{ role: "user", content: "hello" }],
     "qwen3-4b-q4_k_m",
     "lan",
-    { systemPrompt: "Answer the user.", lanUrl: "http://127.0.0.1:11434/v1", disableThinking: true },
+    {
+      systemPrompt: "Answer the user.",
+      lanUrl: "http://127.0.0.1:11434/v1",
+      disableThinking: true,
+    },
     registry.toAISDKFormat()
   );
 

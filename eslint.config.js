@@ -1,5 +1,7 @@
 const js = require("@eslint/js");
+
 const globals = require("globals");
+
 const tseslint = require("typescript-eslint");
 
 module.exports = [
@@ -107,7 +109,10 @@ module.exports = [
       "no-undef": "off",
       "no-redeclare": "off",
       "no-unused-vars": "off",
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-control-regex": "off",
     },
@@ -117,11 +122,17 @@ module.exports = [
     languageOptions: { parser: tseslint.parser, sourceType: "module", globals: globals.browser },
     plugins: { "@typescript-eslint": tseslint.plugin },
     rules: {
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
-      "no-restricted-imports": ["error", {
-        paths: ["electron", "fs", "path", "net", "crypto", "child_process"],
-        patterns: ["node:*", "**/helpers/**"],
-      }],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: ["electron", "fs", "path", "net", "crypto", "child_process"],
+          patterns: ["node:*", "**/helpers/**"],
+        },
+      ],
       "no-restricted-globals": ["error", "process", "Buffer", "require", "__dirname"],
     },
   },

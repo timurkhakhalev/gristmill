@@ -9,10 +9,15 @@ import debugLogger from "./debugLogger.js";
 import { runSystemTar } from "./systemTar.js";
 
 const USER_AGENT = "Gristmill/1.0";
+
 const PROGRESS_THROTTLE_MS = 100;
+
 const DEFAULT_MAX_RETRIES = 3;
+
 const MAX_BACKOFF_MS = 30000;
+
 const STALL_TIMEOUT_MS = 30000;
+
 const STALE_TMP_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const RETRYABLE_CODES: ReadonlySet<string> = new Set([
@@ -52,6 +57,7 @@ function asDownloadError(error: unknown): DownloadError {
 
 function isTlsError(error: unknown): boolean {
   const err = asDownloadError(error);
+
   return (
     (err.code !== undefined && TLS_ERROR_CODES.has(err.code)) ||
     (err.message !== undefined && err.message.includes("unable to get local issuer certificate"))
@@ -60,7 +66,9 @@ function isTlsError(error: unknown): boolean {
 
 function isRetryable(error: unknown): boolean {
   const err = asDownloadError(error);
+
   if (err.isAbort || err.isHttpError || isTlsError(error)) return false;
+
   return err.code !== undefined && RETRYABLE_CODES.has(err.code);
 }
 
@@ -68,6 +76,7 @@ type ResponseHeaders = Record<string, string | string[] | undefined>;
 
 function headerValue(headers: ResponseHeaders, name: string): string | undefined {
   const raw = headers[name];
+
   return Array.isArray(raw) ? raw[0] : raw;
 }
 
@@ -93,10 +102,12 @@ export interface DownloadSignalHandle {
 
 export function createDownloadSignal(): DownloadSignalHandle {
   const signal: DownloadSignal = { aborted: false, onAbort: null };
+
   return {
     signal,
     abort() {
       signal.aborted = true;
+
       if (typeof signal.onAbort === "function") {
         signal.onAbort();
       }
@@ -135,10 +146,12 @@ function downloadAttempt(
   return new Promise<DownloadAttemptResult>((resolve, reject) => {
     if (signal?.aborted) {
       reject(Object.assign(new Error("Download cancelled"), { isAbort: true }));
+
       return;
     }
 
     const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+
     if (startOffset > 0) {
       headers["Range"] = `bytes=${startOffset}-`;
     }
@@ -156,14 +169,17 @@ function downloadAttempt(
         clearTimeout(stallTimer);
         stallTimer = null;
       }
+
       if (request) {
         request.abort();
         request = null;
       }
+
       if (!activeFile) return Promise.resolve();
 
       const file = activeFile;
       activeFile = null;
+
       if (file.closed) return Promise.resolve();
 
       // createWriteStream() opens asynchronously. Wait for close so callers
@@ -177,6 +193,7 @@ function downloadAttempt(
     const fail = (error: unknown): void => {
       if (settled) return;
       settled = true;
+
       if (signal) signal.onAbort = null;
       void cleanup().then(() => reject(error));
     };
@@ -190,6 +207,7 @@ function downloadAttempt(
     }
 
     request = net.request({ url, method: "GET" });
+
     for (const [name, value] of Object.entries(headers)) {
       request.setHeader(name, value);
     }
@@ -199,9 +217,11 @@ function downloadAttempt(
       // narrower than the runtime object, so widen it at this one boundary.
       const responseBody = response as Electron.IncomingMessage & Readable;
       const responseHeaders = response.headers as ResponseHeaders;
+
       if (signal?.aborted) {
         responseBody.resume();
         fail(Object.assign(new Error("Download cancelled"), { isAbort: true }));
+
         return;
       }
 
@@ -215,12 +235,17 @@ function downloadAttempt(
       } else if (statusCode === 206) {
         activeFile = fs.createWriteStream(tempPath, { flags: "a" });
         const contentRange = headerValue(responseHeaders, "content-range");
+
         if (contentRange) {
           const match = contentRange.match(/\/(\d+)$/);
+
           if (match) totalSize = parseInt(match[1], 10);
         }
+
         if (!totalSize) {
-          const contentLength = parseInt(headerValue(responseHeaders, "content-length") ?? "", 10) || 0;
+          const contentLength =
+            parseInt(headerValue(responseHeaders, "content-length") ?? "", 10) || 0;
+
           totalSize = startOffset + contentLength;
         }
       } else if (statusCode === 200) {
@@ -228,11 +253,14 @@ function downloadAttempt(
         totalSize = parseInt(headerValue(responseHeaders, "content-length") ?? "", 10) || 0;
       } else {
         responseBody.resume();
+
         const err = Object.assign(new Error(`HTTP ${statusCode}`), {
           isHttpError: true,
           statusCode,
         }) as DownloadError;
+
         fail(err);
+
         return;
       }
 
@@ -257,25 +285,32 @@ function downloadAttempt(
       responseBody.on("data", (chunk: Buffer) => {
         if (signal?.aborted) {
           fail(Object.assign(new Error("Download cancelled"), { isAbort: true }));
+
           return;
         }
+
         downloadedSize += chunk.length;
         resetStallTimer();
         emitProgress();
       });
 
       const file = activeFile;
+
       if (!file) {
         // Unreachable: every accepted status branch opened a write stream.
         return;
       }
+
       pipeline(responseBody, file, (err) => {
         if (settled) return;
+
         if (stallTimer) {
           clearTimeout(stallTimer);
           stallTimer = null;
         }
+
         if (signal) signal.onAbort = null;
+
         if (err) {
           if (signal?.aborted) {
             fail(Object.assign(new Error("Download cancelled"), { isAbort: true }));
@@ -316,6 +351,7 @@ function downloadAttempt(
     function emitProgress(): void {
       if (!onProgress) return;
       const now = Date.now();
+
       if (
         now - lastProgressUpdate >= PROGRESS_THROTTLE_MS ||
         (totalSize > 0 && downloadedSize >= totalSize)
@@ -336,21 +372,28 @@ export interface FetchJsonOptions {
   cache?: string;
 }
 
-export async function fetchJson<T = unknown>(url: string, options: FetchJsonOptions = {}): Promise<T> {
+export async function fetchJson<T = unknown>(
+  url: string,
+  options: FetchJsonOptions = {}
+): Promise<T> {
   const { headers, ...init } = options;
+
   const response = await net.fetch(url, {
     method: "GET",
     useSessionCookies: false,
     ...init,
     headers: { "User-Agent": USER_AGENT, ...(headers || {}) },
   } as RequestInit);
+
   if (!response.ok) {
     const err = Object.assign(new Error(`HTTP ${response.status} fetching ${url}`), {
       isHttpError: true,
       statusCode: response.status,
     }) as DownloadError;
+
     throw err;
   }
+
   return (await response.json()) as T;
 }
 
@@ -366,8 +409,10 @@ export async function downloadFile(
   debugLogger.info("Download starting", { url, destPath });
 
   let startOffset = 0;
+
   try {
     const stats = await fsPromises.stat(tempPath);
+
     if (stats.size > 0) {
       startOffset = stats.size;
       debugLogger.info("Resuming download", { startOffset });
@@ -391,6 +436,7 @@ export async function downloadFile(
       // Update startOffset from temp file in case partial data was written
       try {
         const stats = await fsPromises.stat(tempPath);
+
         if (stats.size > 0) startOffset = stats.size;
       } catch {
         startOffset = 0;
@@ -418,6 +464,7 @@ export async function downloadFile(
       }
 
       debugLogger.info("Download complete", { destPath });
+
       return destPath;
     } catch (error) {
       lastError = error;
@@ -455,10 +502,7 @@ export async function downloadFile(
   throw lastError;
 }
 
-export function createDownloadInProgressError(
-  model: string,
-  activeModel: string
-): DownloadError {
+export function createDownloadInProgressError(model: string, activeModel: string): DownloadError {
   return Object.assign(new Error("A model is already being downloaded"), {
     code: "DOWNLOAD_IN_PROGRESS",
     details: { model, activeModel },
@@ -472,6 +516,7 @@ export async function validateFileSize(
 ): Promise<number> {
   const stats = await fsPromises.stat(filePath);
   const minSize = expectedSizeBytes * (1 - tolerancePercent / 100);
+
   if (stats.size < minSize) {
     await fsPromises.unlink(filePath).catch(() => {});
     throw Object.assign(
@@ -482,6 +527,7 @@ export async function validateFileSize(
       { code: "ERR_FILE_TOO_SMALL" }
     );
   }
+
   return stats.size;
 }
 
@@ -489,17 +535,21 @@ export async function cleanupStaleDownloads(directory: string): Promise<void> {
   try {
     const entries = await fsPromises.readdir(directory);
     const now = Date.now();
+
     for (const entry of entries) {
       if (!entry.endsWith(".tmp") && !entry.startsWith("temp-extract-")) continue;
       const fullPath = path.join(directory, entry);
+
       try {
         const stats = await fsPromises.stat(fullPath);
+
         if (now - stats.mtimeMs > STALE_TMP_AGE_MS) {
           if (stats.isDirectory()) {
             await fsPromises.rm(fullPath, { recursive: true, force: true });
           } else {
             await fsPromises.unlink(fullPath);
           }
+
           debugLogger.info("Cleaned up stale download artifact", { path: fullPath });
         }
       } catch {
@@ -523,6 +573,7 @@ export async function checkDiskSpace(
   try {
     const stats = await fsPromises.statfs(directory);
     const availableBytes = stats.bavail * stats.bsize;
+
     return { ok: availableBytes >= requiredBytes, availableBytes };
   } catch {
     // statfs not supported or directory doesn't exist — skip check
@@ -533,6 +584,7 @@ export async function checkDiskSpace(
 async function extractZipWindows(zipPath: string, destDir: string): Promise<void> {
   try {
     await runSystemTar(zipPath, destDir);
+
     return;
   } catch (error) {
     debugLogger.info("tar extraction failed, trying PowerShell", {
@@ -559,6 +611,7 @@ async function extractZipWindows(zipPath: string, destDir: string): Promise<void
 async function extractTarGz(archivePath: string, destDir: string): Promise<void> {
   try {
     await runSystemTar(archivePath, destDir);
+
     return;
   } catch (error) {
     debugLogger.info("system tar failed, using JS extraction", { error: (error as Error).message });
@@ -583,9 +636,11 @@ export function extractArchive(archivePath: string, destDir: string): Promise<vo
     execFile("unzip", ["-o", archivePath, "-d", destDir], (err) => {
       if (!err) return resolve();
       debugLogger.info("system unzip failed, using JS extraction", { error: err.message });
+
       const unzipper = require("unzipper") as {
         Extract: (options: { path: string }) => NodeJS.ReadWriteStream;
       };
+
       fs.createReadStream(archivePath)
         .pipe(unzipper.Extract({ path: destDir }))
         .on("close", resolve)
@@ -604,15 +659,19 @@ export async function findFile(
 ): Promise<string | null> {
   if (depth >= maxDepth) return null;
   const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
+
     if (entry.isDirectory()) {
       const found = await findFile(full, name, maxDepth, depth + 1);
+
       if (found) return found;
     } else if (entry.name === name) {
       return full;
     }
   }
+
   return null;
 }
 
@@ -625,13 +684,16 @@ export async function findFiles(
   if (depth >= maxDepth) return [];
   const results: string[] = [];
   const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
+
     if (entry.isDirectory()) {
       results.push(...(await findFiles(full, pattern, maxDepth, depth + 1)));
     } else if (pattern.test(entry.name)) {
       results.push(full);
     }
   }
+
   return results;
 }

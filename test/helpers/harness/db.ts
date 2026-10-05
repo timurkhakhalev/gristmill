@@ -14,6 +14,7 @@ const REQUIRED_DB_FAILURE =
 
 function isNativeBindingUnavailable(error: unknown): boolean {
   const message = String((error as { message?: unknown })?.message || error);
+
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file") ||
@@ -28,9 +29,14 @@ export function skipOrFail(t: TestContext, error: unknown): void {
   if (!isNativeBindingUnavailable(error)) {
     throw error;
   }
+
   if (process.env.REQUIRE_DB_TESTS) {
-    throw new Error(REQUIRED_DB_FAILURE + String((error as { message?: unknown })?.message || error), { cause: error });
+    throw new Error(
+      REQUIRED_DB_FAILURE + String((error as { message?: unknown })?.message || error),
+      { cause: error }
+    );
   }
+
   t.skip("better-sqlite3 native binding is not available for this Node runtime");
 }
 
@@ -40,9 +46,14 @@ export { isNativeBindingUnavailable };
 // database.ts would bypass the Module._load patch and reach the real electron
 // binary, so the value import stays dynamic and ordered after installElectronStub().
 installElectronStub();
+
 type DatabaseManagerModule = typeof import("../../../src/helpers/database.js");
-const { DatabaseManager: DatabaseManagerClass } = require("../../../src/helpers/database.ts") as DatabaseManagerModule;
+
+const { DatabaseManager: DatabaseManagerClass } =
+  require("../../../src/helpers/database.ts") as DatabaseManagerModule;
+
 export { DatabaseManagerClass as DatabaseManager };
+
 export type DatabaseManager = InstanceType<typeof DatabaseManagerClass>;
 
 // A real DatabaseManager over a private tmpdir. Returns null when the caller
@@ -54,7 +65,9 @@ export function createDb(t: TestContext): DatabaseManager | null {
   // Probe first: a binding failure here is the loader's, not schema setup's.
   // better-sqlite3 ships no declarations; the structural surface here is new/close.
   type ProbeDatabase = { close(): void };
+
   const BetterSqlite = require("better-sqlite3") as new (path: string) => ProbeDatabase;
+
   try {
     const probe = new BetterSqlite(path.join(userDataDir, "probe.db"));
     probe.close();
@@ -62,15 +75,18 @@ export function createDb(t: TestContext): DatabaseManager | null {
   } catch (error) {
     fs.rmSync(userDataDir, { recursive: true, force: true });
     skipOrFail(t, error);
+
     return null;
   }
 
   let db: DatabaseManager;
+
   try {
     db = new DatabaseManagerClass();
   } catch (error) {
     fs.rmSync(userDataDir, { recursive: true, force: true });
     skipOrFail(t, error);
+
     return null;
   }
 
@@ -80,6 +96,7 @@ export function createDb(t: TestContext): DatabaseManager | null {
     } catch {
       // an already-closed handle must not mask the test's own failure
     }
+
     fs.rmSync(userDataDir, { recursive: true, force: true });
   });
 

@@ -3,6 +3,7 @@ export interface Release {
   url: string;
   assets: { name: string; url: string }[];
 }
+
 interface GitHubRelease {
   tag_name: string;
   html_url: string;
@@ -10,14 +11,21 @@ interface GitHubRelease {
   prerelease?: boolean;
   assets?: { name: string; browser_download_url: string }[];
 }
+
 const https: typeof import("https") = require("https");
+
 const fs: typeof import("fs") = require("fs");
+
 const path: typeof import("path") = require("path");
+
 const { execFileSync }: typeof import("child_process") = require("child_process");
 
 const REQUEST_TIMEOUT = 30000;
+
 const MAX_RETRIES = 3;
+
 const RETRY_DELAY = 2000;
+
 const MAX_REDIRECTS = 5;
 
 /**
@@ -30,6 +38,7 @@ function fetchJson<T>(url: string, redirectCount = 0): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (redirectCount > MAX_REDIRECTS) {
       reject(new Error("Too many redirects"));
+
       return;
     }
 
@@ -40,6 +49,7 @@ function fetchJson<T>(url: string, redirectCount = 0): Promise<T> {
 
     // Use GitHub token if available (increases rate limit from 60 to 5000/hour)
     const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -53,19 +63,24 @@ function fetchJson<T>(url: string, redirectCount = 0): Promise<T> {
       .get(url, options, (res) => {
         if ([301, 302, 303, 307, 308].includes(res.statusCode ?? 0)) {
           const location = res.headers.location;
+
           if (!location) {
             reject(new Error("Redirect without location header"));
+
             return;
           }
+
           const redirectUrl = location.startsWith("/") ? new URL(location, url).href : location;
           fetchJson<T>(redirectUrl, redirectCount + 1)
             .then(resolve)
             .catch(reject);
+
           return;
         }
 
         if (res.statusCode !== 200) {
           reject(new Error(`HTTP ${res.statusCode}`));
+
           return;
         }
 
@@ -106,12 +121,14 @@ async function fetchLatestRelease(
     if (tag) {
       const url = `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`;
       const release = await fetchJson<GitHubRelease>(url);
+
       return formatRelease(release);
     }
 
     if (!tagPrefix) {
       const url = `https://api.github.com/repos/${repo}/releases/latest`;
       const release = await fetchJson<GitHubRelease>(url);
+
       return formatRelease(release);
     }
 
@@ -125,7 +142,9 @@ async function fetchLatestRelease(
     // Find the latest release matching the prefix
     for (const release of releases) {
       if (release.draft) continue;
+
       if (!includePrerelease && release.prerelease) continue;
+
       if (release.tag_name && release.tag_name.startsWith(tagPrefix)) {
         return formatRelease(release);
       }
@@ -136,6 +155,7 @@ async function fetchLatestRelease(
     console.error(
       `  Failed to fetch latest release for ${repo}: ${error instanceof Error ? error.message : String(error)}`
     );
+
     return null;
   }
 }
@@ -170,6 +190,7 @@ function downloadFile(url: string, dest: string, retryCount = 0): Promise<void> 
         activeRequest.destroy();
         activeRequest = null;
       }
+
       file.close();
     };
 
@@ -177,30 +198,37 @@ function downloadFile(url: string, dest: string, retryCount = 0): Promise<void> 
       if (redirectCount > MAX_REDIRECTS) {
         cleanup();
         reject(new Error("Too many redirects"));
+
         return;
       }
 
       activeRequest = https.get(currentUrl, (response) => {
         if ([301, 302, 303, 307, 308].includes(response.statusCode ?? 0)) {
           const location = response.headers.location;
+
           if (!location) {
             cleanup();
             reject(new Error("Redirect without location header"));
+
             return;
           }
+
           const redirectUrl = location.startsWith("/")
             ? new URL(location, currentUrl).href
             : location;
+
           // Drain the old response so redirects cannot keep a completed CLI alive.
           response.resume();
           activeRequest?.setTimeout(0);
           request(redirectUrl, redirectCount + 1);
+
           return;
         }
 
         if (response.statusCode !== 200) {
           cleanup();
           reject(new Error(`HTTP ${response.statusCode}`));
+
           return;
         }
 
@@ -254,11 +282,14 @@ function downloadFile(url: string, dest: string, retryCount = 0): Promise<void> 
         `\n  Retry ${retryCount + 1}/${MAX_RETRIES}: ${error instanceof Error ? error.message : String(error)}`
       );
       await sleep(RETRY_DELAY);
+
       if (fs.existsSync(dest)) {
         fs.unlinkSync(dest);
       }
+
       return downloadFile(url, dest, retryCount + 1);
     }
+
     throw error;
   });
 }
@@ -294,6 +325,7 @@ function findBinaryInDir(
 
     if (entry.isDirectory()) {
       const found = findBinaryInDir(fullPath, binaryName, maxDepth, currentDepth + 1);
+
       if (found) return found;
     } else if (entry.name === binaryName) {
       return fullPath;
@@ -310,11 +342,13 @@ function parseArgs() {
 
   // CLI args override env vars
   const platformIndex = args.indexOf("--platform");
+
   if (platformIndex !== -1 && args[platformIndex + 1]) {
     targetPlatform = args[platformIndex + 1];
   }
 
   const archIndex = args.indexOf("--arch");
+
   if (archIndex !== -1 && args[archIndex + 1]) {
     targetArch = args[archIndex + 1];
   }
@@ -345,6 +379,7 @@ function matchesPattern(filename: string, pattern: string) {
   } else if (pattern === "*.so*") {
     return /\.so(\.\d+)*$/.test(filename) || filename.endsWith(".so");
   }
+
   return false;
 }
 
@@ -355,10 +390,12 @@ function findLibrariesInDir(
   currentDepth = 0
 ): string[] {
   const { maxDepth = 5, ignoreReadErrors = false } = options;
+
   if (currentDepth >= maxDepth) return [];
 
   const results = [];
   let entries;
+
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch (error) {
@@ -381,6 +418,7 @@ function findLibrariesInDir(
 
 function copyLibraries(extractDir: string, destDir: string, pattern: string) {
   const copied = [];
+
   for (const libPath of findLibrariesInDir(extractDir, pattern)) {
     const libName = path.basename(libPath);
     const destPath = path.join(destDir, libName);
@@ -388,6 +426,7 @@ function copyLibraries(extractDir: string, destDir: string, pattern: string) {
     setExecutable(destPath);
     copied.push(libName);
   }
+
   return copied;
 }
 
@@ -421,4 +460,5 @@ const api = {
 };
 
 module.exports = api;
+
 export type API = typeof api;

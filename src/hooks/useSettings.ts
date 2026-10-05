@@ -136,21 +136,25 @@ function useSettingsInternal() {
   // broadcast. Writes that must sync go through setCustomDictionary instead.
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI?.onDictionaryUpdated) return;
+
     const unsubscribe = window.electronAPI.onDictionaryUpdated((words: string[]) => {
       if (Array.isArray(words)) {
         applyCustomDictionaryFromExternal(words);
       }
     });
+
     return unsubscribe;
   }, [applyCustomDictionaryFromExternal]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI?.onSnippetsUpdated) return;
+
     const unsubscribe = window.electronAPI.onSnippetsUpdated((snippets: Snippet[]) => {
       if (Array.isArray(snippets)) {
         applySnippetsFromExternal(snippets);
       }
     });
+
     return unsubscribe;
   }, [applySnippetsFromExternal]);
 
@@ -210,6 +214,7 @@ function useSettingsInternal() {
         : localTranscriptionProvider === "cohere"
           ? cohereModel
           : whisperModel;
+
     window.electronAPI
       .syncStartupPreferences({
         useLocalWhisper,
@@ -400,13 +405,16 @@ const SettingsContext = createContext<SettingsValue | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const value = useSettingsInternal();
+
   return React.createElement(SettingsContext.Provider, { value }, children);
 }
 
 export function useSettings(): SettingsValue {
   const ctx = useContext(SettingsContext);
+
   if (!ctx) {
     throw new Error("useSettings must be used within a SettingsProvider");
   }
+
   return ctx;
 }

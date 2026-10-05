@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -9,6 +10,7 @@ const {
 test("combines the Electron process tree with live audio capture helper PIDs on every call", () => {
   let ownPids = new Set([11, 22]);
   let helperPids = [55];
+
   const getProcessIds = createExcludedProcessIdProvider(
     () => helperPids,
     () => ownPids

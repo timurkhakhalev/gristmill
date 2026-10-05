@@ -3,19 +3,27 @@
 // payloads reaching callbacks with malformed ones dropped, idempotent
 // unsubscribe and junk command responses rejected at the preload boundary.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
+
 const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
+
 let activeHandlers = new Map<string, BridgeHandler>();
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -29,6 +37,7 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
           }
+
           activeHandlers.set(channel, listener);
         },
         on() {},
@@ -38,20 +47,30 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       BrowserWindow: { getAllWindows: () => [] },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 const originalNodeEnv = process.env.NODE_ENV;
+
 process.env.NODE_ENV = "test";
 
 test.after(() => {
   Module._load = originalLoad;
+
   if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = originalNodeEnv;
 });
 
 type CalendarListener = { [k: `on${string}`]: (cb: (...args: unknown[]) => void) => () => void };
+
 type CalendarApi = { [k: string]: (...args: unknown[]) => Promise<unknown> } & CalendarListener;
-function loadBundledPreload(transport: { invoke: (channel: string, ...args: unknown[]) => Promise<unknown>; on: (channel: string, listener: (event: unknown, payload: unknown) => void) => void; removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => void }) {
+
+function loadBundledPreload(transport: {
+  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+  on: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
+  removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
+}) {
   let api: CalendarApi | undefined;
   vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
     // The bundle keeps CJS interop for hybrid manifest modules, so the
@@ -60,6 +79,7 @@ function loadBundledPreload(transport: { invoke: (channel: string, ...args: unkn
     exports: {},
     require(name: string) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: CalendarApi) => {
@@ -69,8 +89,10 @@ function loadBundledPreload(transport: { invoke: (channel: string, ...args: unkn
         ipcRenderer: {
           invoke: (channel: string, ...args: unknown[]) => transport.invoke(channel, ...args),
           send: () => {},
-          on: (channel: string, listener: (event: unknown, payload: unknown) => void) => transport.on(channel, listener),
-          removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => transport.removeListener(channel, listener),
+          on: (channel: string, listener: (event: unknown, payload: unknown) => void) =>
+            transport.on(channel, listener),
+          removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) =>
+            transport.removeListener(channel, listener),
         },
         webUtils: { getPathForFile: () => "" },
       };
@@ -78,19 +100,25 @@ function loadBundledPreload(transport: { invoke: (channel: string, ...args: unkn
     process: { platform: "darwin", versions: {} },
     console,
   });
+
   return api!;
 }
 
 const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 async function createFixture(
-  googleSyncEvents?: () => Promise<{ total: number; succeeded: number; failed: number; errors: string[] }>
+  googleSyncEvents?: () => Promise<{
+    total: number;
+    succeeded: number;
+    failed: number;
+    errors: string[];
+  }>
 ) {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
-  const { registerCalendarIntegrationHandlers } = await import(
-    "../../src/helpers/calendarIpcHandlers.ts"
-  );
+
+  const { registerCalendarIntegrationHandlers } =
+    await import("../../src/helpers/calendarIpcHandlers.ts");
 
   const sent: unknown[] = [];
   const listeners = new Map<string, Set<(event: unknown, payload: unknown) => void>>();
@@ -130,24 +158,31 @@ async function createFixture(
   );
 
   const handlersSnapshot = new Map(activeHandlers);
+
   const transport = {
     invoke: async (channel: string, ...args: unknown[]) => {
       const handler = handlersSnapshot.get(channel);
+
       if (!handler) throw new Error(`No handler for ${channel}`);
+
       return handler(null, ...args);
     },
     on: (channel: string, listener: (event: unknown, payload: unknown) => void) => {
-      if (!listeners.has(channel)) listeners.set(channel, new Set<(event: unknown, payload: unknown) => void>());
+      if (!listeners.has(channel))
+        listeners.set(channel, new Set<(event: unknown, payload: unknown) => void>());
       listeners.get(channel)!.add(listener);
     },
     removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => {
       listeners.get(channel)?.delete(listener);
     },
   };
+
   const api = loadBundledPreload(transport);
+
   const pushEvent = (channel: string, payload: unknown) => {
     for (const listener of listeners.get(channel) ?? []) listener({}, payload);
   };
+
   return { api, pushEvent, sent };
 }
 
@@ -193,6 +228,7 @@ test("gcal sync partial and failure results cross the bundled preload", async ()
     { total: 2, succeeded: 0, failed: 2, errors: ["provider down", "provider down"] },
     { total: 2, succeeded: 2, failed: 0, errors: [] },
   ];
+
   let callIndex = 0;
   const { api } = await createFixture(async () => outcomes[callIndex++]);
 
@@ -203,11 +239,18 @@ test("gcal sync partial and failure results cross the bundled preload", async ()
 
 test("events reach callbacks for all three providers; malformed payloads are dropped", async () => {
   const { api, pushEvent } = await createFixture();
-  const received = { gcal: [] as unknown[], mcal: [] as unknown[], acal: [] as unknown[], synced: 0 };
+
+  const received = {
+    gcal: [] as unknown[],
+    mcal: [] as unknown[],
+    acal: [] as unknown[],
+    synced: 0,
+  };
 
   const unsubGcal = api.onGcalConnectionChanged((data: unknown) => received.gcal.push(data));
   const unsubMcal = api.onMcalConnectionChanged((data: unknown) => received.mcal.push(data));
   const unsubAcal = api.onAcalConnectionChanged((data: unknown) => received.acal.push(data));
+
   const unsubSynced = api.onGcalEventsSynced(() => {
     received.synced += 1;
   });
@@ -221,6 +264,7 @@ test("events reach callbacks for all three providers; malformed payloads are dro
     pushEvent("gcal-connection-changed", payload);
     pushEvent("mcal-connection-changed", payload);
   }
+
   pushEvent("acal-connection-changed", { connected: "yes" });
   pushEvent("acal-connection-changed", { connected: true, sourceNames: "iCloud" });
   pushEvent("gcal-events-synced", { unexpected: true });
@@ -244,17 +288,23 @@ test("events reach callbacks for all three providers; malformed payloads are dro
 test("junk command responses reject at the preload boundary", async () => {
   await createFixture();
   const realHandlers = new Map(activeHandlers);
+
   const api = loadBundledPreload({
     invoke: async (channel: string, ...args: unknown[]) => {
       if (channel === "gcal-get-connection-status") return { connected: 1 };
+
       if (channel === "gcal-start-oauth") return { silentlyWrong: true };
+
       if (channel === "gcal-get-upcoming-events") return { success: true, events: "nope" };
+
       if (channel === "open-calendar-privacy-settings") return { success: "yes" };
+
       return realHandlers.get(channel)?.(null, ...args);
     },
     on: () => {},
     removeListener: () => {},
   });
+
   await assert.rejects(api.gcalGetConnectionStatus());
   await assert.rejects(api.gcalStartOAuth());
   await assert.rejects(api.gcalGetUpcomingEvents(60));

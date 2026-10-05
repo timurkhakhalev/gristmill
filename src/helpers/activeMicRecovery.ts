@@ -1,5 +1,7 @@
 const DEFAULT_DEBOUNCE_MS = 250;
+
 const DEFAULT_MUTE_GRACE_MS = 800;
+
 const DEFAULT_RETRY_MS = 2000;
 
 export interface AudioInputDevice {
@@ -38,14 +40,12 @@ export interface MicRecoveryMediaDevices {
 
 export type ActiveMicRecoveryStatus = "inactive" | "active" | "reconnecting" | "unavailable";
 
-export interface ActiveMicRecoveryOptions<Stream extends RecoverableAudioStream = RecoverableAudioStream> {
+export interface ActiveMicRecoveryOptions<
+  Stream extends RecoverableAudioStream = RecoverableAudioStream,
+> {
   mediaDevices: MicRecoveryMediaDevices;
   acquire(reason: string): Promise<Stream>;
-  onRecovered(
-    replacement: Stream,
-    oldStream: Stream | null,
-    reason: string
-  ): Promise<void>;
+  onRecovered(replacement: Stream, oldStream: Stream | null, reason: string): Promise<void>;
   onStatusChange?: (status: ActiveMicRecoveryStatus) => void;
   onPlatformMuteChange?: (muted: boolean) => void | Promise<void>;
   debounceMs?: number;
@@ -62,8 +62,11 @@ const stopStream = (stream: RecoverableAudioStream): void => {
   }
 };
 
-export const describeAudioInputs = (devices: readonly AudioInputDevice[] = []): AudioInputSnapshot => {
+export const describeAudioInputs = (
+  devices: readonly AudioInputDevice[] = []
+): AudioInputSnapshot => {
   const inputs = devices.filter((device) => device.kind === "audioinput");
+
   return {
     defaultKey: inputs.length > 0 ? deviceKey(inputs[0]) : "",
     keys: new Set(inputs.map(deviceKey)),
@@ -82,14 +85,19 @@ export const activeTrackIsAvailable = (
 ): boolean => {
   if (!track || track.readyState === "ended") return false;
   const settings = track.getSettings?.() || {};
+
   if (settings.deviceId && inputs.deviceIds.has(settings.deviceId)) return true;
+
   if (settings.groupId && inputs.groupIds.has(settings.groupId)) return true;
+
   // Device labels are not a stable identity, but a live track with no exposed IDs
   // is healthier than guessing that a permission-redacted enumeration removed it.
   return !settings.deviceId && !settings.groupId;
 };
 
-export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream = RecoverableAudioStream> {
+export class ActiveMicRecoveryController<
+  Stream extends RecoverableAudioStream = RecoverableAudioStream,
+> {
   private mediaDevices: MicRecoveryMediaDevices;
   private acquire: ActiveMicRecoveryOptions<Stream>["acquire"];
   private onRecovered: ActiveMicRecoveryOptions<Stream>["onRecovered"];
@@ -151,6 +159,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
       void this.publishMuteState(true);
       this.scheduleMuteRecovery();
     };
+
     this.onTrackUnmute = () => {
       clearTimeout(this.muteTimer);
       void this.publishMuteState(false);
@@ -159,20 +168,24 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
 
   private async publishMuteState(muted: boolean): Promise<boolean> {
     const generation = this.generation;
+
     try {
       await this.onPlatformMuteChange?.(muted);
+
       return true;
     } catch {
       if (this.started && generation === this.generation) {
         this.setStatus("unavailable");
         this.scheduleRetry();
       }
+
       return false;
     }
   }
 
   private scheduleMuteRecovery(): void {
     clearTimeout(this.muteTimer);
+
     if (this.intentionalMute) return;
     this.muteTimer = setTimeout(() => {
       if (this.track?.muted) this.recover("muted");
@@ -181,6 +194,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
 
   setIntentionalMute(muted: boolean): void {
     this.intentionalMute = muted;
+
     if (muted) {
       clearTimeout(this.muteTimer);
       this.muteTimer = undefined;
@@ -205,12 +219,14 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     this.mediaDevices?.addEventListener?.("devicechange", this.onDeviceChange);
     this.attachStream(stream);
     await this.refreshInputs();
+
     if (!this.started || generation !== this.generation) return;
     // The track may have died (or come up muted) before our listeners attached;
     // those events won't replay, so evaluate the track's state directly.
     const track = this.track;
     const alive = track !== null && track.readyState !== "ended";
     this.setStatus(alive ? "active" : "unavailable");
+
     if (!alive) {
       this.recover("start");
     } else if (track.muted) {
@@ -238,10 +254,13 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
 
   private async refreshInputs(): Promise<AudioInputSnapshot | null> {
     const generation = this.generation;
+
     try {
       const inputs = describeAudioInputs(await this.mediaDevices.enumerateDevices());
+
       if (!this.started || generation !== this.generation) return null;
       this.inputs = inputs;
+
       return this.inputs;
     } catch {
       return null;
@@ -259,14 +278,18 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
     const generation = this.generation;
     const previous = this.inputs;
     const current = await this.refreshInputs();
+
     if (generation !== this.generation) return;
+
     if (!this.started || !current) {
       if (this.track?.readyState === "ended") this.recover("devicechange-ended");
+
       return;
     }
 
     const defaultChanged = previous.defaultKey !== current.defaultKey;
     const activeMissing = !activeTrackIsAvailable(this.track, current);
+
     if ((this.followDefault && defaultChanged) || activeMissing || this.status === "unavailable") {
       this.recover("devicechange");
     }
@@ -274,6 +297,7 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
 
   recover(reason: string): Promise<boolean> {
     if (!this.started) return Promise.resolve(false);
+
     if (this.recoveryPromise) return this.recoveryPromise;
 
     clearTimeout(this.retryTimer);
@@ -284,68 +308,98 @@ export class ActiveMicRecoveryController<Stream extends RecoverableAudioStream =
 
     const attempt = async () => {
       let replacement: Stream | null = null;
+
       try {
         replacement = await this.acquire(reason);
         const replacementTrack = replacement?.getAudioTracks?.()[0];
-        if (!replacementTrack || replacementTrack.readyState === "ended") throw new Error("No live audio track returned");
+
+        if (!replacementTrack || replacementTrack.readyState === "ended")
+          throw new Error("No live audio track returned");
+
         if (!this.started || generation !== this.generation) {
           stopStream(replacement);
+
           return false;
         }
+
         this.detachTrack();
         await this.onRecovered(replacement, oldStream, reason);
+
         if (!this.started || generation !== this.generation) {
           stopStream(replacement);
+
           return false;
         }
+
         this.attachStream(replacement);
         await this.refreshInputs();
+
         if (!this.started || generation !== this.generation) {
           stopStream(replacement);
+
           return false;
         }
-        if (!this.track || this.track.readyState === "ended") throw new Error("Recovered audio track ended");
+
+        if (!this.track || this.track.readyState === "ended")
+          throw new Error("Recovered audio track ended");
         // Mute/unmute events that happened during graph setup do not replay.
         let muted: boolean;
+
         do {
           muted = this.track.muted;
-          if (!await this.publishMuteState(muted)) throw new Error("Recovered microphone mute was not acknowledged");
+
+          if (!(await this.publishMuteState(muted)))
+            throw new Error("Recovered microphone mute was not acknowledged");
+
           if (!this.started || generation !== this.generation) {
             stopStream(replacement);
+
             return false;
           }
-          if (!this.track || this.track.readyState === "ended") throw new Error("Recovered audio track ended");
+
+          if (!this.track || this.track.readyState === "ended")
+            throw new Error("Recovered audio track ended");
         } while (this.track.muted !== muted);
+
         if (this.track.muted) this.scheduleMuteRecovery();
         this.setStatus("active");
+
         return true;
       } catch {
         if (replacement && replacement !== this.stream) {
           stopStream(replacement);
         }
+
         if (this.started && generation === this.generation) {
           this.setStatus("unavailable");
           this.scheduleRetry();
         }
+
         return false;
       }
     };
+
     // Only clear our own handle: a stale attempt settling after stop()+start()
     // must not clobber a newer in-flight recovery's dedup handle.
     const promise = attempt().finally(() => {
       if (this.recoveryPromise === promise) this.recoveryPromise = null;
     });
+
     this.recoveryPromise = promise;
+
     return promise;
   }
 
   async changeSelection(followDefault: boolean): Promise<boolean> {
     this.followDefault = followDefault;
     const generation = this.generation;
+
     // A selection made while reconnecting must apply after that attempt,
     // rather than being discarded by recover()'s in-flight deduplication.
     if (this.recoveryPromise) await this.recoveryPromise;
+
     if (!this.started || generation !== this.generation) return false;
+
     return this.recover("selection-change");
   }
 

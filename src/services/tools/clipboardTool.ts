@@ -23,6 +23,7 @@ export const clipboardTool: ToolDefinition = {
       await window.electronAPI.writeClipboard(text);
 
       const preview = text.length > 100 ? text.slice(0, 100) + "..." : text;
+
       return {
         success: true,
         data: null,

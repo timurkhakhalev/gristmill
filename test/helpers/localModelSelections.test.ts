@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/helpers/localModelSelections.ts");
@@ -10,17 +11,20 @@ const SCOPES = [
 
 const installed = (...ids: string[]) => {
   const set = new Set(ids);
+
   return (id: string) => set.has(id);
 };
 
 test("flags a local scope whose model is gone", async () => {
   const { findStaleLocalModelKeys } = await load();
+
   const settings = {
     cleanupMode: "local",
     cleanupModel: "qwen2.5-3b",
     chatAgentMode: "local",
     chatAgentModel: "llama-3.2-3b",
   };
+
   assert.deepEqual(findStaleLocalModelKeys(SCOPES, settings, installed("llama-3.2-3b")), [
     "cleanupModel",
   ]);
@@ -46,12 +50,14 @@ test("ignores a scope with nothing selected", async () => {
 
 test("flags every local scope sharing the removed model", async () => {
   const { findStaleLocalModelKeys } = await load();
+
   const settings = {
     cleanupMode: "local",
     cleanupModel: "qwen2.5-3b",
     chatAgentMode: "local",
     chatAgentModel: "qwen2.5-3b",
   };
+
   assert.deepEqual(findStaleLocalModelKeys(SCOPES, settings, installed()), [
     "cleanupModel",
     "chatAgentModel",

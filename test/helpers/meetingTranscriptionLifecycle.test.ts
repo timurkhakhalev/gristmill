@@ -1,20 +1,25 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { EventEmitter } = require("node:events");
 
 const createMeetingTranscriptionLifecycle: typeof import("../../src/helpers/meetingTranscriptionLifecycle").createMeetingTranscriptionLifecycle = require("../../src/helpers/meetingTranscriptionLifecycle");
 
 function createDeferred() {
   let resolve!: () => void;
+
   const promise = new Promise<void>((resolvePromise) => {
     resolve = resolvePromise;
   });
+
   return { promise, resolve };
 }
 
 function createOwnerWebContents() {
   const ownerWebContents = new EventEmitter();
   ownerWebContents.isDestroyed = () => false;
+
   return ownerWebContents;
 }
 
@@ -22,17 +27,20 @@ test("a stop requested during startup waits for startup and tears down that sess
   const startDeferred = createDeferred();
   const events: unknown[] = [];
   let captureActive = false;
+
   const lifecycle = createMeetingTranscriptionLifecycle({
     start: async ({ sessionId }: { sessionId: string }) => {
       events.push(`start:${sessionId}:begin`);
       captureActive = true;
       await startDeferred.promise;
       events.push(`start:${sessionId}:end`);
+
       return { success: true, sessionId };
     },
     stop: async (sessionId: unknown) => {
       events.push(`stop:${sessionId}`);
       captureActive = false;
+
       return { success: true };
     },
   });
@@ -42,6 +50,7 @@ test("a stop requested during startup waits for startup and tears down that sess
     ownerWebContents: createOwnerWebContents(),
     options: {},
   });
+
   await Promise.resolve();
   const stopPromise = lifecycle.stopSession("meeting-1");
 
@@ -62,17 +71,20 @@ test("owner loss during startup tears down after the deferred start settles", as
   const ownerWebContents = createOwnerWebContents();
   let captureActive = false;
   let countdownVisible = false;
+
   const lifecycle = createMeetingTranscriptionLifecycle({
     start: async ({ sessionId }: { sessionId: string }) => {
       captureActive = true;
       countdownVisible = true;
       await startDeferred.promise;
+
       return { success: true, sessionId };
     },
     stop: async () => {
       captureActive = false;
       countdownVisible = false;
       stopCompleted.resolve();
+
       return { success: true };
     },
   });
@@ -82,6 +94,7 @@ test("owner loss during startup tears down after the deferred start settles", as
     ownerWebContents,
     options: {},
   });
+
   await Promise.resolve();
   ownerWebContents.emit("destroyed");
   startDeferred.resolve();
@@ -102,16 +115,19 @@ for (const ownerLossEvent of ["destroyed", "render-process-gone"]) {
     const ownerWebContents = createOwnerWebContents();
     let captureActive = false;
     let countdownVisible = false;
+
     const lifecycle = createMeetingTranscriptionLifecycle({
       start: async ({ sessionId }: { sessionId: string }) => {
         captureActive = true;
         countdownVisible = true;
+
         return { success: true, sessionId };
       },
       stop: async () => {
         captureActive = false;
         countdownVisible = false;
         stopCompleted.resolve();
+
         return { success: true };
       },
     });
@@ -136,11 +152,13 @@ test("a main-frame navigation of the owner tears down the session; same-document
   const stopCompleted = createDeferred();
   const ownerWebContents = createOwnerWebContents();
   let stopCalls = 0;
+
   const lifecycle = createMeetingTranscriptionLifecycle({
     start: async ({ sessionId }: { sessionId: string }) => ({ success: true, sessionId }),
     stop: async () => {
       stopCalls += 1;
       stopCompleted.resolve();
+
       return { success: true };
     },
   });
@@ -163,20 +181,24 @@ test("a restart from the same owner retires its stale session instead of being r
   const ownerWebContents = createOwnerWebContents();
   const otherOwner = createOwnerWebContents();
   const stopped: unknown[] = [];
+
   const lifecycle = createMeetingTranscriptionLifecycle({
     start: async ({ sessionId }: { sessionId: string }) => ({ success: true, sessionId }),
     stop: async (sessionId: unknown) => {
       stopped.push(sessionId);
+
       return { success: true };
     },
   });
 
   await lifecycle.startSession({ sessionId: "meeting-1", ownerWebContents, options: {} });
+
   const refused = await lifecycle.startSession({
     sessionId: "meeting-2",
     ownerWebContents: otherOwner,
     options: {},
   });
+
   assert.deepEqual(refused, { success: false, error: "Operation in progress" });
 
   const restarted = await lifecycle.startSession({
@@ -184,6 +206,7 @@ test("a restart from the same owner retires its stale session instead of being r
     ownerWebContents,
     options: {},
   });
+
   assert.equal(restarted.success, true);
   assert.deepEqual(stopped, ["meeting-1"]);
 });
@@ -195,16 +218,19 @@ test("a replacement start waits for a deferred accepted stop to finish", async (
   const starts: unknown[] = [];
   const stops: unknown[] = [];
   let activeCaptureSessionId = null;
+
   const lifecycle = createMeetingTranscriptionLifecycle({
     start: async ({ sessionId }: { sessionId: string }) => {
       starts.push(sessionId);
       activeCaptureSessionId = sessionId;
+
       return { success: true, sessionId };
     },
     stop: async (sessionId: unknown) => {
       stops.push(sessionId);
       await stopDeferred.promise;
       activeCaptureSessionId = null;
+
       return { success: true };
     },
   });
@@ -216,11 +242,13 @@ test("a replacement start waits for a deferred accepted stop to finish", async (
   });
   const stopPromise = lifecycle.stopSession("meeting-1");
   await Promise.resolve();
+
   const replacementPromise = lifecycle.startSession({
     sessionId: "meeting-2",
     ownerWebContents: newOwner,
     options: {},
   });
+
   await Promise.resolve();
 
   assert.deepEqual(starts, ["meeting-1"]);
@@ -246,9 +274,29 @@ test("a replacement start waits for a deferred accepted stop to finish", async (
 
 test("Stop carries the drained microphone boundary and pause intent through the serialized lifecycle", async () => {
   let received: unknown;
-  const lifecycle = createMeetingTranscriptionLifecycle({ start: async () => ({ success: true }), stop: async (_id, options) => { received = options; return { success: true }; } });
+
+  const lifecycle = createMeetingTranscriptionLifecycle({
+    start: async () => ({ success: true }),
+    stop: async (_id, options) => {
+      received = options;
+
+      return { success: true };
+    },
+  });
+
   await lifecycle.startSession({ sessionId: "mic-boundary", ownerWebContents: null, options: {} });
   const microphoneBoundary = { sourceGeneration: 2, sourceFrame: 48_000, alignment: null };
-  await lifecycle.stopSession("mic-boundary", { microphoneBoundary, pause: true, suppressProcessing: true });
-  assert.deepEqual(received, { incomplete: false, lastSequence: undefined, microphoneBoundary, pause: true, errorCode: undefined, suppressProcessing: true });
+  await lifecycle.stopSession("mic-boundary", {
+    microphoneBoundary,
+    pause: true,
+    suppressProcessing: true,
+  });
+  assert.deepEqual(received, {
+    incomplete: false,
+    lastSequence: undefined,
+    microphoneBoundary,
+    pause: true,
+    errorCode: undefined,
+    suppressProcessing: true,
+  });
 });

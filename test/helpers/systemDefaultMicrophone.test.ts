@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const helper: typeof import("../../src/helpers/systemDefaultMicrophone.ts") = require("../../src/helpers/systemDefaultMicrophone.ts");
@@ -21,6 +22,7 @@ test("parses a PulseAudio default source", () => {
     { name: "usb", description: "USB Microphone" },
     { name: "internal", description: "Internal Microphone" },
   ]);
+
   assert.deepEqual(helper.parsePactlSources(sources, "internal"), {
     name: "Internal Microphone",
     nativeId: "internal",
@@ -29,11 +31,13 @@ test("parses a PulseAudio default source", () => {
 
 test("resolver caches a successful platform result briefly", async () => {
   let calls = 0;
+
   const resolve = helper.createSystemDefaultMicrophoneResolver({
     platform: "linux",
     now: () => 100,
     run: async (command: string) => {
       calls += 1;
+
       if (command === "wpctl") return 'node.description = "Desk Microphone"';
       throw new Error("unexpected command");
     },

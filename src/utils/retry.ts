@@ -50,6 +50,7 @@ export function createApiRetryStrategy() {
     shouldRetry: (error: any) => {
       // No HTTP status means the request never got an answer (network drop, timeout).
       const status = error?.status ?? error?.response?.status;
+
       if (typeof status !== "number") return true;
 
       // Most 4xx are deterministic rejections. 408 is a request timeout and 429 is
@@ -65,6 +66,7 @@ export function createFileRetryStrategy() {
     shouldRetry: (error: any) => {
       // Retry on temporary file system errors
       const retriableErrors = ["EBUSY", "ENOENT", "EPERM", "EAGAIN"];
+
       return retriableErrors.includes(error.code);
     },
     maxRetries: 2,

@@ -2,7 +2,7 @@
 
 # Gristmill
 
-*Meeting notes, milled fine.*
+_Meeting notes, milled fine._
 
 Gristmill is a meeting recorder and notes app for macOS on Apple Silicon.
 It does not add a bot to the call.

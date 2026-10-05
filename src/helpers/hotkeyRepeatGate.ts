@@ -9,10 +9,12 @@ export function createHotkeyRepeatGate(
   now: () => number = Date.now
 ): () => boolean {
   let lastFireAt = -Infinity;
+
   return () => {
     const firedAt = now();
     const isRepeat = firedAt - lastFireAt < windowMs;
     lastFireAt = firedAt;
+
     return !isRepeat;
   };
 }

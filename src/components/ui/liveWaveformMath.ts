@@ -5,8 +5,11 @@
 // uniform quiet layer under a gradient-hued active layer, and a sample
 // cross-fades between them to reproduce the old visuals exactly.
 export const WAVE_MAX_PX = 20;
+
 const WAVE_MIN_PX = 2;
+
 const WAVE_QUIET_NORM = 0.14;
+
 const WAVE_QUIET_OPACITY = 0.35;
 
 // The gradient's periwinkle end, shown uniformly by every quiet bar.
@@ -18,6 +21,7 @@ export function waveBarColor(index: number, count: number): string {
   const r = Math.round(143 + 112 * t);
   const g = Math.round(170 - 8 * t);
   const b = Math.round(255 - 193 * t);
+
   return `rgb(${r},${g},${b})`;
 }
 
@@ -35,7 +39,9 @@ export function waveBarVisual(norm: number): {
       activeOpacity: 0,
     };
   }
+
   const height = Math.max(WAVE_MIN_PX, Math.round(Math.sqrt(norm) * WAVE_MAX_PX));
+
   return {
     scaleY: height / WAVE_MAX_PX,
     quietOpacity: 0,

@@ -1,10 +1,15 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
+
 const { EventEmitter }: typeof import("node:events") = require("node:events");
+
 import type { OnnxWorkerClient } from "../../src/helpers/onnxWorkerClient.ts";
 
 const clientModulePath = require.resolve("../../src/helpers/onnxWorkerClient.ts");
+
 const originalLoad = Module._load;
 
 // A fake utility-process graph: MessageChannelMain ports are EventEmitters
@@ -43,29 +48,47 @@ function createFakeRuntime({ neverSpawn = false, exitOnShutdown = true } = {}) {
     stderr = new EventEmitter();
     stdout = new EventEmitter();
     killCalls = 0;
-    kill() { this.killCalls += 1; }
+    kill() {
+      this.killCalls += 1;
+    }
     postMessage(_message: unknown, [port]: FakePort[]) {
       port.on("message", ({ data }: { data: unknown }) => {
-        if (exitOnShutdown && data && typeof data === "object" && "method" in data && data.method === "shutdown") {
+        if (
+          exitOnShutdown &&
+          data &&
+          typeof data === "object" &&
+          "method" in data &&
+          data.method === "shutdown"
+        ) {
           setImmediate(() => this.emit("exit", 0));
         }
       });
     }
   }
 
-  const state = { children: [] as FakeChild[], forkCalls: 0, MessageChannelMain: FakeMessageChannelMain, makeChild };
+  const state = {
+    children: [] as FakeChild[],
+    forkCalls: 0,
+    MessageChannelMain: FakeMessageChannelMain,
+    makeChild,
+  };
+
   function makeChild() {
     const child = new FakeChild();
+
     if (!neverSpawn) setImmediate(() => child.emit("spawn"));
     state.children.push(child);
     state.forkCalls += 1;
+
     return child;
   }
 
   return state;
 }
 
-function loadClient(runtime: ReturnType<typeof createFakeRuntime>): OnnxWorkerClient & { OnnxWorkerClient: typeof OnnxWorkerClient } {
+function loadClient(
+  runtime: ReturnType<typeof createFakeRuntime>
+): OnnxWorkerClient & { OnnxWorkerClient: typeof OnnxWorkerClient } {
   delete require.cache[clientModulePath];
   Module._load = function (request: string, parent: unknown, isMain: boolean) {
     if (request === "electron") {
@@ -75,13 +98,18 @@ function loadClient(runtime: ReturnType<typeof createFakeRuntime>): OnnxWorkerCl
         MessageChannelMain: runtime.MessageChannelMain,
       };
     }
+
     if (request === "./debugLogger" || request === "./debugLogger.js") {
       return new Proxy({}, { get: () => () => {} });
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
+
   try {
-    return require(clientModulePath) as OnnxWorkerClient & { OnnxWorkerClient: typeof OnnxWorkerClient };
+    return require(clientModulePath) as OnnxWorkerClient & {
+      OnnxWorkerClient: typeof OnnxWorkerClient;
+    };
   } finally {
     Module._load = originalLoad;
   }
@@ -95,13 +123,20 @@ function whenPortReady(client: OnnxWorkerClient) {
       if (client.port) {
         clearInterval(poll);
         clearTimeout(timeout);
+
         // Replies travel the way a real worker sends them: port2.postMessage
         // delivers to the client's port1 listener.
-        const peer = (client.port as InstanceType<ReturnType<typeof createFakeRuntime>["MessageChannelMain"]>["port1"]).peer;
+        const peer = (
+          client.port as InstanceType<
+            ReturnType<typeof createFakeRuntime>["MessageChannelMain"]
+          >["port1"]
+        ).peer;
+
         assert.ok(peer);
         resolve((message: unknown) => peer.postMessage(message));
       }
     }, 1);
+
     const timeout = setTimeout(() => {
       clearInterval(poll);
       reject(new Error("worker port was not ready"));
@@ -137,6 +172,7 @@ test("malformed replies are dropped before pending resolution", async () => {
     { id: 1, error: { message: 42 } },
     { id: 1, error: "plain-string" },
   ];
+
   for (const bad of badReplies) deliver(bad);
 
   assert.equal(client.pending.size, 1, "no malformed reply may settle the request");
@@ -180,10 +216,12 @@ test("a worker crash rejects every pending request exactly once", async () => {
   runtime.children[0].emit("exit", 1);
 
   const outcomes = await Promise.allSettled([first, second]);
+
   for (const outcome of outcomes) {
     assert.equal(outcome.status, "rejected");
     assert.equal(outcome.reason.name, "WorkerCrashedError");
   }
+
   assert.equal(client.pending.size, 0);
 
   // Respawn is scheduled with backoff; requests during the window fail fast.
@@ -244,15 +282,29 @@ test("stop sends the shutdown rpc and waits for exit before killing", async () =
   await warm;
 
   let shutdownSeen = null;
-  const port = client.port as InstanceType<ReturnType<typeof createFakeRuntime>["MessageChannelMain"]>["port1"];
+
+  const port = client.port as InstanceType<
+    ReturnType<typeof createFakeRuntime>["MessageChannelMain"]
+  >["port1"];
+
   assert.ok(port.peer);
   port.peer.on("__inspect", () => {});
   // Capture the shutdown rpc on the worker side of the channel.
   const originalPost = port.peer.emit.bind(port.peer);
   port.peer.emit = function (event: string | symbol, payload: unknown) {
-    if (event === "message" && payload && typeof payload === "object" && "data" in payload && payload.data && typeof payload.data === "object" && "method" in payload.data && payload.data.method === "shutdown") {
+    if (
+      event === "message" &&
+      payload &&
+      typeof payload === "object" &&
+      "data" in payload &&
+      payload.data &&
+      typeof payload.data === "object" &&
+      "method" in payload.data &&
+      payload.data.method === "shutdown"
+    ) {
       shutdownSeen = payload.data;
     }
+
     return originalPost(event, payload);
   };
 

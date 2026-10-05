@@ -1,7 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const WhisperManager = require("../../src/helpers/whisper.ts");
+
 const ParakeetManager = require("../../src/helpers/parakeet.ts");
 
 // "No audio detected" must mean exactly that: the engine decoded the recording
@@ -9,6 +11,7 @@ const ParakeetManager = require("../../src/helpers/parakeet.ts");
 // to surface as one — reporting it as silence sends users debugging their mic.
 
 const whisper = new WhisperManager();
+
 const parakeet = new ParakeetManager();
 
 test("whisper: blank server text is genuine silence", () => {
@@ -79,6 +82,7 @@ test("parakeet: entirely truncated output is a decode failure, not no speech", (
 
 test("parakeet: execution failures and cancellation retain their original errors", async () => {
   const manager = new ParakeetManager();
+
   for (const failure of [
     new Error("FFmpeg conversion failed"),
     new Error("parakeet-ws transcription timed out"),
@@ -95,6 +99,7 @@ test("parakeet: execution failures and cancellation retain their original errors
       assert.equal(error, failure);
       assert.ok(error instanceof Error);
       assert.notEqual(Reflect.get(error, "code"), "NO_SPEECH_DETECTED");
+
       return true;
     });
   }

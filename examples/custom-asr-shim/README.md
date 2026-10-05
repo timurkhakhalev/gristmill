@@ -15,12 +15,12 @@ The shim listens on `/audio/transcriptions` (and `/v1/audio/transcriptions`), tr
 
 Request: `POST {Server URL}/audio/transcriptions`, `multipart/form-data`.
 
-| Field | Required | Notes |
-|-------|----------|-------|
-| `file` | yes | The recording. Default is WebM/Opus, filename `audio.webm`. May also be ogg/mp4/mp3/wav. Transcode it before sending to the vendor. |
-| `model` | no | The Model string from the Self-Hosted panel, when set. Tolerate empty or missing. |
-| `language` | no | Present only when you pick a non-auto language (ISO code like `en`). |
-| `prompt` | no | A custom-dictionary hint string. |
+| Field      | Required | Notes                                                                                                                               |
+| ---------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `file`     | yes      | The recording. Default is WebM/Opus, filename `audio.webm`. May also be ogg/mp4/mp3/wav. Transcode it before sending to the vendor. |
+| `model`    | no       | The Model string from the Self-Hosted panel, when set. Tolerate empty or missing.                                                   |
+| `language` | no       | Present only when you pick a non-auto language (ISO code like `en`).                                                                |
+| `prompt`   | no       | A custom-dictionary hint string.                                                                                                    |
 
 `Authorization: Bearer <key>` is not part of the Self-Hosted panel. Do not require it from Gristmill's side. Hold your vendor API key in an environment variable inside the shim (see `STEP_API_KEY` below).
 

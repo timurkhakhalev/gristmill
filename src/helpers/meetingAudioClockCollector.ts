@@ -24,6 +24,7 @@ export class MeetingAudioClockCollector {
   }
   recordDeliveredFrames(generation: string | undefined, frames: number): void {
     const binding = generation ? this.bindings.get(generation) : undefined;
+
     if (binding) {
       binding.deliveredFrames += frames;
       this.flush();
@@ -31,18 +32,22 @@ export class MeetingAudioClockCollector {
   }
   recordClock(clock: MeetingAudioClockMessage): void {
     if (this.failure) return;
+
     if (this.pending.length + this.writes.length >= 128) {
       this.failure = "clock-queue-overflow";
       this.pending = [];
       this.writes = [];
+
       return;
     }
+
     this.pending.push(clock);
     this.flush();
   }
   private flush(): void {
     this.pending = this.pending.filter((clock) => {
       const binding = this.bindings.get(clock.generation);
+
       if (!binding || clock.endFrame > binding.deliveredFrames) return true;
       this.writes.push({
         id: randomUUID(),
@@ -51,26 +56,32 @@ export class MeetingAudioClockCollector {
         epochStartFrame: binding.epochStartFrame,
         clock,
       });
+
       return false;
     });
+
     if (this.writes.length) this.drainHandle ??= setImmediate(() => this.drain());
   }
   private drain(): void {
     this.drainHandle = null;
+
     try {
       for (const anchor of this.writes) this.save(anchor);
     } catch {
       this.failure = "metadata-write-failed";
     }
+
     this.writes = [];
   }
   stop(): string | null {
     this.flush();
+
     if (this.drainHandle) clearImmediate(this.drainHandle);
     this.drain();
     const error = this.failure ?? (this.pending.length ? "metadata-tail-incomplete" : null);
     this.pending = [];
     this.bindings.clear();
+
     return error;
   }
 }

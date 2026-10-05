@@ -4,14 +4,21 @@
 // drives the real exportDictionary IPC handler (stubbing only the save dialog),
 // reads the file it writes, and feeds it through the real import parser.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-dictionary-round-trip-"));
+
 let savePath = path.join(userDataDir, "dictionary.txt");
+
 const originalLoad = Module._load;
 
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -27,13 +34,19 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 process.env.NODE_ENV = "test";
 
-const { registerTranscriptionDataHandlers }: typeof import("../../../../src/helpers/transcriptionDataIpcHandlers.ts") = require("../../../../src/helpers/transcriptionDataIpcHandlers.ts");
-const { parseDictionaryImportText }: typeof import("../../../../src/helpers/dictionaryImport.ts") = require("../../../../src/helpers/dictionaryImport.ts");
+const {
+  registerTranscriptionDataHandlers,
+}: typeof import("../../../../src/helpers/transcriptionDataIpcHandlers.ts") = require("../../../../src/helpers/transcriptionDataIpcHandlers.ts");
+
+const {
+  parseDictionaryImportText,
+}: typeof import("../../../../src/helpers/dictionaryImport.ts") = require("../../../../src/helpers/dictionaryImport.ts");
 
 function setup() {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-dictionary-round-trip-"));
@@ -66,6 +79,7 @@ function setup() {
       logger: { log: () => {}, debug: () => {}, warn: () => {}, error: () => {} },
     } as never
   );
+
   return { handlers };
 }
 

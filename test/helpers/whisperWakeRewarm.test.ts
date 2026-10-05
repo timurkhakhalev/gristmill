@@ -1,7 +1,10 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { shouldRewarmOnWake }: typeof import("../../src/helpers/whisper") = require("../../src/helpers/whisper");
+const {
+  shouldRewarmOnWake,
+}: typeof import("../../src/helpers/whisper") = require("../../src/helpers/whisper");
 
 const base = {
   isRemote: false,

@@ -1,4 +1,11 @@
-import { Tray, Menu, nativeImage, app, BrowserWindow, type MenuItemConstructorOptions } from "electron";
+import {
+  Tray,
+  Menu,
+  nativeImage,
+  app,
+  BrowserWindow,
+  type MenuItemConstructorOptions,
+} from "electron";
 import path from "path";
 import fs from "fs";
 import debugLogger from "./debugLogger.js";
@@ -10,13 +17,17 @@ import { formatTime, type TimeFormat } from "../utils/dateFormatting.js";
 import { projectCalendarEvent } from "../contracts/calendar.js";
 
 const MENU_REFRESH_MS = 1000;
+
 const skipKey = (event: CalendarEventRow): string => `${event.provider}:${event.id}`;
 
 const TITLE_MAX_CHARS = 16;
+
 // Shorter name when a countdown follows, so the time is never what gets clipped.
 const TITLE_WITH_TIME_MAX_CHARS = 12;
+
 // A click that dismisses the open menu is also delivered as a tray click.
 const MENU_REOPEN_GUARD_MS = 300;
+
 const UPCOMING_WINDOW_MINUTES = 6 * 60;
 
 export interface TrayCalendarSource {
@@ -60,40 +71,64 @@ export class TrayManager {
     const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
     const h = Math.floor(totalMinutes / 60);
     const m = totalMinutes % 60;
+
     return h > 0
       ? i18nMain.t("tray.durationHoursMinutes", { h, m })
       : i18nMain.t("tray.durationMinutes", { m });
   }
 
   formatTimeRange(event: CalendarEventRow): string {
-    const time = (value: string) => formatTime(new Date(value), i18nMain.language ?? undefined, {
-      hour: "numeric", minute: "2-digit",
-    }, this.timeFormat);
+    const time = (value: string) =>
+      formatTime(
+        new Date(value),
+        i18nMain.language ?? undefined,
+        {
+          hour: "numeric",
+          minute: "2-digit",
+        },
+        this.timeFormat
+      );
+
     return `${time(event.start_time)} - ${time(event.end_time)}`;
   }
 
   // Keep in-progress events until their calendar end, soonest first.
   getUpcomingEvents(now = Date.now()): CalendarEventRow[] {
     if (!this.calendarSource) return [];
+
     try {
       return this.calendarSource
         .getUpcomingEvents(UPCOMING_WINDOW_MINUTES)
-        .filter((event) => new Date(event.end_time).getTime() > now && !this.skippedEvents.has(skipKey(event)))
+        .filter(
+          (event) =>
+            new Date(event.end_time).getTime() > now && !this.skippedEvents.has(skipKey(event))
+        )
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
     } catch (error) {
-      debugLogger.error("Failed to read upcoming events", { error: (error as Error).message }, "tray");
+      debugLogger.error(
+        "Failed to read upcoming events",
+        { error: (error as Error).message },
+        "tray"
+      );
+
       return [];
     }
   }
 
   buildCurrentMeetingItem(now = Date.now()): MenuItemConstructorOptions | null {
-    const current = this.getUpcomingEvents(now).find((event) => new Date(event.start_time).getTime() <= now);
+    const current = this.getUpcomingEvents(now).find(
+      (event) => new Date(event.start_time).getTime() <= now
+    );
+
     if (!current) return null;
+
     const open = (): void => {
       const projected = projectCalendarEvent(current);
+
       if (projected) void this.windowManager?.requestOpenCalendarEvent(projected);
       else void this.showControlPanelFromTray();
     };
+
     const item: MenuItemConstructorOptions = {
       label: current.summary || "—",
       sublabel: `${this.formatTimeRange(current)} · ${i18nMain.t("tray.timeLeft", {
@@ -101,9 +136,11 @@ export class TrayManager {
       })}`,
       click: open,
     };
+
     // Skipping only makes sense while nothing is being recorded; native menu rows
     // cannot hold a button, so the row opens a submenu with both actions.
     if (this.meetingCaptureActive) return item;
+
     return {
       label: item.label,
       sublabel: item.sublabel,
@@ -123,10 +160,13 @@ export class TrayManager {
     const events = this.getUpcomingEvents(now).filter(
       (event) => new Date(event.start_time).getTime() > now
     );
+
     const currentItem = this.buildCurrentMeetingItem(now);
+
     if (!events.length) return currentItem ? [currentItem, { type: "separator" }] : [];
 
     const [next, ...rest] = events;
+
     const items: MenuItemConstructorOptions[] = [
       ...(currentItem ? [currentItem, { type: "separator" } as MenuItemConstructorOptions] : []),
       {
@@ -141,9 +181,11 @@ export class TrayManager {
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowKey = tomorrow.toDateString();
+
     const tomorrowEvent = [next, ...rest].find(
       (event) => new Date(event.start_time).toDateString() === tomorrowKey && event !== next
     );
+
     if (tomorrowEvent) {
       items.push(
         { type: "separator" },
@@ -151,7 +193,9 @@ export class TrayManager {
         this.meetingItem(tomorrowEvent)
       );
     }
+
     items.push({ type: "separator" });
+
     return items;
   }
 
@@ -161,6 +205,7 @@ export class TrayManager {
       sublabel: this.formatTimeRange(event),
       click: () => {
         const projected = projectCalendarEvent(event);
+
         if (projected) void this.windowManager?.requestOpenCalendarEvent(projected);
         else void this.showControlPanelFromTray();
       },
@@ -170,18 +215,23 @@ export class TrayManager {
   updateTrayTitle(now = Date.now()): void {
     if (!this.tray || process.platform !== "darwin") return;
     const next = this.getUpcomingEvents(now)[0];
+
     if (!next) {
       this.tray.setTitle("");
+
       return;
     }
+
     const name = next.summary ?? "";
     const startsAt = new Date(next.start_time).getTime();
     const started = startsAt <= now;
+
     const time = started
       ? i18nMain.t("tray.timeLeft", {
           time: this.formatDuration(new Date(next.end_time).getTime() - now),
         })
       : i18nMain.t("tray.inTime", { time: this.formatDuration(startsAt - now) });
+
     const max = name && time ? TITLE_WITH_TIME_MAX_CHARS : TITLE_MAX_CHARS;
     const short = name.length > max ? `${name.slice(0, max - 1).trimEnd()}…` : name;
     this.tray.setTitle(short ? `${short} • ${time}` : time);
@@ -195,14 +245,13 @@ export class TrayManager {
 
   setMeetingCaptureStatus(active: boolean, stop?: () => void): void {
     this.meetingCaptureActive = active;
-    this.stopMeetingCapture = active ? stop ?? null : null;
+    this.stopMeetingCapture = active ? (stop ?? null) : null;
     MenuManager.setMeetingCaptureStatus(active, this.stopMeetingCapture ?? undefined);
     this.updateTrayMenu();
   }
 
   setWindows(controlPanelWindow: BrowserWindow | null): void {
     this.controlPanelWindow = controlPanelWindow;
-
 
     if (this.controlPanelWindow) {
       this.attachControlPanelListeners(this.controlPanelWindow);
@@ -242,18 +291,22 @@ export class TrayManager {
     (window as unknown as NodeJS.EventEmitter).on("destroyed", () => {
       this.controlPanelWindow = null;
       this.updateTrayMenu?.();
-    });  }
+    });
+  }
 
   syncControlPanelWindow(): BrowserWindow | null {
     if (this.windowManager) {
       this.controlPanelWindow = this.windowManager.controlPanelWindow || this.controlPanelWindow;
     }
+
     this.attachControlPanelListeners(this.controlPanelWindow);
+
     return this.controlPanelWindow;
   }
 
   isControlPanelVisible(): boolean {
     const win = this.syncControlPanelWindow();
+
     return !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
   }
 
@@ -262,6 +315,7 @@ export class TrayManager {
   async toggleControlPanelFromTray(): Promise<void> {
     if (this.isControlPanelVisible()) {
       this.windowManager?.hideControlPanelToTray();
+
       return;
     }
 
@@ -272,20 +326,28 @@ export class TrayManager {
     try {
       if (!this.windowManager) {
         debugLogger.error("No window manager available", undefined, "tray");
+
         return;
       }
+
       await this.windowManager.createControlPanelWindow();
       this.syncControlPanelWindow();
     } catch (error) {
-      debugLogger.error("Failed to open control panel", { error: (error as Error)?.message }, "tray");
+      debugLogger.error(
+        "Failed to open control panel",
+        { error: (error as Error)?.message },
+        "tray"
+      );
     }
   }
 
   async createTray(): Promise<void> {
     try {
       const trayIcon = await this.loadTrayIcon();
+
       if (!trayIcon || trayIcon.isEmpty()) {
         debugLogger.error("Failed to load tray icon", undefined, "tray");
+
         return;
       }
 
@@ -331,6 +393,7 @@ export class TrayManager {
       }
     } else {
       const fileName = platform === "win32" ? "icon.ico" : "icon.png";
+
       if (isDevelopment) {
         candidatePaths.push(
           path.join(app.getAppPath(), "src", "assets", fileName),
@@ -350,11 +413,14 @@ export class TrayManager {
       try {
         if (fs.existsSync(testPath)) {
           const icon = nativeImage.createFromPath(testPath);
+
           if (icon && !icon.isEmpty()) {
             if (platform === "darwin") {
               icon.setTemplateImage(!isDevelopment);
             }
+
             debugLogger.debug("Using tray icon", { path: testPath }, "tray");
+
             return icon;
           }
         }
@@ -368,6 +434,7 @@ export class TrayManager {
     }
 
     debugLogger.error("Could not find tray icon in any expected location", undefined, "tray");
+
     return this.createFallbackIcon();
   }
 
@@ -377,6 +444,7 @@ export class TrayManager {
       const { createCanvas } = require("canvas") as {
         createCanvas: (width: number, height: number) => CanvasLike;
       };
+
       const canvas = createCanvas(16, 16);
       const ctx = canvas.getContext("2d");
 
@@ -388,9 +456,11 @@ export class TrayManager {
       const buffer = canvas.toBuffer("image/png");
       const fallbackIcon = nativeImage.createFromBuffer(buffer);
       debugLogger.info("Created fallback tray icon", undefined, "tray");
+
       return fallbackIcon;
     } catch {
       debugLogger.warn("Canvas not available, creating minimal fallback icon", undefined, "tray");
+
       // Create a minimal 16x16 black square PNG as fallback
       const pngData = Buffer.from([
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
@@ -402,12 +472,12 @@ export class TrayManager {
 
       const fallbackIcon = nativeImage.createFromBuffer(pngData);
       debugLogger.info("Created minimal fallback tray icon", undefined, "tray");
+
       return fallbackIcon;
     }
   }
 
   buildContextMenuTemplate(): MenuItemConstructorOptions[] {
-
     return [
       ...this.buildMeetingMenuItems(),
       {
@@ -432,7 +502,10 @@ export class TrayManager {
       },
       ...(this.meetingCaptureActive
         ? [
-            { label: i18nMain.t("tray.recordingStatus"), enabled: false } as MenuItemConstructorOptions,
+            {
+              label: i18nMain.t("tray.recordingStatus"),
+              enabled: false,
+            } as MenuItemConstructorOptions,
             {
               label: i18nMain.t("tray.stopRecording"),
               click: () => this.stopMeetingCapture?.(),
@@ -454,6 +527,7 @@ export class TrayManager {
   updateTrayMenu(): void {
     if (!this.tray) return;
     this.updateTrayTitle();
+
     if (this.menuOpen) return;
 
     const contextMenu = Menu.buildFromTemplate(this.buildContextMenuTemplate());
@@ -465,6 +539,7 @@ export class TrayManager {
       this.menuClosedAt = Date.now();
     });
     this.tray.setToolTip(i18nMain.t("tray.tooltip"));
+
     if (process.platform === "darwin") {
       // Shown from the click handler instead of setContextMenu so a second
       // click on the icon can close the open menu rather than reopen it.
@@ -476,6 +551,7 @@ export class TrayManager {
 
   showTrayMenu(now = Date.now()): void {
     if (!this.tray || !this.contextMenu) return;
+
     if (this.menuOpen || now - this.menuClosedAt < MENU_REOPEN_GUARD_MS) return;
     this.tray.popUpContextMenu(this.contextMenu);
   }
@@ -499,6 +575,7 @@ export class TrayManager {
     (this.tray as unknown as NodeJS.EventEmitter).on("destroyed", () => {
       debugLogger.debug("Tray icon destroyed", undefined, "tray");
       this.tray = null;
+
       if (this.refreshTimer) clearInterval(this.refreshTimer);
       this.refreshTimer = null;
     });
@@ -506,4 +583,5 @@ export class TrayManager {
 }
 
 module.exports = TrayManager;
+
 module.exports.TrayManager = TrayManager;

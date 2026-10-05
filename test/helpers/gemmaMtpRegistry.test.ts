@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const modelData = require("../../src/models/modelRegistryData.json");
@@ -38,7 +39,9 @@ const EXPECTED = {
 };
 
 type LocalProvider = { models: Array<Record<string, unknown>> };
+
 type LocalModelEntry = { provider: LocalProvider; model: Record<string, unknown> };
+
 function allLocalModels(): LocalModelEntry[] {
   return (modelData.localProviders as LocalProvider[]).flatMap((provider) =>
     provider.models.map((model) => ({ provider, model }))
@@ -62,6 +65,7 @@ test("the four Gemma 4 QAT entries carry the exact drafter field triplets", () =
 test("no entry outside the four QAT ids gained any drafter field", () => {
   for (const { model } of allLocalModels()) {
     if ((EXPECTED as Record<string, unknown>)[model.id as string]) continue;
+
     for (const field of DRAFT_FIELDS) {
       assert.equal(
         (model as Record<string, unknown>)[field as string],
@@ -74,6 +78,7 @@ test("no entry outside the four QAT ids gained any drafter field", () => {
 
 test("combined size label equals (main + drafter) bytes rounded to one decimal", () => {
   const byId = new Map(allLocalModels().map(({ model }) => [model.id as string, model]));
+
   for (const id of Object.keys(EXPECTED)) {
     const model = byId.get(id)!;
     assert.ok(typeof model.sizeBytes === "number");

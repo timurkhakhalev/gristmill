@@ -1,13 +1,16 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = () => import("../../src/config/retiredCloudModels.ts");
 
 const CLEANUP = { provider: "cleanupProvider", model: "cleanupModel" };
+
 const CHAT = { provider: "chatAgentProvider", model: "chatAgentModel" };
 
 const makeStorage = (initial: Record<string, string> = {}) => {
   const map = new Map<string, string>(Object.entries(initial));
+
   return {
     map,
     getItem(key: string) {
@@ -31,6 +34,7 @@ test("remaps a scope pinned to a model Tinfoil retired", async () => {
 
 test("remaps every other Tinfoil model the app has offered and Tinfoil has since retired", async () => {
   const { sweepRetiredCloudModelSelections } = await load();
+
   // Both shipped as seed defaults and are both gone from the live catalog now,
   // so they 404 exactly like glm-5-2 did.
   const storage = makeStorage({
@@ -48,6 +52,7 @@ test("remaps every other Tinfoil model the app has offered and Tinfoil has since
 
 test("still remaps the models Groq retired", async () => {
   const { sweepRetiredCloudModelSelections } = await load();
+
   const storage = makeStorage({
     cleanupProvider: "groq",
     cleanupModel: "llama-3.3-70b-versatile",
@@ -91,6 +96,7 @@ test("each provider's remap is one-shot, so a re-picked model is left alone", as
 
 test("Groq's already-shipped sentinel does not suppress another provider's remap", async () => {
   const { sweepRetiredCloudModelSelections } = await load();
+
   // Anyone upgrading from a build that ran the Groq-only migration carries it.
   const storage = makeStorage({
     _retiredGroqModelsMigrated: "1",
@@ -106,6 +112,7 @@ test("Groq's already-shipped sentinel does not suppress another provider's remap
 
 test("a provider whose sentinel is already set is skipped", async () => {
   const { sweepRetiredCloudModelSelections } = await load();
+
   const storage = makeStorage({
     _retiredGroqModelsMigrated: "1",
     cleanupProvider: "groq",

@@ -32,6 +32,7 @@ function passthroughResult<T extends object>(raw: unknown, channel: string): T {
   if (typeof raw === "object" && raw !== null) {
     return raw as T;
   }
+
   throw new Error(`Unexpected response shape from ${channel}`);
 }
 
@@ -50,10 +51,13 @@ function subscribeProgress(
 ): () => void {
   const listener = (_event: unknown, ...args: unknown[]) => {
     const parsed = llmDownloadProgressEventSchema.safeParse(args[0]);
+
     if (!parsed.success) return;
     callback(parsed.data);
   };
+
   ipcRenderer.on(channel, listener);
+
   return () => {
     ipcRenderer.removeListener(channel, listener);
   };
@@ -66,8 +70,7 @@ export function createLocalLlmModelsBridge(ipcRenderer: IpcRendererLike): LocalL
     modelGetAll: () => passthroughInvoke<LocalLlmModelStatus[]>(ipcRenderer, c.modelGetAll),
     modelGetActiveDownloads: () =>
       passthroughInvoke<LocalModelDownloadStatusRow[]>(ipcRenderer, c.modelGetActiveDownloads),
-    modelCheck: (modelId: string) =>
-      ipcRenderer.invoke(c.modelCheck, modelId) as Promise<boolean>,
+    modelCheck: (modelId: string) => ipcRenderer.invoke(c.modelCheck, modelId) as Promise<boolean>,
     modelDownload: (modelId: string) =>
       passthroughInvoke<LlmDownloadResult>(ipcRenderer, c.modelDownload, modelId),
     modelDelete: (modelId: string) =>

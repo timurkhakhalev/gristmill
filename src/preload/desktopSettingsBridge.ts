@@ -35,9 +35,11 @@ interface IpcRendererLike {
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -46,13 +48,16 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
 export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): DesktopSettingsApi {
   const invokeParse = <T>(schema: ZodType<T>, channel: string, ...args: unknown[]): Promise<T> =>
     ipcRenderer.invoke(channel, ...args).then((raw) => parseResult(schema, raw, channel));
+
   const saveKey = (channel: string, value: unknown): Promise<SaveKeyWireResult> =>
     invokeParse(saveKeyResultSchema, channel, value);
+
   const getKey = (channel: string) =>
     ipcRenderer.invoke(channel).then((raw) => {
       if (typeof raw !== "string") {
         throw new Error(`Unexpected response shape from ${channel}`);
       }
+
       return raw;
     });
 
@@ -78,9 +83,12 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
       ipcRenderer
         .invoke(desktopSettingsChannels.setOnboardingActive, active)
         .then((raw) => raw === true),
-    windowMinimize: () => ipcRenderer.invoke(desktopSettingsChannels.windowMinimize).then(() => undefined),
-    windowMaximize: () => ipcRenderer.invoke(desktopSettingsChannels.windowMaximize).then(() => undefined),
-    windowClose: () => ipcRenderer.invoke(desktopSettingsChannels.windowClose).then(() => undefined),
+    windowMinimize: () =>
+      ipcRenderer.invoke(desktopSettingsChannels.windowMinimize).then(() => undefined),
+    windowMaximize: () =>
+      ipcRenderer.invoke(desktopSettingsChannels.windowMaximize).then(() => undefined),
+    windowClose: () =>
+      ipcRenderer.invoke(desktopSettingsChannels.windowClose).then(() => undefined),
     windowIsMaximized: () =>
       ipcRenderer.invoke(desktopSettingsChannels.windowIsMaximized).then((raw) => raw === true),
     snapToMeetingMode: () =>
@@ -93,7 +101,8 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
         desktopSettingsChannels.setNotificationInteractivity,
         interactive
       ),
-    saveAllKeysToEnv: () => invokeParse(saveKeyResultSchema, desktopSettingsChannels.saveAllKeysToEnv),
+    saveAllKeysToEnv: () =>
+      invokeParse(saveKeyResultSchema, desktopSettingsChannels.saveAllKeysToEnv),
     getCortiClientId: () => getKey(desktopSettingsChannels.getCortiClientId),
     saveCortiClientId: (key) => saveKey(desktopSettingsChannels.setCortiClientId, key),
     getCortiClientSecret: () => getKey(desktopSettingsChannels.getCortiClientSecret),
@@ -164,7 +173,8 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
     getUiLanguage: () => getKey(desktopSettingsChannels.getUiLanguage),
     saveUiLanguage: (language) =>
       invokeParse(uiLanguageResultSchema, desktopSettingsChannels.saveUiLanguage, language),
-    setTimeFormat: (format) => invokeParse(simpleSuccessSchema, desktopSettingsChannels.setTimeFormat, format),
+    setTimeFormat: (format) =>
+      invokeParse(simpleSuccessSchema, desktopSettingsChannels.setTimeFormat, format),
     setUiLanguage: (language) =>
       invokeParse(uiLanguageResultSchema, desktopSettingsChannels.setUiLanguage, language),
     getLogLevel: () =>
@@ -172,11 +182,11 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
         if (typeof raw !== "string") {
           throw new Error("Unexpected response shape from get-log-level");
         }
+
         return raw;
       }),
     log: (entry) => invokeParse(saveKeyResultSchema, desktopSettingsChannels.log, entry),
-    getDebugState: () =>
-      invokeParse(debugStateSchema, desktopSettingsChannels.getDebugState),
+    getDebugState: () => invokeParse(debugStateSchema, desktopSettingsChannels.getDebugState),
     setDebugLogging: (enabled) =>
       invokeParse(setDebugLoggingResultSchema, desktopSettingsChannels.setDebugLogging, enabled),
     openLogsFolder: () =>
@@ -230,9 +240,11 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
         if (typeof raw !== "string") {
           throw new Error("Unexpected response shape from read-clipboard");
         }
+
         return raw;
       }),
-    writeClipboard: (text) => invokeParse(saveKeyResultSchema, desktopSettingsChannels.writeClipboard, text),
+    writeClipboard: (text) =>
+      invokeParse(saveKeyResultSchema, desktopSettingsChannels.writeClipboard, text),
     cleanupApp: () => invokeParse(cleanupAppResultSchema, desktopSettingsChannels.cleanupApp),
     getAppVersion: () => invokeParse(appVersionSchema, desktopSettingsChannels.getAppVersion),
     getOAuthProtocolRegistered: () =>
@@ -244,6 +256,7 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
         if (typeof raw !== "string") {
           throw new Error("Unexpected response shape from get-oauth-protocol");
         }
+
         return raw;
       }),
     getModelCacheRoot: () =>
@@ -251,6 +264,7 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
         if (typeof raw !== "string") {
           throw new Error("Unexpected response shape from get-model-cache-root");
         }
+
         return raw;
       }),
     openWhisperModelsFolder: () =>
@@ -260,6 +274,7 @@ export function createDesktopSettingsBridge(ipcRenderer: IpcRendererLike): Deskt
         if (typeof raw !== "string") {
           throw new Error("Unexpected response shape from get-md5-hash");
         }
+
         return raw;
       }),
     syncNotificationPreferences: (prefs) =>
@@ -271,9 +286,12 @@ const autoStartStateSchema = z.object({
   enabled: z.boolean(),
   requiresApproval: z.boolean(),
 });
+
 const autoStartSetResultSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
 });
+
 const microphoneAccessSchema = z.object({ granted: z.boolean() });
+
 const microphoneStatusSchema = z.object({ granted: z.boolean(), status: z.string() });

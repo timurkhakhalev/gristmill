@@ -35,6 +35,7 @@ export function TechnicalErrorDetails({
   const { t } = useTranslation();
   const text = details ? formatTechnicalErrorDetails(details, t) : "";
   const { copied, copy } = useCopyFeedback(text, { resetMs: 2000 });
+
   if (!text) return null;
 
   return (

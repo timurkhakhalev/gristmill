@@ -82,6 +82,7 @@ export const CURRENT_DEFAULT_PROMPT_HASHES: Record<string, string> = {
 
 export async function hashPromptText(text: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -94,7 +95,9 @@ export interface PromptOverrideStorage {
 
 export async function isRetiredDefaultPrompt(text: unknown): Promise<boolean> {
   if (typeof text !== "string" || text.length === 0) return false;
+
   if (!globalThis.crypto?.subtle) return false;
+
   return RETIRED_DEFAULT_PROMPT_HASHES.has(await hashPromptText(text));
 }
 
@@ -107,12 +110,16 @@ export async function sweepRetiredPromptOverrides(
   kinds: readonly string[]
 ): Promise<string[]> {
   const swept: string[] = [];
+
   for (const kind of kinds) {
     try {
       const key = `customPrompt.${kind}`;
       const value = storage.getItem(key);
+
       if (!value) continue;
+
       if (!(await isRetiredDefaultPrompt(value))) continue;
+
       // Re-read before removing: the user may have saved a new prompt while
       // the hash was being computed.
       if (storage.getItem(key) !== value) continue;
@@ -123,5 +130,6 @@ export async function sweepRetiredPromptOverrides(
       // Storage failures skip this kind; the sweep retries on next startup.
     }
   }
+
   return swept;
 }

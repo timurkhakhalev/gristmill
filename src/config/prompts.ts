@@ -8,6 +8,7 @@ export {
   escapeTranscriptContent,
   decodeCleanupTranscriptEntities,
 } from "./prompts/index";
+
 export { PROMPT_KINDS, PROMPT_KIND_LIST, type PromptKind } from "./prompts/registry";
 
 export function getCleanupSystemPrompt(
@@ -21,6 +22,7 @@ export function getCleanupSystemPrompt(
 
 export function getWordBoost(customDictionary?: string[]): string[] {
   if (!customDictionary || customDictionary.length === 0) return [];
+
   return customDictionary.filter((w) => w.trim());
 }
 
@@ -56,6 +58,7 @@ function formatLocalRfc3339(date: Date): string {
   const offsetSign = offsetMinutes >= 0 ? "+" : "-";
   const absoluteOffset = Math.abs(offsetMinutes);
   const offset = `${offsetSign}${twoDigits(Math.floor(absoluteOffset / 60))}:${twoDigits(absoluteOffset % 60)}`;
+
   return (
     `${date.getFullYear()}-${twoDigits(date.getMonth() + 1)}-${twoDigits(date.getDate())}` +
     `T${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}:${twoDigits(date.getSeconds())}${offset}`
@@ -65,22 +68,30 @@ function formatLocalRfc3339(date: Date): string {
 function getLocalCalendarContext(): string {
   const now = new Date();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
   return `Current local date and time: ${formatLocalRfc3339(now)}. IANA time zone: ${timeZone}.`;
 }
 
-export function getAgentSystemPrompt(availableTools?: string[], noteContext?: string, useGristmillCli = false): string {
+export function getAgentSystemPrompt(
+  availableTools?: string[],
+  noteContext?: string,
+  useGristmillCli = false
+): string {
   let prompt = resolvePrompt("chatAgent", { agentName: null });
 
   if (useGristmillCli) {
-    prompt += "\n\nUse gristmill, a helper client, to retrieve additional information about meetings when needed. " +
+    prompt +=
+      "\n\nUse gristmill, a helper client, to retrieve additional information about meetings when needed. " +
       "Run gristmill --help for usage and options.";
   }
 
   if (availableTools && availableTools.length > 0) {
     const toolLines = availableTools.map((name) => TOOL_INSTRUCTIONS[name]).filter(Boolean);
+
     if (toolLines.length > 0) {
       prompt += "\n\nYou have access to tools. " + toolLines.join(" ");
     }
+
     if (availableTools.includes("get_calendar_availability")) {
       prompt += "\n\n" + getLocalCalendarContext();
     }

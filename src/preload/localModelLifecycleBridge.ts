@@ -32,6 +32,7 @@ function passthroughResult<T extends object>(raw: unknown, channel: string): T {
   if (typeof raw === "object" && raw !== null) {
     return raw as T;
   }
+
   throw new Error(`Unexpected response shape from ${channel}`);
 }
 
@@ -50,10 +51,13 @@ function subscribeProgress(
 ): () => void {
   const listener = (_event: unknown, ...args: unknown[]) => {
     const parsed = downloadProgressEventSchema.safeParse(args[0]);
+
     if (!parsed.success) return;
     callback(parsed.data);
   };
+
   ipcRenderer.on(channel, listener);
+
   return () => {
     ipcRenderer.removeListener(channel, listener);
   };
@@ -65,6 +69,7 @@ export function createLocalModelLifecycleBridge(
   ipcRenderer: IpcRendererLike
 ): LocalModelLifecycleApi {
   const c = localModelChannels;
+
   return {
     checkWhisperInstallation: () =>
       passthroughInvoke<InstallCheckResult>(ipcRenderer, c.checkWhisperInstallation),
@@ -84,8 +89,7 @@ export function createLocalModelLifecycleBridge(
       passthroughInvoke<ServerLifecycleResult>(ipcRenderer, c.cancelWhisperDownload),
     whisperServerStart: (modelName: string) =>
       passthroughInvoke<ServerLifecycleResult>(ipcRenderer, c.whisperServerStart, modelName),
-    whisperServerStop: () =>
-      ipcRenderer.invoke(c.whisperServerStop).then(() => undefined),
+    whisperServerStop: () => ipcRenderer.invoke(c.whisperServerStop).then(() => undefined),
     whisperServerStatus: () =>
       passthroughInvoke<ServerStatusResult>(ipcRenderer, c.whisperServerStatus),
     checkFfmpegAvailability: () =>
@@ -116,8 +120,7 @@ export function createLocalModelLifecycleBridge(
       passthroughInvoke<DiagnosticsResult>(ipcRenderer, c.getParakeetDiagnostics),
     parakeetServerStart: (modelName: string) =>
       passthroughInvoke<ServerLifecycleResult>(ipcRenderer, c.parakeetServerStart, modelName),
-    parakeetServerStop: () =>
-      ipcRenderer.invoke(c.parakeetServerStop) as Promise<unknown>,
+    parakeetServerStop: () => ipcRenderer.invoke(c.parakeetServerStop) as Promise<unknown>,
     parakeetServerStatus: () =>
       passthroughInvoke<ServerStatusResult>(ipcRenderer, c.parakeetServerStatus),
   };

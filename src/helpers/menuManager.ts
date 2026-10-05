@@ -8,12 +8,13 @@ export class MenuManager {
 
   static setMeetingCaptureStatus(active: boolean, stop?: () => void): void {
     this.meetingCaptureActive = active;
-    this.stopMeetingCapture = active ? stop ?? null : null;
+    this.stopMeetingCapture = active ? (stop ?? null) : null;
     this.rebuildMenu?.();
   }
 
   private static meetingCaptureItems(): MenuItemConstructorOptions[] {
     if (!this.meetingCaptureActive) return [];
+
     return [
       { label: i18nMain.t("tray.recordingStatus"), enabled: false },
       { label: i18nMain.t("tray.stopRecording"), click: () => this.stopMeetingCapture?.() },
@@ -46,8 +47,10 @@ export class MenuManager {
           ],
         },
       ];
+
       Menu.setApplicationMenu(Menu.buildFromTemplate(template));
     };
+
     this.rebuildMenu();
   }
 
@@ -56,7 +59,9 @@ export class MenuManager {
     onOpenSettings?: () => void,
     onStopMeetingCapture?: () => void
   ): void {
-    this.stopMeetingCapture = this.meetingCaptureActive ? onStopMeetingCapture ?? this.stopMeetingCapture : null;
+    this.stopMeetingCapture = this.meetingCaptureActive
+      ? (onStopMeetingCapture ?? this.stopMeetingCapture)
+      : null;
     this.rebuildMenu = () => {
       const template: MenuItemConstructorOptions[] = [
         {
@@ -125,11 +130,14 @@ export class MenuManager {
           ],
         },
       ];
+
       controlPanelWindow.setMenu(Menu.buildFromTemplate(template));
     };
+
     this.rebuildMenu();
   }
 }
 
 module.exports = MenuManager;
+
 module.exports.MenuManager = MenuManager;

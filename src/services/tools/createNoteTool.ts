@@ -41,11 +41,14 @@ export const createNoteTool: ToolDefinition = {
     try {
       let spaceId: number | null = null;
       const spaces = (await window.electronAPI.getSpaces?.()) ?? [];
+
       if (spaceName) {
         const resolved = resolveSpace(spaces, spaceName);
+
         if (resolved.error !== undefined) {
           return { success: false, data: null, displayText: resolved.error };
         }
+
         spaceId = resolved.space.id;
       } else {
         // No space argument means the user's private space: folder resolution
@@ -59,9 +62,11 @@ export const createNoteTool: ToolDefinition = {
 
       if (folderName) {
         const resolved = await resolveFolderId(folderName, { createIfMissing: true }, spaceId);
+
         if (resolved.error !== undefined) {
           return { success: false, data: null, displayText: resolved.error };
         }
+
         folderId = resolved.folderId;
         folderCreated = resolved.created;
       }
@@ -81,6 +86,7 @@ export const createNoteTool: ToolDefinition = {
       }
 
       const suffix = folderCreated ? ` in new folder "${folderName}"` : "";
+
       return {
         success: true,
         data: { id: result.note.id, title: result.note.title, folder_id: folderId },

@@ -13,6 +13,7 @@ export function GetApiKeyLink({
 }) {
   const { t } = useTranslation();
   const href = withUtm(url, "api_key");
+
   return (
     <a
       href={href}

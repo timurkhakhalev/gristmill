@@ -5,17 +5,23 @@
 // container (`<containerKey>:n:<noteId>`), so each placement is independently
 // focusable and parent navigation targets the current placement's folder.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react");
+
 const { createRoot } = require("react-dom/client");
+
 const {
   createRendererServer,
   installBrowserGlobals,
   installHookDom,
 } = require("../lib/rendererTestHarness.ts");
+
 import type { ReactNode } from "react";
 
 type TestContext = import("node:test").TestContext;
+
 type ViteDevServer = import("vite").ViteDevServer;
 
 interface ReactNodeLike {
@@ -47,6 +53,7 @@ interface TreeState {
 const GLOBAL_STATE_KEY = "__spacesTreeSharedNoteFocusState";
 
 const SPACE1 = { id: 1, kind: "private", name: "Personal", sync_status: "synced" };
+
 const SPACE2 = { id: 2, kind: "private", name: "Engineering", sync_status: "synced" };
 
 const baseState = (): TreeState & { notes: Array<{ id: number; title: string }> } => {
@@ -54,6 +61,7 @@ const baseState = (): TreeState & { notes: Array<{ id: number; title: string }> 
     { id: 201, title: "Shared note" },
     { id: 301, title: "Root note" },
   ];
+
   return {
     notes,
     spaces: [SPACE1],
@@ -74,14 +82,12 @@ const baseState = (): TreeState & { notes: Array<{ id: number; title: string }> 
 const twoSpaceState = (): TreeState & { notes: Array<{ id: number; title: string }> } => {
   const state = baseState();
   const notes = [{ id: 402, title: "Cross-space note" }];
+
   return {
     ...state,
     notes: [...state.notes, ...notes],
     spaces: [SPACE1, SPACE2],
-    folders: [
-      ...state.folders,
-      { id: 33, space_id: 2, name: "Team folder", is_default: 0 },
-    ],
+    folders: [...state.folders, { id: 33, space_id: 2, name: "Team folder", is_default: 0 }],
     expanded: new Set(["space:1", "space:2", "folder:11", "folder:22", "folder:33"]),
     notesByContainer: {
       ...state.notesByContainer,
@@ -193,17 +199,21 @@ const MOCK_MODULES = {
 };
 
 let vitePromise: Promise<ViteDevServer> | undefined;
+
 const cleanup: Array<() => void | Promise<void>> = [];
+
 test.after(async () => {
   for (const close of cleanup) await close();
 });
 
 function findNodes(node: unknown, predicate: (node: ReactNodeLike) => boolean): ReactNodeLike[] {
   if (Array.isArray(node)) return node.flatMap((item) => findNodes(item, predicate));
+
   if (!node || typeof node !== "object") return [];
   const element = node as ReactNodeLike;
   const found = predicate(element) ? [element] : [];
   const children = (element.props as { children?: unknown } | undefined)?.children;
+
   return [...found, ...findNodes(children, predicate)];
 }
 
@@ -214,6 +224,7 @@ const rowsIn = (tree: unknown): RowProbe[] =>
       note?: { title: string };
       folder?: { name: string };
     };
+
     return {
       key: node.key ?? "",
       title: props.folder?.name ?? props.note?.title ?? "",
@@ -225,12 +236,18 @@ const rowsIn = (tree: unknown): RowProbe[] =>
 function row(rows: RowProbe[], key: string): RowProbe {
   const match = rows.find((candidate) => candidate.key === key);
   assert.ok(match, `row ${key} is rendered`);
+
   return match;
 }
 
 const focusedRow = (rows: RowProbe[]): RowProbe => {
   const match = rows.filter((candidate) => candidate.a11y.tabIndex === 0);
-  assert.equal(match.length, 1, `exactly one row holds the roving tabIndex (got ${match.map((r) => r.key).join(", ") || "none"})`);
+  assert.equal(
+    match.length,
+    1,
+    `exactly one row holds the roving tabIndex (got ${match.map((r) => r.key).join(", ") || "none"})`
+  );
+
   return match[0]!;
 };
 
@@ -241,6 +258,7 @@ async function flushTwice(ui: { rerender: () => Promise<void> }): Promise<void> 
   await ui.rerender();
   await ui.rerender();
 }
+
 /** Presses a key, then settles: rows are re-read only after the flush lands. */
 async function pressAndSettle(
   ui: { tree: () => unknown; rerender: () => Promise<void> },
@@ -251,16 +269,20 @@ async function pressAndSettle(
     probe.a11y.onKeyDown({ key, preventDefault() {} });
   });
   await flushTwice(ui);
+
   return rowsIn(ui.tree());
 }
+
 /** Mounts the real SpacesTree against the shared mutable tree state. */
 async function mountTree(t: TestContext) {
   // Unmount must be the first hook registered: cleanup runs before the
   // browser-global teardown removes `window`, which react-dom touches on unmount.
   let unmountTree: () => Promise<void> = async () => {};
+
   t.after(() => unmountTree());
   installBrowserGlobals(t);
   const container = installHookDom(t);
+
   const vite = await (vitePromise ??= createRendererServer(
     { after: (close: () => void | Promise<void>) => cleanup.push(close) } as unknown as TestContext,
     {
@@ -271,9 +293,11 @@ async function mountTree(t: TestContext) {
       noExternal: ["react-i18next"],
     }
   ));
+
   const { default: SpacesTree } = await vite.ssrLoadModule("/components/notes/SpacesTree.tsx");
   let tree: unknown;
   let rerender: () => void = () => {};
+
   function Harness() {
     const [, tick] = React.useState(0);
     rerender = () => tick((n: number) => n + 1);
@@ -283,8 +307,10 @@ async function mountTree(t: TestContext) {
       onCreateFolderAndMove: () => {},
       onNewNote: async () => null,
     });
+
     return tree as ReactNode;
   }
+
   const root = createRoot(container as unknown as Element);
   await React.act(async () => {
     root.render(React.createElement(Harness));
@@ -292,6 +318,7 @@ async function mountTree(t: TestContext) {
   unmountTree = async () => {
     await React.act(async () => root.unmount());
   };
+
   return {
     tree: () => tree,
     rerender: async () => {
@@ -300,8 +327,7 @@ async function mountTree(t: TestContext) {
   };
 }
 
-const sharedState = () =>
-  (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] as TreeState;
+const sharedState = () => (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] as TreeState;
 
 const setState = (patch: Partial<TreeState>) => {
   (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] = {
@@ -312,7 +338,9 @@ const setState = (patch: Partial<TreeState>) => {
 
 test("one note in two folders renders two independently focusable placements", async (t: TestContext) => {
   (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] = baseState();
-  t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
+  t.after(() => {
+    delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY];
+  });
   const ui = await mountTree(t);
 
   const rows = rowsIn(ui.tree());
@@ -328,7 +356,9 @@ test("one note in two folders renders two independently focusable placements", a
   // The i18n mock is actually the one served (noExternal keeps vite from
   // externalizing react-i18next): every useTranslation call saw dir.
   const probe = (globalThis as Record<string, unknown>).__spacesTreeI18nProbe as
-    Array<{ dirType: string; keys: string[] }> | undefined;
+    | Array<{ dirType: string; keys: string[] }>
+    | undefined;
+
   assert.ok(probe && probe.length > 0, "react-i18next mock recorded useTranslation calls");
   assert.ok(
     probe.every((entry) => entry.dirType === "function" && entry.keys.includes("dir")),
@@ -338,7 +368,9 @@ test("one note in two folders renders two independently focusable placements", a
 
 test("ArrowDown and ArrowUp traverse both placements of the shared note", async (t: TestContext) => {
   (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] = baseState();
-  t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
+  t.after(() => {
+    delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY];
+  });
   const ui = await mountTree(t);
 
   // Tree order: 11, folder:11:n:201, 22, folder:22:n:201, space:1:n:301.
@@ -349,7 +381,11 @@ test("ArrowDown and ArrowUp traverse both placements of the shared note", async 
   assert.equal(focusedRow(rows).key, "folder:22:n:201", "ArrowDown reaches the second placement");
 
   rows = await pressAndSettle(ui, row(rows, "folder:22:n:201"), "ArrowDown");
-  assert.equal(focusedRow(rows).key, "space:1:n:301", "ArrowDown continues past the second placement");
+  assert.equal(
+    focusedRow(rows).key,
+    "space:1:n:301",
+    "ArrowDown continues past the second placement"
+  );
 
   rows = await pressAndSettle(ui, row(rows, "space:1:n:301"), "ArrowUp");
   assert.equal(focusedRow(rows).key, "folder:22:n:201", "ArrowUp returns to the second placement");
@@ -363,7 +399,9 @@ test("ArrowDown and ArrowUp traverse both placements of the shared note", async 
 
 test("outward navigation from a placement focuses that placement's own folder", async (t: TestContext) => {
   (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] = baseState();
-  t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
+  t.after(() => {
+    delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY];
+  });
   const ui = await mountTree(t);
 
   // Tree order: 11, folder:11:n:201, 22, folder:22:n:201, space:1:n:301.
@@ -380,7 +418,9 @@ test("outward navigation from a placement focuses that placement's own folder", 
 test("Enter on a placement opens the note itself", async (t: TestContext) => {
   const state = baseState();
   (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] = state;
-  t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
+  t.after(() => {
+    delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY];
+  });
   const ui = await mountTree(t);
 
   await pressAndSettle(ui, row(rowsIn(ui.tree()), "folder:22:n:201"), "Enter");
@@ -390,7 +430,9 @@ test("Enter on a placement opens the note itself", async (t: TestContext) => {
 test("focus follows the note when one placement is collapsed or removed", async (t: TestContext) => {
   const state = baseState();
   (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] = state;
-  t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
+  t.after(() => {
+    delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY];
+  });
   const ui = await mountTree(t);
 
   await React.act(async () => {
@@ -405,7 +447,11 @@ test("focus follows the note when one placement is collapsed or removed", async 
   // which fires the retarget effect) and keyboard reachability.
   setState({ expanded: new Set(["space:1", "folder:22"]) });
   await flushTwice(ui);
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:201", "focus retargets to the surviving placement");
+  assert.equal(
+    focusedRow(rowsIn(ui.tree())).key,
+    "folder:22:n:201",
+    "focus retargets to the surviving placement"
+  );
 
   // The collapsed placement is out of keyboard order: ArrowUp from the
   // surviving placement lands on folder 22, never on the hidden row.
@@ -413,7 +459,11 @@ test("focus follows the note when one placement is collapsed or removed", async 
   assert.equal(focusedRow(rows).key, "22", "collapsed placement is skipped by keyboard order");
 
   rows = await pressAndSettle(ui, row(rows, "22"), "ArrowDown");
-  assert.equal(focusedRow(rows).key, "folder:22:n:201", "ArrowDown returns to the surviving placement");
+  assert.equal(
+    focusedRow(rows).key,
+    "folder:22:n:201",
+    "ArrowDown returns to the surviving placement"
+  );
 
   // Remove the note from Folder A while the folder stays expanded: now the
   // JSX row genuinely disappears (notesByContainer drops it).
@@ -423,14 +473,23 @@ test("focus follows the note when one placement is collapsed or removed", async 
   });
   await flushTwice(ui);
   const afterRemoval = rowsIn(ui.tree());
-  assert.ok(!afterRemoval.some((candidate) => candidate.key === "folder:11:n:201"), "removed placement leaves the rendered rows");
-  assert.equal(focusedRow(afterRemoval).key, "folder:22:n:201", "focus stays on the surviving placement");
+  assert.ok(
+    !afterRemoval.some((candidate) => candidate.key === "folder:11:n:201"),
+    "removed placement leaves the rendered rows"
+  );
+  assert.equal(
+    focusedRow(afterRemoval).key,
+    "folder:22:n:201",
+    "focus stays on the surviving placement"
+  );
 });
 
 test("retarget prefers a same-space placement before following the note cross-space", async (t: TestContext) => {
   const state = twoSpaceState();
   (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY] = state;
-  t.after(() => { delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY]; });
+  t.after(() => {
+    delete (globalThis as Record<string, unknown>)[GLOBAL_STATE_KEY];
+  });
   const ui = await mountTree(t);
 
   await React.act(async () => {
@@ -446,7 +505,11 @@ test("retarget prefers a same-space placement before following the note cross-sp
     notesByContainer: { ...state.notesByContainer, "folder:11": [] },
   });
   await flushTwice(ui);
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:22:n:402", "focus follows the note within the same space");
+  assert.equal(
+    focusedRow(rowsIn(ui.tree())).key,
+    "folder:22:n:402",
+    "focus follows the note within the same space"
+  );
 
   // No same-space placement remains: remove the Folder B placement too —
   // now the cross-space placement in folder 33 is the only follower.
@@ -454,5 +517,9 @@ test("retarget prefers a same-space placement before following the note cross-sp
     notesByContainer: { ...state.notesByContainer, "folder:11": [], "folder:22": [] },
   });
   await flushTwice(ui);
-  assert.equal(focusedRow(rowsIn(ui.tree())).key, "folder:33:n:402", "focus follows the note cross-space as a last resort");
+  assert.equal(
+    focusedRow(rowsIn(ui.tree())).key,
+    "folder:33:n:402",
+    "focus follows the note cross-space as a last resort"
+  );
 });

@@ -34,6 +34,7 @@ export const remoteTranscriptionRequestSchema = z.object({
   remoteTranscriptionModel: z.string().optional(),
   requestId: nonEmptyRequestId.optional(),
 });
+
 export type RemoteTranscriptionRequest = z.infer<typeof remoteTranscriptionRequestSchema>;
 
 const transcriptionSegmentSchema = z.object({
@@ -52,6 +53,7 @@ export const remoteTranscriptionResponseSchema = z.object({
   diarized: z.boolean().optional(),
   segments: z.array(transcriptionSegmentSchema).optional(),
 });
+
 export type RemoteTranscriptionResult = z.infer<typeof remoteTranscriptionResponseSchema>;
 
 // --- File diarization (diarize-audio-file) ----------------------------------
@@ -61,6 +63,7 @@ export const diarizationOptionsSchema = z.object({
   threshold: z.number().optional(),
   requestId: nonEmptyRequestId.optional(),
 });
+
 export type DiarizationOptions = z.infer<typeof diarizationOptionsSchema>;
 
 export const diarizationSegmentSchema = z.object({
@@ -68,6 +71,7 @@ export const diarizationSegmentSchema = z.object({
   end: z.number(),
   speaker: z.string(),
 });
+
 export type DiarizationSegment = z.infer<typeof diarizationSegmentSchema>;
 
 export const diarizationResponseSchema = z.object({
@@ -77,6 +81,7 @@ export const diarizationResponseSchema = z.object({
   error: z.string().optional(),
   code: z.string().optional(),
 });
+
 export type DiarizationResult = z.infer<typeof diarizationResponseSchema>;
 
 // --- Speaker-text merge (merge-speaker-text) --------------------------------
@@ -89,6 +94,7 @@ export const mergeSpeakerTextRequestSchema = z.object({
   text: z.string(),
   duration: z.number(),
 });
+
 export type MergeSpeakerTextRequest = z.infer<typeof mergeSpeakerTextRequestSchema>;
 
 export const mergeSpeakerTextResponseSchema = z.object({
@@ -96,6 +102,7 @@ export const mergeSpeakerTextResponseSchema = z.object({
   text: z.string().optional(),
   error: z.string().optional(),
 });
+
 export type MergeSpeakerTextResult = z.infer<typeof mergeSpeakerTextResponseSchema>;
 
 // --- Upload cancel (cancel-upload-transcription) ----------------------------
@@ -103,6 +110,7 @@ export type MergeSpeakerTextResult = z.infer<typeof mergeSpeakerTextResponseSche
 export const uploadCancelRequestSchema = z.object({
   requestId: nonEmptyRequestId,
 });
+
 export type UploadCancelRequest = z.infer<typeof uploadCancelRequestSchema>;
 
 export const uploadCancelResponseSchema = z.object({
@@ -110,6 +118,7 @@ export const uploadCancelResponseSchema = z.object({
   cancelled: z.number().optional(),
   error: z.string().optional(),
 });
+
 export type UploadCancelResult = z.infer<typeof uploadCancelResponseSchema>;
 
 // --- Channels and renderer-facing API ---------------------------------------

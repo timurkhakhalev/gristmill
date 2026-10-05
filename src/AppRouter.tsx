@@ -7,6 +7,7 @@ import { useControlPanelWindowDrag } from "./hooks/useControlPanelWindowDrag";
 import { initializeNoteFiles } from "./stores/settingsStore";
 
 const ControlPanel = React.lazy(() => import("./components/ControlPanel"));
+
 const OnboardingFlow = React.lazy(() => import("./components/OnboardingFlow"));
 
 export default function AppRouter() {
@@ -21,16 +22,19 @@ export default function AppRouter() {
     return <MeetingCompanion />;
   }
 
-
   return <MainApp />;
 }
 
 function MainApp() {
   useControlPanelWindowDrag(true);
-  useEffect(() => { void initializeNoteFiles(); }, []);
+  useEffect(() => {
+    void initializeNoteFiles();
+  }, []);
+
   const [showOnboarding, setShowOnboarding] = useState(
     () => localStorage.getItem("onboardingCompleted") !== "true"
   );
+
   const [postOnboardingSettingsSection, setPostOnboardingSettingsSection] = useState<
     string | undefined
   >();
@@ -38,6 +42,7 @@ function MainApp() {
   useEffect(() => {
     window.electronAPI?.setOnboardingActive?.(showOnboarding);
     void window.electronAPI?.setOnboardingWindowMode?.(showOnboarding ? "compact" : "restore");
+
     return () => {
       void window.electronAPI?.setOnboardingActive?.(true);
     };
@@ -66,9 +71,13 @@ function MainApp() {
 
 function LoadingFallback() {
   const { t } = useTranslation();
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="w-7 h-7 rounded-full border-[2.5px] border-transparent border-t-primary animate-spin" aria-label={t("common.loading")} />
+      <div
+        className="w-7 h-7 rounded-full border-[2.5px] border-transparent border-t-primary animate-spin"
+        aria-label={t("common.loading")}
+      />
     </div>
   );
 }

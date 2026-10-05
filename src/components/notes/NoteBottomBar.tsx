@@ -56,11 +56,14 @@ export default function NoteBottomBar({
 
   // The model row mounts on focus; warm its data so it paints its final label.
   useEffect(() => {
-    prefetchBbCatalog(selectResolvedLLMConfig(useSettingsStore.getState(), "chatIntelligence").agentProvider);
+    prefetchBbCatalog(
+      selectResolvedLLMConfig(useSettingsStore.getState(), "chatIntelligence").agentProvider
+    );
   }, []);
 
   const handleSubmit = useCallback(() => {
     const text = inputText.trim();
+
     if (!text || askDisabled) return;
     onAskSubmit(text);
     setInputText("");
@@ -74,6 +77,7 @@ export default function NoteBottomBar({
         e.preventDefault();
         handleSubmit();
       }
+
       if (e.key === "Escape") {
         setIsExpanded(false);
         inputRef.current?.blur();
@@ -99,19 +103,31 @@ export default function NoteBottomBar({
 
   useEffect(() => {
     if (!isExpanded) return;
+
     const handleClickOutside = (e: MouseEvent) => {
-      if (!hasText && !isModelPickerOpen && !isHistoryOpen && containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        !hasText &&
+        !isModelPickerOpen &&
+        !isHistoryOpen &&
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setIsExpanded(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
+
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isExpanded, hasText, isModelPickerOpen, isHistoryOpen]);
 
   return (
     <div
       ref={containerRef}
-      className={cn("px-5 pb-4 pt-3 pointer-events-none", floating ? "absolute inset-x-0 bottom-0 z-10" : "shrink-0")}
+      className={cn(
+        "px-5 pb-4 pt-3 pointer-events-none",
+        floating ? "absolute inset-x-0 bottom-0 z-10" : "shrink-0"
+      )}
     >
       {callout && !hideInput && (
         <div className="pointer-events-auto mb-3 flex justify-center">{callout}</div>
@@ -158,6 +174,7 @@ export default function NoteBottomBar({
                 onNewChat={history.onNewChat}
                 onOpenChange={(open) => {
                   setIsHistoryOpen(open);
+
                   if (!open && !hasText) setIsExpanded(false);
                 }}
               />
@@ -185,6 +202,7 @@ export default function NoteBottomBar({
                 disabled={askDisabled}
                 onOpenChange={(open) => {
                   setIsModelPickerOpen(open);
+
                   if (!open && !hasText) setIsExpanded(false);
                 }}
               />

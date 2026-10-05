@@ -5,8 +5,11 @@ import * as test from "node:test";
 import ts from "typescript";
 
 const root = path.resolve(__dirname, "../..");
+
 const fixtureDir = path.join(root, "test/scripts/type-probes");
+
 const selectedGroups: string[] = JSON.parse(process.env.GRISTMILL_TYPE_PROBE_GROUPS || "[]");
+
 let results: Map<string, number[]> | undefined;
 
 interface FixtureRecord {
@@ -17,12 +20,16 @@ interface FixtureRecord {
 }
 
 function fixtures(group: string): FixtureRecord[] {
-  return fs.readdirSync(fixtureDir)
-    .filter((name) => name.startsWith(`${group}-`) && /^\d+\.ts$/.test(name.slice(group.length + 1)))
+  return fs
+    .readdirSync(fixtureDir)
+    .filter(
+      (name) => name.startsWith(`${group}-`) && /^\d+\.ts$/.test(name.slice(group.length + 1))
+    )
     .sort()
     .map((name) => {
       const source = fs.readFileSync(path.join(fixtureDir, name), "utf8");
       const [nameLine, codesLine] = source.split("\n", 2);
+
       return {
         name,
         title: JSON.parse(nameLine.slice("// @probe-name ".length)),
@@ -39,20 +46,41 @@ function compile(): Map<string, number[]> {
   assert.equal(parsed.options.strict, true);
   const records = selectedGroups.flatMap(fixtures);
   assert.ok(records.length, "selected type probes must have fixtures");
-  const sources = new Map(records.map(({ name, source }) => [path.join(root, `type-probe-${name}`), source]));
+
+  const sources = new Map(
+    records.map(({ name, source }) => [path.join(root, `type-probe-${name}`), source])
+  );
+
   const host = ts.createCompilerHost(parsed.options);
   const getSourceFile = host.getSourceFile.bind(host);
   host.getSourceFile = (file: string, languageVersion: ts.ScriptTarget, ...rest: never[]) =>
     sources.has(file)
       ? ts.createSourceFile(file, sources.get(file)!, languageVersion, true)
       : getSourceFile(file, languageVersion, ...rest);
-  const diagnostics = ts.getPreEmitDiagnostics(ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host));
-  assert.deepEqual(diagnostics.filter((diagnostic) => !diagnostic.file || !sources.has(diagnostic.file.fileName)), [], "implementation graph must compile cleanly");
-  results = new Map(records.map(({ name }) => {
-    const file = path.join(root, `type-probe-${name}`);
-    return [name, diagnostics.filter((diagnostic) => diagnostic.file?.fileName === file)
-      .map((diagnostic) => diagnostic.code).sort((a, b) => a - b)];
-  }));
+
+  const diagnostics = ts.getPreEmitDiagnostics(
+    ts.createProgram([...sources.keys()], { ...parsed.options, noEmit: true }, host)
+  );
+
+  assert.deepEqual(
+    diagnostics.filter((diagnostic) => !diagnostic.file || !sources.has(diagnostic.file.fileName)),
+    [],
+    "implementation graph must compile cleanly"
+  );
+  results = new Map(
+    records.map(({ name }) => {
+      const file = path.join(root, `type-probe-${name}`);
+
+      return [
+        name,
+        diagnostics
+          .filter((diagnostic) => diagnostic.file?.fileName === file)
+          .map((diagnostic) => diagnostic.code)
+          .sort((a, b) => a - b),
+      ];
+    })
+  );
+
   return results;
 }
 
@@ -61,6 +89,7 @@ function runTypeProbeBatch(filename: string): void {
   assert.ok(selectedGroups.includes(group), `Unselected type probe group: ${group}`);
   const cases = fixtures(group);
   assert.ok(cases.length, `No type probes for ${group}`);
+
   for (const { name, title, expected } of cases) {
     test.test(title, () => assert.deepEqual(compile().get(name), expected));
   }

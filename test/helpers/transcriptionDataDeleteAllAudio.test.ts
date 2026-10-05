@@ -1,11 +1,17 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
 
 let userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-delete-all-audio-"));
+
 const originalLoad = Module._load;
 
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
@@ -18,17 +24,23 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
       },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 process.env.NODE_ENV = "test";
 
-const { registerTranscriptionDataHandlers }: typeof import("../../src/helpers/transcriptionDataIpcHandlers.ts") = require("../../src/helpers/transcriptionDataIpcHandlers.ts");
+const {
+  registerTranscriptionDataHandlers,
+}: typeof import("../../src/helpers/transcriptionDataIpcHandlers.ts") = require("../../src/helpers/transcriptionDataIpcHandlers.ts");
+
 const DatabaseManager = require("../../src/helpers/database.ts");
+
 const AudioStorageManager: typeof import("../../src/helpers/audioStorage.ts").AudioStorageManager = require("../../src/helpers/audioStorage.ts");
 
 function isNativeBindingUnavailable(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
+
   return (
     message.includes("NODE_MODULE_VERSION") ||
     message.includes("Could not locate the bindings file")
@@ -39,14 +51,17 @@ function setup(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-delete-all-audio-"));
   let db;
   let audioStorage;
+
   try {
     db = new DatabaseManager();
     audioStorage = new AudioStorageManager();
   } catch (error) {
     if (isNativeBindingUnavailable(error)) {
       t.skip("better-sqlite3 native binding is not available for this Node runtime");
+
       return null;
     }
+
     throw error;
   }
 
@@ -80,6 +95,7 @@ function setup(t: import("node:test").TestContext) {
       logger: { log: () => {}, debug: () => {}, warn: () => {}, error: () => {} },
     }
   );
+
   return { db, audioStorage, handlers };
 }
 
@@ -93,11 +109,13 @@ function audioBackedTranscription(db: any, audioStorage: any, text: string) {
     provider: "test",
     model: "test-model",
   });
+
   return id;
 }
 
 test("delete-all-audio removes files, clears has_audio, keeps records, is repeatable", async (t: import("node:test").TestContext) => {
   const setupResult = setup(t);
+
   if (!setupResult) return;
   const { db, audioStorage, handlers } = setupResult;
 
@@ -108,7 +126,10 @@ test("delete-all-audio removes files, clears has_audio, keeps records, is repeat
   const id2 = audioBackedTranscription(db, audioStorage, "second transcript");
   db.saveTranscription("transcript only");
   assert.deepEqual(
-    db.getAudioFlaggedIds().map((row: any) => row.id).sort(),
+    db
+      .getAudioFlaggedIds()
+      .map((row: any) => row.id)
+      .sort(),
     [id1, id2]
   );
   assert.equal(fs.readdirSync(audioStorage.audioDir).length, 2);
@@ -121,11 +142,13 @@ test("delete-all-audio removes files, clears has_audio, keeps records, is repeat
 
   assert.equal(fs.readdirSync(audioStorage.audioDir).length, 0, "storage must be empty");
   assert.deepEqual(db.getAudioFlaggedIds(), []);
+
   for (const id of [id1, id2]) {
     const row = db.getTranscriptionById(id);
     assert.equal(row.has_audio, 0);
     assert.ok(row.text.includes("transcript"), "transcript record must survive");
   }
+
   assert.equal(db.getTranscriptions(50).length, 3, "no record may be deleted");
 
   const second = await handler({});
@@ -134,6 +157,7 @@ test("delete-all-audio removes files, clears has_audio, keeps records, is repeat
 
 test("delete-all-audio on an empty storage is a no-op", async (t: import("node:test").TestContext) => {
   const setupResult = setup(t);
+
   if (!setupResult) return;
   const { db, audioStorage, handlers } = setupResult;
 

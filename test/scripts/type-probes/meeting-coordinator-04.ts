@@ -1,7 +1,10 @@
 // @probe-name "the full dependency set and the renderer bridge compile clean under strict"
 // @probe-codes []
 // @probe-origin test/scripts/meetingCoordinatorTypeProbe.test.js
-import { registerMeetingCoordinatorHandlers, type IpcMainLike } from "./src/helpers/meetingCoordinatorIpcHandlers.js";
+import {
+  registerMeetingCoordinatorHandlers,
+  type IpcMainLike,
+} from "./src/helpers/meetingCoordinatorIpcHandlers.js";
 import { createMeetingCoordinatorBridge } from "./src/preload/meetingCoordinatorBridge.js";
 
 declare const ipcMain: IpcMainLike;
@@ -13,23 +16,35 @@ declare const ipcRendererLike: {
 };
 
 declare const productionDatabase: import("./src/helpers/database.js").DatabaseManager;
-const checkedDatabase: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps["databaseManager"] = productionDatabase;
+const checkedDatabase: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps["databaseManager"] =
+  productionDatabase;
 void checkedDatabase;
 
 const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoordinatorDeps = {
   databaseManager: {
-      saveMeetingPlatformObservation() {},
-      saveMeetingAudioClockAnchor() {},
-      setMeetingPlatformCoverage() {},
+    saveMeetingPlatformObservation() {},
+    saveMeetingAudioClockAnchor() {},
+    setMeetingPlatformCoverage() {},
     setMeetingRecordingMicIntentionallyEmpty() {},
-    createMeetingRecording: () => ({} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto),
+    createMeetingRecording: () =>
+      ({}) as import("./src/contracts/meetingRecording.js").MeetingRecordingDto,
     createMeetingRecordingEpoch: () => undefined,
     updateMeetingRecordingEpochRecovery: () => undefined,
     addMeetingRecordingEpochAlignment: () => undefined,
     markMeetingRecordingEpochAlignmentUnknown: () => undefined,
-    openMeetingIntentionalInterval: () => ({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", recordingId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", source: "mic", sourceGeneration: 1,
-      sourceStartFrame: 0, sourceEndFrame: null, timelineStartFrame: null, timelineEndFrame: null,
-      startAlignment: null, endAlignment: null, reason: "manual-muted" }),
+    openMeetingIntentionalInterval: () => ({
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      recordingId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      source: "mic",
+      sourceGeneration: 1,
+      sourceStartFrame: 0,
+      sourceEndFrame: null,
+      timelineStartFrame: null,
+      timelineEndFrame: null,
+      startAlignment: null,
+      endAlignment: null,
+      reason: "manual-muted",
+    }),
     closeMeetingIntentionalInterval: () => null,
     listMeetingIntentionalIntervals: () => [],
     markMeetingRecordingFinalizing: () => undefined,
@@ -64,9 +79,17 @@ async function usage(): Promise<void> {
       noteId: null,
       autoEndEligible: true,
     });
-    if (started?.success && started.systemAudioStrategy && started.systemAudioStrategy !== "unsupported") {
-      const strategy: "native" | "loopback" | "pipewire-loopback" | "wasapi-loopback" | "unsupported" =
-        started.systemAudioStrategy;
+    if (
+      started?.success &&
+      started.systemAudioStrategy &&
+      started.systemAudioStrategy !== "unsupported"
+    ) {
+      const strategy:
+        | "native"
+        | "loopback"
+        | "pipewire-loopback"
+        | "wasapi-loopback"
+        | "unsupported" = started.systemAudioStrategy;
       void strategy;
     }
     await api.meetingTranscriptionStop?.({ sessionId: "meeting-1", lastSequence: {} });

@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const LocalModelDownloadStatus = require("../../src/helpers/localModelDownloadStatus");
@@ -8,10 +9,12 @@ test("tracks independent local model downloads with normalized progress", () => 
 
   const whisper = status.start("whisper", "base");
   const llm = status.start("llm", "qwen-2.5-7b");
+
   const installing = status.update("parakeet", "parakeet-tdt-0.6b-v3", {
     phase: "installing",
     progress: 100,
   });
+
   const progressed = status.update("whisper", "base", {
     progress: 42,
     downloadedBytes: 42,
@@ -29,11 +32,13 @@ test("does not reset an existing download and removes it only on finish", () => 
   const status = new LocalModelDownloadStatus();
 
   status.start("llm", "qwen-2.5-7b");
+
   const progressed = status.update("llm", "qwen-2.5-7b", {
     progress: 55,
     downloadedBytes: 55,
     totalBytes: 100,
   });
+
   const duplicateStart = status.start("llm", "qwen-2.5-7b");
 
   assert.deepEqual(duplicateStart, progressed);

@@ -24,12 +24,14 @@ function groupNotesByDate(
   dateFormat: DateFormat
 ): [string, NoteItem[]][] {
   const groups = new Map<string, NoteItem[]>();
+
   for (const note of notes) {
     const key = formatDateGroup(note.updated_at, t, locale, dateFormat);
     const arr = groups.get(key) || [];
     arr.push(note);
     groups.set(key, arr);
   }
+
   return Array.from(groups.entries());
 }
 
@@ -62,6 +64,7 @@ export default function AddNotesToFolderDialog({
   const filteredNotes = useMemo(() => {
     if (!search.trim()) return availableNotes;
     const q = search.toLowerCase();
+
     return availableNotes.filter(
       (n) => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q)
     );
@@ -75,8 +78,10 @@ export default function AddNotesToFolderDialog({
   const toggleNote = useCallback((id: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
+
       if (next.has(id)) next.delete(id);
       else next.add(id);
+
       return next;
     });
   }, []);
@@ -84,16 +89,20 @@ export default function AddNotesToFolderDialog({
   const handleAdd = useCallback(async () => {
     if (selected.size === 0) return;
     setIsAdding(true);
+
     try {
       const targetSpaceId = getFoldersValue().find((f) => f.id === targetFolderId)?.space_id;
       const notesById = new Map(allNotes.map((n) => [n.id, n]));
       await Promise.all(
         Array.from(selected).map((id) => {
           const note = notesById.get(id);
+
           // Same space: the note joins this folder and keeps its others.
           // Folders never span spaces, so a note from another space moves.
           return note && note.space_id === targetSpaceId
-            ? window.electronAPI.updateNote(id, { folder_ids: [...note.folder_ids, targetFolderId] })
+            ? window.electronAPI.updateNote(id, {
+                folder_ids: [...note.folder_ids, targetFolderId],
+              })
             : window.electronAPI.updateNote(id, { folder_id: targetFolderId });
         })
       );
@@ -111,10 +120,7 @@ export default function AddNotesToFolderDialog({
 
         <div className="px-4 pe-12 pt-4 pb-2">
           <div className="relative">
-            <Search
-              size={13}
-              className="absolute start-2.5 top-1/2 -translate-y-1/2 text-muted"
-            />
+            <Search size={13} className="absolute start-2.5 top-1/2 -translate-y-1/2 text-muted" />
             <input
               dir="auto"
               placeholder={t("notes.addToFolder.searchPlaceholder")}
@@ -138,11 +144,10 @@ export default function AddNotesToFolderDialog({
           ) : (
             grouped.map(([dateLabel, notes]) => (
               <div key={dateLabel}>
-                <p className="text-xs font-medium text-muted px-2 pt-3 pb-1.5">
-                  {dateLabel}
-                </p>
+                <p className="text-xs font-medium text-muted px-2 pt-3 pb-1.5">{dateLabel}</p>
                 {notes.map((note) => {
                   const isSelected = selected.has(note.id);
+
                   return (
                     <button
                       key={note.id}

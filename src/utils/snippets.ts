@@ -17,10 +17,12 @@ export function getDictionaryHintWords(
 ): string[] {
   const dictionary = Array.isArray(settings?.customDictionary) ? settings.customDictionary : [];
   const snippets = Array.isArray(settings?.snippets) ? settings.snippets : [];
+
   if (snippets.length === 0) return [...dictionary];
 
   const triggers = snippets
     .map((s) => s?.trigger)
     .filter((t): t is string => typeof t === "string" && t.length > 0);
+
   return [...dictionary, ...triggers];
 }

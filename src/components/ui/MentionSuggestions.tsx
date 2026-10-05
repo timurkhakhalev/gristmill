@@ -30,19 +30,27 @@ const MentionSuggestions = forwardRef<MentionSuggestionsHandle, MentionSuggestio
       () => ({
         onKeyDown: (event) => {
           if (items.length === 0) return false;
+
           if (event.key === "ArrowDown") {
             setSelectedIndex((i) => (i + 1) % items.length);
+
             return true;
           }
+
           if (event.key === "ArrowUp") {
             setSelectedIndex((i) => (i - 1 + items.length) % items.length);
+
             return true;
           }
+
           if (event.key === "Enter" || event.key === "Tab") {
             const item = items[selectedIndex];
+
             if (item) command(item);
+
             return true;
           }
+
           return false;
         },
       }),

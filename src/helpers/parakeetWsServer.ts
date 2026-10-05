@@ -1,37 +1,56 @@
 const { spawn } = require("child_process");
+
 const fs = require("fs");
+
 const path = require("path");
+
 const WebSocket = require("ws");
+
 const debugLogger = require("./debugLogger.js");
+
 const { ensureLocalEngine } = require("./localEngineInstaller.js");
+
 const os = require("os");
+
 const {
   findAvailablePort,
   resolveBinaryPath,
   gracefulStopProcess,
 } = require("../utils/serverUtils.js");
+
 import { getSafeTempDir } from "./safeTempDir.js";
 import { createAbortError } from "./abortError.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
 import { parseOfflineMessage, createOnlineAccumulator } from "./parakeetWsResult.js";
 import { getModelType, getSherpaModelType } from "./parakeetModelInfo.js";
+
 const { pcm16ToFloat32 } = require("../utils/audioUtils.js");
+
 import {
   computeTranscriptionTimeoutMs,
   TRANSCRIPTION_TIMEOUT_FLOOR_MS,
 } from "./transcriptionTimeout.js";
 
 const PORT_RANGE_START = 6006;
+
 const PORT_RANGE_END = 6029;
+
 const STARTUP_TIMEOUT_MS = 60000;
+
 const HEALTH_CHECK_INTERVAL_MS = 5000;
+
 const FLOAT32_BYTES_PER_SAMPLE = 4;
+
 const ONLINE_CHUNK_BYTES = 8000 * FLOAT32_BYTES_PER_SAMPLE;
+
 const FLOAT32_BYTES_PER_SECOND = 16000 * FLOAT32_BYTES_PER_SAMPLE;
+
 // Streaming decodes as the audio drains, so its hard cap is tighter than the offline budget.
 const ONLINE_TIMEOUT_PER_AUDIO_SECOND_MS = 2000;
+
 // After "Done" is sent, give up only after this long without any result message.
 const ONLINE_FINISH_IDLE_TIMEOUT_MS = 10000;
+
 // Must cover the model's 560ms chunk so the flush decodes the final words.
 const ONLINE_END_TAIL_PADDING_S = 0.6;
 
@@ -56,11 +75,14 @@ export class ParakeetWsServer {
 
     const platformArch = `${process.platform}-${process.arch}`;
     const prefix = runtime === "online" ? "sherpa-onnx-online-ws" : "sherpa-onnx-ws";
+
     const binaryName =
       process.platform === "win32" ? `${prefix}-${platformArch}.exe` : `${prefix}-${platformArch}`;
 
     const resolved = resolveBinaryPath(binaryName);
+
     if (resolved) this.cachedBinaryPaths[runtime] = resolved;
+
     return resolved;
   }
 
@@ -83,8 +105,10 @@ export class ParakeetWsServer {
       if (this.startingModelName === modelName && this.startingLanguage === language) {
         return this.startupPromise;
       }
+
       await this.startupPromise.catch(() => {});
     }
+
     if (this.ready && this.modelName === modelName && this.language === language) return;
 
     this.startingModelName = modelName;
@@ -100,16 +124,24 @@ export class ParakeetWsServer {
         this.startingLanguage = null;
       }
     })();
+
     return this.startupPromise;
   }
 
-  async _doStart(modelName: string, modelDir: string, runtime: "offline" | "online", language: string | null): Promise<void> {
+  async _doStart(
+    modelName: string,
+    modelDir: string,
+    runtime: "offline" | "online",
+    language: string | null
+  ): Promise<void> {
     if (!fs.existsSync(modelDir)) throw new Error(`Model directory not found: ${modelDir}`);
     let wsBinary = this.getWsBinaryPath(runtime);
+
     if (!wsBinary) {
       await ensureLocalEngine("sherpa-onnx");
       wsBinary = this.getWsBinaryPath(runtime);
     }
+
     if (!wsBinary) throw new Error(`sherpa-onnx ${runtime} WS server binary not found`);
 
     this.port = await findAvailablePort(PORT_RANGE_START, PORT_RANGE_END);
@@ -119,6 +151,7 @@ export class ParakeetWsServer {
     this.language = language;
 
     const threads = Math.max(1, Math.min(4, Math.floor(os.cpus().length * 0.75)));
+
     const modelArgs =
       getModelType(modelName) === "cohere-transcribe"
         ? [
@@ -131,7 +164,9 @@ export class ParakeetWsServer {
             `--decoder=${path.join(modelDir, "decoder.int8.onnx")}`,
             `--joiner=${path.join(modelDir, "joiner.int8.onnx")}`,
           ];
+
     const sherpaModelType = getSherpaModelType(modelName);
+
     const args = [
       `--tokens=${path.join(modelDir, "tokens.txt")}`,
       ...modelArgs,
@@ -161,12 +196,14 @@ export class ParakeetWsServer {
       cwd: getSafeTempDir(),
       detached: process.platform !== "win32",
     });
+
     this.process = child;
     sidecarPidFile.write("parakeet", child.pid);
 
     let stderrBuffer = "";
     let exitCode: number | null = null;
     let readyResolve: (value: boolean) => void = () => {};
+
     const readyFromStderr = new Promise<boolean>((resolve) => {
       readyResolve = resolve;
     });
@@ -178,6 +215,7 @@ export class ParakeetWsServer {
     child.stderr?.on("data", (data: Buffer) => {
       stderrBuffer += data.toString();
       debugLogger.debug("parakeet-ws stderr", { data: data.toString().trim() });
+
       if (data.toString().includes("Listening on:")) {
         readyResolve(true);
       }
@@ -185,6 +223,7 @@ export class ParakeetWsServer {
 
     child.on("error", (error: Error) => {
       debugLogger.error("parakeet-ws process error", { error: error.message });
+
       if (this.process === child) this.ready = false;
       readyResolve(false);
     });
@@ -192,6 +231,7 @@ export class ParakeetWsServer {
     child.on("close", (code: number | null) => {
       exitCode = code;
       debugLogger.debug("parakeet-ws process exited", { code });
+
       // A superseded child must not clobber the state of its replacement.
       if (this.process === child) {
         this.ready = false;
@@ -199,6 +239,7 @@ export class ParakeetWsServer {
         this.stopHealthCheck();
         sidecarPidFile.clear("parakeet");
       }
+
       readyResolve(false);
     });
 
@@ -256,8 +297,10 @@ export class ParakeetWsServer {
 
   _isProcessAlive(): boolean {
     if (!this.process || this.process.killed) return false;
+
     try {
       process.kill(this.process.pid as number, 0);
+
       return true;
     } catch {
       return false;
@@ -269,6 +312,7 @@ export class ParakeetWsServer {
     this.healthCheckInterval = setInterval(() => {
       if (!this.process) {
         this.stopHealthCheck();
+
         return;
       }
 
@@ -288,7 +332,11 @@ export class ParakeetWsServer {
   }
 
   // signal is optional; dictation and warm-up flows never pass one.
-  transcribe(samplesBuffer: Buffer, sampleRate: number, { signal }: { signal?: AbortSignal } = {}): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
+  transcribe(
+    samplesBuffer: Buffer,
+    sampleRate: number,
+    { signal }: { signal?: AbortSignal } = {}
+  ): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
     if (!this.ready || !this.process) {
       throw new Error("parakeet-ws server is not running");
     }
@@ -300,7 +348,11 @@ export class ParakeetWsServer {
     return this._transcribeOffline(samplesBuffer, sampleRate, signal);
   }
 
-  _transcribeOffline(samplesBuffer: Buffer, sampleRate: number, signal?: AbortSignal): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
+  _transcribeOffline(
+    samplesBuffer: Buffer,
+    sampleRate: number,
+    signal?: AbortSignal
+  ): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
     const timeoutMs = computeTranscriptionTimeoutMs(
       samplesBuffer.length / FLOAT32_BYTES_PER_SAMPLE / sampleRate
     );
@@ -308,6 +360,7 @@ export class ParakeetWsServer {
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
         reject(createAbortError("parakeet-ws transcription cancelled"));
+
         return;
       }
 
@@ -318,6 +371,7 @@ export class ParakeetWsServer {
         try {
           ws.close();
         } catch {}
+
         reject(new Error("parakeet-ws transcription timed out"));
       }, timeoutMs);
 
@@ -327,11 +381,14 @@ export class ParakeetWsServer {
       // in-flight decode of the segment on its own (bounded by the 15s cap).
       const onAbort = () => {
         clearTimeout(timeout);
+
         try {
           ws.close();
         } catch {}
+
         reject(createAbortError("parakeet-ws transcription cancelled"));
       };
+
       signal?.addEventListener("abort", onAbort, { once: true });
 
       ws.on("open", () => {
@@ -368,6 +425,7 @@ export class ParakeetWsServer {
         // so closing without one means the server died or was stopped mid-request.
         if (!result) {
           reject(new Error("parakeet-ws connection closed before transcription completed"));
+
           return;
         }
 
@@ -390,7 +448,10 @@ export class ParakeetWsServer {
   }
 
   // samplesBuffer must already be 16kHz float32.
-  async _transcribeOnline(samplesBuffer: Buffer, signal?: AbortSignal): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
+  async _transcribeOnline(
+    samplesBuffer: Buffer,
+    signal?: AbortSignal
+  ): Promise<{ text: string; elapsed: number; truncated?: boolean }> {
     if (signal?.aborted) throw createAbortError("parakeet-ws transcription cancelled");
 
     const startTime = Date.now();
@@ -406,6 +467,7 @@ export class ParakeetWsServer {
     debugLogger.debug("parakeet-ws sending streaming audio", {
       samplesBytes: samplesBuffer.length,
     });
+
     for (let offset = 0; offset < samplesBuffer.length; offset += ONLINE_CHUNK_BYTES) {
       stream.sendFloat32(samplesBuffer.subarray(offset, offset + ONLINE_CHUNK_BYTES));
     }
@@ -413,6 +475,7 @@ export class ParakeetWsServer {
     // Blasted audio drains faster than real time but not instantly; scale both
     // the hard cap and the quiet-period allowance with the audio length.
     const audioSeconds = samplesBuffer.length / FLOAT32_BYTES_PER_SECOND;
+
     const timeout = setTimeout(
       () => {
         timedOut = true;
@@ -420,13 +483,18 @@ export class ParakeetWsServer {
       },
       Math.max(TRANSCRIPTION_TIMEOUT_FLOOR_MS, audioSeconds * ONLINE_TIMEOUT_PER_AUDIO_SECOND_MS)
     );
+
     const onAbort = () => stream.abort();
     signal?.addEventListener("abort", onAbort, { once: true });
+
     try {
       const idleTimeoutMs = Math.max(ONLINE_FINISH_IDLE_TIMEOUT_MS, audioSeconds * 500);
       const { text, truncated } = await stream.finish({ idleTimeoutMs });
+
       if (signal?.aborted) throw createAbortError("parakeet-ws transcription cancelled");
+
       if (timedOut) throw new Error("parakeet-ws transcription timed out");
+
       if (streamError) {
         throw new Error(`parakeet-ws transcription failed: ${(streamError as Error).message}`);
       }
@@ -438,6 +506,7 @@ export class ParakeetWsServer {
         resultLength: text.length,
         resultPreview: text.slice(0, 200),
       });
+
       return truncated ? { text, elapsed, truncated } : { text, elapsed };
     } finally {
       clearTimeout(timeout);
@@ -445,10 +514,19 @@ export class ParakeetWsServer {
     }
   }
 
-  createOnlineStream({ onUpdate, onError }: { onUpdate?: (text: string) => void; onError?: (error: Error) => void } = {}): { sendFloat32(b: Buffer): void; sendPcm16(b: Buffer): void; finish(o?: { idleTimeoutMs?: number }): Promise<{ text: string; truncated: boolean }>; abort(): void } {
+  createOnlineStream({
+    onUpdate,
+    onError,
+  }: { onUpdate?: (text: string) => void; onError?: (error: Error) => void } = {}): {
+    sendFloat32(b: Buffer): void;
+    sendPcm16(b: Buffer): void;
+    finish(o?: { idleTimeoutMs?: number }): Promise<{ text: string; truncated: boolean }>;
+    abort(): void;
+  } {
     if (!this.ready || !this.process) {
       throw new Error("parakeet-ws server is not running");
     }
+
     if (this.modelRuntime !== "online") {
       throw new Error("createOnlineStream requires an online-runtime model");
     }
@@ -478,6 +556,7 @@ export class ParakeetWsServer {
       if (closed) return;
       closed = true;
       clearIdleTimer();
+
       if (finishResolve) finishResolve({ text: results.text(), truncated });
     };
 
@@ -489,9 +568,11 @@ export class ParakeetWsServer {
         if (closed) return;
         truncated = true;
         debugLogger.warn("parakeet-ws online finish timed out; result may be truncated");
+
         try {
           ws.close();
         } catch {}
+
         settle();
       }, idleTimeoutMs);
       idleTimer.unref?.();
@@ -499,17 +580,22 @@ export class ParakeetWsServer {
 
     const sendFloat32 = (float32Samples: Buffer) => {
       if (closed) return;
+
       // A chunk after finish() means the renderer flushed late (contract broke) so the
       // tail is lost; when only closed is set, settle already happened and a plain drop is fine.
       if (finishResolve) {
         truncated = true;
+
         return;
       }
+
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(float32Samples, (err: Error | undefined) => {
           if (err) {
             truncated = true;
-            debugLogger.error("parakeet-ws online stream send error", { error: (err as Error).message });
+            debugLogger.error("parakeet-ws online stream send error", {
+              error: (err as Error).message,
+            });
           }
         });
       } else {
@@ -522,23 +608,32 @@ export class ParakeetWsServer {
         ws.send(chunk, (err: Error | undefined) => {
           if (err) {
             truncated = true;
-            debugLogger.error("parakeet-ws online stream send error", { error: (err as Error).message });
+            debugLogger.error("parakeet-ws online stream send error", {
+              error: (err as Error).message,
+            });
           }
         });
       }
+
       pendingChunks.length = 0;
+
       if (finishResolve) ws.send("Done");
     });
 
     ws.on("message", (data: Buffer) => {
       const message = data.toString();
+
       if (finishResolve) armIdleTimer();
+
       if (message === "Done!") {
         serverDone = true;
         ws.close();
+
         return;
       }
+
       const text = results.push(message);
+
       if (!closed && text && text !== lastEmitted) {
         lastEmitted = text;
         onUpdate?.(text);
@@ -550,11 +645,13 @@ export class ParakeetWsServer {
         truncated = true;
         onError?.(new Error("connection closed before transcription completed"));
       }
+
       settle();
     });
 
     ws.on("error", (error: Error) => {
       debugLogger.warn("parakeet-ws online stream error", { error: error.message });
+
       if (!serverDone && !aborted) truncated = true;
       onError?.(error);
       settle();
@@ -565,23 +662,30 @@ export class ParakeetWsServer {
       sendPcm16: (pcmBuffer: Buffer) => sendFloat32(pcm16ToFloat32(pcmBuffer)),
       finish: (options: { idleTimeoutMs?: number } = {}) => {
         if (finishPromise) return finishPromise;
+
         if (options.idleTimeoutMs) idleTimeoutMs = options.idleTimeoutMs;
         finishPromise = new Promise<{ text: string; truncated: boolean }>((resolve) => {
           if (closed) {
             resolve({ text: results.text(), truncated });
+
             return;
           }
+
           finishResolve = resolve;
+
           if (ws.readyState === WebSocket.OPEN) ws.send("Done");
           armIdleTimer();
         });
+
         return finishPromise;
       },
       abort: () => {
         aborted = true;
+
         try {
           ws.close();
         } catch {}
+
         settle();
       },
     };
@@ -592,6 +696,7 @@ export class ParakeetWsServer {
 
     if (!this.process) {
       this.ready = false;
+
       return;
     }
 
@@ -612,7 +717,13 @@ export class ParakeetWsServer {
     this.language = null;
   }
 
-  getStatus(): { available: boolean; running: boolean; starting: boolean; port: number | null; modelName: string | null } {
+  getStatus(): {
+    available: boolean;
+    running: boolean;
+    starting: boolean;
+    port: number | null;
+    modelName: string | null;
+  } {
     return {
       available: this.hasAnyWsBinary(),
       running: this.ready && this.process !== null,
@@ -623,9 +734,8 @@ export class ParakeetWsServer {
   }
 }
 
-
-
 // Dual export: legacy tests require this module as the class itself, while
 // the TS graph imports the named export.
 module.exports = ParakeetWsServer;
+
 module.exports.ParakeetWsServer = ParakeetWsServer;

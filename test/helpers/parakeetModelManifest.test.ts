@@ -1,20 +1,32 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path: typeof import("node:path") = require("node:path");
+
 const Module = require("node:module");
+
 const registry = require("../../src/models/modelRegistryData.json");
-const { getRequiredModelFiles }: typeof import("../../src/helpers/parakeetModelInfo") = require("../../src/helpers/parakeetModelInfo");
+
+const {
+  getRequiredModelFiles,
+}: typeof import("../../src/helpers/parakeetModelInfo") = require("../../src/helpers/parakeetModelInfo");
 
 const MODEL = "orukeet-v0.1.0";
+
 const info = registry.parakeetModels[MODEL];
+
 const manifest = {
   archive: path.posix.basename(new URL(info.downloadUrl).pathname),
   extract_dir: info.extractDir,
   archive_bytes: info.expectedSizeBytes,
   archive_sha256: "a".repeat(64),
 };
+
 const managerFile = path.resolve(__dirname, "../../src/helpers/parakeet.ts");
 
 interface SetupOptions {
@@ -32,9 +44,19 @@ interface SetupOptions {
 function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "parakeet-manifest-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const calls : any = { downloads: [], manifests: [], events: [], errors: [], warms: 0, timeouts: [] };
+
+  const calls: any = {
+    downloads: [],
+    manifests: [],
+    events: [],
+    errors: [],
+    warms: 0,
+    timeouts: [],
+  };
+
   const timeout = new AbortController();
   let downloadControl: any;
+
   const fakeFs = options.writeError
     ? {
         ...fs,
@@ -46,6 +68,7 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
         },
       }
     : fs;
+
   const stubs: any = {
     fs: fakeFs,
     "./debugLogger": {
@@ -80,12 +103,18 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
       },
     },
     "./downloadUtils": {
-      async downloadFile(url: string, target: unknown, { signal }: { signal: { aborted: boolean } }) {
+      async downloadFile(
+        url: string,
+        target: unknown,
+        { signal }: { signal: { aborted: boolean } }
+      ) {
         calls.downloads.push(url);
+
         if (options.cancel) {
           signal.aborted = true;
           throw Object.assign(new Error("cancelled"), { isAbort: true });
         }
+
         if (options.downloadError) throw new Error("download failed");
         fs.writeFileSync(target, "archive fixture");
         calls.events.push("downloaded");
@@ -98,6 +127,7 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
             signal.aborted = true;
           },
         };
+
         return downloadControl;
       },
       createDownloadInProgressError: () => new Error("download already running"),
@@ -109,12 +139,14 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
         calls.manifests.push({ url, init });
         calls.events.push("manifest");
         const response = options.fetch ? await options.fetch(url, init) : Response.json(manifest);
+
         if (!response.ok) {
           throw Object.assign(new Error(`HTTP ${response.status} fetching ${url}`), {
             isHttpError: true,
             statusCode: response.status,
           });
         }
+
         return response.json();
       },
     },
@@ -124,20 +156,26 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
   // request (specifiers now carry the post-cutover .js extension) routes
   // through Module._load and can be stubbed per test.
   const originalLoad = Module._load;
+
   const stubFor = (request: string) => {
     if (request === "fs") return stubs.fs;
+
     if (request.startsWith("./") || request.startsWith("../")) {
       return stubs[request.replace(/\.js$/, "")];
     }
+
     return undefined;
   };
+
   Module._load = function (request: string, parent: unknown, isMain: boolean) {
     return stubFor(request) || originalLoad.call(this, request, parent, isMain);
   };
+
   const realAbortSignal = globalThis.AbortSignal;
   globalThis.AbortSignal = Object.assign(Object.create(realAbortSignal), {
     timeout(ms: number) {
       calls.timeouts.push(ms);
+
       return timeout.signal;
     },
   });
@@ -147,31 +185,39 @@ function setup(t: import("node:test").TestContext, options: SetupOptions = {}) {
   });
   delete require.cache[managerFile];
   let ParakeetManager;
+
   try {
     ({ ParakeetManager } = require(managerFile));
   } finally {
     Module._load = originalLoad;
   }
+
   const manager = new ParakeetManager();
   let extracts = 0;
   manager._runTarExtract = async (_archive: unknown, destination: string) => {
     extracts++;
+
     if (options.extractionError || (options.retryExtraction && extracts === 1))
       throw new Error("bad archive");
     const name = options.model || MODEL;
     const dir = path.join(destination, registry.parakeetModels[name].extractDir);
     fs.mkdirSync(dir, { recursive: true });
+
     for (const file of getRequiredModelFiles(name))
       fs.writeFileSync(path.join(dir, file), "model fixture");
+
     if (options.abortDuringInstall) downloadControl.abort();
     calls.events.push("extracted");
   };
+
   let manifestTask: any;
   const save = manager._saveModelManifest.bind(manager);
   manager._saveModelManifest = (...args: unknown[]) => {
     manifestTask = save(...args);
+
     return manifestTask;
   };
+
   return {
     manager,
     root,
@@ -209,6 +255,7 @@ test("fresh install fetches one manifest after extraction and warmup, then saves
   assert.deepEqual(h.calls.timeouts, [3000]);
   assert.equal(h.manager.currentDownloadProcess, null);
   assert.deepEqual(JSON.parse(fs.readFileSync(h.sidecar)), manifest);
+
   for (const file of getRequiredModelFiles(MODEL))
     assert.equal(fs.readFileSync(path.join(h.root, MODEL, file), "utf8"), "model fixture");
   await h.manager.downloadParakeetModel(MODEL);
@@ -220,17 +267,21 @@ for (const kind of ["installed", "cached archive", "other model"]) {
   test(`${kind} does not fetch a manifest`, async (t: import("node:test").TestContext) => {
     const model = kind === "other model" ? "parakeet-tdt-0.6b-v3" : MODEL;
     const h = setup(t, { model });
+
     if (kind === "installed") {
       fs.mkdirSync(path.join(h.root, MODEL));
       fs.writeFileSync(path.join(h.root, MODEL, "tokens.txt"), "installed");
     }
+
     if (kind === "cached archive") {
       const archive = path.join(h.root, `${MODEL}.tar.bz2`);
       fs.writeFileSync(archive, "");
       fs.truncateSync(archive, info.expectedSizeBytes);
     }
+
     assert.equal((await h.manager.downloadParakeetModel(model)).success, true);
     assert.equal(h.calls.manifests.length, 0);
+
     if (kind !== "other model") assert.equal(h.calls.downloads.length, 0);
   });
 }
@@ -282,6 +333,7 @@ test(
           signal.addEventListener("abort", () => reject(signal.reason), { once: true });
         }),
     });
+
     t.after(() => h.timeout.abort());
     const result = await h.manager.downloadParakeetModel(MODEL);
     assert.equal(result.success, true);
@@ -318,6 +370,7 @@ const failures: [string, SetupOptions][] = [
   ["invalid digest", { fetch: async () => Response.json({ ...manifest, archive_sha256: "bad" }) }],
   ["sidecar write failure", { writeError: true }],
 ];
+
 for (const [label, options] of failures) {
   test(`${label} leaves the installed model usable`, async (t: import("node:test").TestContext) => {
     const h = setup(t, options);
@@ -349,12 +402,14 @@ test("a model without expectedSizeBytes skips the archive-size check", async (t:
 
 test("a late manifest never recreates a deleted model directory", async (t: import("node:test").TestContext) => {
   let finish!: (response: Response) => void;
+
   const h = setup(t, {
     fetch: () =>
       new Promise<Response>((resolve) => {
         finish = resolve;
       }),
   });
+
   await h.manager.downloadParakeetModel(MODEL);
   fs.rmSync(path.join(h.root, MODEL), { recursive: true });
   finish(Response.json(manifest));
@@ -365,12 +420,14 @@ test("a late manifest never recreates a deleted model directory", async (t: impo
 
 test("a late manifest never overwrites an existing sidecar", async (t: import("node:test").TestContext) => {
   let finish!: (response: Response) => void;
+
   const h = setup(t, {
     fetch: () =>
       new Promise<Response>((resolve) => {
         finish = resolve;
       }),
   });
+
   await h.manager.downloadParakeetModel(MODEL);
   fs.writeFileSync(h.sidecar, "existing provenance");
   finish(Response.json(manifest));

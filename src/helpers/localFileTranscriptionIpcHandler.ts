@@ -30,9 +30,11 @@ type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
 
 function parseResponse<T>(schema: ZodType<T>, raw: unknown): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error("Local transcription returned an unexpected result shape");
   }
+
   return result.data;
 }
 
@@ -51,25 +53,33 @@ export function registerLocalFileTranscriptionHandler(
       // Uploads pass a requestId so cancel-upload-transcription can abort the
       // local decode; flows without one (voice drafts) register nothing.
       const { signal, release } = deps.uploadCancelRegistry.register(options.requestId);
+
       try {
         if (typeof filePath !== "string") {
           return { success: false, error: "Invalid file path" };
         }
+
         const real = deps.resolveAllowedAudioPath(filePath);
+
         if (!real) return { success: false, error: "File path not allowed" };
+
         return parseResponse(
           transcriptionResponseSchema,
           await transcribeLocalFile(deps, real, { ...options, signal })
         );
       } catch (error) {
         const err = error as { name?: string; message?: string };
+
         if (err?.name === "AbortError" || signal?.aborted) {
           deps.logDebug("Local audio file transcription cancelled", {
             requestId: options.requestId,
           });
+
           return { success: false, error: "Cancelled", code: "UPLOAD_CANCELLED" };
         }
+
         deps.logError("Audio file transcription error", { error: err?.message });
+
         return { success: false, error: err?.message ?? "Transcription failed" };
       } finally {
         release();

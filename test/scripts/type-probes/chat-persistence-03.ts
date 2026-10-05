@@ -4,23 +4,52 @@
 import { registerChatPersistenceHandlers } from "./src/helpers/chatPersistenceIpcHandlers.js";
 import { createChatPersistenceBridge } from "./src/preload/chatBridge.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 registerChatPersistenceHandlers(ipcMain, {
   database: {
     createAgentConversation: (title, noteId, spaceId, folderId) => {
-      void title; void noteId; void spaceId; void folderId;
+      void title;
+      void noteId;
+      void spaceId;
+      void folderId;
       return null;
     },
     getConversationsForNote: (noteId: unknown, limit: unknown) => {
       void limit;
       return Number(noteId) > 0
-        ? [{ id: 1, title: "t", note_id: null, space_id: null, folder_id: null, archived_at: null, created_at: "c", updated_at: "u" }]
+        ? [
+            {
+              id: 1,
+              title: "t",
+              note_id: null,
+              space_id: null,
+              folder_id: null,
+              archived_at: null,
+              created_at: "c",
+              updated_at: "u",
+            },
+          ]
         : [];
     },
     getConversationsForContainer: (spaceId, folderId, limit) => {
-      void folderId; void limit;
-      return [{ id: 1, title: "t", note_id: null, space_id: spaceId, folder_id: null, archived_at: null, created_at: "c", updated_at: "u", message_count: 0 }];
+      void folderId;
+      void limit;
+      return [
+        {
+          id: 1,
+          title: "t",
+          note_id: null,
+          space_id: spaceId,
+          folder_id: null,
+          archived_at: null,
+          created_at: "c",
+          updated_at: "u",
+          message_count: 0,
+        },
+      ];
     },
     getAgentConversations: (limit) => {
       void limit;
@@ -35,13 +64,28 @@ registerChatPersistenceHandlers(ipcMain, {
       return { success: true };
     },
     updateAgentConversationTitle: (id, title) => {
-      void id; void title;
+      void id;
+      void title;
       return { success: true };
     },
-    addAgentMessage: (conversationId: unknown, role: unknown, content: unknown, metadata: unknown) => {
-      void role; void content; void metadata;
+    addAgentMessage: (
+      conversationId: unknown,
+      role: unknown,
+      content: unknown,
+      metadata: unknown
+    ) => {
+      void role;
+      void content;
+      void metadata;
       return Number(conversationId) > 0
-        ? { id: 2, conversation_id: conversationId, role: "user", content: "x", metadata: null, created_at: "c" }
+        ? {
+            id: 2,
+            conversation_id: conversationId,
+            role: "user",
+            content: "x",
+            metadata: null,
+            created_at: "c",
+          }
         : null;
     },
     getAgentMessages: (conversationId) => {
@@ -49,11 +93,14 @@ registerChatPersistenceHandlers(ipcMain, {
       return [];
     },
     getAgentConversationsWithPreview: (limit, offset, includeArchived) => {
-      void limit; void offset; void includeArchived;
+      void limit;
+      void offset;
+      void includeArchived;
       return [];
     },
     searchAgentConversations: (query, limit) => {
-      void query; void limit;
+      void query;
+      void limit;
       return [];
     },
     archiveAgentConversation: (id) => {
@@ -71,5 +118,7 @@ declare const ipcRendererLike: {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
 };
 const bridge = createChatPersistenceBridge(ipcRendererLike);
-const titles: Promise<string[]> = bridge.getAgentConversations(10).then((rows) => rows.map((r) => r.title));
+const titles: Promise<string[]> = bridge
+  .getAgentConversations(10)
+  .then((rows) => rows.map((r) => r.title));
 void titles;

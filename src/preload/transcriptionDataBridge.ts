@@ -33,17 +33,16 @@ interface IpcRendererLike {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
   send(channel: string, ...args: unknown[]): void;
   on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
-  removeListener(
-    channel: string,
-    listener: (event: unknown, ...args: unknown[]) => void
-  ): unknown;
+  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 }
 
 function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw new Error(`Unexpected response shape from ${channel}`);
   }
+
   return result.data;
 }
 
@@ -57,11 +56,14 @@ function subscribe<T>(
 ): () => void {
   const listener = (_event: unknown, payload: unknown) => {
     const parsed = schema.safeParse(payload);
+
     if (parsed.success) {
       deliver(parsed.data);
     }
   };
+
   ipcRenderer.on(channel, listener);
+
   return () => {
     ipcRenderer.removeListener(channel, listener);
   };
@@ -90,10 +92,7 @@ export function createTranscriptionDataBridge(ipcRenderer: IpcRendererLike): Tra
         options
       ),
     clearTranscriptions: () =>
-      invokeParse(
-        transcriptionClearResultSchema,
-        transcriptionDataChannels.clearTranscriptions
-      ),
+      invokeParse(transcriptionClearResultSchema, transcriptionDataChannels.clearTranscriptions),
     deleteTranscription: (id) =>
       invokeParse(
         transcriptionDeleteResultSchema,
@@ -114,8 +113,7 @@ export function createTranscriptionDataBridge(ipcRenderer: IpcRendererLike): Tra
         transcriptionDataChannels.mergeAudioSegments,
         segments
       ),
-    getAudioPath: (id) =>
-      invokeParse(zStringOrNull, transcriptionDataChannels.getAudioPath, id),
+    getAudioPath: (id) => invokeParse(zStringOrNull, transcriptionDataChannels.getAudioPath, id),
     showAudioInFolder: (id) =>
       invokeParse(zSuccess, transcriptionDataChannels.showAudioInFolder, id),
     getAudioBuffer: (id) =>
@@ -130,11 +128,7 @@ export function createTranscriptionDataBridge(ipcRenderer: IpcRendererLike): Tra
       ipcRenderer.send(transcriptionDataChannels.syncRetentionSettings, settings);
     },
     getTranscriptionById: (id) =>
-      invokeParse(
-        transcriptionOrNullSchema,
-        transcriptionDataChannels.getTranscriptionById,
-        id
-      ),
+      invokeParse(transcriptionOrNullSchema, transcriptionDataChannels.getTranscriptionById, id),
     updateTranscriptionText: (id, text, rawText) =>
       invokeParse(
         transcriptionUpdateResultSchema,
@@ -150,27 +144,18 @@ export function createTranscriptionDataBridge(ipcRenderer: IpcRendererLike): Tra
     exportDictionary: (words) =>
       invokeParse(exportResultSchema, transcriptionDataChannels.exportDictionary, words),
     selectAudioFile: (options) =>
-      invokeParse(
-        selectAudioFileResultSchema,
-        transcriptionDataChannels.selectAudioFile,
-        options
-      ),
+      invokeParse(selectAudioFileResultSchema, transcriptionDataChannels.selectAudioFile, options),
     getFileSize: (filePath) =>
       invokeParse(zNumber, transcriptionDataChannels.getFileSize, filePath),
     getPendingNoteNavigation: () =>
-      invokeParse(
-        pendingNoteNavigationSchema,
-        transcriptionDataChannels.getPendingNoteNavigation
-      ),
+      invokeParse(pendingNoteNavigationSchema, transcriptionDataChannels.getPendingNoteNavigation),
     onNoteNavigationPending: (callback) => {
       // The event carries no payload — main only pings the panel.
       const listener = () => callback();
       ipcRenderer.on(transcriptionDataEventChannels.noteNavigationPending, listener);
+
       return () => {
-        ipcRenderer.removeListener(
-          transcriptionDataEventChannels.noteNavigationPending,
-          listener
-        );
+        ipcRenderer.removeListener(transcriptionDataEventChannels.noteNavigationPending, listener);
       };
     },
     onTranscriptionAdded: (callback) =>
@@ -205,6 +190,9 @@ export function createTranscriptionDataBridge(ipcRenderer: IpcRendererLike): Tra
 }
 
 const zSuccess = z.object({ success: z.boolean() });
+
 const zStringOrNull = z.string().nullable();
+
 const zBufferOrNull = z.instanceof(ArrayBuffer).nullable();
+
 const zNumber = z.number();

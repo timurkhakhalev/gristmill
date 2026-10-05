@@ -17,6 +17,7 @@ function parseHostname(url: string): string | null {
       // fall through to the protocol-prefixed retry
     }
   }
+
   return null;
 }
 
@@ -32,9 +33,11 @@ export function isTinfoilInferenceUrl(
   providers: readonly TranscriptionProviderBaseUrl[]
 ): boolean {
   const tinfoilBaseUrl = providers.find((p) => p.id === "tinfoil")?.baseUrl;
+
   if (!tinfoilBaseUrl || !url) return false;
 
   const tinfoilHost = parseHostname(tinfoilBaseUrl);
   const candidateHost = parseHostname(url);
+
   return tinfoilHost !== null && candidateHost === tinfoilHost;
 }

@@ -107,6 +107,7 @@ export default function PersonalNotesView({
   const flushPendingSaves = useCallback((_reason: PendingSaveReason) => {
     for (const ref of [pendingDocumentRef, pendingEnhancedRef]) {
       const pending = ref.current;
+
       if (pending) {
         clearTimeout(pending.timer);
         ref.current = null;
@@ -115,21 +116,31 @@ export default function PersonalNotesView({
     }
   }, []);
 
-  const transitionToNote = useCallback((nextNote: NoteItem | null, reason: "switch" | "overview") => {
-    flushPendingSaves(reason);
-    const nextDraft = planNoteTransition(nextNote, null, null).nextDraft;
-    if (nextDraft && nextNote) {
-      const retained = getNoteEditorUpdates(nextNote.id);
-      commitDraft({ ...nextDraft,
-        title: retained.title ?? nextDraft.title,
-        content: retained.content ?? nextDraft.content,
-        enhancedContent: retained.enhanced_content !== undefined ? retained.enhanced_content : nextDraft.enhancedContent,
-        dirtyTitle: retained.title !== undefined,
-        dirtyContent: retained.content !== undefined,
-      });
-    } else commitDraft(null);
-  }, [commitDraft, flushPendingSaves]);
+  const transitionToNote = useCallback(
+    (nextNote: NoteItem | null, reason: "switch" | "overview") => {
+      flushPendingSaves(reason);
+      const nextDraft = planNoteTransition(nextNote, null, null).nextDraft;
+
+      if (nextDraft && nextNote) {
+        const retained = getNoteEditorUpdates(nextNote.id);
+        commitDraft({
+          ...nextDraft,
+          title: retained.title ?? nextDraft.title,
+          content: retained.content ?? nextDraft.content,
+          enhancedContent:
+            retained.enhanced_content !== undefined
+              ? retained.enhanced_content
+              : nextDraft.enhancedContent,
+          dirtyTitle: retained.title !== undefined,
+          dirtyContent: retained.content !== undefined,
+        });
+      } else commitDraft(null);
+    },
+    [commitDraft, flushPendingSaves]
+  );
+
   const { isComplete: isOnboardingComplete, complete: completeOnboarding } = useNotesOnboarding();
+
   const {
     startRecordingForNote,
     handleNewNoteIn,
@@ -159,6 +170,7 @@ export default function PersonalNotesView({
   const activeFolderName = useMemo(() => {
     if (!activeNote?.folder_id) return null;
     const folder = folders.find((f) => f.id === activeNote.folder_id);
+
     return folder ? defaultFolderDisplayName(folder, t) : null;
   }, [activeNote?.folder_id, folders, t]);
 
@@ -173,8 +185,10 @@ export default function PersonalNotesView({
   useEffect(() => {
     if (!activeNote?.calendar_event_id) {
       setCalendarEvent(null);
+
       return;
     }
+
     window.electronAPI.gcalGetEvent(activeNote.calendar_event_id).then((result) => {
       setCalendarEvent(result?.success ? result.event : null);
     });
@@ -199,6 +213,7 @@ export default function PersonalNotesView({
       if (currentDraft || pendingDocumentRef.current || pendingEnhancedRef.current) {
         transitionToNote(null, "overview");
       }
+
       return;
     }
 
@@ -206,6 +221,7 @@ export default function PersonalNotesView({
       // Captured writes retain the old owner while the complete next draft is
       // installed atomically.
       transitionToNote(activeNote, "switch");
+
       return;
     }
 
@@ -214,19 +230,27 @@ export default function PersonalNotesView({
     // external value and dirty user fields keep the local value for their
     // pending save (#157).
     const retained = getNoteEditorUpdates(activeNote.id);
-    const { draft: merged } = acceptExternalNoteUpdate({ ...currentDraft,
-      title: retained.title ?? currentDraft.title,
-      content: retained.content ?? currentDraft.content,
-      dirtyTitle: retained.title !== undefined,
-      dirtyContent: retained.content !== undefined,
-    }, {
-      title: activeNote.title,
-      content: activeNote.content,
-    });
-    commitDraft({ ...merged,
-      enhancedContent: retained.enhanced_content !== undefined
-        ? retained.enhanced_content
-        : (activeNote.enhanced_content ?? null),
+
+    const { draft: merged } = acceptExternalNoteUpdate(
+      {
+        ...currentDraft,
+        title: retained.title ?? currentDraft.title,
+        content: retained.content ?? currentDraft.content,
+        dirtyTitle: retained.title !== undefined,
+        dirtyContent: retained.content !== undefined,
+      },
+      {
+        title: activeNote.title,
+        content: activeNote.content,
+      }
+    );
+
+    commitDraft({
+      ...merged,
+      enhancedContent:
+        retained.enhanced_content !== undefined
+          ? retained.enhanced_content
+          : (activeNote.enhanced_content ?? null),
     });
   }, [activeNote, editorSave, commitDraft, transitionToNote]);
 
@@ -237,6 +261,7 @@ export default function PersonalNotesView({
     // any queued write intact instead of cancelling it.
     if (!snapshot.dirtyTitle && !snapshot.dirtyContent) return;
     const current = pendingDocumentRef.current;
+
     if (current) clearTimeout(current.timer);
 
     const pending: PendingDocumentSave = {
@@ -249,6 +274,7 @@ export default function PersonalNotesView({
         void flushNoteEditorWrites(pending.noteId);
       }, 1000),
     };
+
     retainNoteEditorUpdates(pending.noteId, {
       ...(pending.title !== undefined ? { title: pending.title } : {}),
       ...(pending.content !== undefined ? { content: pending.content } : {}),
@@ -258,6 +284,7 @@ export default function PersonalNotesView({
 
   const scheduleEnhancedSave = useCallback((snapshot: NoteEditorDraft) => {
     const current = pendingEnhancedRef.current;
+
     if (current) clearTimeout(current.timer);
 
     const pending: PendingEnhancedSave = {
@@ -269,6 +296,7 @@ export default function PersonalNotesView({
         void flushNoteEditorWrites(pending.noteId);
       }, 1000),
     };
+
     retainNoteEditorUpdates(pending.noteId, { enhanced_content: pending.enhancedContent });
     pendingEnhancedRef.current = pending;
   }, []);
@@ -280,6 +308,7 @@ export default function PersonalNotesView({
         field: "title",
         value: title,
       });
+
       if (!next) return;
       commitDraft(next);
       scheduleDocumentSave(next);
@@ -294,6 +323,7 @@ export default function PersonalNotesView({
         field: "content",
         value: content,
       });
+
       if (!next) return;
       commitDraft(next);
       scheduleDocumentSave(next);
@@ -308,6 +338,7 @@ export default function PersonalNotesView({
         field: "enhancedContent",
         value: content,
       });
+
       if (!next) return;
       commitDraft(next);
       scheduleEnhancedSave(next);
@@ -318,42 +349,63 @@ export default function PersonalNotesView({
   // Materialization carries its saved row through lazy mount. If navigation
   // already selected another Note, persist the handoff under its own owner
   // without replacing that editor or cancelling its pending timer.
-  const handleEventDraftHandoff = useCallback((handoff: EventDraftHandoff) => {
-    void (async () => {
-      const cached = getNoteFromStore(handoff.noteId);
-      const fetched = !cached && handoff.mode === "append"
-        ? await window.electronAPI.getNote(handoff.noteId)
-        : handoff.note;
-      if (!fetched) return; // A deleted Note must not be recreated.
-      const stored = getNoteFromStore(handoff.noteId) ?? fetched;
-      const retained = getNoteEditorUpdates(handoff.noteId);
-      const current = draftRef.current?.noteId === handoff.noteId
-        ? draftRef.current
-        : { noteId: handoff.noteId, title: retained.title ?? stored.title,
-            content: retained.content ?? stored.content, enhancedContent: stored.enhanced_content ?? null };
-      const merged = applyEventDraftHandoff(current, handoff);
-      if (!merged.dirtyTitle && !merged.dirtyContent) return;
-      if (draftRef.current?.noteId === handoff.noteId) {
-        commitDraft(merged);
-        scheduleDocumentSave(merged);
-      } else {
-        retainNoteEditorUpdates(handoff.noteId, {
-          ...(merged.dirtyTitle ? { title: merged.title } : {}),
-          ...(merged.dirtyContent ? { content: merged.content } : {}),
-        });
-        void flushNoteEditorWrites(handoff.noteId);
-      }
-    })().catch(error => {
-      // Keep the handoff for the next editor mount if its merge-base read fails.
-      if (eventDraftHandoff && !eventDraftHandoff.current) eventDraftHandoff.current = handoff;
-      logger.warn("Failed to prepare event draft handoff", { error: (error as Error).message }, "notes");
-    });
-  }, [commitDraft, eventDraftHandoff, scheduleDocumentSave]);
+  const handleEventDraftHandoff = useCallback(
+    (handoff: EventDraftHandoff) => {
+      void (async () => {
+        const cached = getNoteFromStore(handoff.noteId);
+
+        const fetched =
+          !cached && handoff.mode === "append"
+            ? await window.electronAPI.getNote(handoff.noteId)
+            : handoff.note;
+
+        if (!fetched) return; // A deleted Note must not be recreated.
+        const stored = getNoteFromStore(handoff.noteId) ?? fetched;
+        const retained = getNoteEditorUpdates(handoff.noteId);
+
+        const current =
+          draftRef.current?.noteId === handoff.noteId
+            ? draftRef.current
+            : {
+                noteId: handoff.noteId,
+                title: retained.title ?? stored.title,
+                content: retained.content ?? stored.content,
+                enhancedContent: stored.enhanced_content ?? null,
+              };
+
+        const merged = applyEventDraftHandoff(current, handoff);
+
+        if (!merged.dirtyTitle && !merged.dirtyContent) return;
+
+        if (draftRef.current?.noteId === handoff.noteId) {
+          commitDraft(merged);
+          scheduleDocumentSave(merged);
+        } else {
+          retainNoteEditorUpdates(handoff.noteId, {
+            ...(merged.dirtyTitle ? { title: merged.title } : {}),
+            ...(merged.dirtyContent ? { content: merged.content } : {}),
+          });
+          void flushNoteEditorWrites(handoff.noteId);
+        }
+      })().catch((error) => {
+        // Keep the handoff for the next editor mount if its merge-base read fails.
+        if (eventDraftHandoff && !eventDraftHandoff.current) eventDraftHandoff.current = handoff;
+        logger.warn(
+          "Failed to prepare event draft handoff",
+          { error: (error as Error).message },
+          "notes"
+        );
+      });
+    },
+    [commitDraft, eventDraftHandoff, scheduleDocumentSave]
+  );
+
   // The pending handoff arrives before this view mounts (ControlPanel holds
   // it in a ref while the note is created): drain it once on mount. One-shot
   // by design — only the mount-time handoff exists.
   useEffect(() => {
     const pending = eventDraftHandoff?.current;
+
     if (!pending) return;
     eventDraftHandoff.current = null;
     handleEventDraftHandoff(pending);
@@ -361,13 +413,17 @@ export default function PersonalNotesView({
   }, []);
 
   useEffect(() => {
-    return () => { draftRef.current = null; flushPendingSaves("unmount"); };
+    return () => {
+      draftRef.current = null;
+      flushPendingSaves("unmount");
+    };
   }, [flushPendingSaves]);
 
   // Boolean flag so actions enable during recording without re-rendering on every transcript update.
   const hasLiveTranscript = useMeetingRecordingStore(
     (s) => s.recordingNoteId === activeNote?.id && !!s.transcript
   );
+
   const activeNoteRawTranscript = activeNote?.transcript || "";
   const activeDraft = draft?.noteId === activeNote?.id ? draft : null;
   // A note that arrives after its skeleton fades in; an instantly available one does not.
@@ -377,6 +433,7 @@ export default function PersonalNotesView({
     if (showNoteSkeleton) setSkeletonNoteId(activeNoteId);
   }, [showNoteSkeleton, activeNoteId]);
   const enterFromSkeleton = activeNote != null && activeNote.id === skeletonNoteId;
+
   const editorNote = activeNote
     ? {
         ...activeNote,
@@ -387,11 +444,13 @@ export default function PersonalNotesView({
           : (activeNote.enhanced_content ?? null),
       }
     : null;
+
   const editorEnhancedContent = editorNote?.enhanced_content ?? null;
 
   const isEnhancementStale = useMemo(() => {
     if (!editorEnhancedContent || !activeNote?.enhanced_at_content_hash) return false;
     const currentHash = makeContentHash(`${editorNote?.content ?? ""}\n${activeNoteRawTranscript}`);
+
     return currentHash !== activeNote.enhanced_at_content_hash;
   }, [
     activeNote?.enhanced_at_content_hash,
@@ -451,7 +510,13 @@ export default function PersonalNotesView({
             {editorSave?.error && (
               <div role="alert" className="flex items-center gap-3 px-4 py-2 text-sm text-danger">
                 <span>{t("notes.editor.saveFailed")}</span>
-                <button type="button" disabled={isSaving} onClick={() => { void flushNoteEditorWrites(editorNote.id); }}>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => {
+                    void flushNoteEditorWrites(editorNote.id);
+                  }}
+                >
                   {t("common.retry")}
                 </button>
               </div>
@@ -468,8 +533,12 @@ export default function PersonalNotesView({
               recordingAllowed={meetingRecordingAllowed}
               onStartRecording={startRecording}
               onStopRecording={stopRecording}
-              onPauseRecording={() => { void pauseMeeting(); }}
-              onResumeRecording={() => { void startRecordingForNote(activeNote ?? null, true); }}
+              onPauseRecording={() => {
+                void pauseMeeting();
+              }}
+              onResumeRecording={() => {
+                void startRecordingForNote(activeNote ?? null, true);
+              }}
               enhancement={
                 editorEnhancedContent
                   ? {
@@ -644,7 +713,6 @@ export default function PersonalNotesView({
           onNotesAdded={handleNotesAdded}
         />
       )}
-
     </div>
   );
 }

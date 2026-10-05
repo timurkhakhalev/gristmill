@@ -9,15 +9,21 @@ type MeetingLinkPlatform = "zoom" | "meet" | "teams" | "webex" | "other";
 
 function meetingPlatformOf(url: string): MeetingLinkPlatform {
   let host = "";
+
   try {
     host = new URL(url).hostname.toLowerCase();
   } catch {
     return "other";
   }
+
   if (host === "zoom.us" || host.endsWith(".zoom.us")) return "zoom";
+
   if (host === "meet.google.com") return "meet";
+
   if (host.endsWith("teams.microsoft.com") || host.endsWith("teams.live.com")) return "teams";
+
   if (host.endsWith("webex.com")) return "webex";
+
   return "other";
 }
 
@@ -25,7 +31,10 @@ function ZoomIcon({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
       <rect width="24" height="24" rx="6" fill="#0B5CFF" />
-      <path d="M5 8.6c0-.6.5-1.1 1.1-1.1h6.6c1.2 0 2.2 1 2.2 2.2v4.8c0 .6-.5 1.1-1.1 1.1H7.2c-1.2 0-2.2-1-2.2-2.2V8.6Z" fill="#fff" />
+      <path
+        d="M5 8.6c0-.6.5-1.1 1.1-1.1h6.6c1.2 0 2.2 1 2.2 2.2v4.8c0 .6-.5 1.1-1.1 1.1H7.2c-1.2 0-2.2-1-2.2-2.2V8.6Z"
+        fill="#fff"
+      />
       <path d="m15.6 10.6 2.7-2c.3-.2.7 0 .7.4v6c0 .4-.4.6-.7.4l-2.7-2v-2.8Z" fill="#fff" />
     </svg>
   );
@@ -34,7 +43,10 @@ function ZoomIcon({ size }: { size: number }) {
 function MeetIcon({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 8.5 7 5h7.5c.8 0 1.5.7 1.5 1.5V9l4-3.2c.4-.3 1 0 1 .5v11.4c0 .5-.6.8-1 .5L16 15v2.5c0 .8-.7 1.5-1.5 1.5H4.5C3.7 19 3 18.3 3 17.5v-9Z" fill="#00AC47" />
+      <path
+        d="M3 8.5 7 5h7.5c.8 0 1.5.7 1.5 1.5V9l4-3.2c.4-.3 1 0 1 .5v11.4c0 .5-.6.8-1 .5L16 15v2.5c0 .8-.7 1.5-1.5 1.5H4.5C3.7 19 3 18.3 3 17.5v-9Z"
+        fill="#00AC47"
+      />
       <path d="M3 8.5h4V5L3 8.5Z" fill="#EA4335" />
       <path d="M3 8.5h4V15H3V8.5Z" fill="#2684FC" />
       <path d="M3 15h4v4H4.5C3.7 19 3 18.3 3 17.5V15Z" fill="#0066DA" />
@@ -61,7 +73,14 @@ function WebexIcon({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="10" fill="#07C160" />
-      <path d="M6.5 9.5 8.5 15l1.8-4.2L12 15l2-5.5M15.5 9.5v5.5h2.5" stroke="#fff" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M6.5 9.5 8.5 15l1.8-4.2L12 15l2-5.5M15.5 9.5v5.5h2.5"
+        stroke="#fff"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -89,7 +108,14 @@ const CALENDAR_ICONS: Record<string, string> = {
 };
 
 /** The calendar app's mark for an event's provider. */
-export function CalendarProviderIcon({ provider, size = 16 }: { provider: string; size?: number }): ReactNode {
+export function CalendarProviderIcon({
+  provider,
+  size = 16,
+}: {
+  provider: string;
+  size?: number;
+}): ReactNode {
   const src = CALENDAR_ICONS[provider];
+
   return src ? <img src={src} alt="" width={size} height={size} className="shrink-0" /> : null;
 }

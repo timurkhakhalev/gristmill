@@ -1,6 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-import type { MeetingAutoEndReason, MeetingNotificationData } from "../../src/contracts/meetingCoordinator";
+
+import type {
+  MeetingAutoEndReason,
+  MeetingNotificationData,
+} from "../../src/contracts/meetingCoordinator";
 
 const load = () => import("../../src/components/meetingNotificationModel.ts");
 
@@ -26,9 +31,15 @@ test("auto-end presentation has countdown copy, Restart action, and dismissal", 
 
 test("auto-end presentation picks body copy by reason and defaults to mic-released", async () => {
   const { getMeetingNotificationPresentation } = await load();
+
   const bodyFor = (reason: unknown) =>
     getMeetingNotificationPresentation(
-      { kind: "auto-end", sessionId: "meeting-2", expiresAt: 40_001, reason: reason as MeetingAutoEndReason },
+      {
+        kind: "auto-end",
+        sessionId: "meeting-2",
+        expiresAt: 40_001,
+        reason: reason as MeetingAutoEndReason,
+      },
       5
     ).bodyKey;
 
@@ -98,6 +109,7 @@ test("countdown rounds up and emits updated seconds until expiration", async () 
       setInterval: (callback, delay) => {
         assert.equal(delay, 250);
         tick = callback;
+
         return 7 as unknown as ReturnType<typeof setInterval>;
       },
       clearInterval: (timer) => {
@@ -124,9 +136,11 @@ test("overlay initialization cleanup cancels reveal and invalidates a pending pu
   let reveal!: () => void;
   let canceledTimer: ReturnType<typeof setTimeout> | undefined;
   let resolvePendingData!: (data: MeetingNotificationData | null) => void;
+
   const pendingData = new Promise<MeetingNotificationData | null>((resolve) => {
     resolvePendingData = resolve;
   });
+
   const received: unknown[] = [];
   let readyCount = 0;
   let visibleCount = 0;
@@ -135,6 +149,7 @@ test("overlay initialization cleanup cancels reveal and invalidates a pending pu
   const cleanup = initializeMeetingNotificationOverlay({
     subscribe: (callback) => {
       subscribed = callback;
+
       return () => {
         unsubscribeCount += 1;
       };
@@ -150,6 +165,7 @@ test("overlay initialization cleanup cancels reveal and invalidates a pending pu
     setTimeout: (callback, delay) => {
       assert.equal(delay, 50);
       reveal = callback;
+
       return 11 as unknown as ReturnType<typeof setTimeout>;
     },
     clearTimeout: (timer) => {

@@ -11,16 +11,20 @@ import { followsSystemDefaultMic } from "../helpers/micSelectionRecovery";
 import { resolvePreferredMicrophone } from "../helpers/microphoneSelection";
 import { ActiveMicRecoveryController } from "../helpers/activeMicRecovery";
 import { MeetingClockSync } from "../helpers/meetingClockSync";
-import type { MeetingPlatform, MeetingFrameAlignmentPoint, MeetingFrameAlignmentSegment } from "../contracts/meetingRecording";
+import type {
+  MeetingPlatform,
+  MeetingFrameAlignmentPoint,
+  MeetingFrameAlignmentSegment,
+} from "../contracts/meetingRecording";
 import {
   resolveInitialSpeakerCountOverride,
   resolveParticipantSpeakerCountSync,
 } from "../utils/participants";
+import type { SystemAudioAccessResult, SystemAudioStrategy } from "../types/electron";
 import type {
-  SystemAudioAccessResult,
-  SystemAudioStrategy,
-} from "../types/electron";
-import type { MeetingSystemAudioInterruption, MeetingCaptureStopRequest } from "../contracts/meetingCoordinator";
+  MeetingSystemAudioInterruption,
+  MeetingCaptureStopRequest,
+} from "../contracts/meetingCoordinator";
 import type { NoteItem } from "../contracts/notes";
 import type { CalendarAttendee } from "../contracts/calendar";
 import {
@@ -74,7 +78,15 @@ export const SIDE_PANEL_BREAKPOINT_PX = 1024;
 interface MeetingRecordingState {
   isRecording: boolean;
   isTranscribing: boolean;
-  capturePhase: "idle" | "preparing" | "recording" | "paused" | "saving" | "saved" | "incomplete" | "failed";
+  capturePhase:
+    | "idle"
+    | "preparing"
+    | "recording"
+    | "paused"
+    | "saving"
+    | "saved"
+    | "incomplete"
+    | "failed";
   recordingId: string | null;
   meetingGroupId: string | null;
   captureErrorCode: string | null;
@@ -161,10 +173,12 @@ const requestSystemAudioDisplayStream = async (mode: "loopback" | "portal") => {
 
     if (!audioTrack) {
       stopMediaStream(stream);
+
       return { stream: null, error: new Error("No system-audio track was returned.") };
     }
 
     stream.getVideoTracks().forEach((track) => track.stop());
+
     return { stream, error: null };
   } catch (error) {
     return { stream: null, error: error as Error };
@@ -173,9 +187,11 @@ const requestSystemAudioDisplayStream = async (mode: "loopback" | "portal") => {
 
 const prepareMeetingSystemAudioCapture = (initialSystemAudioAccess: SystemAudioAccessResult) => {
   const initialSystemAudioStrategy = initialSystemAudioAccess.strategy ?? "unsupported";
+
   const initialDisplayCaptureStrategy = isRendererSystemAudioStrategy(initialSystemAudioStrategy)
     ? initialSystemAudioStrategy
     : null;
+
   const systemCapturePromise = initialDisplayCaptureStrategy
     ? requestSystemAudioDisplayStream(
         getDisplayCaptureModeForStrategy(initialDisplayCaptureStrategy)
@@ -218,12 +234,14 @@ const getMeetingMicConstraints = async (
       settings: getSettings(),
       refreshSystemDefault,
     });
+
     if (resolution.device?.deviceId) {
       logger.debug(
         "Resolved meeting microphone input",
         { mode: resolution.mode, status: resolution.status, label: resolution.device.label },
         "meeting"
       );
+
       return {
         audio: {
           deviceId: { exact: resolution.device.deviceId },
@@ -245,65 +263,127 @@ const getMeetingMicConstraints = async (
 // Pipeline lives in module scope — not on React refs — so it survives
 // view changes and re-mounts of the consumer view.
 let micContext: AudioContext | null = null;
+
 let micSource: MediaStreamAudioSourceNode | null = null;
+
 let micProcessor: AudioWorkletNode | null = null;
+
 let micStream: MediaStream | null = null;
+
 let micAnalyser: AnalyserNode | null = null;
+
 // Native system audio is captured in main, which streams its RMS here.
 let systemAudioLevel = 0;
+
 let systemAudioLevelAt = 0;
+
 const SYSTEM_AUDIO_LEVEL_STALE_MS = 250;
+
 let micRecovery: ActiveMicRecoveryController | null = null;
+
 let systemContext: AudioContext | null = null;
+
 let systemSource: MediaStreamAudioSourceNode | null = null;
+
 let systemProcessor: AudioWorkletNode | null = null;
+
 let systemStream: MediaStream | null = null;
+
 let isRecordingFlag = false;
+
 let isStartingFlag = false;
+
 let activeRecordingSessionId: string | null = null;
+
 const meetingRecordingStartCoordinator = createMeetingRecordingStartCoordinator();
+
 const meetingRecordingStopBarrier = createMeetingRecordingStopBarrier();
+
 let isPrepared = false;
+
 let preparePromise: Promise<void> | null = null;
+
 let ipcCleanups: Array<() => void> = [];
+
 let pushConfigTimeout: ReturnType<typeof setTimeout> | null = null;
+
 let sessionSystemAudioActive = false;
+
 let captureEpochIndices: Record<"mic" | "system", number> = { mic: 0, system: 0 };
+
 let captureSourceGenerations: Record<"mic" | "system", number> = { mic: 1, system: 1 };
+
 let captureLastSequences: Record<"mic" | "system", number> = { mic: -1, system: -1 };
+
 let micIntentSequence = 0;
+
 let meetMicMuted = false;
+
 let deviceMicMuted = false;
+
 let requestedManualMicMuted = false;
+
 let requestedPlatformMicMuted = false;
+
 let micIntentQueue: Promise<boolean> = Promise.resolve(true);
+
 let micIntentClosing = false;
+
 let micHandoffActive = false;
+
 let captureDrainErrorCode: string | null = null;
+
 let suppressInitialProcessingForStop = false;
+
 const PAUSED_MEETING_KEY = "gristmill.paused-meeting";
-function readPausedMeeting(): { groupId: string; noteId: number; manualMicMuted: boolean; restartSessionId?: string } | null {
+
+function readPausedMeeting(): {
+  groupId: string;
+  noteId: number;
+  manualMicMuted: boolean;
+  restartSessionId?: string;
+} | null {
   try {
     const value = JSON.parse(localStorage.getItem(PAUSED_MEETING_KEY) ?? "null");
+
     return typeof value?.groupId === "string" && Number.isSafeInteger(value?.noteId)
-      ? { groupId: value.groupId, noteId: value.noteId, manualMicMuted: value.manualMicMuted === true, restartSessionId: typeof value.restartSessionId === "string" ? value.restartSessionId : undefined }
+      ? {
+          groupId: value.groupId,
+          noteId: value.noteId,
+          manualMicMuted: value.manualMicMuted === true,
+          restartSessionId:
+            typeof value.restartSessionId === "string" ? value.restartSessionId : undefined,
+        }
       : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
+
 const pausedMeeting = typeof window === "undefined" ? null : readPausedMeeting();
+
 let captureMicrophoneBoundary: MeetingCaptureStopRequest["microphoneBoundary"];
+
 let captureClockSync: MeetingClockSync | null = null;
+
 let captureClockOriginNs: string | null = null;
+
 let captureClockGeneration: string | null = null;
+
 let captureClockProbeTimer: ReturnType<typeof setInterval> | null = null;
-let captureRendererOrigins: Partial<Record<"mic" | "system", { context: AudioContext; frame: number }>> = {};
+
+let captureRendererOrigins: Partial<
+  Record<"mic" | "system", { context: AudioContext; frame: number }>
+> = {};
 
 const performanceNs = (): string => Math.round(performance.now() * 1_000_000).toString();
 
 async function probeMeetingCaptureClock(sessionId: string, recordingId: string): Promise<boolean> {
   const sync = captureClockSync;
+
   if (!sync) return false;
   const probe = sync.createProbe(performanceNs());
+
   try {
     const response = await window.electronAPI?.meetingTranscriptionProbeClock?.({
       sessionId,
@@ -311,23 +391,39 @@ async function probeMeetingCaptureClock(sessionId: string, recordingId: string):
       nonce: probe.nonce,
       sourceSendNs: probe.sourceSendNs,
     });
+
     const sourceReceiveNs = performanceNs();
-    if (!response?.success || response.nonce !== probe.nonce || !response.helperGeneration ||
-        !response.helperReceiveNs || !response.helperSendNs) return false;
+
+    if (
+      !response?.success ||
+      response.nonce !== probe.nonce ||
+      !response.helperGeneration ||
+      !response.helperReceiveNs ||
+      !response.helperSendNs
+    )
+      return false;
+
     if (activeRecordingSessionId !== sessionId || captureClockSync !== sync) return false;
+
     if (captureClockGeneration !== response.helperGeneration) {
       captureClockSync?.reset(response.helperGeneration);
       captureClockGeneration = response.helperGeneration;
       sync.createProbe(probe.sourceSendNs, probe.nonce);
     }
-    return Boolean(sync.accept({
-      type: "probe",
-      nonce: response.nonce,
-      helperReceiveNs: response.helperReceiveNs,
-      helperSendNs: response.helperSendNs,
-      helperGeneration: response.helperGeneration,
-      helperFrame: response.helperFrame ?? 0,
-    }, sourceReceiveNs));
+
+    return Boolean(
+      sync.accept(
+        {
+          type: "probe",
+          nonce: response.nonce,
+          helperReceiveNs: response.helperReceiveNs,
+          helperSendNs: response.helperSendNs,
+          helperGeneration: response.helperGeneration,
+          helperFrame: response.helperFrame ?? 0,
+        },
+        sourceReceiveNs
+      )
+    );
   } catch {
     return false;
   }
@@ -380,20 +476,31 @@ function reportMeetingError(error: string, extra: Partial<MeetingRecordingState>
 }
 
 export const getMicAnalyser = (): AnalyserNode | null => micAnalyser;
+
 export const getSystemAudioLevel = (): number =>
   Date.now() - systemAudioLevelAt > SYSTEM_AUDIO_LEVEL_STALE_MS ? 0 : systemAudioLevel;
 
 export const getActiveRecordingSessionId = (): string | null => activeRecordingSessionId;
 
-async function commitMicIntent(sessionId: string, recordingId: string, manualMuted: boolean, platformMuted: boolean, sourceGeneration = captureSourceGenerations.mic): Promise<boolean> {
+async function commitMicIntent(
+  sessionId: string,
+  recordingId: string,
+  manualMuted: boolean,
+  platformMuted: boolean,
+  sourceGeneration = captureSourceGenerations.mic
+): Promise<boolean> {
   if (activeRecordingSessionId !== sessionId || !isRecordingFlag || !micProcessor) return false;
   const processor = micProcessor;
   const sequence = micIntentSequence + 1;
   const effectiveMuted = manualMuted || platformMuted;
   let gate: Awaited<ReturnType<typeof setAudioPipelineGate>> | null = null;
+
   try {
     gate = await setAudioPipelineGate(processor, effectiveMuted, sequence);
-    if (activeRecordingSessionId !== sessionId) throw new Error("Microphone intent belongs to a stale recording");
+
+    if (activeRecordingSessionId !== sessionId)
+      throw new Error("Microphone intent belongs to a stale recording");
+
     const response = await window.electronAPI?.meetingTranscriptionSetMicIntent?.({
       sessionId,
       recordingId,
@@ -404,58 +511,89 @@ async function commitMicIntent(sessionId: string, recordingId: string, manualMut
       boundaryFrame: gate.ack.boundaryFrame,
       boundaryAlignment: gate.ack.boundaryAlignment,
     });
-    if (!response?.success || response.sequence !== sequence || response.sourceGeneration !== sourceGeneration || response.effectiveMuted !== effectiveMuted) {
+
+    if (
+      !response?.success ||
+      response.sequence !== sequence ||
+      response.sourceGeneration !== sourceGeneration ||
+      response.effectiveMuted !== effectiveMuted
+    ) {
       throw new Error(response?.error || "Microphone intent was not acknowledged");
     }
+
     if (activeRecordingSessionId !== sessionId || !isRecordingFlag || micProcessor !== processor) {
       gate.commit();
+
       return false;
     }
+
     captureSourceGenerations.mic = sourceGeneration;
     micIntentSequence = sequence;
-    useMeetingRecordingStore.setState({ manualMicMuted: manualMuted, platformMicMuted: platformMuted });
+    useMeetingRecordingStore.setState({
+      manualMicMuted: manualMuted,
+      platformMicMuted: platformMuted,
+    });
     micRecovery?.setIntentionalMute(effectiveMuted);
     gate.commit();
+
     return true;
   } catch (error) {
     gate?.commit();
+
     if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return false;
     captureDrainErrorCode ??= "mic-intent-transition-failed";
     reportMeetingError((error as Error).message, { captureErrorCode: captureDrainErrorCode });
+
     if (isRecordingFlag) void stopRecording(sessionId);
+
     return false;
   }
 }
 
 function queueMicIntent(manualMuted: boolean, platformMuted: boolean): Promise<boolean> {
-  if (!isRecordingFlag || micIntentClosing || !activeRecordingSessionId || !micProcessor) return Promise.resolve(false);
+  if (!isRecordingFlag || micIntentClosing || !activeRecordingSessionId || !micProcessor)
+    return Promise.resolve(false);
   const sessionId = activeRecordingSessionId;
   const recordingId = useMeetingRecordingStore.getState().recordingId;
+
   if (!recordingId) return Promise.resolve(false);
   const duringHandoff = micHandoffActive;
-  const operation = micIntentQueue.then(() => commitMicIntent(
-    sessionId, recordingId, manualMuted,
-    duringHandoff ? deviceMicMuted || meetMicMuted : platformMuted
-  ));
+
+  const operation = micIntentQueue.then(() =>
+    commitMicIntent(
+      sessionId,
+      recordingId,
+      manualMuted,
+      duringHandoff ? deviceMicMuted || meetMicMuted : platformMuted
+    )
+  );
+
   micIntentQueue = operation;
+
   return operation;
 }
 
 export function setManualMicMuted(muted: boolean): Promise<boolean> {
   const state = useMeetingRecordingStore.getState();
+
   if (state.capturePhase === "paused") {
     const paused = readPausedMeeting();
+
     if (!paused) return Promise.resolve(false);
     localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({ ...paused, manualMicMuted: muted }));
     useMeetingRecordingStore.setState({ manualMicMuted: muted });
+
     return Promise.resolve(true);
   }
+
   requestedManualMicMuted = muted;
+
   return queueMicIntent(requestedManualMicMuted, requestedPlatformMicMuted);
 }
 
 export function setPlatformMicMuted(muted: boolean): Promise<boolean> {
   requestedPlatformMicMuted = muted;
+
   return queueMicIntent(requestedManualMicMuted, requestedPlatformMicMuted);
 }
 
@@ -481,6 +619,7 @@ export function setSessionDiarizationEnabled(enabled: boolean): void {
   const state = useMeetingRecordingStore.getState();
   pushConfig(enabled, state.sessionExpectedCount, state.userTouchedStepper);
   const noteId = useMeetingRecordingStore.getState().recordingNoteId;
+
   if (noteId != null) {
     window.electronAPI?.updateNote?.(noteId, { diarization_enabled: enabled ? 1 : 0 });
   }
@@ -494,6 +633,7 @@ export function setSessionExpectedCount(count: number): void {
   });
   pushConfig(useMeetingRecordingStore.getState().sessionDiarizationEnabled, clamped, true);
   const noteId = useMeetingRecordingStore.getState().recordingNoteId;
+
   if (noteId != null) {
     window.electronAPI?.updateNote?.(noteId, { expected_speaker_count: clamped });
   }
@@ -509,6 +649,7 @@ export function syncSessionExpectedCountFromParticipants(
   participants: readonly CalendarAttendee[]
 ): void {
   const state = useMeetingRecordingStore.getState();
+
   const expectedCount = resolveParticipantSpeakerCountSync({
     recordingNoteId: state.recordingNoteId,
     noteId,
@@ -516,9 +657,11 @@ export function syncSessionExpectedCountFromParticipants(
     currentExpectedCount: state.sessionExpectedCount,
     participants,
   });
+
   if (expectedCount == null) return;
 
   const clamped = Math.max(1, Math.min(MAX_SPEAKER_COUNT, expectedCount));
+
   if (clamped === state.sessionExpectedCount) return;
 
   useMeetingRecordingStore.setState({ sessionExpectedCount: clamped });
@@ -537,10 +680,12 @@ async function cleanup(): Promise<void> {
   const [micResult, systemResult] = await Promise.allSettled([micDrain, systemDrain]);
   captureLastSequences.mic = micResult.status === "fulfilled" ? micResult.value : -1;
   captureLastSequences.system = systemResult.status === "fulfilled" ? systemResult.value : -1;
+
   if (micResult.status === "rejected" || systemResult.status === "rejected") {
     captureDrainErrorCode ??= "capture-drain-incomplete";
     reportMeetingError("Meeting audio could not finish saving its last samples.");
   }
+
   micProcessor = null;
 
   micSource?.disconnect();
@@ -555,6 +700,7 @@ async function cleanup(): Promise<void> {
   try {
     await micContext?.close();
   } catch {}
+
   micContext = null;
 
   systemProcessor = null;
@@ -568,17 +714,20 @@ async function cleanup(): Promise<void> {
   try {
     await systemContext?.close();
   } catch {}
+
   systemContext = null;
   captureRendererOrigins = {};
 
   ipcCleanups.forEach((fn) => fn());
   ipcCleanups = [];
+
   // A debounced config push firing after stop would repopulate the session
   // config main just cleared, leaking this session's count into the next one.
   if (pushConfigTimeout) {
     clearTimeout(pushConfigTimeout);
     pushConfigTimeout = null;
   }
+
   isPrepared = false;
   isRecordingFlag = false;
   isStartingFlag = false;
@@ -587,11 +736,15 @@ async function cleanup(): Promise<void> {
 
 export async function prepareTranscription(noteId?: number | null): Promise<boolean> {
   if (isPrepared) return true;
+
   if (isRecordingFlag || isStartingFlag) return false;
+
   if (preparePromise) {
     await preparePromise;
+
     return isPrepared;
   }
+
   const promise = (async () => {
     try {
       const result = await window.electronAPI?.meetingTranscriptionPrepare?.({ noteId });
@@ -615,6 +768,7 @@ export async function prepareTranscription(noteId?: number | null): Promise<bool
 
   preparePromise = promise;
   await promise;
+
   return isPrepared;
 }
 
@@ -637,34 +791,43 @@ export interface StartRecordingArgs {
 export async function startRecording(args: StartRecordingArgs): Promise<boolean> {
   if (isRecordingFlag || isStartingFlag) return true;
   const paused = readPausedMeeting();
+
   if (paused && (paused.noteId !== args.noteId || paused.groupId !== args.groupId)) {
     reportMeetingError("Finish or resume the paused call before starting another.");
+
     return false;
   }
 
   const sessionId = createMeetingRecordingSessionId();
   const previous = useMeetingRecordingStore.getState();
-  const groupId = args.groupId ?? (
-    previous.recordingNoteId === args.noteId &&
+
+  const groupId =
+    args.groupId ??
+    (previous.recordingNoteId === args.noteId &&
     (previous.capturePhase === "saved" || previous.capturePhase === "incomplete")
       ? previous.meetingGroupId
-      : null
-  ) ?? crypto.randomUUID();
+      : null) ??
+    crypto.randomUUID();
+
   let started = false;
   await meetingRecordingStartCoordinator.runStart(sessionId, async (startOperation) => {
     if (isRecordingFlag || isStartingFlag) {
       started = true;
+
       return;
     }
 
     await meetingRecordingStopBarrier.waitForPendingStop();
+
     if (!startOperation.isCurrent() || isRecordingFlag || isStartingFlag) return;
     isStartingFlag = true;
     activeRecordingSessionId = sessionId;
+
     const isCurrentStart = () =>
       startOperation.isCurrent() && activeRecordingSessionId === sessionId;
 
     const initialEnabled = args.diarizationEnabled ?? true;
+
     const initialCount = Math.max(
       1,
       Math.min(MAX_SPEAKER_COUNT, args.expectedCount ?? DEFAULT_EXPECTED_SPEAKER_COUNT)
@@ -718,13 +881,15 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
     captureSourceGenerations = { mic: 1, system: 1 };
     micIntentSequence = 0;
     requestedManualMicMuted = args.manualMicMuted === true;
-    meetMicMuted = false; deviceMicMuted = false;
+    meetMicMuted = false;
+    deviceMicMuted = false;
     requestedPlatformMicMuted = false;
     micIntentQueue = Promise.resolve(true);
     micIntentClosing = false;
     micHandoffActive = false;
     let systemAudioAvailabilityResolved = false;
     let pendingSystemAudioInterruption: MeetingSystemAudioInterruption | null = null;
+
     const publishSystemAudioInterruption = (data: MeetingSystemAudioInterruption): void => {
       logger.warn("Meeting system audio was interrupted", data, "meeting");
       useMeetingRecordingStore.setState((state) => ({
@@ -735,24 +900,31 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         systemAudioInterruptedNonce: state.systemAudioInterruptedNonce + 1,
       }));
     };
+
     let setupMicResult: MediaStream | null = null;
+
     let setupSystemCaptureResult: { stream: MediaStream | null; error: Error | null } = {
       stream: null,
       error: null,
     };
+
     const releaseSession = () => {
       if (activeRecordingSessionId === sessionId) activeRecordingSessionId = null;
     };
+
     const stopScopedMainOnce = () =>
       startOperation.stopMainOnce(async () => {
-        const result = await window.electronAPI?.meetingTranscriptionStop?.({
-          sessionId,
-          lastSequence: captureLastSequences,
-        microphoneBoundary: captureMicrophoneBoundary,
-          incomplete: true,
-          errorCode: captureDrainErrorCode ?? "capture-start-canceled",
-          suppressProcessing: suppressInitialProcessingForStop,
-        }).catch(() => undefined);
+        const result = await window.electronAPI
+          ?.meetingTranscriptionStop?.({
+            sessionId,
+            lastSequence: captureLastSequences,
+            microphoneBoundary: captureMicrophoneBoundary,
+            incomplete: true,
+            errorCode: captureDrainErrorCode ?? "capture-start-canceled",
+            suppressProcessing: suppressInitialProcessingForStop,
+          })
+          .catch(() => undefined);
+
         if (result?.success) {
           useMeetingRecordingStore.setState({
             recordingId: result.recordingId ?? useMeetingRecordingStore.getState().recordingId,
@@ -761,6 +933,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           });
         }
       });
+
     const teardownStart = async () => {
       stopMediaStream(setupMicResult);
       stopMediaStream(setupSystemCaptureResult.stream);
@@ -785,33 +958,57 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         useMeetingRecordingStore.setState({
           systemCaptureStatus: data.recovering ? "reconnecting" : "unavailable",
         });
+
         if (!systemAudioAvailabilityResolved) {
           pendingSystemAudioInterruption = data;
         } else if (sessionSystemAudioActive) {
           publishSystemAudioInterruption(data);
         }
       });
-      const stopRequestedCleanup = window.electronAPI?.onMeetingTranscriptionStopRequested?.((request) => {
-        if (request.reason === "platform-leave" || request.sessionId !== sessionId || activeRecordingSessionId !== sessionId) return;
-        void stopRecording(sessionId, { suppressProcessing: request.suppressProcessing === true });
-      });
+
+      const stopRequestedCleanup = window.electronAPI?.onMeetingTranscriptionStopRequested?.(
+        (request) => {
+          if (
+            request.reason === "platform-leave" ||
+            request.sessionId !== sessionId ||
+            activeRecordingSessionId !== sessionId
+          )
+            return;
+          void stopRecording(sessionId, {
+            suppressProcessing: request.suppressProcessing === true,
+          });
+        }
+      );
+
       const manualMuteCleanup = window.electronAPI?.onMeetManualMute((request) => {
-        if (request.sessionId !== activeRecordingSessionId || request.recordingId !== useMeetingRecordingStore.getState().recordingId) return;
+        if (
+          request.sessionId !== activeRecordingSessionId ||
+          request.recordingId !== useMeetingRecordingStore.getState().recordingId
+        )
+          return;
         void setManualMicMuted(request.muted);
       });
+
       const platformMuteCleanup = window.electronAPI?.onMeetPlatformMute((request) => {
-        if (request.sessionId !== activeRecordingSessionId || request.recordingId !== useMeetingRecordingStore.getState().recordingId) return;
+        if (
+          request.sessionId !== activeRecordingSessionId ||
+          request.recordingId !== useMeetingRecordingStore.getState().recordingId
+        )
+          return;
         meetMicMuted = request.muted;
         requestedPlatformMicMuted = meetMicMuted || deviceMicMuted;
         useMeetingRecordingStore.setState({ platformMicMuted: requestedPlatformMicMuted });
+
         if (micProcessor) void setPlatformMicMuted(requestedPlatformMicMuted);
       });
+
       const resumedCleanup = window.electronAPI?.onMeetingSystemAudioResumed?.(() => {
         if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return;
         useMeetingRecordingStore.setState({ systemCaptureStatus: "active" });
         pendingSystemAudioInterruption = null;
         useMeetingRecordingStore.setState({ systemAudioInterrupted: null });
       });
+
       ipcCleanups.push(() => {
         pendingSystemAudioInterruption = null;
         interruptedCleanup?.();
@@ -824,24 +1021,31 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       if (preparePromise) {
         logger.debug("Waiting for in-flight prepare to finish...", {}, "meeting");
         await preparePromise;
+
         if (!isCurrentStart()) {
           await teardownStart();
+
           return;
         }
       }
 
       const startTime = performance.now();
+
       const initialSystemAudioAccess =
         (await (window.electronAPI?.checkSystemAudioAccess?.() ??
           Promise.resolve(DEFAULT_SYSTEM_AUDIO_ACCESS))) ?? getFallbackSystemAudioAccess();
+
       if (!isCurrentStart()) {
         await teardownStart();
+
         return;
       }
+
       const { initialSystemAudioStrategy, initialDisplayCaptureStrategy, systemCapturePromise } =
         prepareMeetingSystemAudioCapture(initialSystemAudioAccess);
 
       startOperation.markMainStartAttempted();
+
       const mainStartPromise = window.electronAPI?.meetingTranscriptionStart?.({
         noteId: args.noteId ?? null,
         sessionId,
@@ -851,8 +1055,10 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         manualMicMuted: args.manualMicMuted === true,
         recordingConfig: getMeetingRecordingConfig(),
       });
+
       const micCapturePromise = getMeetingMicConstraints().then(async (constraints) => {
         if (!isCurrentStart()) return null;
+
         try {
           return await navigator.mediaDevices.getUserMedia(constraints);
         } catch (err) {
@@ -860,16 +1066,19 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             typeof constraints.audio === "object" &&
             constraints.audio !== null &&
             "deviceId" in constraints.audio;
+
           if (hasExactDevice && isCurrentStart()) {
             try {
               const fallbackStream = await navigator.mediaDevices.getUserMedia({
                 audio: MEETING_MIC_PRIMARY_AUDIO_CONSTRAINTS,
               });
+
               logger.info(
                 "Meeting mic capture recovered using default device",
                 { error: (err as Error).message },
                 "meeting"
               );
+
               return fallbackStream;
             } catch (fallbackErr) {
               logger.error(
@@ -877,17 +1086,21 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
                 { error: (fallbackErr as Error).message },
                 "meeting"
               );
+
               return null;
             }
           }
+
           logger.error(
             "Meeting mic capture failed, continuing with system audio only",
             { error: (err as Error).message, constraints },
             "meeting"
           );
+
           return null;
         }
       });
+
       const [startOutcome, micOutcome, systemCaptureOutcome] = await Promise.allSettled([
         mainStartPromise,
         micCapturePromise,
@@ -895,11 +1108,15 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       ] as const);
 
       if (micOutcome.status === "fulfilled") setupMicResult = micOutcome.value;
+
       if (systemCaptureOutcome.status === "fulfilled") {
         setupSystemCaptureResult = systemCaptureOutcome.value;
       }
+
       if (startOutcome.status === "rejected") throw startOutcome.reason;
+
       if (micOutcome.status === "rejected") throw micOutcome.reason;
+
       if (systemCaptureOutcome.status === "rejected") throw systemCaptureOutcome.reason;
 
       const startResult = startOutcome.value;
@@ -908,9 +1125,11 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       let systemCaptureResult = initialSystemCaptureResult;
 
       const streamsMs = performance.now() - startTime;
+
       if (!isCurrentStart()) {
         logger.info("Meeting transcription aborted during setup (stop called)", {}, "meeting");
         await teardownStart();
+
         return;
       }
 
@@ -934,8 +1153,10 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         isStartingFlag = false;
         await cleanup();
         releaseSession();
+
         return;
       }
+
       const systemAudioMode = startResult.systemAudioMode || initialSystemAudioAccess.mode;
       const systemAudioStrategy = startResult.systemAudioStrategy || initialSystemAudioStrategy;
       systemCaptureResult = await ensureRendererSystemAudioCapture({
@@ -944,17 +1165,22 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         systemCaptureResult,
       });
       setupSystemCaptureResult = systemCaptureResult;
+
       if (!isCurrentStart()) {
         await teardownStart();
+
         return;
       }
+
       const systemAudioHandledInMain =
         systemAudioMode !== "unsupported" && !isRendererSystemAudioStrategy(systemAudioStrategy);
+
       if (systemAudioHandledInMain && systemCaptureResult.stream) {
         stopMediaStream(systemCaptureResult.stream);
         systemCaptureResult = { stream: null, error: null };
         setupSystemCaptureResult = systemCaptureResult;
       }
+
       const systemCaptureError = systemAudioHandledInMain ? null : systemCaptureResult.error;
 
       if (!micResult && !systemCaptureResult.stream && !systemAudioHandledInMain) {
@@ -963,13 +1189,16 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             ? "No microphone is available and system audio capture is unsupported on this device."
             : systemCaptureError?.message ||
               "No microphone is available and system audio capture could not be started.";
+
         logger.error("Meeting capture has no available audio source", { message }, "meeting");
-        reportMeetingError(
-          message,
-          { isRecording: false, isTranscribing: false, captureErrorCode: "no-audio-source" }
-        );
+        reportMeetingError(message, {
+          isRecording: false,
+          isTranscribing: false,
+          captureErrorCode: "no-audio-source",
+        });
         await teardownStart();
         useMeetingRecordingStore.setState({ capturePhase: "failed" });
+
         return;
       }
 
@@ -979,26 +1208,40 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         reportMeetingError(err, { captureErrorCode: "system-audio-interrupted" });
         logger.error("Meeting audio capture reported an error", { error: err }, "meeting");
       });
+
       if (errorCleanup) ipcCleanups.push(errorCleanup);
 
       const fatalErrorCleanup = window.electronAPI?.onMeetingTranscriptionFatalError?.((err) => {
         if (activeRecordingSessionId !== sessionId) return;
         captureDrainErrorCode = "capture-write-failed";
         reportMeetingError(err, { captureErrorCode: captureDrainErrorCode });
-        logger.error("Meeting audio capture stopped after a write failure", { error: err }, "meeting");
+        logger.error(
+          "Meeting audio capture stopped after a write failure",
+          { error: err },
+          "meeting"
+        );
+
         if (isRecordingFlag) void stopRecording(sessionId);
       });
+
       if (fatalErrorCleanup) ipcCleanups.push(fatalErrorCleanup);
 
       const systemAudioSilentCleanup = window.electronAPI?.onMeetingSystemAudioSilent?.((data) => {
         if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return;
+
         if (!sessionSystemAudioActive) return;
+
         if (useMeetingRecordingStore.getState().systemAudioSilentWarning) return;
-        logger.warn("Meeting system audio has produced only silence", {
-          systemAudioStrategy: data?.systemAudioStrategy,
-        }, "meeting");
+        logger.warn(
+          "Meeting system audio has produced only silence",
+          {
+            systemAudioStrategy: data?.systemAudioStrategy,
+          },
+          "meeting"
+        );
         useMeetingRecordingStore.setState({ systemAudioSilentWarning: true });
       });
+
       if (systemAudioSilentCleanup) ipcCleanups.push(systemAudioSilentCleanup);
 
       const systemAudioLevelCleanup = window.electronAPI?.onMeetingSystemAudioLevel?.((level) => {
@@ -1006,36 +1249,48 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         systemAudioLevel = level;
         systemAudioLevelAt = Date.now();
       });
+
       if (systemAudioLevelCleanup) ipcCleanups.push(systemAudioLevelCleanup);
 
       if (!startResult.recordingId || !startResult.originAt) {
         throw new Error("Meeting capture did not return its durable recording origin");
       }
+
       meetMicMuted = startResult.platformMicMuted === true;
       requestedPlatformMicMuted = meetMicMuted || deviceMicMuted;
-      useMeetingRecordingStore.setState({ recordingId: startResult.recordingId, platformMicMuted: requestedPlatformMicMuted });
+      useMeetingRecordingStore.setState({
+        recordingId: startResult.recordingId,
+        platformMicMuted: requestedPlatformMicMuted,
+      });
       const recordingOrigin = Date.parse(startResult.originAt);
+
       if (!Number.isFinite(recordingOrigin)) {
         throw new Error("Meeting capture returned an invalid session origin");
       }
+
       captureClockSync = null;
       captureClockOriginNs = null;
       captureClockGeneration = null;
       captureRendererOrigins = {};
+
       if (startResult.helperGeneration && startResult.monotonicOriginNs) {
         captureClockSync = new MeetingClockSync();
         captureClockSync.reset(startResult.helperGeneration);
         captureClockOriginNs = startResult.monotonicOriginNs;
         captureClockGeneration = startResult.helperGeneration;
+
         for (let attempt = 0; attempt < 3; attempt++) {
           if (await probeMeetingCaptureClock(sessionId, startResult.recordingId)) break;
         }
+
         captureClockProbeTimer = setInterval(() => {
           void probeMeetingCaptureClock(sessionId, startResult.recordingId as string);
         }, 500);
       }
+
       // Empty gated pipelines reuse the next index until a packet is saved.
       const nextEpoch = (source: "mic" | "system") => captureEpochIndices[source];
+
       const createCapturePipeline = (
         stream: MediaStream,
         context: AudioContext,
@@ -1046,12 +1301,16 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         const clockSync = captureClockSync;
         const clockOriginNs = captureClockOriginNs;
         let renderOrigin = captureRendererOrigins[source];
+
         if (renderOrigin && renderOrigin.context !== context) renderOrigin = undefined;
+
         if (!renderOrigin) {
           renderOrigin = { context, frame: Math.round(context.currentTime * context.sampleRate) };
           captureRendererOrigins[source] = renderOrigin;
         }
+
         const localOriginFrame = renderOrigin.frame;
+
         return createAudioPipeline({
           stream,
           context,
@@ -1060,29 +1319,60 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           epochIndex: nextEpoch(source),
           renderOriginFrame: localOriginFrame,
           sourceGeneration,
-          gateClosed: source === "mic" && (holdMicGate || useMeetingRecordingStore.getState().manualMicMuted || useMeetingRecordingStore.getState().platformMicMuted),
+          gateClosed:
+            source === "mic" &&
+            (holdMicGate ||
+              useMeetingRecordingStore.getState().manualMicMuted ||
+              useMeetingRecordingStore.getState().platformMicMuted),
           alignmentAtRenderFrame: (frame) => {
             if (!clockSync || !clockOriginNs) return null;
+
             try {
               const anchor = context.getOutputTimestamp();
-              if (anchor.contextTime === undefined || anchor.performanceTime === undefined || !Number.isFinite(anchor.contextTime) || !Number.isFinite(anchor.performanceTime) ||
-                  anchor.performanceTime <= 0 || context.state !== "running") return null;
-              const sourceNs = Math.round((anchor.performanceTime + (frame / context.sampleRate - anchor.contextTime) * 1000) * 1_000_000).toString();
+
+              if (
+                anchor.contextTime === undefined ||
+                anchor.performanceTime === undefined ||
+                !Number.isFinite(anchor.contextTime) ||
+                !Number.isFinite(anchor.performanceTime) ||
+                anchor.performanceTime <= 0 ||
+                context.state !== "running"
+              )
+                return null;
+
+              const sourceNs = Math.round(
+                (anchor.performanceTime +
+                  (frame / context.sampleRate - anchor.contextTime) * 1000) *
+                  1_000_000
+              ).toString();
+
               const freshness = performanceNs();
               const position = clockSync.frameMappingAt(sourceNs, clockOriginNs, 24_000, freshness);
+
               if (!position || position.uncertaintyFrames > 600) return null;
               const mapping = position.mapping;
+
               return {
-                sourceGeneration, sourceFrame: frame - localOriginFrame,
-                timelineFrame: position.frame, rate: mapping.rate, uncertaintyFrames: position.uncertaintyFrames,
-                helperGeneration: mapping.generation, sourceNs, helperNs: mapping.helperEstimateNs,
-                sampledSourceStartNs: mapping.sourceStartNs, sampledSourceEndNs: mapping.sourceEndNs,
+                sourceGeneration,
+                sourceFrame: frame - localOriginFrame,
+                timelineFrame: position.frame,
+                rate: mapping.rate,
+                uncertaintyFrames: position.uncertaintyFrames,
+                helperGeneration: mapping.generation,
+                sourceNs,
+                helperNs: mapping.helperEstimateNs,
+                sampledSourceStartNs: mapping.sourceStartNs,
+                sampledSourceEndNs: mapping.sourceEndNs,
                 freshnessSourceNs: freshness,
               };
-            } catch { return null; }
+            } catch {
+              return null;
+            }
           },
           reserveEpoch: () => nextEpoch(source),
-          onMicrophoneBoundary: (boundary) => { captureMicrophoneBoundary = boundary; },
+          onMicrophoneBoundary: (boundary) => {
+            captureMicrophoneBoundary = boundary;
+          },
           onAck: (sequence, epochIndex) => {
             if (activeRecordingSessionId !== sessionId) return;
             captureEpochIndices[source] = Math.max(captureEpochIndices[source], epochIndex + 1);
@@ -1092,79 +1382,101 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             captureDrainErrorCode ??= error.message.toLowerCase().includes("clock")
               ? "audio-clock-unavailable"
               : "capture-write-failed";
-            logger.error("Meeting capture failed", {
-              source,
-              reason: error.message,
-              lastAckSequence: captureLastSequences[source],
-              recordingId: useMeetingRecordingStore.getState().recordingId,
-            }, "meeting-capture");
+            logger.error(
+              "Meeting capture failed",
+              {
+                source,
+                reason: error.message,
+                lastAckSequence: captureLastSequences[source],
+                recordingId: useMeetingRecordingStore.getState().recordingId,
+              },
+              "meeting-capture"
+            );
             reportMeetingError(error.message, { captureErrorCode: captureDrainErrorCode });
+
             if (isRecordingFlag) void stopRecording(sessionId);
           },
         });
       };
 
       let micPipelinePromise: Promise<void> | null = null;
+
       if (micResult) {
         micStream = micResult;
         setupMicResult = null;
+
         if (micResult.getAudioTracks()[0]?.muted) {
           deviceMicMuted = true;
           requestedPlatformMicMuted = true;
           useMeetingRecordingStore.setState({ platformMicMuted: true });
         }
+
         const ctx = createMeetingCaptureAudioContext();
         micContext = ctx;
+
         if (!isCurrentStart()) {
           await teardownStart();
+
           return;
         }
 
-        micPipelinePromise = createCapturePipeline(micResult, ctx, "mic").then(async ({ source, processor }) => {
-          if (!isCurrentStart()) {
-            source.disconnect();
-            await flushAndDisconnectProcessor(processor);
-            return;
-          }
-          micSource = source;
-          micProcessor = processor;
+        micPipelinePromise = createCapturePipeline(micResult, ctx, "mic").then(
+          async ({ source, processor }) => {
+            if (!isCurrentStart()) {
+              source.disconnect();
+              await flushAndDisconnectProcessor(processor);
 
-          // AnalyserNode must reach the destination for Chrome's pull-based
-          // renderer to update its internal buffer; route through a muted gain.
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 256;
-          analyser.smoothingTimeConstant = 0.4;
-          const analyserSink = ctx.createGain();
-          analyserSink.gain.value = 0;
-          processor.connect(analyser);
-          analyser.connect(analyserSink);
-          analyserSink.connect(ctx.destination);
-          micAnalyser = analyser;
-          if (useMeetingRecordingStore.getState().platformMicMuted) {
-            if (!await queueMicIntent(useMeetingRecordingStore.getState().manualMicMuted, true)) {
-              throw new Error("Platform microphone mute was not acknowledged");
+              return;
             }
-          }
 
-          const micTrack = micResult.getAudioTracks()[0];
-          useMeetingRecordingStore.setState({ micCaptureDeviceLabel: micTrack?.label?.trim() || null });
-          logger.info(
-            "Mic capture started for meeting transcription",
-            {
-              label: micTrack?.label,
-              settings: micTrack?.getSettings(),
-            },
-            "meeting"
-          );
-        });
+            micSource = source;
+            micProcessor = processor;
+
+            // AnalyserNode must reach the destination for Chrome's pull-based
+            // renderer to update its internal buffer; route through a muted gain.
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.4;
+            const analyserSink = ctx.createGain();
+            analyserSink.gain.value = 0;
+            processor.connect(analyser);
+            analyser.connect(analyserSink);
+            analyserSink.connect(ctx.destination);
+            micAnalyser = analyser;
+
+            if (useMeetingRecordingStore.getState().platformMicMuted) {
+              if (
+                !(await queueMicIntent(useMeetingRecordingStore.getState().manualMicMuted, true))
+              ) {
+                throw new Error("Platform microphone mute was not acknowledged");
+              }
+            }
+
+            const micTrack = micResult.getAudioTracks()[0];
+            useMeetingRecordingStore.setState({
+              micCaptureDeviceLabel: micTrack?.label?.trim() || null,
+            });
+            logger.info(
+              "Mic capture started for meeting transcription",
+              {
+                label: micTrack?.label,
+                settings: micTrack?.getSettings(),
+              },
+              "meeting"
+            );
+          }
+        );
       }
 
       if (micPipelinePromise) {
         await micPipelinePromise;
+
         if (!isCurrentStart()) {
           await teardownStart();
+
           return;
         }
+
         micRecovery = new ActiveMicRecoveryController({
           mediaDevices: navigator.mediaDevices,
           onPlatformMuteChange: async (deviceMuted) => {
@@ -1176,10 +1488,13 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             requestedPlatformMicMuted = muted;
             const manualMuted = requestedManualMicMuted;
             micRecovery?.setIntentionalMute(manualMuted || muted);
+
             if (micProcessor) {
-              const accepted = previousPlatformMute !== muted
-                ? await setPlatformMicMuted(muted)
-                : await micIntentQueue;
+              const accepted =
+                previousPlatformMute !== muted
+                  ? await setPlatformMicMuted(muted)
+                  : await micIntentQueue;
+
               if (!accepted) throw new Error("Device microphone mute was not acknowledged");
             }
           },
@@ -1202,6 +1517,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
               micCaptureStatus: status,
               ...(status === "active" ? {} : { currentAudioLevel: 0 }),
             });
+
             if (status === "unavailable") {
               captureDrainErrorCode ??= "mic-source-unavailable";
               useMeetingRecordingStore.setState({ captureErrorCode: captureDrainErrorCode });
@@ -1217,52 +1533,100 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             ) {
               throw new Error("Meeting recording is no longer active");
             }
+
             const recordingId = useMeetingRecordingStore.getState().recordingId;
+
             if (!recordingId) throw new Error("Meeting recording has no persisted identity");
             const previousProcessor = micProcessor;
             const context = micContext;
             // Serialize drain, replacement setup and its intent with mute controls.
             // Controls queued during the handoff run against the replacement track.
             micHandoffActive = true;
+
             const handoff = micIntentQueue.then(async () => {
-              if (micIntentClosing || !isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
+              if (
+                micIntentClosing ||
+                !isRecordingFlag ||
+                activeRecordingSessionId !== sessionId ||
+                micContext !== context
+              ) {
                 throw new Error("Meeting recording stopped before switching microphones");
               }
+
               const lastSequence = await flushAndDisconnectProcessor(previousProcessor);
-              if (!isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
+
+              if (
+                !isRecordingFlag ||
+                activeRecordingSessionId !== sessionId ||
+                micContext !== context
+              ) {
                 throw new Error("Meeting recording stopped while switching microphones");
               }
+
               captureLastSequences.mic = lastSequence;
               micSource?.disconnect();
               const nextGeneration = captureSourceGenerations.mic + 1;
-              const nextPipeline = await createCapturePipeline(replacement, context, "mic", true, nextGeneration);
-              if (!isRecordingFlag || activeRecordingSessionId !== sessionId || micContext !== context) {
+
+              const nextPipeline = await createCapturePipeline(
+                replacement,
+                context,
+                "mic",
+                true,
+                nextGeneration
+              );
+
+              if (
+                !isRecordingFlag ||
+                activeRecordingSessionId !== sessionId ||
+                micContext !== context
+              ) {
                 nextPipeline.source.disconnect();
                 await flushAndDisconnectProcessor(nextPipeline.processor);
                 throw new Error("Meeting recording stopped while switching microphones");
               }
+
               const nextSource = nextPipeline.source;
               micProcessor = nextPipeline.processor;
+
               if (micAnalyser) nextPipeline.processor.connect(micAnalyser);
               previous?.getTracks().forEach((track) => track.stop());
               micSource = nextSource;
               micStream = replacement;
               const replacementTrack = replacement.getAudioTracks()[0];
+
               if (!replacementTrack || replacementTrack.readyState === "ended") {
                 throw new Error("Recovered microphone track ended during setup");
               }
+
               // Device mute belongs to this track. Manual and Meet mute remain
               // independent and still hold the replacement gate closed.
               deviceMicMuted = replacementTrack.muted;
               requestedPlatformMicMuted = deviceMicMuted || meetMicMuted;
               useMeetingRecordingStore.setState({ platformMicMuted: requestedPlatformMicMuted });
-              if (!await commitMicIntent(sessionId, recordingId, requestedManualMicMuted, requestedPlatformMicMuted, nextGeneration)) {
+
+              if (
+                !(await commitMicIntent(
+                  sessionId,
+                  recordingId,
+                  requestedManualMicMuted,
+                  requestedPlatformMicMuted,
+                  nextGeneration
+                ))
+              ) {
                 throw new Error("Recovered microphone intent was not acknowledged");
               }
-              useMeetingRecordingStore.setState({ micCaptureDeviceLabel: replacement.getAudioTracks()[0]?.label?.trim() || null });
+
+              useMeetingRecordingStore.setState({
+                micCaptureDeviceLabel: replacement.getAudioTracks()[0]?.label?.trim() || null,
+              });
               logger.info("Meeting microphone capture recovered", {}, "meeting");
             });
-            micIntentQueue = handoff.then(() => true, () => false);
+
+            micIntentQueue = handoff.then(
+              () => true,
+              () => false
+            );
+
             try {
               await handoff;
             } finally {
@@ -1272,13 +1636,16 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         });
         // The recovery callback always supplies a fresh replacement stream.
         micRecovery.setIntentionalMute(
-          useMeetingRecordingStore.getState().manualMicMuted || useMeetingRecordingStore.getState().platformMicMuted
+          useMeetingRecordingStore.getState().manualMicMuted ||
+            useMeetingRecordingStore.getState().platformMicMuted
         );
         await micRecovery.start(micStream as MediaStream, {
           followDefault: followsSystemDefaultMic(getSettings()),
         });
+
         if (!isCurrentStart()) {
           await teardownStart();
+
           return;
         }
       }
@@ -1287,6 +1654,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       const attachRendererSystemAudio = async (stream: MediaStream) => {
         systemStream = stream;
         const systemTrack = stream.getAudioTracks()[0];
+
         const onSystemTrackEnded = () => {
           if (!isRecordingFlag || activeRecordingSessionId !== sessionId) return;
           captureDrainErrorCode ??= "system-source-unavailable";
@@ -1296,6 +1664,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           });
           void stopRecording(sessionId);
         };
+
         systemTrack?.addEventListener("ended", onSystemTrackEnded, { once: true });
         ipcCleanups.push(() => systemTrack?.removeEventListener("ended", onSystemTrackEnded));
         const ctx = createMeetingCaptureAudioContext();
@@ -1308,8 +1677,10 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       if (systemCaptureResult.stream) {
         setupSystemCaptureResult = { stream: null, error: null };
         await attachRendererSystemAudio(systemCaptureResult.stream);
+
         if (!isCurrentStart()) {
           await teardownStart();
+
           return;
         }
       }
@@ -1321,33 +1692,41 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           "meeting"
         );
         await teardownStart();
+
         return;
       }
 
       const systemAudioAvailable = systemAudioHandledInMain || systemStream !== null;
       sessionSystemAudioActive = systemAudioAvailable;
+
       const captureErrorCode = !micResult
         ? "mic-source-unavailable"
         : systemAudioAvailable
           ? null
           : "system-source-unavailable";
+
       useMeetingRecordingStore.setState({
         micCaptureStatus: micResult ? "active" : "unavailable",
         systemCaptureStatus: systemAudioAvailable ? "active" : "unavailable",
         captureErrorCode,
       });
+
       if (captureErrorCode) captureDrainErrorCode = captureErrorCode;
       systemAudioAvailabilityResolved = true;
+
       if (systemAudioAvailable && pendingSystemAudioInterruption) {
         publishSystemAudioInterruption(pendingSystemAudioInterruption);
       }
+
       pendingSystemAudioInterruption = null;
+
       try {
         const availabilityResult =
           await window.electronAPI?.meetingTranscriptionSetSystemAudioAvailable?.(
             sessionId,
             systemAudioAvailable
           );
+
         if (availabilityResult && !availabilityResult.success) {
           logger.warn(
             "Meeting auto-end system-audio confirmation was rejected",
@@ -1366,6 +1745,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
 
       if (!isCurrentStart()) {
         await teardownStart();
+
         return;
       }
 
@@ -1374,34 +1754,51 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       isStartingFlag = false;
       const recovery = micRecovery;
       let outputLookup = 0;
+
       const refreshOutputDevice = async () => {
         const lookup = ++outputLookup;
+
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
-          if (activeRecordingSessionId !== sessionId || !isRecordingFlag || lookup !== outputLookup) return;
-          const output = devices.find((device) => device.kind === "audiooutput" && device.deviceId === "default");
-          useMeetingRecordingStore.setState({ systemAudioOutputDeviceLabel: output?.label?.trim() || null });
+
+          if (activeRecordingSessionId !== sessionId || !isRecordingFlag || lookup !== outputLookup)
+            return;
+
+          const output = devices.find(
+            (device) => device.kind === "audiooutput" && device.deviceId === "default"
+          );
+
+          useMeetingRecordingStore.setState({
+            systemAudioOutputDeviceLabel: output?.label?.trim() || null,
+          });
         } catch {
           if (activeRecordingSessionId === sessionId && lookup === outputLookup) {
             useMeetingRecordingStore.setState({ systemAudioOutputDeviceLabel: null });
           }
         }
       };
+
       void refreshOutputDevice();
       navigator.mediaDevices?.addEventListener?.("devicechange", refreshOutputDevice);
       ipcCleanups.push(() => {
         outputLookup += 1;
         navigator.mediaDevices?.removeEventListener?.("devicechange", refreshOutputDevice);
       });
-      if (recovery) ipcCleanups.push(useSettingsStore.subscribe((settings, previousSettings) => {
-        if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return;
-        if (
-          settings.microphoneSelectionMode === previousSettings.microphoneSelectionMode &&
-          settings.selectedMicDeviceId === previousSettings.selectedMicDeviceId &&
-          settings.preferBuiltInMic === previousSettings.preferBuiltInMic
-        ) return;
-        void recovery.changeSelection(followsSystemDefaultMic(settings));
-      }));
+
+      if (recovery)
+        ipcCleanups.push(
+          useSettingsStore.subscribe((settings, previousSettings) => {
+            if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return;
+
+            if (
+              settings.microphoneSelectionMode === previousSettings.microphoneSelectionMode &&
+              settings.selectedMicDeviceId === previousSettings.selectedMicDeviceId &&
+              settings.preferBuiltInMic === previousSettings.preferBuiltInMic
+            )
+              return;
+            void recovery.changeSelection(followsSystemDefaultMic(settings));
+          })
+        );
       useMeetingRecordingStore.setState({
         isRecording: true,
         isTranscribing: false,
@@ -1438,6 +1835,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
       });
     }
   });
+
   return started;
 }
 
@@ -1453,6 +1851,7 @@ export async function stopRecording(
   options: { suppressProcessing?: boolean; pause?: boolean } = {}
 ): Promise<StopRecordingResult> {
   const canceledStart = meetingRecordingStartCoordinator.cancelActiveStart(expectedSessionId);
+
   if (canceledStart) {
     suppressInitialProcessingForStop = options.suppressProcessing === true;
     isRecordingFlag = false;
@@ -1473,20 +1872,29 @@ export async function stopRecording(
       systemAudioInterrupted: null,
       currentAudioLevel: 0,
     });
+
     return { diarizationSessionId: null, stopped: false };
   }
 
   await meetingRecordingStopBarrier.waitForPendingStop();
-  if (!canStopMeetingRecordingSession(activeRecordingSessionId, expectedSessionId) || !isRecordingFlag) {
+
+  if (
+    !canStopMeetingRecordingSession(activeRecordingSessionId, expectedSessionId) ||
+    !isRecordingFlag
+  ) {
     return { diarizationSessionId: null, stopped: false };
   }
 
   return meetingRecordingStopBarrier.runStop(async () => {
-    if (!canStopMeetingRecordingSession(activeRecordingSessionId, expectedSessionId) || !isRecordingFlag) {
+    if (
+      !canStopMeetingRecordingSession(activeRecordingSessionId, expectedSessionId) ||
+      !isRecordingFlag
+    ) {
       return { diarizationSessionId: null, stopped: false };
     }
 
     const sessionId = activeRecordingSessionId;
+
     if (!sessionId) return { diarizationSessionId: null, stopped: false };
     micIntentClosing = true;
     await micIntentQueue;
@@ -1505,6 +1913,7 @@ export async function stopRecording(
 
     let stopped = false;
     let finalErrorCode = captureDrainErrorCode;
+
     try {
       const result = await window.electronAPI?.meetingTranscriptionStop?.({
         sessionId,
@@ -1515,6 +1924,7 @@ export async function stopRecording(
         pause: options.pause === true,
         ...(finalErrorCode ? { errorCode: finalErrorCode } : {}),
       });
+
       if (result?.success) {
         stopped = true;
         finalErrorCode = result.errorCode ?? finalErrorCode;
@@ -1536,10 +1946,14 @@ export async function stopRecording(
         capturePhase: "incomplete",
         captureErrorCode: finalErrorCode,
       });
-      logger.error("Meeting capture stop failed", {
-        error: (error as Error).message,
-        recordingId: useMeetingRecordingStore.getState().recordingId,
-      }, "meeting");
+      logger.error(
+        "Meeting capture stop failed",
+        {
+          error: (error as Error).message,
+          recordingId: useMeetingRecordingStore.getState().recordingId,
+        },
+        "meeting"
+      );
     }
 
     useMeetingRecordingStore.setState({
@@ -1555,56 +1969,103 @@ export async function stopRecording(
     });
     ipcCleanups.forEach((cleanupListener) => cleanupListener());
     ipcCleanups = [];
+
     if (pushConfigTimeout) {
       clearTimeout(pushConfigTimeout);
       pushConfigTimeout = null;
     }
+
     isPrepared = false;
     sessionSystemAudioActive = false;
 
-    logger.info("Meeting recording stopped", {
-      capturePhase: useMeetingRecordingStore.getState().capturePhase,
-      errorCode: finalErrorCode,
-    }, "meeting");
+    logger.info(
+      "Meeting recording stopped",
+      {
+        capturePhase: useMeetingRecordingStore.getState().capturePhase,
+        errorCode: finalErrorCode,
+      },
+      "meeting"
+    );
+
     return { diarizationSessionId: null, stopped };
   });
 }
 
 export async function pauseMeeting(): Promise<boolean> {
   const state = useMeetingRecordingStore.getState();
+
   if (!state.isRecording || !state.meetingGroupId || !state.recordingNoteId) return false;
-  localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({
-    groupId: state.meetingGroupId,
-    noteId: state.recordingNoteId,
-    manualMicMuted: state.manualMicMuted,
-    restartSessionId: activeRecordingSessionId,
-  }));
+  localStorage.setItem(
+    PAUSED_MEETING_KEY,
+    JSON.stringify({
+      groupId: state.meetingGroupId,
+      noteId: state.recordingNoteId,
+      manualMicMuted: state.manualMicMuted,
+      restartSessionId: activeRecordingSessionId,
+    })
+  );
   const result = await stopRecording(undefined, { suppressProcessing: true, pause: true });
+
   if (!result.stopped) {
     localStorage.removeItem(PAUSED_MEETING_KEY);
+
     return false;
   }
-  useMeetingRecordingStore.setState({ capturePhase: "paused", meetingGroupId: state.meetingGroupId, recordingNoteId: state.recordingNoteId });
+
+  useMeetingRecordingStore.setState({
+    capturePhase: "paused",
+    meetingGroupId: state.meetingGroupId,
+    recordingNoteId: state.recordingNoteId,
+  });
+
   return true;
 }
 
 export async function resumeMeeting(args: StartRecordingArgs): Promise<boolean> {
   const paused = readPausedMeeting();
-  if (!paused || paused.noteId !== args.noteId || useMeetingRecordingStore.getState().capturePhase !== "paused") return false;
+
+  if (
+    !paused ||
+    paused.noteId !== args.noteId ||
+    useMeetingRecordingStore.getState().capturePhase !== "paused"
+  )
+    return false;
   const recordings = await window.electronAPI.meetingProcessingListForNote(paused.noteId);
-  if (!recordings.success || !recordings.recordings?.some((item) => item.recording.groupId === paused.groupId && item.recording.audioState === "available")) {
+
+  if (
+    !recordings.success ||
+    !recordings.recordings?.some(
+      (item) =>
+        item.recording.groupId === paused.groupId && item.recording.audioState === "available"
+    )
+  ) {
     localStorage.removeItem(PAUSED_MEETING_KEY);
     useMeetingRecordingStore.setState({ capturePhase: "saved", meetingGroupId: null });
+
     return false;
   }
-  const started = await startRecording({ ...args, groupId: paused.groupId, manualMicMuted: paused.manualMicMuted, restartSessionId: paused.restartSessionId });
+
+  const started = await startRecording({
+    ...args,
+    groupId: paused.groupId,
+    manualMicMuted: paused.manualMicMuted,
+    restartSessionId: paused.restartSessionId,
+  });
+
   if (started) localStorage.removeItem(PAUSED_MEETING_KEY);
-  else useMeetingRecordingStore.setState({ capturePhase: "paused", meetingGroupId: paused.groupId, recordingNoteId: paused.noteId });
+  else
+    useMeetingRecordingStore.setState({
+      capturePhase: "paused",
+      meetingGroupId: paused.groupId,
+      recordingNoteId: paused.noteId,
+    });
+
   return started;
 }
 
 export async function queueMeetingNoteProcessing(noteId: number): Promise<void> {
   const result = await window.electronAPI.meetingProcessingFinishForNote(noteId);
+
   if (!result.success) throw new Error(result.error || "Meeting processing could not start");
 }
 
@@ -1612,25 +2073,44 @@ export async function finishMeeting(): Promise<boolean> {
   const state = useMeetingRecordingStore.getState();
   const groupId = state.meetingGroupId;
   const noteId = state.recordingNoteId;
+
   if (!groupId || !noteId || (state.capturePhase !== "paused" && !state.isRecording)) return false;
-  localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({ groupId, noteId, manualMicMuted: state.manualMicMuted }));
-  if (state.isRecording && !(await stopRecording(undefined, { suppressProcessing: true })).stopped) return false;
+  localStorage.setItem(
+    PAUSED_MEETING_KEY,
+    JSON.stringify({ groupId, noteId, manualMicMuted: state.manualMicMuted })
+  );
+
+  if (state.isRecording && !(await stopRecording(undefined, { suppressProcessing: true })).stopped)
+    return false;
+
   try {
     await queueMeetingNoteProcessing(noteId);
   } catch (error) {
-    localStorage.setItem(PAUSED_MEETING_KEY, JSON.stringify({ groupId, noteId, manualMicMuted: state.manualMicMuted }));
-    useMeetingRecordingStore.setState({ capturePhase: "paused", meetingGroupId: groupId, recordingNoteId: noteId });
+    localStorage.setItem(
+      PAUSED_MEETING_KEY,
+      JSON.stringify({ groupId, noteId, manualMicMuted: state.manualMicMuted })
+    );
+    useMeetingRecordingStore.setState({
+      capturePhase: "paused",
+      meetingGroupId: groupId,
+      recordingNoteId: noteId,
+    });
     reportMeetingError(error instanceof Error ? error.message : String(error));
+
     return false;
   }
-  if (state.capturePhase === "paused" && state.recordingId) await window.electronAPI?.finishPausedMeetRecording(state.recordingId);
+
+  if (state.capturePhase === "paused" && state.recordingId)
+    await window.electronAPI?.finishPausedMeetRecording(state.recordingId);
   localStorage.removeItem(PAUSED_MEETING_KEY);
   useMeetingRecordingStore.setState({ capturePhase: "saved", meetingGroupId: null });
+
   return true;
 }
 
 export function lockSpeaker(speakerId: string, displayName: string): void {
   if (!speakerId || !displayName) return;
+
   const next = useMeetingRecordingStore.getState().segments.map((s) =>
     s.speaker === speakerId
       ? lockTranscriptSpeaker(s, {
@@ -1641,6 +2121,7 @@ export function lockSpeaker(speakerId: string, displayName: string): void {
         })
       : s
   );
+
   useMeetingRecordingStore.setState({ segments: next });
 }
 
@@ -1664,12 +2145,14 @@ if (typeof window !== "undefined") {
         recordingNoteId,
         segments: liveSegments,
       } = useMeetingRecordingStore.getState();
+
       const { targetNoteId, isCurrentSession } = resolveDiarizationTarget({
         payloadNoteId: data?.noteId,
         payloadSessionId: data?.sessionId,
         currentSessionId: diarizationSessionId,
         activeRecordingNoteId: isRecording ? recordingNoteId : null,
       });
+
       if (targetNoteId == null) return;
 
       // Publishing an empty result clears a waiting editor's spinner without
@@ -1684,10 +2167,12 @@ if (typeof window !== "undefined") {
 
       if (!data?.segments?.length) {
         publish([]);
+
         return;
       }
 
       let persisted: NoteItem | null | undefined;
+
       try {
         persisted = await window.electronAPI?.getNote?.(targetNoteId);
       } catch (error) {
@@ -1697,10 +2182,12 @@ if (typeof window !== "undefined") {
           "meeting"
         );
       }
+
       // No note means no safe base to merge into; a deleted note reads back
       // as null, so it can't be written behind the user's back either.
       if (!persisted) {
         publish([]);
+
         return;
       }
 
@@ -1712,6 +2199,7 @@ if (typeof window !== "undefined") {
         recordingNoteId,
         targetNoteId,
       });
+
       const enriched = mergeTranscriptSegments(
         existing,
         data.segments.map((segment, index) => ({
@@ -1731,6 +2219,7 @@ if (typeof window !== "undefined") {
         publish([]);
         throw error;
       }
+
       publish(enriched);
 
       if (data.speakerEmbeddings) {
@@ -1761,11 +2250,13 @@ if (typeof window !== "undefined") {
 
 export function useIsNarrowWindow(): boolean {
   const windowWidth = useMeetingRecordingStore((s) => s.windowWidth);
+
   return windowWidth < SIDE_PANEL_BREAKPOINT_PX;
 }
 
 export function useIsMeetingMode(): boolean {
   const isRecording = useMeetingRecordingStore((s) => s.isRecording);
   const isNarrow = useIsNarrowWindow();
+
   return isRecording && isNarrow;
 }

@@ -19,13 +19,16 @@ const encodeMentionId = (id: string) =>
  * consumers degrade to a readable `@Name` link instead of losing the tag. */
 export function buildMentionMarkdown(person: MentionPerson): string {
   const label = sanitizeLabel(person.name);
+
   return `[@${label}](${MENTION_HREF_PREFIX}${encodeMentionId(person.email || label)})`;
 }
 
 export function parseMentionEmail(href: string | null): string | null {
   if (!href?.startsWith(MENTION_HREF_PREFIX)) return null;
+
   try {
     const id = decodeURIComponent(href.slice(MENTION_HREF_PREFIX.length));
+
     return id.includes("@") ? id : null;
   } catch {
     return null;
@@ -33,6 +36,7 @@ export function parseMentionEmail(href: string | null): string | null {
 }
 
 const TASK_OWNER_LINE = /^(\s*[-*]\s*\[[ xX]\]\s+\S.*?)(\s+[—–-]\s+)(\S.*?)\s*$/;
+
 const OWNER_SPLIT = /\s*(?:,|&|\/|\band\b)\s*/i;
 
 interface NameIndex {
@@ -42,22 +46,29 @@ interface NameIndex {
 
 function buildNameIndex(people: MentionPerson[]): NameIndex {
   const byFullName = new Map<string, MentionPerson>();
+
   for (const person of people) {
     const name = sanitizeLabel(person.name).toLowerCase();
+
     if (name && !byFullName.has(name)) byFullName.set(name, person);
   }
+
   // First names resolve only when unambiguous across all known people.
   const byFirstName = new Map<string, MentionPerson | null>();
+
   for (const [fullName, person] of byFullName) {
     const first = fullName.split(" ")[0];
     byFirstName.set(first, byFirstName.has(first) ? null : person);
   }
+
   return { byFullName, byFirstName };
 }
 
 function matchOwner(raw: string, index: NameIndex): MentionPerson | null {
   const owner = raw.trim().replace(/^@/, "").replace(/[.:]$/, "").toLowerCase();
+
   if (!owner) return null;
+
   return index.byFullName.get(owner) ?? index.byFirstName.get(owner) ?? null;
 }
 
@@ -70,6 +81,7 @@ function matchOwner(raw: string, index: NameIndex): MentionPerson | null {
 export function tagActionItemOwners(markdown: string, people: MentionPerson[]): string {
   if (!markdown || people.length === 0) return markdown;
   const index = buildNameIndex(people);
+
   if (index.byFullName.size === 0) return markdown;
 
   return markdown
@@ -77,12 +89,16 @@ export function tagActionItemOwners(markdown: string, people: MentionPerson[]): 
     .map((line) => {
       if (line.includes(MENTION_HREF_PREFIX)) return line;
       const match = line.match(TASK_OWNER_LINE);
+
       if (!match) return line;
       const [, task, separator, ownerText] = match;
       const parts = ownerText.split(OWNER_SPLIT).filter(Boolean);
+
       if (parts.length === 0) return line;
       const owners = parts.map((part) => matchOwner(part, index));
+
       if (owners.some((owner) => owner == null)) return line;
+
       return `${task}${separator}${owners
         .map((owner) => buildMentionMarkdown(owner as MentionPerson))
         .join(", ")}`;

@@ -1,8 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const Module = require("node:module");
 
 const catalogModulePath = require.resolve("../../src/helpers/tinfoilCatalog.ts");
+
 const originalLoad = Module._load;
 
 function loadCatalog(fetchImpl: unknown) {
@@ -14,9 +17,11 @@ function loadCatalog(fetchImpl: unknown) {
     if (request === "./tinfoilSecureClient" || request === "./tinfoilSecureClient.js") {
       return { tinfoilSecureFetch: fetchImpl };
     }
+
     if (request === "./debugLogger") {
       return { warn() {} };
     }
+
     return originalLoad.call(this, request, parent, isMain);
   };
 
@@ -66,8 +71,10 @@ test("reports supportsThinking from the reasoning flag", async () => {
 
 test("shares one in-flight request between concurrent callers", async () => {
   let calls = 0;
+
   const { getTinfoilChatModels } = loadCatalog(async () => {
     calls += 1;
+
     return okResponse([CHAT_MODEL]);
   });
 
@@ -95,6 +102,7 @@ test("rejects on a non-200 response", async () => {
 
 test("backs off after a failure instead of refetching on every call", async () => {
   let calls = 0;
+
   const { getTinfoilChatModels } = loadCatalog(async () => {
     calls += 1;
     throw new Error("ENOTFOUND");

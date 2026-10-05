@@ -1,9 +1,13 @@
 const { spawnSync }: typeof import("node:child_process") = require("node:child_process");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const {
   buildMacosSwiftBinary,
 }: import("./lib/build-macos-swift-binary.cts").API = require("./lib/build-macos-swift-binary.cts");
+
 const root = path.resolve(__dirname, "..");
 
 // Dev builds are launched from a terminal, so macOS attributes the helper's
@@ -18,6 +22,7 @@ function buildDisclaimShim() {
 
   const source = path.join(root, "resources", "macos-disclaim-exec.c");
   const output = path.join(root, "resources", "bin", "macos-disclaim-exec");
+
   try {
     if (fs.existsSync(output) && fs.statSync(output).mtimeMs >= fs.statSync(source).mtimeMs) {
       return;
@@ -28,13 +33,16 @@ function buildDisclaimShim() {
 
   fs.mkdirSync(path.dirname(output), { recursive: true });
   const result = spawnSync("cc", ["-O2", "-o", output, source], { stdio: "inherit" });
+
   if (result.status !== 0) {
     console.warn(
       "[calendar-listener] Warning: failed to compile macos-disclaim-exec; " +
         "calendar permission prompts will not work in dev."
     );
+
     return;
   }
+
   try {
     fs.chmodSync(output, 0o755);
   } catch (error) {
@@ -42,6 +50,7 @@ function buildDisclaimShim() {
       `[calendar-listener] Unable to set shim permissions: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+
   console.log("[calendar-listener] Built macos-disclaim-exec.");
 }
 
@@ -58,11 +67,15 @@ const helpers = {
     frameworks: ["CoreAudio", "AudioToolbox", "AVFoundation", "Foundation"],
   },
 };
+
 const requested = process.argv.slice(2);
+
 if (requested.some((name) => !(name in helpers)))
   throw new Error(`Unknown native helper: ${requested.join(", ")}`);
+
 for (const [name, config] of Object.entries(helpers)) {
   if (requested.length && !requested.includes(name)) continue;
+
   if (name === "calendar") buildDisclaimShim();
   buildMacosSwiftBinary({
     ...config,
@@ -74,4 +87,5 @@ for (const [name, config] of Object.entries(helpers)) {
     ...(name === "audio-tap" ? { target: "arm64-apple-macosx14.2" } : {}),
   });
 }
+
 export type {};

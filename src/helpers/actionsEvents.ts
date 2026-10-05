@@ -14,32 +14,34 @@ import type { ZodType } from "zod";
 
 function parseOrDrop<T>(channel: string, payload: unknown, schema: ZodType<T>): T | null {
   const result = schema.safeParse(payload);
+
   if (!result.success) {
     console.error(
       `[actionsEvents] dropped malformed ${channel} payload: ${result.error.issues
         .map((issue) => issue.message)
         .join("; ")}`
     );
+
     return null;
   }
+
   return result.data;
 }
 
 export function sendActionCreated(action: unknown): void {
   const valid = parseOrDrop(actionEventChannels.actionCreated, action, actionCreatedPayloadSchema);
+
   if (valid) broadcastToWindows(actionEventChannels.actionCreated, valid);
 }
 
 export function sendActionUpdated(action: unknown): void {
   const valid = parseOrDrop(actionEventChannels.actionUpdated, action, actionUpdatedPayloadSchema);
+
   if (valid) broadcastToWindows(actionEventChannels.actionUpdated, valid);
 }
 
 export function sendActionDeleted(payload: unknown): void {
-  const valid = parseOrDrop(
-    actionEventChannels.actionDeleted,
-    payload,
-    actionDeletedPayloadSchema
-  );
+  const valid = parseOrDrop(actionEventChannels.actionDeleted, payload, actionDeletedPayloadSchema);
+
   if (valid) broadcastToWindows(actionEventChannels.actionDeleted, valid);
 }

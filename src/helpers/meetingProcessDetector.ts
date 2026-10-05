@@ -98,11 +98,13 @@ export class MeetingProcessDetector extends EventEmitter {
 
   _startDarwin(): void {
     let systemPreferences: WorkspaceSubscription | undefined;
+
     try {
       systemPreferences = require("electron").systemPreferences;
     } catch {
       debugLogger.warn("systemPreferences unavailable, falling back to polling", {}, "meeting");
       this._startPollingFallback();
+
       return;
     }
 
@@ -113,6 +115,7 @@ export class MeetingProcessDetector extends EventEmitter {
         "meeting"
       );
       this._startPollingFallback();
+
       return;
     }
 
@@ -120,13 +123,15 @@ export class MeetingProcessDetector extends EventEmitter {
       userInfo: { NSApplicationBundleIdentifier?: string } | null | undefined
     ): MeetingProcessKey | null => {
       const bundleId = userInfo?.NSApplicationBundleIdentifier;
-      return bundleId ? BUNDLE_ID_MAP[bundleId] ?? null : null;
+
+      return bundleId ? (BUNDLE_ID_MAP[bundleId] ?? null) : null;
     };
 
     const launchId = systemPreferences.subscribeWorkspaceNotification(
       "NSWorkspaceDidLaunchApplicationNotification",
       (_event, userInfo) => {
         const processKey = processKeyFrom(userInfo);
+
         if (processKey) {
           const appName = BUNDLE_APP_NAMES[processKey] || processKey;
           debugLogger.debug(
@@ -143,6 +148,7 @@ export class MeetingProcessDetector extends EventEmitter {
       "NSWorkspaceDidTerminateApplicationNotification",
       (_event, userInfo) => {
         const processKey = processKeyFrom(userInfo);
+
         if (processKey) {
           const appName = BUNDLE_APP_NAMES[processKey] || processKey;
           debugLogger.debug(
@@ -173,12 +179,14 @@ export class MeetingProcessDetector extends EventEmitter {
   async _initialScanDarwin(): Promise<void> {
     try {
       const processList = await processListCache.getProcessList();
+
       const darwinProcessNames = [
         { match: "zoom.us", processKey: "zoom" as MeetingProcessKey },
         { match: "microsoft teams", processKey: "teams" as MeetingProcessKey },
         { match: "webex", processKey: "webex" as MeetingProcessKey },
         { match: "facetime", processKey: "facetime" as MeetingProcessKey },
       ];
+
       for (const { match, processKey } of darwinProcessNames) {
         if (processList.some((p) => p.includes(match))) {
           const appName = BUNDLE_APP_NAMES[processKey] || processKey;
@@ -221,12 +229,14 @@ export class MeetingProcessDetector extends EventEmitter {
         const { systemPreferences } = require("electron") as {
           systemPreferences?: WorkspaceSubscription;
         };
+
         for (const id of this._subscriptionIds) {
           systemPreferences?.unsubscribeWorkspaceNotification?.(id);
         }
       } catch {
         // electron may not be available during cleanup
       }
+
       this._subscriptionIds = [];
     }
 
@@ -252,14 +262,17 @@ export class MeetingProcessDetector extends EventEmitter {
     if (process.platform === "darwin") {
       return BUNDLE_APP_NAMES[processKey] || processKey;
     }
+
     const apps = MEETING_APPS[process.platform] || [];
     const entry = apps.find((a) => a.processKey === processKey);
+
     return entry ? entry.appName : processKey;
   }
 
   async _poll(): Promise<void> {
     if (this._polling) return;
     this._polling = true;
+
     try {
       const apps = MEETING_APPS[process.platform] || MEETING_APPS.linux || [];
       const processList = await processListCache.getProcessList();
@@ -297,4 +310,5 @@ export class MeetingProcessDetector extends EventEmitter {
 }
 
 module.exports = MeetingProcessDetector;
+
 module.exports.MeetingProcessDetector = MeetingProcessDetector;

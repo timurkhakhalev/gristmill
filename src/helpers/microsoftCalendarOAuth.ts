@@ -5,7 +5,9 @@ import type { MicrosoftTokenRow } from "./database.js";
 // The "common" tenant covers both work/school (M365) and personal
 // (outlook.com) accounts. Desktop apps are public clients: PKCE, no secret.
 const MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+
 const MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+
 // "profile" puts preferred_username in the id_token and User.Read allows the
 // GET /me fallback — work accounts often omit the "email" claim.
 const CALENDAR_SCOPE =
@@ -23,7 +25,10 @@ interface MicrosoftTokenResponse {
 
 export interface MicrosoftOAuthDb {
   getMicrosoftTokensByEmail(email: string): MicrosoftTokenRow | null;
-  refreshMicrosoftTokens(accountId: number, tokens: Pick<MicrosoftTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">): { success: boolean };
+  refreshMicrosoftTokens(
+    accountId: number,
+    tokens: Pick<MicrosoftTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">
+  ): { success: boolean };
   saveMicrosoftTokens(tokens: {
     microsoft_email: string;
     access_token: string;
@@ -57,6 +62,7 @@ export class MicrosoftCalendarOAuth {
         code: "CALENDAR_NOT_CONFIGURED",
       });
     }
+
     return runOAuthLoopbackFlow({
       buildAuthUrl: (redirectUri, state, codeChallenge) => {
         const params = new URLSearchParams({
@@ -71,6 +77,7 @@ export class MicrosoftCalendarOAuth {
           code_challenge: codeChallenge,
           code_challenge_method: "S256",
         });
+
         return `${MICROSOFT_AUTH_URL}?${params.toString()}`;
       },
       handleCallback: async (code, redirectUri, codeVerifier) => {
@@ -84,6 +91,7 @@ export class MicrosoftCalendarOAuth {
         }
 
         const email = await this._resolveEmail(tokenData);
+
         if (!email) {
           throw new OAuthFlowError(
             "no_email",
@@ -92,6 +100,7 @@ export class MicrosoftCalendarOAuth {
         }
 
         this._saveTokens(email, tokenData);
+
         return { success: true, email };
       },
     });
@@ -126,9 +135,11 @@ export class MicrosoftCalendarOAuth {
 
   async getValidAccessToken(accountEmail: string): Promise<string> {
     const tokens = this.databaseManager.getMicrosoftTokensByEmail(accountEmail);
+
     if (!tokens) throw new Error(`No Microsoft tokens found for ${accountEmail}`);
 
     const fiveMinutes = 5 * 60 * 1000;
+
     if (tokens.expires_at - fiveMinutes >= Date.now()) {
       return tokens.access_token;
     }
@@ -137,21 +148,22 @@ export class MicrosoftCalendarOAuth {
     // refreshes (focus sync racing the interval sync) would persist competing
     // rotations; share one in-flight refresh per account instead.
     let refreshPromise = this._refreshInFlight.get(tokens.id);
+
     if (!refreshPromise) {
       refreshPromise = this._refreshAndSaveTokens(tokens).finally(() => {
         this._refreshInFlight.delete(tokens.id);
       });
       this._refreshInFlight.set(tokens.id, refreshPromise);
     }
+
     return refreshPromise;
   }
 
   private async _refreshAndSaveTokens(tokens: MicrosoftTokenRow): Promise<string> {
     const refreshed = await this.refreshAccessToken(tokens.refresh_token);
+
     if (refreshed.error) {
-      throw new Error(
-        `Token refresh failed: ${refreshed.error_description || refreshed.error}`
-      );
+      throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
     }
 
     // Persist the rotated refresh token or the old one stops working within 24h.
@@ -161,6 +173,7 @@ export class MicrosoftCalendarOAuth {
       refresh_token: refreshed.refresh_token || tokens.refresh_token,
       scope: refreshed.scope || tokens.scope,
     });
+
     if (!result.success) throw new Error("Microsoft account changed during token refresh");
 
     return refreshed.access_token as string;
@@ -184,7 +197,9 @@ export class MicrosoftCalendarOAuth {
         const payload = JSON.parse(
           Buffer.from(tokenData.id_token.split(".")[1] as string, "base64url").toString()
         ) as { email?: string; preferred_username?: string };
+
         if (payload.email) return payload.email;
+
         if (payload.preferred_username?.includes("@")) return payload.preferred_username;
       } catch {
         // Fall through to the Graph /me probe.
@@ -197,7 +212,9 @@ export class MicrosoftCalendarOAuth {
         signal: AbortSignal.timeout(10000),
         useSessionCookies: false,
       } as RequestInit);
+
       const me = (await response.json()) as { mail?: string; userPrincipalName?: string };
+
       return me.mail || me.userPrincipalName || null;
     } catch {
       return null;
@@ -212,7 +229,9 @@ export class MicrosoftCalendarOAuth {
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
     } as RequestInit);
+
     const text = await response.text();
+
     try {
       return JSON.parse(text) as MicrosoftTokenResponse;
     } catch {
@@ -222,4 +241,5 @@ export class MicrosoftCalendarOAuth {
 }
 
 module.exports = MicrosoftCalendarOAuth;
+
 module.exports.MicrosoftCalendarOAuth = MicrosoftCalendarOAuth;

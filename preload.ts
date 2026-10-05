@@ -32,7 +32,9 @@ type Unsubscribe = () => void;
  */
 const registerListener = <T>(
   channel: string,
-  handlerFactory: (callback: (data: T) => void) => (event: IpcRendererEvent, ...args: unknown[]) => void
+  handlerFactory: (
+    callback: (data: T) => void
+  ) => (event: IpcRendererEvent, ...args: unknown[]) => void
 ): ((callback: (data: T) => void) => Unsubscribe) => {
   return (callback) => {
     if (typeof callback !== "function") {
@@ -46,6 +48,7 @@ const registerListener = <T>(
             (callback as (...args: unknown[]) => void)(event, ...args);
 
     ipcRenderer.on(channel, listener);
+
     return () => {
       ipcRenderer.removeListener(channel, listener);
     };
@@ -98,14 +101,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   getPathForFile: (file: File): string => {
     const filePath = webUtils.getPathForFile(file);
+
     // Register real dropped-file paths so the main-process audio allowlist accepts them.
     if (filePath) ipcRenderer.send("approve-audio-path", filePath);
+
     return filePath;
   },
 
   // URL audio download lives in the typed bridge module
   ...createUrlDownloadBridge(ipcRenderer),
-
 
   // Local Whisper/Parakeet model lifecycle (downloads, status, servers,
   // VAD config, diagnostics) lives in the typed localModelLifecycleBridge.
@@ -122,10 +126,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   }>(
     "main-window-will-resize",
     (callback) => (_event, resize) =>
-      callback(resize as {
-        bounds: Electron.Rectangle;
-        anchor: "bottom-left" | "bottom-right" | "center";
-      })
+      callback(
+        resize as {
+          bounds: Electron.Rectangle;
+          anchor: "bottom-left" | "bottom-right" | "center";
+        }
+      )
   ),
   // Audio event listeners
   // The xAI/Mistral/Corti/Tinfoil/Gemini transcription proxies and the
@@ -152,37 +158,54 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onGlobeKeyPressed: (callback: (() => void) | undefined): Unsubscribe => {
     const listener = () => callback?.();
     ipcRenderer.on("globe-key-pressed", listener);
+
     return () => ipcRenderer.removeListener("globe-key-pressed", listener);
   },
   onGlobeKeyReleased: (callback: (() => void) | undefined): Unsubscribe => {
     const listener = () => callback?.();
     ipcRenderer.on("globe-key-released", listener);
+
     return () => ipcRenderer.removeListener("globe-key-released", listener);
   },
 
   // Hotkey registration events (for notifying user when hotkey fails)
-  onHotkeyFallbackUsed: (callback: ((data: { original: string; fallback: string }) => void) | undefined): Unsubscribe => {
-    const listener = (_event: IpcRendererEvent, data: { original: string; fallback: string }) => callback?.(data);
+  onHotkeyFallbackUsed: (
+    callback: ((data: { original: string; fallback: string }) => void) | undefined
+  ): Unsubscribe => {
+    const listener = (_event: IpcRendererEvent, data: { original: string; fallback: string }) =>
+      callback?.(data);
+
     ipcRenderer.on("hotkey-fallback-used", listener);
+
     return () => ipcRenderer.removeListener("hotkey-fallback-used", listener);
   },
   onHotkeyRegistrationFailed: (
     callback: ((data: { hotkey: string; error: string; suggestions: string[] }) => void) | undefined
   ): Unsubscribe => {
-    const listener = (_event: IpcRendererEvent, data: { hotkey: string; error: string; suggestions: string[] }) =>
-      callback?.(data);
+    const listener = (
+      _event: IpcRendererEvent,
+      data: { hotkey: string; error: string; suggestions: string[] }
+    ) => callback?.(data);
+
     ipcRenderer.on("hotkey-registration-failed", listener);
+
     return () => ipcRenderer.removeListener("hotkey-registration-failed", listener);
   },
-  onSettingUpdated: (callback: ((data: { key: string; value: unknown }) => void) | undefined): Unsubscribe => {
-    const listener = (_event: IpcRendererEvent, data: { key: string; value: unknown }) => callback?.(data);
+  onSettingUpdated: (
+    callback: ((data: { key: string; value: unknown }) => void) | undefined
+  ): Unsubscribe => {
+    const listener = (_event: IpcRendererEvent, data: { key: string; value: unknown }) =>
+      callback?.(data);
+
     ipcRenderer.on("setting-updated", listener);
+
     return () => ipcRenderer.removeListener("setting-updated", listener);
   },
   // Accessibility permission events (macOS)
   onAccessibilityMissing: (callback: (() => void) | undefined): Unsubscribe => {
     const listener = () => callback?.();
     ipcRenderer.on("accessibility-missing", listener);
+
     return () => ipcRenderer.removeListener("accessibility-missing", listener);
   },
 
@@ -210,5 +233,4 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Agent conversation persistence lives in the typed chatBridge above.
   // Google/Microsoft/Apple Calendar commands and events live in the typed
   // calendarBridge above (availability has its own bridge).
-
 });

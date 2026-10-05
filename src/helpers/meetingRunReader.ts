@@ -19,31 +19,40 @@ export function readMeetingRunOutput(
   run: MeetingProcessingRunDto
 ) {
   const transcriptRunId = run.kind === "summary" ? run.sourceRunId : run.id;
+
   const rawTranscript = transcriptRunId
     ? storage.readRunArtifact(transcriptRunId, "transcript")
     : null;
+
   const parsedTranscript = meetingTranscriptArtifactSchema.safeParse(rawTranscript);
+
   if (rawTranscript !== null && !parsedTranscript.success) {
     throw Object.assign(new Error("transcript-artifact-invalid"), {
       code: "transcript-artifact-invalid",
     });
   }
+
   const speakerCorrections = transcriptRunId
     ? db.getMeetingRunSpeakerCorrections(transcriptRunId)
     : [];
+
   // This includes cleared correction tombstones, unlike the visible list.
   const speakerCorrectionRevision = transcriptRunId
     ? db.getMeetingRunSpeakerCorrectionRevision(transcriptRunId)
     : 0;
+
   const summaryRun = run.hasSummary
     ? run
     : run.kind === "summary" && run.sourceRunId
       ? db.getMeetingProcessingRun(run.sourceRunId)
       : null;
+
   const summaryValue = summaryRun?.hasSummary
     ? storage.readRunArtifact(summaryRun.id, "summary")
     : null;
+
   const summary = summaryValue === null ? null : meetingSummaryArtifactSchema.parse(summaryValue);
+
   return {
     transcriptRunId,
     summaryRunId: summaryRun?.hasSummary ? summaryRun.id : null,

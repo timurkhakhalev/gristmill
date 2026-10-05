@@ -16,8 +16,10 @@
  */
 
 const HAN_RE = /\p{Script=Han}/u;
+
 // Kana and Hangul never appear in Chinese, so either one rules the text out.
 const KANA_RE = /[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f]/;
+
 const HANGUL_RE = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/;
 
 // Auto mode must be conservative: Han is shared by Chinese and Japanese. These
@@ -26,10 +28,12 @@ const HANGUL_RE = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/;
 // character there is no reliable way to distinguish kanji-only Japanese.
 const SIMPLIFIED_CHINESE_VARIANT_RE =
   /[这们吗简软网语汉习说发东车门问间书见长爱据实认让给还过边达选进运远违连迟适应际标亲亿优仅从众气请谢听读卖产业电备复历压类总处线证验权转导报记试计机传云丰动务场图库录页价关规办觉坏变删乐广设]/;
+
 const TRADITIONAL_CHINESE_VARIANT_RE =
   /[這們嗎體說發據實讓邊遲應氣條聽讀寫賣兒經廣樂觀號國學會產歷壓總處證驗權轉傳豐圖錄價關辦覺壞變刪]/;
 
 export type ChineseScriptPreference = "simplified" | "traditional" | "as-transcribed";
+
 export type ChineseScriptTarget = "simplified" | "traditional";
 
 const VALID_PREFERENCES: ReadonlySet<string> = new Set([
@@ -56,6 +60,7 @@ function getConverters() {
       toTraditional: OpenCC.Converter({ from: "cn", to: "twp" }),
     }));
   }
+
   return convertersPromise;
 }
 
@@ -65,6 +70,7 @@ export function normalizeChineseScriptPreference(
   if (typeof value === "string" && VALID_PREFERENCES.has(value)) {
     return value as ChineseScriptPreference;
   }
+
   return "as-transcribed";
 }
 
@@ -75,7 +81,9 @@ export function normalizeChineseScriptPreference(
  */
 export function isChineseText(text: string | null | undefined): boolean {
   if (!text) return false;
+
   if (KANA_RE.test(text) || HANGUL_RE.test(text)) return false;
+
   return SIMPLIFIED_CHINESE_VARIANT_RE.test(text) || TRADITIONAL_CHINESE_VARIANT_RE.test(text);
 }
 
@@ -96,11 +104,14 @@ export function resolveChineseScriptTarget(
   text?: string | null
 ): ChineseScriptTarget | null {
   if (preferredLanguage === "zh-CN") return "simplified";
+
   if (preferredLanguage === "zh-TW") return "traditional";
 
   if ((!preferredLanguage || preferredLanguage === "auto") && isChineseText(text)) {
     const preference = normalizeChineseScriptPreference(chineseScriptPreference);
+
     if (preference === "simplified") return "simplified";
+
     if (preference === "traditional") return "traditional";
   }
 
@@ -113,10 +124,9 @@ export function resolveChineseScriptTarget(
  * unsafe before the transcription language is known. The deterministic final
  * conversion still applies the selected script to likely-Chinese output.
  */
-export function resolveCleanupLanguage(
-  preferredLanguage: string | null | undefined
-): string {
+export function resolveCleanupLanguage(preferredLanguage: string | null | undefined): string {
   if (preferredLanguage && preferredLanguage !== "auto") return preferredLanguage;
+
   return "auto";
 }
 
@@ -127,9 +137,11 @@ export function getChineseScriptPromptBias(target: ChineseScriptTarget | null): 
   if (target === "simplified") {
     return "以下是简体中文。语言、学习、软件、网络。";
   }
+
   if (target === "traditional") {
     return "以下是繁體中文。語言、學習、軟體、網路。";
   }
+
   return null;
 }
 
@@ -138,9 +150,11 @@ export async function applyChineseScript(
   target: ChineseScriptTarget | null
 ): Promise<string> {
   if (!text || !target) return text || "";
+
   if (!HAN_RE.test(text)) return text;
 
   const { toSimplified, toTraditional } = await getConverters();
+
   return target === "simplified" ? toSimplified(text) : toTraditional(text);
 }
 
@@ -153,7 +167,10 @@ export function mergeWhisperPrompt(
 ): string | null {
   const bias = getChineseScriptPromptBias(target);
   const dict = typeof dictionaryPrompt === "string" ? dictionaryPrompt.trim() : "";
+
   if (bias && dict) return `${bias} ${dict}`;
+
   if (bias) return bias;
+
   return dict || null;
 }

@@ -42,8 +42,11 @@ import NoteSkeleton from "./notes/NoteSkeleton";
 import { localMutationErrorKey } from "../lib/localMutationError";
 
 const SIDEBAR_DEFAULT_WIDTH_PX = 192;
+
 const SIDEBAR_MIN_WIDTH_PX = 176;
+
 const SIDEBAR_MAX_WIDTH_PX = 320;
+
 const SIDEBAR_WIDTH_KEY = "gristmill.sidebarWidth";
 
 const clampSidebarWidth = (value: number) =>
@@ -51,18 +54,28 @@ const clampSidebarWidth = (value: number) =>
 
 function readSidebarWidth(): number {
   const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
-  return Number.isFinite(stored) && stored > 0 ? clampSidebarWidth(stored) : SIDEBAR_DEFAULT_WIDTH_PX;
+
+  return Number.isFinite(stored) && stored > 0
+    ? clampSidebarWidth(stored)
+    : SIDEBAR_DEFAULT_WIDTH_PX;
 }
 
 const SettingsModal = React.lazy(() => import("./SettingsModal"));
+
 const HomeView = React.lazy(() => import("./home/HomeView"));
+
 const PersonalNotesView = React.lazy(() => import("./notes/PersonalNotesView"));
+
 const UploadAudioView = React.lazy(() => import("./notes/UploadAudioView"));
+
 const CommandSearch = React.lazy(() => import("./CommandSearch"));
+
 const KeyboardShortcutsDialog = React.lazy(() => import("./KeyboardShortcutsDialog"));
-const NotesDebugPreview = (import.meta.env.DEV || import.meta.env.VITE_GRISTMILL_DEV_BUILD === "true")
-  ? React.lazy(() => import("./notes/NotesDebugPreview"))
-  : null;
+
+const NotesDebugPreview =
+  import.meta.env.DEV || import.meta.env.VITE_GRISTMILL_DEV_BUILD === "true"
+    ? React.lazy(() => import("./notes/NotesDebugPreview"))
+    : null;
 
 interface ControlPanelProps {
   initialSettingsSection?: string;
@@ -90,53 +103,65 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [notesDebugScenario, setNotesDebugScenario] = useState<NotesDebugScenario | null>(null);
+
   const [meetingRecordingRequest, setMeetingRecordingRequest] = useState<{
     noteId: number;
     folderId: null | number;
     event: any;
   } | null>(null);
+
   // A calendar-event draft's latest typed revision, forwarded to the notes
   // view once it owns the created/existing note (see EventNoteDraft). The
   // draft hands off before the view mounts, so the value waits in a ref the
   // mounted view consumes once.
   const pendingEventDraftHandoffRef = useRef<EventDraftHandoff | null>(null);
+
   const handleEventDraftHandoff = useCallback((handoff: EventDraftHandoff) => {
     pendingEventDraftHandoffRef.current = handoff;
   }, []);
+
   const isMeetingMode = useIsMeetingMode();
   const activeNoteId = useActiveNoteId();
+
   // Notes has no list page of its own: with no note open, Home is the list.
   // Derived during render so closing a note never paints an empty Notes frame.
   const activeView: ControlPanelView =
     requestedView === "personal-notes" && activeNoteId == null && notesDebugScenario == null
       ? "home"
       : requestedView;
+
   const recordingNoteId = useMeetingRecordingStore((state) => state.recordingNoteId);
   const recordingFolderId = useMeetingRecordingStore((state) => state.recordingFolderId);
+
   const {
     narrow,
     drawerOpen,
     toggle: toggleSidebar,
     close: closeSidebarDrawer,
   } = useCollapsibleSidebar();
+
   const noteSurfaceOpen =
     activeView === "personal-notes" &&
     (activeNoteId != null ||
       (notesDebugScenario != null &&
         notesDebugScenario !== "onboarding" &&
         notesDebugScenario !== "empty"));
+
   const isSidePanelLayout = isMeetingMode || (narrow && noteSurfaceOpen);
   const sidebarInline = !narrow && !isSidePanelLayout;
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [resizingSidebar, setResizingSidebar] = useState(false);
   const sidebarDrag = React.useRef<{ startX: number; startWidth: number } | null>(null);
+
   const onSidebarResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const drag = sidebarDrag.current;
+
     if (!drag) return;
     // Mirrored in RTL, where the sidebar sits on the right.
     const delta = document.dir === "rtl" ? drag.startX - e.clientX : e.clientX - drag.startX;
     setSidebarWidth(clampSidebarWidth(drag.startWidth + delta));
   };
+
   const onSidebarResizeEnd = () => {
     if (!sidebarDrag.current) return;
     sidebarDrag.current = null;
@@ -156,13 +181,19 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   useEffect(() => {
     const drainMeeting = async () => {
       const data = await window.electronAPI?.getPendingMeetingNoteNavigation?.();
+
       if (!data) return;
       setActiveFolderId(data.folderId);
       // The pending note may sit outside the container caches (#185).
       void openNoteRow({ id: data.noteId } as NoteItem);
       setActiveView("personal-notes");
-      setMeetingRecordingRequest({ noteId: data.noteId, folderId: data.folderId, event: data.event });
+      setMeetingRecordingRequest({
+        noteId: data.noteId,
+        folderId: data.folderId,
+        event: data.event,
+      });
       initializeNotes(null, 50, data.folderId);
+
       if (
         data.trigger === "hotkey" &&
         useSettingsStore.getState().meetingHotkeyLayoutMode === "side-panel" &&
@@ -171,35 +202,44 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
         window.electronAPI.snapToMeetingMode();
       }
     };
+
     void drainMeeting();
     const dispose = window.electronAPI?.onMeetingNoteNavigationPending?.(drainMeeting);
+
     return () => dispose?.();
   }, []);
 
   useEffect(() => {
     const drainNote = async () => {
       const data = await window.electronAPI?.getPendingNoteNavigation?.();
+
       if (!data) return;
+
       if (data.folderId != null) {
         setActiveFolderId(data.folderId);
         initializeNotes(null, 50, data.folderId);
       }
+
       // The pending note may sit outside the container caches (#185).
       void openNoteRow({ id: data.noteId } as NoteItem);
       setActiveView("personal-notes");
     };
+
     void drainNote();
     const dispose = window.electronAPI?.onNoteNavigationPending?.(drainNote);
+
     return () => dispose?.();
   }, []);
 
   useEffect(() => {
     const dispose = window.electronAPI?.onShowSettings?.(() => setShowSettings(true));
+
     return () => dispose?.();
   }, []);
 
   const createAndOpenNote = useCallback(async () => {
     const note = await handleNewNote();
+
     if (note) {
       setNotesDebugScenario(null);
       setActiveView("personal-notes");
@@ -209,6 +249,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   useEffect(() => {
     if (isTreeLoading || spaces.length === 0) return;
     const dispose = window.electronAPI?.onTrayNewNote?.(() => void createAndOpenNote());
+
     return () => dispose?.();
   }, [createAndOpenNote, isTreeLoading, spaces.length]);
 
@@ -227,6 +268,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     async (event: CalendarEvent) => {
       const existing = await window.electronAPI.findCalendarEventNote?.(event.id);
       const note = existing ? await window.electronAPI.getNote(existing.noteId) : null;
+
       if (note) openNote(note);
       else setEventDraft(event);
     },
@@ -235,10 +277,12 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
   useEffect(() => {
     if (isTreeLoading || spaces.length === 0) return;
+
     const dispose = window.electronAPI?.onTrayOpenEvent?.((event) => {
       setActiveView("home");
       void openCalendarEvent(event);
     });
+
     return () => dispose?.();
   }, [openCalendarEvent, isTreeLoading, spaces.length]);
 
@@ -263,10 +307,13 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
   useEffect(() => {
     if (!drawerOpen) return;
+
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeSidebarDrawer();
     };
+
     window.addEventListener("keydown", onKey);
+
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen, closeSidebarDrawer]);
 
@@ -275,6 +322,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
       if (containerNotes.length === 0) return;
       const index = containerNotes.findIndex((note) => note.id === activeNoteId);
       const next = index === -1 ? (delta > 0 ? 0 : containerNotes.length - 1) : index + delta;
+
       if (next < 0 || next >= containerNotes.length) return;
       setActiveView("personal-notes");
       setActiveNoteId(containerNotes[next].id);
@@ -284,10 +332,12 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
   const submitNewFolder = useCallback(async () => {
     const name = newFolderName.trim();
+
     if (!name || !activeContext) return;
     setNewFolderDialogOpen(false);
     setNewFolderName("");
     const result = await createFolder(name, activeContext.spaceId);
+
     if (!result.success && result.error) {
       toast({
         title: t("notes.folders.couldNotCreate"),
@@ -301,8 +351,10 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     const onKey = (event: KeyboardEvent) => {
       if (showSettings) return;
       const shortcut = resolveAppShortcut(event);
+
       if (!shortcut) return;
       event.preventDefault();
+
       switch (shortcut) {
         case "search":
           setShowSearch((open) => !open);
@@ -333,12 +385,15 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           break;
       }
     };
+
     window.addEventListener("keydown", onKey);
+
     return () => window.removeEventListener("keydown", onKey);
   }, [showSettings, openSettings, createAndOpenNote, spaces.length, goToAdjacentNote]);
 
   const handleExitSidePanel = useCallback(() => {
     if (isMeetingMode) window.electronAPI?.restoreFromMeetingMode?.();
+
     if (notesDebugScenario) setNotesDebugScenario(null);
     else setActiveNoteId(null);
   }, [isMeetingMode, notesDebugScenario]);
@@ -352,6 +407,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
             open={showSettings}
             onOpenChange={(open) => {
               setShowSettings(open);
+
               if (!open) setSettingsSection(undefined);
             }}
             initialSection={settingsSection}
@@ -361,7 +417,10 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
       <div className="flex flex-1 overflow-hidden relative">
         <div
-          className={cn("relative shrink-0 overflow-hidden", !resizingSidebar && "transition-[width] duration-300 ease-out")}
+          className={cn(
+            "relative shrink-0 overflow-hidden",
+            !resizingSidebar && "transition-[width] duration-300 ease-out"
+          )}
           style={{ width: sidebarInline ? sidebarWidth : 0 }}
         >
           {sidebarInline && (
@@ -378,27 +437,27 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
         </div>
         {sidebarInline && (
           <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-valuemin={SIDEBAR_MIN_WIDTH_PX}
-              aria-valuemax={SIDEBAR_MAX_WIDTH_PX}
-              aria-valuenow={sidebarWidth}
-              onPointerDown={(e) => {
-                e.currentTarget.setPointerCapture(e.pointerId);
-                sidebarDrag.current = { startX: e.clientX, startWidth: sidebarWidth };
-                setResizingSidebar(true);
-              }}
-              onPointerMove={onSidebarResizeMove}
-              onPointerUp={onSidebarResizeEnd}
-              onPointerCancel={onSidebarResizeEnd}
-              onDoubleClick={() => {
-                setSidebarWidth(SIDEBAR_DEFAULT_WIDTH_PX);
-                localStorage.removeItem(SIDEBAR_WIDTH_KEY);
-              }}
-              style={{ insetInlineStart: sidebarWidth + 8 - 3 }}
-              className="absolute inset-y-2 z-20 w-1.5 cursor-col-resize touch-none rounded-full transition-colors hover:bg-primary/20 active:bg-primary/30"
-            />
-          )}
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin={SIDEBAR_MIN_WIDTH_PX}
+            aria-valuemax={SIDEBAR_MAX_WIDTH_PX}
+            aria-valuenow={sidebarWidth}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              sidebarDrag.current = { startX: e.clientX, startWidth: sidebarWidth };
+              setResizingSidebar(true);
+            }}
+            onPointerMove={onSidebarResizeMove}
+            onPointerUp={onSidebarResizeEnd}
+            onPointerCancel={onSidebarResizeEnd}
+            onDoubleClick={() => {
+              setSidebarWidth(SIDEBAR_DEFAULT_WIDTH_PX);
+              localStorage.removeItem(SIDEBAR_WIDTH_KEY);
+            }}
+            style={{ insetInlineStart: sidebarWidth + 8 - 3 }}
+            className="absolute inset-y-2 z-20 w-1.5 cursor-col-resize touch-none rounded-full transition-colors hover:bg-primary/20 active:bg-primary/30"
+          />
+        )}
         {narrow && !isSidePanelLayout && (
           <ControlPanelNavDrawer open={drawerOpen} onClose={closeSidebarDrawer}>
             <ControlPanelSidebar
@@ -453,6 +512,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   onMaterialized={(note, intent) => {
                     setEventDraft(null);
                     openNote(note);
+
                     if (intent === "record" && !useMeetingRecordingStore.getState().isRecording) {
                       void startRecordingForNote(note);
                     }
@@ -493,6 +553,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                     onNoteCreated={(noteId, folderId) => {
                       // The fresh row may land in an unloaded container (#185).
                       void openNoteRow({ id: noteId } as NoteItem);
+
                       if (folderId != null) setActiveFolderId(folderId);
                       setActiveView("personal-notes");
                     }}
@@ -529,6 +590,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
         open={newFolderDialogOpen}
         onOpenChange={(open) => {
           setNewFolderDialogOpen(open);
+
           if (!open) setNewFolderName("");
         }}
       >

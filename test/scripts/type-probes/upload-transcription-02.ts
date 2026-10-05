@@ -4,7 +4,9 @@
 import { createUploadTranscriptionBridge } from "./src/preload/uploadTranscriptionBridge.js";
 import { registerUploadCancelHandler } from "./src/helpers/uploadCancelIpcHandler.js";
 
-declare const ipcMain: { handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void };
+declare const ipcMain: {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+};
 
 declare const ipcRendererLike: {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;

@@ -35,7 +35,9 @@ export function getFFmpegPath(): string | null {
           }
         }
       }
+
       cachedFFmpegPath = unpackedPath;
+
       return unpackedPath;
     }
 
@@ -50,7 +52,9 @@ export function getFFmpegPath(): string | null {
           throw new Error("Not executable");
         }
       }
+
       cachedFFmpegPath = ffmpegPath;
+
       return ffmpegPath;
     }
   } catch (err) {
@@ -67,6 +71,7 @@ export function getFFmpegPath(): string | null {
   for (const candidate of systemCandidates) {
     if (fs.existsSync(candidate)) {
       cachedFFmpegPath = candidate;
+
       return candidate;
     }
   }
@@ -79,7 +84,9 @@ export function getFFmpegPath(): string | null {
   for (const dir of pathDirs) {
     if (!dir) continue;
     const candidate = path.join(dir, pathBinary);
+
     if (!fs.existsSync(candidate)) continue;
+
     if (process.platform !== "win32") {
       try {
         fs.accessSync(candidate, fs.constants.X_OK);
@@ -87,11 +94,14 @@ export function getFFmpegPath(): string | null {
         continue;
       }
     }
+
     cachedFFmpegPath = candidate;
+
     return candidate;
   }
 
   debugLogger.debug("FFmpeg not found");
+
   return null;
 }
 
@@ -126,16 +136,19 @@ export function convertToWav(
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(createAbortError());
+
       return;
     }
 
     const ffmpegPath = getFFmpegPath();
+
     if (!ffmpegPath) {
       reject(
         new Error(
           "FFmpeg not found - the bundled FFmpeg is missing from this install and no system FFmpeg was found on PATH; reinstalling Gristmill should fix this"
         )
       );
+
       return;
     }
 
@@ -177,6 +190,7 @@ export function convertToWav(
         // an uncaught throw here would escape the abort dispatch
       }
     };
+
     signal?.addEventListener("abort", onAbort, { once: true });
 
     proc.stderr.on("data", (data) => {
@@ -186,6 +200,7 @@ export function convertToWav(
     proc.on("error", (error) => {
       if (settled) return;
       signal?.removeEventListener("abort", onAbort);
+
       // After an abort the error belongs to the kill; close still fires and
       // must stay the settler, so don't consume the settlement here.
       if (signal?.aborted) return;
@@ -197,27 +212,34 @@ export function convertToWav(
       if (settled) return;
       settled = true;
       signal?.removeEventListener("abort", onAbort);
+
       if (signal?.aborted) {
         reject(createAbortError());
+
         return;
       }
+
       if (code !== 0) {
         const stderrPreview = stderr.slice(-500).trim();
         debugLogger.debug("FFmpeg conversion failed", { code, stderr: stderrPreview });
         reject(
           new Error(`FFmpeg exited with code ${code}${stderrPreview ? `: ${stderrPreview}` : ""}`)
         );
+
         return;
       }
 
       if (!fs.existsSync(outputPath)) {
         reject(new Error("FFmpeg conversion produced no output file"));
+
         return;
       }
 
       const stats = fs.statSync(outputPath);
+
       if (stats.size === 0) {
         reject(new Error("FFmpeg conversion produced empty output file"));
+
         return;
       }
 
@@ -238,6 +260,7 @@ export function parseWavFormat(wavBuffer: Buffer): WavFormat | null {
   if (!isWavFormat(wavBuffer)) return null;
 
   let offset = 12; // Skip RIFF header (4) + size (4) + WAVE (4)
+
   while (offset < wavBuffer.length - 8) {
     const chunkId = wavBuffer.toString("ascii", offset, offset + 4);
     const chunkSize = wavBuffer.readUInt32LE(offset + 4);
@@ -293,8 +316,10 @@ export function wavToFloat32Samples(wavBuffer: Buffer): Buffer {
 
   for (let i = 0; i < numSamples; i++) {
     const sampleOffset = dataOffset + i * bytesPerSample;
+
     const intVal =
       bitsPerSample === 16 ? wavBuffer.readInt16LE(sampleOffset) : wavBuffer.readInt8(sampleOffset);
+
     const maxVal = bitsPerSample === 16 ? 32768 : 128;
     float32.writeFloatLE(intVal / maxVal, i * 4);
   }
@@ -304,9 +329,11 @@ export function wavToFloat32Samples(wavBuffer: Buffer): Buffer {
 
 export function computeFloat32RMS(float32Buffer: Buffer): number {
   const numSamples = float32Buffer.length / 4;
+
   if (numSamples === 0) return 0;
 
   let sumSquares = 0;
+
   for (let i = 0; i < numSamples; i++) {
     const val = float32Buffer.readFloatLE(i * 4);
     sumSquares += val * val;
@@ -317,7 +344,9 @@ export function computeFloat32RMS(float32Buffer: Buffer): number {
 
 export function parseFfmpegDuration(stderr: string | null | undefined): number | null {
   const match = stderr?.match(/Duration:\s*(\d+):([0-5]\d):([0-5]\d(?:\.\d+)?)/);
+
   if (!match) return null;
+
   return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
 }
 
@@ -342,12 +371,15 @@ export function splitAudioFile(
   return new Promise<SplitAudioResult>((resolve, reject) => {
     if (signal?.aborted) {
       reject(createAbortError());
+
       return;
     }
 
     const ffmpegPath = getFFmpegPath();
+
     if (!ffmpegPath) {
       reject(new Error("FFmpeg not found - required for audio splitting"));
+
       return;
     }
 
@@ -392,8 +424,10 @@ export function splitAudioFile(
       } catch {
         // an uncaught throw here would escape the abort dispatch
       }
+
       reject(createAbortError());
     };
+
     signal?.addEventListener("abort", onAbort, { once: true });
 
     proc.stderr.on("data", (data) => {
@@ -402,6 +436,7 @@ export function splitAudioFile(
 
     proc.on("error", (error) => {
       signal?.removeEventListener("abort", onAbort);
+
       if (signal?.aborted) return;
       reject(new Error(`FFmpeg split error: ${error.message}`));
     });
@@ -410,7 +445,9 @@ export function splitAudioFile(
     // from being logged and reported as an ffmpeg failure.
     proc.on("close", (code) => {
       signal?.removeEventListener("abort", onAbort);
+
       if (signal?.aborted) return;
+
       if (code !== 0) {
         const stderrPreview = stderr.slice(-500).trim();
         debugLogger.debug("FFmpeg split failed", { code, stderr: stderrPreview });
@@ -419,6 +456,7 @@ export function splitAudioFile(
             `FFmpeg split exited with code ${code}${stderrPreview ? `: ${stderrPreview}` : ""}`
           )
         );
+
         return;
       }
 
@@ -430,6 +468,7 @@ export function splitAudioFile(
 
       if (chunks.length === 0) {
         reject(new Error("FFmpeg split produced no output files"));
+
         return;
       }
 
@@ -447,7 +486,9 @@ export interface AudioSegmentBuffer {
 
 function toBuffer(data: AudioSegmentBuffer["buffer"]): Buffer {
   if (Buffer.isBuffer(data)) return data;
+
   if (data instanceof Uint8Array) return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+
   return Buffer.from(data);
 }
 
@@ -455,23 +496,29 @@ export async function mergeAudioSegments(segments: AudioSegmentBuffer[]): Promis
   if (!Array.isArray(segments) || segments.length === 0) {
     throw new Error("At least one audio segment is required");
   }
+
   if (segments.length === 1) return toBuffer(segments[0].buffer);
 
   const ffmpegPath = getFFmpegPath();
+
   if (!ffmpegPath) throw new Error("FFmpeg not found - required for audio segment recovery");
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-audio-merge-"));
   const outputPath = path.join(tempDir, "merged.webm");
+
   try {
     const inputPaths: string[] = segments.map((segment, index) => {
       const mimeType = segment.mimeType || "audio/webm";
+
       const extension = mimeType.includes("ogg")
         ? "ogg"
         : mimeType.includes("mp4")
           ? "m4a"
           : "webm";
+
       const inputPath = path.join(tempDir, `segment-${index}.${extension}`);
       fs.writeFileSync(inputPath, toBuffer(segment.buffer));
+
       return inputPath;
     });
 
@@ -479,6 +526,7 @@ export async function mergeAudioSegments(segments: AudioSegmentBuffer[]): Promis
       (_, index) =>
         `[${index}:a]aresample=16000,aformat=sample_fmts=fltp:channel_layouts=mono[s${index}]`
     );
+
     filters.push(
       `${inputPaths.map((_, index) => `[s${index}]`).join("")}concat=n=${inputPaths.length}:v=0:a=1[out]`
     );
@@ -497,10 +545,12 @@ export async function mergeAudioSegments(segments: AudioSegmentBuffer[]): Promis
         "-y",
         outputPath
       );
+
       const proc = spawn(ffmpegPath, args, {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });
+
       let stderr = "";
       proc.stderr.on("data", (data) => {
         stderr += data.toString();
@@ -512,8 +562,10 @@ export async function mergeAudioSegments(segments: AudioSegmentBuffer[]): Promis
           reject(
             new Error(`FFmpeg audio merge exited with code ${code}${preview ? `: ${preview}` : ""}`)
           );
+
           return;
         }
+
         resolve();
       });
     });
@@ -527,4 +579,3 @@ export async function mergeAudioSegments(segments: AudioSegmentBuffer[]): Promis
 export function clearCache(): void {
   cachedFFmpegPath = null;
 }
-

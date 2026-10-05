@@ -5,7 +5,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
+
 const __dirname = path.dirname(__filename);
+
 const DEFAULT_DEV_SERVER_PORT = 5183;
 
 const parseDevServerPort = (rawPort) => {
@@ -27,10 +29,7 @@ export default defineConfig(({ mode }) => {
   const devServerPort = parseDevServerPort(rawPort);
 
   return {
-    plugins: [
-      react(),
-      tailwindcss(),
-    ],
+    plugins: [react(), tailwindcss()],
     base: "./", // Use relative paths for file:// protocol in Electron
     envDir, // Load .env from project root
     resolve: {

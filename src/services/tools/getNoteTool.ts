@@ -32,7 +32,9 @@ export const getNoteTool: ToolDefinition = {
       }
 
       const output = await window.electronAPI.getNoteOutput({ noteId: id, scope: "note" });
-      if (output.scope !== "note" || output.noteId !== id) throw new Error("Unexpected Note output identity");
+
+      if (output.scope !== "note" || output.noteId !== id)
+        throw new Error("Unexpected Note output identity");
 
       return {
         success: true,

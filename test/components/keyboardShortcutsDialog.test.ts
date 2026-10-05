@@ -1,8 +1,15 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const { createElement } = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 const heroMock = `
 import React from "react";
@@ -16,6 +23,7 @@ export const Modal = Object.assign(
 
 async function renderDialog(t: import("node:test").TestContext) {
   installBrowserGlobals(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-keyboard-shortcuts-",
     noExternal: ["@heroui/react"],
@@ -25,7 +33,9 @@ async function renderDialog(t: import("node:test").TestContext) {
       "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
     },
   });
+
   const mod = await vite.ssrLoadModule("/components/KeyboardShortcutsDialog.tsx");
+
   return renderToStaticMarkup(createElement(mod.default, { open: true, onOpenChange: () => {} }));
 }
 
@@ -34,6 +44,7 @@ test("the shortcut cheat sheet lists every wired action and its chord", async (t
 
   assert.match(html, /Keyboard shortcuts/, "title");
   assert.match(html, /Navigation/, "navigation group");
+
   for (const [label, chord] of [
     ["Search", ["⌘", "K"]],
     ["Next / previous note", ["⌘", "⇧", "[ / ]"]],
@@ -44,14 +55,22 @@ test("the shortcut cheat sheet lists every wired action and its chord", async (t
     ["Find in note", ["⌘", "F"]],
     ["Keyboard shortcuts", ["⌘", "/"]],
   ]) {
-    const row = html.match(new RegExp(`<span[^>]*>${String(label).replaceAll("/", "\\/")}</span><span[^>]*>(.*?)</span>`));
+    const row = html.match(
+      new RegExp(`<span[^>]*>${String(label).replaceAll("/", "\\/")}</span><span[^>]*>(.*?)</span>`)
+    );
+
     assert.ok(row, `${label} row`);
-    assert.deepEqual([...row[1].matchAll(/<kbd[^>]*>(.*?)<\/kbd>/g)].map((match) => match[1]), chord, String(label));
+    assert.deepEqual(
+      [...row[1].matchAll(/<kbd[^>]*>(.*?)<\/kbd>/g)].map((match) => match[1]),
+      chord,
+      String(label)
+    );
   }
 });
 
 test("a closed cheat sheet renders nothing", async (t: import("node:test").TestContext) => {
   installBrowserGlobals(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-keyboard-shortcuts-closed-",
     noExternal: ["@heroui/react"],
@@ -60,7 +79,12 @@ test("a closed cheat sheet renders nothing", async (t: import("node:test").TestC
       "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
     },
   });
+
   const mod = await vite.ssrLoadModule("/components/KeyboardShortcutsDialog.tsx");
-  const html = renderToStaticMarkup(createElement(mod.default, { open: false, onOpenChange: () => {} }));
+
+  const html = renderToStaticMarkup(
+    createElement(mod.default, { open: false, onOpenChange: () => {} })
+  );
+
   assert.equal(html, "");
 });

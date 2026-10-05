@@ -1,7 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const { listLocalTranscriptionModels }: typeof import("../../src/helpers/localTranscriptionModels.ts") = require("../../src/helpers/localTranscriptionModels.ts");
+const {
+  listLocalTranscriptionModels,
+}: typeof import("../../src/helpers/localTranscriptionModels.ts") = require("../../src/helpers/localTranscriptionModels.ts");
+
 const registry = require("../../src/models/modelRegistryData.json");
 
 const managers = (downloaded: ReadonlySet<string>) => ({
@@ -37,6 +41,7 @@ test("a sherpa default is read from PARAKEET_MODEL, and cloud mode yields no def
     ...managers(new Set()),
     env: { LOCAL_TRANSCRIPTION_PROVIDER: "nvidia", PARAKEET_MODEL: "parakeet-tdt-0.6b-v3" },
   });
+
   assert.deepEqual(
     withParakeet.filter((m) => m.default).map((m) => m.model),
     ["parakeet-tdt-0.6b-v3"]

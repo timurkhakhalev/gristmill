@@ -1,14 +1,22 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const { createElement } = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer, installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 type TestContext = import("node:test").TestContext;
 
 // Assertions are class-based, so the untranslated i18n fallback (raw keys) is fine.
 async function renderBottomBar(t: TestContext, props: Record<string, unknown>) {
   installBrowserGlobals(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-note-bottom-bar-test-",
     mockModules: {
@@ -18,7 +26,9 @@ async function renderBottomBar(t: TestContext, props: Record<string, unknown>) {
       `,
     },
   });
+
   const mod = await vite.ssrLoadModule("/components/notes/NoteBottomBar.tsx");
+
   return renderToStaticMarkup(
     createElement(mod.default, {
       isRecording: false,

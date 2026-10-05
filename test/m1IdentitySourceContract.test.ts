@@ -1,9 +1,13 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const test: typeof import("node:test") = require("node:test");
 
 const root = path.join(__dirname, "..");
+
 const read = (file: string): string => fs.readFileSync(path.join(root, file), "utf8");
 
 test("M1 build identity belongs to Gristmill and has no publish destination", () => {
@@ -50,6 +54,12 @@ test("M1 removes updater and old-bundle migration runtime", () => {
   assert.equal(fs.existsSync(path.join(root, "src/helpers/postMigrationDetector.js")), false);
   assert.equal(fs.existsSync(path.join(root, "src/components/PostMigrationOnboarding.tsx")), false);
   assert.doesNotMatch(read("main.ts"), /electron-updater|checkForUpdatesOnStartup|UpdateManager/);
-  assert.doesNotMatch(read("preload.ts"), /checkForUpdates|downloadUpdate|installUpdate|onUpdateAvailable/);
-  assert.doesNotMatch(read("src/helpers/ipcHandlers.ts"), /check-for-updates|download-update|install-update/);
+  assert.doesNotMatch(
+    read("preload.ts"),
+    /checkForUpdates|downloadUpdate|installUpdate|onUpdateAvailable/
+  );
+  assert.doesNotMatch(
+    read("src/helpers/ipcHandlers.ts"),
+    /check-for-updates|download-update|install-update/
+  );
 });

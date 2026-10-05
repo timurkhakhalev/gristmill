@@ -1,8 +1,10 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const load = async () => {
   const m = await import("../../src/utils/participants.js");
+
   return m.default || m;
 };
 
@@ -14,10 +16,12 @@ test("returns positive integer expected_speaker_count verbatim", async () => {
 
 test("ignores non-positive expected_speaker_count and falls back to participants", async () => {
   const { resolveExpectedSpeakerCount } = await load();
+
   const note = {
     expected_speaker_count: 0,
     participants: JSON.stringify([{ name: "Alice" }, { name: "Bob", self: true }]),
   };
+
   assert.equal(resolveExpectedSpeakerCount(note), 2);
 
   assert.equal(resolveExpectedSpeakerCount({ expected_speaker_count: 0 }), null);
@@ -35,6 +39,7 @@ test("ignores non-integer and non-finite expected_speaker_count", async () => {
 
 test("derives speaker count from calendar participants when expected_speaker_count is nullish", async () => {
   const { resolveExpectedSpeakerCount } = await load();
+
   const participants = JSON.stringify([
     { name: "Alice" },
     { name: "Charlie" },

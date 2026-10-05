@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const policy = require("../../src/helpers/llamaContextPolicy.ts");
@@ -87,6 +88,7 @@ test("kvBytesPerToken is anti-correlated with file size across the registry", ()
     keyLength: 256,
     valueLength: 256,
   });
+
   const llama3b = policy.kvBytesPerToken({
     blockCount: 28,
     headCountKv: 8,
@@ -174,6 +176,7 @@ test("regression #1203: a 16 GB Mac running Llama-3.2-3B stays far below the all
   // Metal memory, which can do neither, and watchdogd missed its check-ins.
   const footprint =
     LLAMA_3_2_3B.weightsBytes + ceiling * LLAMA_3_2_3B.kvBytesPerToken + policy.COMPUTE_FIXED_BYTES;
+
   assert.ok(
     footprint < 0.4 * 16 * GIB,
     `footprint ${footprint} must stay under 40% of RAM (${0.4 * 16 * GIB})`
@@ -192,6 +195,7 @@ test("the ceiling tracks KV cost, not model size, on identical hardware", () => 
     weightsBytes: 5 * GIB,
     trainedContextTokens: 262144,
   });
+
   const expensive = policy.resolveContextCeiling({
     totalMemoryBytes: 48 * GIB,
     kvBytesPerToken: 393216, // Gemma-3-12B
@@ -234,6 +238,7 @@ test("unusable memory readings fall back to today's limit", () => {
       totalMemoryBytes,
       ...LLAMA_3_2_3B,
     });
+
     assert.equal(ceiling, policy.BASELINE_CONTEXT_SIZE, `total=${totalMemoryBytes}`);
     assert.equal(reason, "no-memory-info");
   }
@@ -297,6 +302,7 @@ test("the prompt cache is bounded so it cannot eat the budget we just computed",
       totalMemoryBytes,
       ...LLAMA_3_2_3B,
     });
+
     assert.ok(
       cacheRamMiB >= 512 && cacheRamMiB <= 2048,
       `cacheRamMiB ${cacheRamMiB} out of range at ${totalMemoryBytes}`

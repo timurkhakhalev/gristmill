@@ -14,14 +14,17 @@ import type { ZodType } from "zod";
 
 function parseOrDrop<T>(channel: string, payload: unknown, schema: ZodType<T>): T | null {
   const result = schema.safeParse(payload);
+
   if (!result.success) {
     console.error(
       `[containerEvents] dropped malformed ${channel} payload: ${result.error.issues
         .map((issue) => issue.message)
         .join("; ")}`
     );
+
     return null;
   }
+
   return result.data;
 }
 
@@ -31,6 +34,7 @@ export function sendFolderCreated(folder: unknown): void {
     folder,
     folderCreatedRenamedSyncedPayloadSchema
   );
+
   if (valid) broadcastToWindows(containerEventChannels.folderCreated, valid);
 }
 
@@ -40,6 +44,7 @@ export function sendFolderDeleted(payload: unknown): void {
     payload,
     folderDeletedPayloadSchema
   );
+
   if (valid) broadcastToWindows(containerEventChannels.folderDeleted, valid);
 }
 
@@ -49,6 +54,7 @@ export function sendFolderRenamed(folder: unknown): void {
     folder,
     folderCreatedRenamedSyncedPayloadSchema
   );
+
   if (valid) broadcastToWindows(containerEventChannels.folderRenamed, valid);
 }
 
@@ -58,14 +64,12 @@ export function sendFolderSynced(folder: unknown): void {
     folder,
     folderCreatedRenamedSyncedPayloadSchema
   );
+
   if (valid) broadcastToWindows(containerEventChannels.folderSynced, valid);
 }
 
 export function sendSpaceSynced(space: unknown): void {
-  const valid = parseOrDrop(
-    containerEventChannels.spaceSynced,
-    space,
-    spaceSyncedPayloadSchema
-  );
+  const valid = parseOrDrop(containerEventChannels.spaceSynced, space, spaceSyncedPayloadSchema);
+
   if (valid) broadcastToWindows(containerEventChannels.spaceSynced, valid);
 }

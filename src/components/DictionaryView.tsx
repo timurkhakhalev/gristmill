@@ -42,10 +42,12 @@ export default function DictionaryView() {
   // differs only by case is still the agent name's entry, so keep it hidden.
   const userWords = useMemo(() => {
     const agentWord = agentName.trim().toLowerCase();
+
     return customDictionary.filter((w) => w.trim().toLowerCase() !== agentWord);
   }, [customDictionary, agentName]);
 
   const searchQuery = newWord.trim().toLowerCase();
+
   const visibleWords = useMemo(
     () =>
       searchQuery ? userWords.filter((w) => w.toLowerCase().includes(searchQuery)) : userWords,
@@ -55,14 +57,18 @@ export default function DictionaryView() {
   const addWords = useCallback(
     (text: string): number => {
       const existing = new Set(customDictionary.map((w) => w.toLowerCase()));
+
       const words = parseDictionaryImportText(text).filter((w) => {
         if (existing.has(w.toLowerCase())) return false;
         existing.add(w.toLowerCase());
+
         return true;
       });
+
       if (words.length > 0) {
         updateCustomDictionary({ add: words });
       }
+
       return words.length;
     },
     [customDictionary, updateCustomDictionary]
@@ -93,17 +99,21 @@ export default function DictionaryView() {
   const commitEdit = useCallback(() => {
     if (!editingWord) return;
     const trimmed = editValue.trim();
+
     const isDuplicate = customDictionary.some(
       (w) => w !== editingWord && w.toLowerCase() === trimmed.toLowerCase()
     );
+
     if (trimmed && trimmed !== editingWord && !isDuplicate) {
       updateCustomDictionary({ add: [trimmed], remove: [editingWord] });
     }
+
     setEditingWord(null);
   }, [editingWord, editValue, customDictionary, updateCustomDictionary]);
 
   const handleExport = useCallback(async () => {
     const result = await window.electronAPI?.exportDictionary?.(customDictionary);
+
     if (result?.error) {
       toast({
         title: t("dictionary.exportFailed"),
@@ -247,9 +257,7 @@ export default function DictionaryView() {
                 {agentName}
               </span>
             </div>
-            <span className="text-xs text-muted shrink-0">
-              {t("dictionary.agentDefault")}
-            </span>
+            <span className="text-xs text-muted shrink-0">{t("dictionary.agentDefault")}</span>
           </div>
 
           {/* ─── Dictionary list ─── */}
@@ -291,6 +299,7 @@ export default function DictionaryView() {
               <ul>
                 {visibleWords.map((word) => {
                   const isEditing = editingWord === word;
+
                   return (
                     <li
                       key={word}
@@ -304,6 +313,7 @@ export default function DictionaryView() {
                           onChange={(e) => setEditValue(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") commitEdit();
+
                             if (e.key === "Escape") setEditingWord(null);
                           }}
                           onBlur={commitEdit}

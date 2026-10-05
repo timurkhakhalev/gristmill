@@ -1,6 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
 
 // Meeting capture owns raw audio. Processing starts only after Stop through
@@ -15,6 +18,7 @@ function section(from: string, to: string) {
   const start = source.indexOf(from);
   const end = source.indexOf(to, start + from.length);
   assert.ok(start >= 0 && end > start, `source section ${from}..${to} must exist`);
+
   return source.slice(start, end);
 }
 
@@ -34,17 +38,35 @@ test("renderer PCM is validated and acknowledged only after the raw write", () =
   assert.match(send, /sessionId !== activeCaptureSessionId/);
   assert.match(send, /meetingCapturePacketSchema\.safeParse\(packet\)/);
   const write = send.indexOf("capture.appendRendererSamples(source, parsedPacket.data, raw)");
-  const acknowledge = send.indexOf("return { success: true, sequence: parsedPacket.data.sequence }");
+
+  const acknowledge = send.indexOf(
+    "return { success: true, sequence: parsedPacket.data.sequence }"
+  );
+
   assert.ok(write >= 0 && acknowledge > write);
 });
 
 test("native system PCM is persisted, watched for interruption, and drained before finalization", () => {
-  const watchdog = section("const meetingSystemAudioWatchdog:", "const clearMeetingSystemAudioTicker");
+  const watchdog = section(
+    "const meetingSystemAudioWatchdog:",
+    "const clearMeetingSystemAudioTicker"
+  );
+
   assert.match(watchdog, /send\("meeting-system-audio-interrupted", payload\)/);
 
-  const nativeStart = section("const startManagedMeetingSystemAudio", 'ipcMain.handle(\n    "meeting-transcription-send"');
-  assert.match(nativeStart, /timeline\.write\(chunk, frameStart, \(raw, anchoredFrameStart\) => \{/);
-  assert.match(nativeStart, /capture\.appendNativeSamples\("system", sourceGeneration, raw, sourceFrameStart, anchoredFrameStart\)/);
+  const nativeStart = section(
+    "const startManagedMeetingSystemAudio",
+    'ipcMain.handle(\n    "meeting-transcription-send"'
+  );
+
+  assert.match(
+    nativeStart,
+    /timeline\.write\(chunk, frameStart, \(raw, anchoredFrameStart\) => \{/
+  );
+  assert.match(
+    nativeStart,
+    /capture\.appendNativeSamples\("system", sourceGeneration, raw, sourceFrameStart, anchoredFrameStart\)/
+  );
   assert.match(nativeStart, /meetingSystemAudioWatchdog\.recordChunk\(/);
   assert.match(nativeStart, /meetingSystemAudioWatchdog\.reportDeviceInvalidated\(\)/);
   assert.match(nativeStart, /stop: \(\) => manager\.stop\(\)/);

@@ -46,14 +46,19 @@ const orderedLanguages = registry.languages
   .sort((left, right) => {
     const leftIndex = PRIMARY_LANGUAGE_CODES.indexOf(left.code);
     const rightIndex = PRIMARY_LANGUAGE_CODES.indexOf(right.code);
+
     if (leftIndex === -1 && rightIndex === -1) return left.label.localeCompare(right.label);
+
     if (leftIndex === -1) return 1;
+
     if (rightIndex === -1) return -1;
+
     return leftIndex - rightIndex;
   });
 
 export function getOnboardingLanguageOptions(query: string, selected: string[]) {
   const normalized = query.trim().toLocaleLowerCase();
+
   if (!normalized) return orderedLanguages;
 
   const matching = orderedLanguages.filter((language) =>
@@ -67,8 +72,10 @@ export function getOnboardingLanguageOptions(query: string, selected: string[]) 
       .filter(Boolean)
       .some((value) => value?.toLocaleLowerCase().includes(normalized))
   );
+
   const pinned = orderedLanguages.filter(
     ({ code }) => selected.includes(code) && !matching.some((language) => language.code === code)
   );
+
   return [...pinned, ...matching];
 }

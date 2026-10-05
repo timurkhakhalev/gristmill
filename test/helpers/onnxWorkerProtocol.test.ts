@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const {
@@ -9,12 +10,10 @@ const {
 }: typeof import("../../src/contracts/onnxWorker.ts") = require("../../src/contracts/onnxWorker.ts");
 
 test("the method map stays finite: ping, speaker.load, speaker.extract, shutdown", () => {
-  assert.deepEqual([...ONNX_WORKER_METHODS], [
-    "ping",
-    "speaker.load",
-    "speaker.extract",
-    "shutdown",
-  ]);
+  assert.deepEqual(
+    [...ONNX_WORKER_METHODS],
+    ["ping", "speaker.load", "speaker.extract", "shutdown"]
+  );
   assert.equal(isOnnxWorkerMethod("ping"), true);
   assert.equal(isOnnxWorkerMethod("speaker.embed"), false);
   assert.equal(isOnnxWorkerMethod("rpc.call"), false);
@@ -60,6 +59,7 @@ test("malformed or unknown requests are rejected before model invocation", () =>
     { id: 1, method: "speaker.extract", payload: { samplesBuffer: "not-a-buffer" } },
     { id: 1, method: "speaker.extract", payload: { samplesBuffer: new Uint8Array(4) } },
   ];
+
   for (const bad of badRequests) {
     assert.equal(parseOnnxWorkerRequest(bad), null, JSON.stringify(bad));
   }
@@ -85,6 +85,7 @@ test("replies parse results and typed errors, and reject anything else", () => {
     { id: 1, error: {} }, // error without message
     { id: 1, error: { message: 7 } },
   ];
+
   for (const bad of badReplies) {
     assert.equal(parseOnnxWorkerReply(bad), null, JSON.stringify(bad));
   }
@@ -99,5 +100,6 @@ test("an unknown-method error reply parses on the client side", () => {
     id: 7,
     error: { message: "unknown method: speaker.embed" },
   });
+
   assert.equal(reply?.error?.message, "unknown method: speaker.embed");
 });

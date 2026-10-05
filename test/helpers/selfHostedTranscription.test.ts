@@ -1,8 +1,11 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 test("isSelfHostedTranscription returns true for self-hosted mode with configured URL", async () => {
-  const { isSelfHostedTranscription } = await import("../../src/helpers/selfHostedTranscription.ts");
+  const { isSelfHostedTranscription } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     isSelfHostedTranscription({
       transcriptionMode: "self-hosted",
@@ -13,7 +16,9 @@ test("isSelfHostedTranscription returns true for self-hosted mode with configure
 });
 
 test("isSelfHostedTranscription returns false for providers mode even with configured URL", async () => {
-  const { isSelfHostedTranscription } = await import("../../src/helpers/selfHostedTranscription.ts");
+  const { isSelfHostedTranscription } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     isSelfHostedTranscription({
       transcriptionMode: "providers",
@@ -24,7 +29,9 @@ test("isSelfHostedTranscription returns false for providers mode even with confi
 });
 
 test("isSelfHostedTranscription returns false for empty URL", async () => {
-  const { isSelfHostedTranscription } = await import("../../src/helpers/selfHostedTranscription.ts");
+  const { isSelfHostedTranscription } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     isSelfHostedTranscription({
       transcriptionMode: "self-hosted",
@@ -35,7 +42,9 @@ test("isSelfHostedTranscription returns false for empty URL", async () => {
 });
 
 test("isSelfHostedTranscription returns false for whitespace-only URL", async () => {
-  const { isSelfHostedTranscription } = await import("../../src/helpers/selfHostedTranscription.ts");
+  const { isSelfHostedTranscription } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     isSelfHostedTranscription({
       transcriptionMode: "self-hosted",
@@ -46,14 +55,16 @@ test("isSelfHostedTranscription returns false for whitespace-only URL", async ()
 });
 
 test("isSelfHostedTranscription returns false for empty settings object", async () => {
-  const { isSelfHostedTranscription } = await import("../../src/helpers/selfHostedTranscription.ts");
+  const { isSelfHostedTranscription } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(isSelfHostedTranscription({}), false);
 });
 
 test("resolveSelfHostedTranscriptionModel returns the trimmed model", async () => {
-  const { resolveSelfHostedTranscriptionModel } = await import(
-    "../../src/helpers/selfHostedTranscription.ts"
-  );
+  const { resolveSelfHostedTranscriptionModel } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     resolveSelfHostedTranscriptionModel({
       transcriptionMode: "self-hosted",
@@ -65,9 +76,9 @@ test("resolveSelfHostedTranscriptionModel returns the trimmed model", async () =
 });
 
 test("resolveSelfHostedTranscriptionModel returns null for empty model", async () => {
-  const { resolveSelfHostedTranscriptionModel } = await import(
-    "../../src/helpers/selfHostedTranscription.ts"
-  );
+  const { resolveSelfHostedTranscriptionModel } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     resolveSelfHostedTranscriptionModel({
       transcriptionMode: "self-hosted",
@@ -79,9 +90,9 @@ test("resolveSelfHostedTranscriptionModel returns null for empty model", async (
 });
 
 test("resolveSelfHostedTranscriptionModel returns null for whitespace-only model", async () => {
-  const { resolveSelfHostedTranscriptionModel } = await import(
-    "../../src/helpers/selfHostedTranscription.ts"
-  );
+  const { resolveSelfHostedTranscriptionModel } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     resolveSelfHostedTranscriptionModel({
       transcriptionMode: "self-hosted",
@@ -93,9 +104,9 @@ test("resolveSelfHostedTranscriptionModel returns null for whitespace-only model
 });
 
 test("resolveSelfHostedTranscriptionModel returns null when mode is not self-hosted", async () => {
-  const { resolveSelfHostedTranscriptionModel } = await import(
-    "../../src/helpers/selfHostedTranscription.ts"
-  );
+  const { resolveSelfHostedTranscriptionModel } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     resolveSelfHostedTranscriptionModel({
       transcriptionMode: "providers",
@@ -107,9 +118,9 @@ test("resolveSelfHostedTranscriptionModel returns null when mode is not self-hos
 });
 
 test("resolveSelfHostedTranscriptionModel returns null when URL is empty", async () => {
-  const { resolveSelfHostedTranscriptionModel } = await import(
-    "../../src/helpers/selfHostedTranscription.ts"
-  );
+  const { resolveSelfHostedTranscriptionModel } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     resolveSelfHostedTranscriptionModel({
       transcriptionMode: "self-hosted",
@@ -121,9 +132,9 @@ test("resolveSelfHostedTranscriptionModel returns null when URL is empty", async
 });
 
 test("resolveSelfHostedTranscriptionModel returns null when remoteTranscriptionModel is not a string", async () => {
-  const { resolveSelfHostedTranscriptionModel } = await import(
-    "../../src/helpers/selfHostedTranscription.ts"
-  );
+  const { resolveSelfHostedTranscriptionModel } =
+    await import("../../src/helpers/selfHostedTranscription.ts");
+
   assert.equal(
     resolveSelfHostedTranscriptionModel({
       transcriptionMode: "self-hosted",

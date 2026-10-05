@@ -12,6 +12,7 @@ import { getSafeTempDir } from "./safeTempDir.js";
 
 function getCanonicalAllowedAudioDirs(): string[] {
   const dirs = [os.tmpdir(), getSafeTempDir(), app.getPath("userData")];
+
   return dirs.map((d) => {
     try {
       return fs.realpathSync(d);
@@ -27,6 +28,7 @@ const approvedAudioPaths = new Set<string>();
 
 export function approveAudioPath(filePath: unknown): void {
   if (typeof filePath !== "string" || !filePath) return;
+
   try {
     approvedAudioPaths.add(fs.realpathSync(path.resolve(filePath)));
   } catch {
@@ -37,12 +39,16 @@ export function approveAudioPath(filePath: unknown): void {
 // Returns the realpath'd file path if it lives under an allowed dir, else null.
 export function resolveAllowedAudioPath(filePath: string): string | null {
   const real = fs.realpathSync(path.resolve(filePath));
+
   if (approvedAudioPaths.has(real)) {
     return real;
   }
+
   const allowed = getCanonicalAllowedAudioDirs();
+
   if (allowed.some((dir) => real === dir || real.startsWith(dir + path.sep))) {
     return real;
   }
+
   return null;
 }

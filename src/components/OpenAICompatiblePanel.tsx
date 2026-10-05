@@ -59,6 +59,7 @@ export default function OpenAICompatiblePanel({
 
   useEffect(() => {
     isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
     };
@@ -90,10 +91,12 @@ export default function OpenAICompatiblePanel({
           setModelsError(null);
           setModelOptions([]);
         }
+
         return;
       }
 
       if (!force && lastLoadedBaseRef.current === normalized) return;
+
       if (!force && pendingBaseRef.current === normalized) return;
 
       if (baseOverride !== undefined) {
@@ -119,6 +122,7 @@ export default function OpenAICompatiblePanel({
             setModelsError(t("reasoning.custom.endpointWithProtocol"));
             setModelsLoading(false);
           }
+
           return;
         }
 
@@ -127,10 +131,12 @@ export default function OpenAICompatiblePanel({
             setModelsError(t("reasoning.custom.httpsRequired"));
             setModelsLoading(false);
           }
+
           return;
         }
 
         const headers: Record<string, string> = {};
+
         if (effectiveKey) {
           headers.Authorization = `Bearer ${effectiveKey}`;
         }
@@ -140,13 +146,16 @@ export default function OpenAICompatiblePanel({
 
           if (!response.ok) {
             const errorText = await response.text().catch(() => "");
+
             const summary = errorText
               ? `${response.status} ${errorText.slice(0, 200)}`
               : `${response.status} ${response.statusText}`;
+
             throw new Error(summary.trim());
           }
 
           const payload = await response.json().catch(() => ({}));
+
           const rawModels = Array.isArray(payload?.data)
             ? payload.data
             : Array.isArray(payload?.models)
@@ -158,15 +167,18 @@ export default function OpenAICompatiblePanel({
           return (rawModels as Array<Record<string, unknown>>)
             .map((item) => {
               const rawValue = item?.id ?? item?.name;
+
               if (rawValue === undefined || rawValue === null || rawValue === "") return null;
               const value = String(rawValue);
               const ownedBy = typeof item?.owned_by === "string" ? item.owned_by : undefined;
+
               const description =
                 typeof item?.description === "string" && item.description
                   ? item.description
                   : ownedBy
                     ? t("reasoning.custom.ownerLabel", { owner: ownedBy })
                     : undefined;
+
               return { value, label: value, description, ownedBy } as ModelOption;
             })
             .filter(Boolean) as ModelOption[];
@@ -182,6 +194,7 @@ export default function OpenAICompatiblePanel({
         for (const candidate of candidates) {
           try {
             const options = await fetchModelOptions(candidate);
+
             if (options.length > 0) {
               mapped = options;
               resolvedBase = candidate;
@@ -201,6 +214,7 @@ export default function OpenAICompatiblePanel({
             setDraftBase(resolvedBase);
             setBaseUrl(resolvedBase);
           }
+
           setModelOptions(mapped);
           // `/models` is a discovery aid, not an allowlist — keep the user's
           // chosen id even if it's absent (it may still be valid, or belong to
@@ -213,17 +227,20 @@ export default function OpenAICompatiblePanel({
         if (isMountedRef.current && latestBaseRef.current === normalized) {
           const message = (error as Error).message || t("reasoning.custom.unableToLoadModels");
           const unauthorized = /\b(401|403)\b/.test(message);
+
           if (unauthorized && !effectiveKey) {
             setModelsError(t("reasoning.custom.endpointUnauthorized"));
           } else {
             setModelsError(message);
           }
+
           setModelOptions([]);
         }
       } finally {
         if (pendingBaseRef.current === normalized) {
           pendingBaseRef.current = null;
         }
+
         if (isMountedRef.current && latestBaseRef.current === activeBase) {
           setModelsLoading(false);
         }
@@ -238,10 +255,14 @@ export default function OpenAICompatiblePanel({
       setModelOptions([]);
       setModelsLoading(false);
       lastLoadedBaseRef.current = null;
+
       return;
     }
+
     if (!normalizedBase) return;
+
     if (pendingBaseRef.current === normalizedBase) return;
+
     if (lastLoadedBaseRef.current === normalizedBase) return;
     loadRemoteModels();
   }, [hasBase, normalizedBase, loadRemoteModels]);
@@ -256,6 +277,7 @@ export default function OpenAICompatiblePanel({
 
   const handleBlur = useCallback(() => {
     if (!trimmedDraft) return;
+
     if (trimmedDraft !== (baseUrl || "").trim()) {
       applyBase();
     }
@@ -272,8 +294,10 @@ export default function OpenAICompatiblePanel({
   const handleRefresh = useCallback(() => {
     if (isDraftDirty) {
       applyBase();
+
       return;
     }
+
     if (!trimmedDraft) return;
     loadRemoteModels(undefined, true);
   }, [applyBase, isDraftDirty, trimmedDraft, loadRemoteModels]);
@@ -285,7 +309,9 @@ export default function OpenAICompatiblePanel({
     <>
       {!lockedBaseUrl && (
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-foreground">{t("reasoning.custom.endpointTitle")}</h4>
+          <h4 className="text-sm font-medium text-foreground">
+            {t("reasoning.custom.endpointTitle")}
+          </h4>
           <Input
             dir="ltr"
             value={draftBase}

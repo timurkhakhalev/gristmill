@@ -8,6 +8,7 @@ import type { NoteItem } from "../contracts/notes";
 import type { ConversationRow } from "../contracts/chatPersistence";
 
 const MAX_CONTEXT_NOTES = 12;
+
 const NOTE_SNIPPET_LENGTH = 600;
 
 interface UseHomeChatReturn {
@@ -34,10 +35,13 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
 
   const noteContext = useMemo(() => {
     const header = `The user is on the Home screen, which lists their ${notes.length} most recent notes across all spaces.`;
+
     const noteBlocks = notes.slice(0, MAX_CONTEXT_NOTES).map((note) => {
       const body = (note.enhanced_content || note.content || "").slice(0, NOTE_SNIPPET_LENGTH);
+
       return `<note id="${note.id}" title="${note.title}" updated="${note.updated_at}">\n${body}\n</note>`;
     });
+
     return [header, ...noteBlocks].join("\n\n");
   }, [notes]);
 
@@ -49,17 +53,20 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
 
   const fetchConversations = useCallback(async (isStale?: () => boolean) => {
     let list: ConversationRow[];
+
     try {
       list = (await window.electronAPI?.getAgentConversations?.()) ?? [];
     } catch {
       list = [];
     }
+
     if (!isStale?.()) setConversations(list);
   }, []);
 
   useEffect(() => {
     let stale = false;
     void fetchConversations(() => stale);
+
     return () => {
       stale = true;
     };
@@ -81,15 +88,18 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
   const createConversation = useCallback(
     async (text: string) => {
       const id = await persistence.createConversation(deriveConversationTitle(text, ""), null);
+
       return id;
     },
     [persistence]
   );
+
   const sendMessageWithResult = useChatMessageSender({
     persistence,
     streaming,
     createConversation,
   });
+
   const sendMessage = useCallback(
     async (text: string): Promise<void> => {
       await sendMessageWithResult(text);

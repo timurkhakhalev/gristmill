@@ -70,7 +70,9 @@ export function ConversationPicker({
               id={String(conversation.id)}
               textValue={conversation.title || t("embeddedChat.newChat")}
             >
-              <Label className="min-w-0 flex-1 truncate">{conversation.title || t("embeddedChat.newChat")}</Label>
+              <Label className="min-w-0 flex-1 truncate">
+                {conversation.title || t("embeddedChat.newChat")}
+              </Label>
               <span className="shrink-0 text-2xs text-muted">
                 {formatRelativeTime(conversation.updated_at, t, locale, dateFormat, { ago: true })}
               </span>

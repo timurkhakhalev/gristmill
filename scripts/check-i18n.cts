@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 
 const fs: typeof import("fs") = require("fs");
+
 const path: typeof import("path") = require("path");
 
 const LOCALES_DIR = path.join(__dirname, "..", "src", "locales");
+
 const BASE_LANG = "en";
+
 const NAMESPACES = ["translation", "prompts"];
 
 function readJson(filePath: string): Record<string, unknown> {
@@ -30,6 +33,7 @@ function flatten(obj: Record<string, unknown>, prefix = ""): Record<string, unkn
 function getPlaceholders(value: unknown) {
   if (typeof value !== "string") return [];
   const matches = value.match(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g) || [];
+
   return [...new Set(matches.map((match) => match.replace(/\{\{|\}\}/g, "").trim()))].sort();
 }
 
@@ -38,6 +42,7 @@ function arraysEqual(a: string[], b: string[]) {
 }
 
 const PLURAL_SUFFIX = /^(.*)_(zero|one|two|few|many|other)$/;
+
 // Counts a leaderboard, a member list or a streak can realistically carry.
 // Spanish, French, Italian and Portuguese reserve "many" for millions, and no
 // key here ever renders one, so requiring that form would fail every locale
@@ -48,11 +53,14 @@ const PROBE_LIMIT = 200;
 function pluralProbe(lang: string) {
   const rules = new Intl.PluralRules(lang);
   const selected = new Map<string, number[]>();
+
   for (let count = 0; count <= PROBE_LIMIT; count++) {
     const category = rules.select(count);
+
     if (!selected.has(category)) selected.set(category, []);
     selected.get(category)!.push(count);
   }
+
   return selected;
 }
 
@@ -69,7 +77,9 @@ function checkPlurals(lang: string, namespace: string, flat: Record<string, unkn
 
   for (const key of Object.keys(flat)) {
     const match = key.match(PLURAL_SUFFIX);
+
     if (!match) continue;
+
     if (!forms.has(match[1])) forms.set(match[1], new Set());
     forms.get(match[1])!.add(match[2]);
   }
@@ -88,9 +98,11 @@ function checkPlurals(lang: string, namespace: string, flat: Record<string, unkn
 
     for (const category of categories) {
       const counts = selected.get(category);
+
       if (!counts || counts.every((count) => count === 1)) continue;
 
       const value = flat[`${base}_${category}`];
+
       if (typeof value === "string" && !value.includes("{{count}}")) {
         console.error(
           `[i18n] Hardcoded count ${lang}/${namespace}: ${base}_${category} also renders for ${counts
@@ -122,12 +134,14 @@ for (const namespace of NAMESPACES) {
   }
 
   const baseFlat = flatten(readJson(baseFile));
+
   if (checkPlurals(BASE_LANG, namespace, baseFlat)) failed = true;
 
   for (const lang of languages) {
     if (lang === BASE_LANG) continue;
 
     const file = path.join(LOCALES_DIR, lang, `${namespace}.json`);
+
     if (!fs.existsSync(file)) {
       console.error(`[i18n] Missing file: ${file}`);
       failed = true;
@@ -135,6 +149,7 @@ for (const namespace of NAMESPACES) {
     }
 
     const flat = flatten(readJson(file));
+
     if (checkPlurals(lang, namespace, flat)) failed = true;
 
     for (const key of Object.keys(baseFlat)) {
@@ -146,6 +161,7 @@ for (const namespace of NAMESPACES) {
 
       const basePlaceholders = getPlaceholders(baseFlat[key]);
       const langPlaceholders = getPlaceholders(flat[key]);
+
       if (!arraysEqual(basePlaceholders, langPlaceholders)) {
         console.error(
           `[i18n] Placeholder mismatch ${lang}/${namespace}: ${key} (expected ${basePlaceholders.join(", ")}, got ${langPlaceholders.join(", ")})`

@@ -1,8 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 import type { ComponentType } from "react";
+
 const React = require("react") as typeof import("react");
+
 const { createRoot } = require("react-dom/client");
+
 const {
   createRendererServer,
   installBrowserGlobals,
@@ -16,9 +21,11 @@ interface Deferred<T> {
 
 function deferred<T = unknown>(): Deferred<T> {
   let resolve!: (value: T) => void;
+
   const promise = new Promise<T>((done) => {
     resolve = done;
   });
+
   return { promise, resolve };
 }
 
@@ -43,7 +50,10 @@ type DownloadApi = {
   downloadParakeetModel?: (modelId: string) => Promise<unknown>;
 };
 
-async function createDownloadRenderer(t: import("node:test").TestContext, electronAPI: DownloadApi) {
+async function createDownloadRenderer(
+  t: import("node:test").TestContext,
+  electronAPI: DownloadApi
+) {
   let root: ReturnType<typeof createRoot> | null = null;
   t.after(async () => {
     if (root) await React.act(async () => root.unmount());
@@ -52,6 +62,7 @@ async function createDownloadRenderer(t: import("node:test").TestContext, electr
     window: { electronAPI, dispatchEvent() {} },
   });
   const container = installHookDom(t);
+
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-model-download-errors-",
     noExternal: ["react-i18next"],
@@ -73,6 +84,7 @@ async function createDownloadRenderer(t: import("node:test").TestContext, electr
       "/ui/ProviderIcon": `export function ProviderIcon() { return null; }`,
     },
   });
+
   return {
     vite,
     async render(Component: ComponentType) {
@@ -107,22 +119,31 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
       sequence: 2,
     },
   ];
+
   const listeners = new Set<(event: Record<string, unknown>) => void>();
   const cancellations: string[] = [];
   let refreshes = 0;
+
   const renderer = await createDownloadRenderer(t, {
     modelGetActiveDownloads: async () => activeDownloads,
     onModelDownloadProgress(listener) {
       listeners.add(listener);
+
       return () => listeners.delete(listener);
     },
     async modelCancelDownload(modelId) {
       cancellations.push(modelId);
+
       return { success: true };
     },
   });
-  const { useModelDownload } = (await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts") as typeof import("../../src/hooks/useModelDownload.ts"));
+
+  const { useModelDownload } = (await renderer.vite.ssrLoadModule(
+    "/hooks/useModelDownload.ts"
+  )) as typeof import("../../src/hooks/useModelDownload.ts");
+
   let download: ReturnType<typeof useModelDownload> | undefined;
+
   function Harness() {
     download = useModelDownload({
       modelType: "llm",
@@ -130,6 +151,7 @@ test("remount restores concurrent LLM downloads and cancellation settles only it
         refreshes += 1;
       },
     });
+
     return null;
   }
 
@@ -182,17 +204,26 @@ for (const outcome of ["error", "complete", "cancel"]) {
     let snapshotCalls = 0;
     let progressListener!: (event: Record<string, unknown>) => void;
     let refreshes = 0;
+
     const renderer = await createDownloadRenderer(t, {
       onModelDownloadProgress(listener) {
         progressListener = listener;
+
         return () => {};
       },
       modelGetActiveDownloads: () =>
-        ++snapshotCalls === 1 ? Promise.resolve([]) : recoverySnapshot.promise as Promise<DownloadState[]>,
+        ++snapshotCalls === 1
+          ? Promise.resolve([])
+          : (recoverySnapshot.promise as Promise<DownloadState[]>),
       modelDownload: () => duplicateResponse.promise,
     });
-    const { useModelDownload } = (await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts") as typeof import("../../src/hooks/useModelDownload.ts"));
+
+    const { useModelDownload } = (await renderer.vite.ssrLoadModule(
+      "/hooks/useModelDownload.ts"
+    )) as typeof import("../../src/hooks/useModelDownload.ts");
+
     let download: ReturnType<typeof useModelDownload> | undefined;
+
     function Harness() {
       download = useModelDownload({
         modelType: "llm",
@@ -200,8 +231,10 @@ for (const outcome of ["error", "complete", "cancel"]) {
           refreshes += 1;
         },
       });
+
       return null;
     }
+
     await renderer.render(Harness);
     let request!: Promise<unknown>;
     await React.act(async () => {
@@ -241,7 +274,9 @@ for (const modelType of ["whisper", "parakeet", "llm"]) {
   test(`${modelType} duplicate recovery ${modelType === "llm" ? "keeps exact model ownership" : "restores the active family model"}`, async (t: import("node:test").TestContext) => {
     let snapshotCalls = 0;
     const subscribe = () => () => {};
+
     const refuseDownload = async () => ({ success: false, code: "DOWNLOAD_IN_PROGRESS" });
+
     const active = {
       modelType,
       modelId: "active-model",
@@ -251,25 +286,32 @@ for (const modelType of ["whisper", "parakeet", "llm"]) {
       totalBytes: 1000,
       sequence: 2,
     };
+
     const renderer = await createDownloadRenderer(t, {
       onWhisperDownloadProgress: subscribe,
       onParakeetDownloadProgress: subscribe,
       onModelDownloadProgress: subscribe,
-      modelGetActiveDownloads: async (): Promise<DownloadState[]> => (++snapshotCalls === 1 ? [] : [active]),
+      modelGetActiveDownloads: async (): Promise<DownloadState[]> =>
+        ++snapshotCalls === 1 ? [] : [active],
       downloadWhisperModel: refuseDownload,
       downloadParakeetModel: refuseDownload,
       modelDownload: refuseDownload,
     });
+
     const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
     let download: ReturnType<typeof useModelDownload> | undefined;
+
     function Harness() {
       download = useModelDownload({ modelType });
+
       return null;
     }
+
     await renderer.render(Harness);
     await React.act(async () => download!.downloadModel("requested-model"));
     assert.equal(download!.isDownloadingModel("requested-model"), false);
     assert.equal(download!.downloadingModel, modelType === "llm" ? null : "active-model");
+
     if (modelType !== "llm") assert.equal(download!.downloadProgress.percentage, 42);
   });
 }
@@ -281,13 +323,16 @@ for (const modelType of ["whisper", "parakeet", "llm"]) {
 test("a successful download refreshes the inventory and never applies a route selection", async (t: import("node:test").TestContext) => {
   const request = deferred();
   let refreshes = 0;
+
   const renderer = await createDownloadRenderer(t, {
     onModelDownloadProgress: () => () => {},
     modelGetActiveDownloads: async () => [],
     modelDownload: () => request.promise as Promise<unknown>,
   });
+
   const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
   let download: ReturnType<typeof useModelDownload> | undefined;
+
   function Harness() {
     download = useModelDownload({
       modelType: "llm",
@@ -295,8 +340,10 @@ test("a successful download refreshes the inventory and never applies a route se
         refreshes += 1;
       },
     });
+
     return null;
   }
+
   await renderer.render(Harness);
 
   let pending!: Promise<unknown>;
@@ -319,12 +366,16 @@ test("a rejected download reports the error and leaves selection untouched", asy
     modelGetActiveDownloads: async () => [],
     modelDownload: async () => ({ success: false, error: "ENOTFOUND", code: "ENOTFOUND" }),
   });
+
   const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
   let download: ReturnType<typeof useModelDownload> | undefined;
+
   function Harness() {
     download = useModelDownload({ modelType: "llm" });
+
     return null;
   }
+
   await renderer.render(Harness);
   await React.act(async () => download!.downloadModel("model-a"));
   assert.equal(download!.downloadError, "hooks.modelDownload.errors.notFound");
@@ -336,12 +387,15 @@ test("a rejected download reports the error and leaves selection untouched", asy
 test("unmounting before the download settles applies no stale selection", async (t: import("node:test").TestContext) => {
   const request = deferred();
   let refreshes = 0;
+
   const renderer = await createDownloadRenderer(t, {
     onModelDownloadProgress: () => () => {},
     modelGetActiveDownloads: async () => [],
     modelDownload: () => request.promise as Promise<unknown>,
   });
+
   const { useModelDownload } = await renderer.vite.ssrLoadModule("/hooks/useModelDownload.ts");
+
   function Harness() {
     useModelDownload({
       modelType: "llm",
@@ -349,8 +403,10 @@ test("unmounting before the download settles applies no stale selection", async 
         refreshes += 1;
       },
     });
+
     return null;
   }
+
   await renderer.render(Harness);
   await renderer.unmount();
   // The download completes after the surface is gone; resolving must not throw

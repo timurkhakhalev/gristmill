@@ -31,7 +31,9 @@ export async function persistFinalTranscriptAroundStop<T>({
     await segmentWrite;
   } else {
     const fallback = fallbackTranscript();
+
     if (fallback) await persist(fallback);
   }
+
   return result;
 }

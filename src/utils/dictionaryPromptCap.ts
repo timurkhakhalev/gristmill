@@ -43,7 +43,9 @@ export function dictionaryPromptLimit({
   model = "",
 }: DictionaryPromptLimitInput = {}): number {
   if (provider === "groq" || endpoint.includes("api.groq.com")) return GROQ_PROMPT_CHARS;
+
   if (model.toLowerCase().startsWith("gpt-4o")) return TRANSCRIBE_PROMPT_CHARS;
+
   return WHISPER_PROMPT_CHARS;
 }
 
@@ -62,8 +64,10 @@ export function trimDictionaryPrompt(prompt: string, maxChars: number): TrimmedD
   if (!prompt || prompt.length <= maxChars) {
     return { prompt, originalLength: prompt ? prompt.length : 0, truncated: false };
   }
+
   const head = prompt.slice(0, maxChars);
   const lastComma = head.lastIndexOf(",");
+
   return {
     prompt: lastComma > 0 ? head.slice(0, lastComma) : head,
     originalLength: prompt.length,

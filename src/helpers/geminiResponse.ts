@@ -12,10 +12,16 @@
  */
 export function extractGeminiText(candidate: unknown): string | null {
   const parts = (candidate as { content?: { parts?: unknown } } | null | undefined)?.content?.parts;
+
   if (!Array.isArray(parts)) return null;
+
   const textParts = (parts as Array<{ thought?: unknown; text?: unknown }>)
-    .filter((part) => !part?.thought && typeof part?.text === "string" && (part.text as string).length > 0)
+    .filter(
+      (part) => !part?.thought && typeof part?.text === "string" && (part.text as string).length > 0
+    )
     .map((part) => part.text as string);
+
   if (textParts.length === 0) return null;
+
   return textParts.join("").trim();
 }

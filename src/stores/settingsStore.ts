@@ -60,7 +60,9 @@ import type {
   ChatAgentSettings,
 } from "../hooks/useSettings";
 import type { Snippet } from "../utils/snippets";
+
 type EnterpriseSetupMode = "auto" | "managed" | "manual";
+
 type TranscriptionContext = "dictation" | "meeting" | "upload";
 
 let _ReasoningService: typeof import("../services/ReasoningService").default | null = null;
@@ -81,15 +83,13 @@ function transcriptionProviderModels(
   const models =
     modelRegistryData.transcriptionProviders.find((provider) => provider.id === providerId)
       ?.models ?? [];
+
   return context === "meeting"
     ? models.filter((model) => isMeetingFilePickerModel(providerId, model.id))
     : models;
 }
 
-function defaultTranscriptionModel(
-  providerId: string,
-  context: TranscriptionContext
-): string {
+function defaultTranscriptionModel(providerId: string, context: TranscriptionContext): string {
   return transcriptionProviderModels(providerId, context)[0]?.id ?? "whisper-1";
 }
 
@@ -99,14 +99,17 @@ function transcriptionModelBelongsToProvider(
   context: TranscriptionContext
 ): boolean {
   if (providerId === "custom") return Boolean(modelId);
+
   return transcriptionProviderModels(providerId, context).some((model) => model.id === modelId);
 }
 
 function reasoningModelBelongsToProvider(providerId: string, modelId: string): boolean {
   if (!modelId) return false;
+
   // Custom and OpenRouter ids are free-form; any remembered id is valid.
   // Tinfoil's registry entry is refreshed in place from its live catalog.
   if (providerId === "custom" || providerId === "openrouter") return true;
+
   return (
     modelRegistryData.cloudProviders
       .find((provider) => provider.id === providerId)
@@ -116,6 +119,7 @@ function reasoningModelBelongsToProvider(providerId: string, modelId: string): b
 
 function readString(key: string, fallback: string): string {
   if (!isBrowser) return fallback;
+
   return localStorage.getItem(key) ?? fallback;
 }
 
@@ -125,20 +129,25 @@ const DEFAULT_COHERE_MODEL = "cohere-transcribe-03-2026";
 
 function readLocalProvider(key: string): LocalTranscriptionProvider {
   const stored = readString(key, "whisper");
+
   return stored === "nvidia" || stored === "cohere" ? stored : "whisper";
 }
 
 function readBoolean(key: string, fallback: boolean): boolean {
   if (!isBrowser) return fallback;
   const stored = localStorage.getItem(key);
+
   if (stored === null) return fallback;
+
   if (fallback === true) return stored !== "false";
+
   return stored === "true";
 }
 
 function readNumber(key: string, fallback: number): number {
   if (!isBrowser) return fallback;
   const parsed = parseInt(localStorage.getItem(key) ?? "", 10);
+
   return isNaN(parsed) ? fallback : parsed;
 }
 
@@ -153,9 +162,12 @@ function snapMicWarmHold(value: number): number {
 function readStringArray(key: string, fallback: string[]): string[] {
   if (!isBrowser) return fallback;
   const stored = localStorage.getItem(key);
+
   if (stored === null) return fallback;
+
   try {
     const parsed = JSON.parse(stored);
+
     return Array.isArray(parsed) ? parsed : fallback;
   } catch {
     return fallback;
@@ -167,16 +179,19 @@ type MicrophoneSelectionMode = "system" | "built-in" | "specific";
 function migrateMicrophoneSelectionMode() {
   if (!isBrowser) return;
   const current = localStorage.getItem("microphoneSelectionMode");
+
   if (current === "system" || current === "built-in" || current === "specific") return;
 
   const selectedDeviceId = localStorage.getItem("selectedMicDeviceId") || "";
   const legacyBuiltIn = localStorage.getItem("preferBuiltInMic");
+
   const mode: MicrophoneSelectionMode =
     legacyBuiltIn === "true"
       ? "built-in"
       : selectedDeviceId && selectedDeviceId !== "default"
         ? "specific"
         : "system";
+
   localStorage.setItem("microphoneSelectionMode", mode);
 }
 
@@ -239,6 +254,7 @@ const NUMERIC_SETTINGS = new Set([
 ]);
 
 const WHISPER_VAD_DEFAULTS = whisperVadConstants.DEFAULTS;
+
 const WHISPER_VAD_LIMITS = whisperVadConstants.LIMITS;
 
 type WhisperVadKey = keyof typeof WHISPER_VAD_DEFAULTS;
@@ -246,9 +262,11 @@ type WhisperVadKey = keyof typeof WHISPER_VAD_DEFAULTS;
 const clampVadValue = (key: WhisperVadKey, raw: unknown): number => {
   const fallback = WHISPER_VAD_DEFAULTS[key];
   const n = raw === null || raw === undefined || raw === "" ? fallback : Number(raw);
+
   if (!Number.isFinite(n)) return fallback;
   const { min, max, round } = WHISPER_VAD_LIMITS[key];
   const clamped = Math.min(max, Math.max(min, n));
+
   return round ? Math.round(clamped) : clamped;
 };
 
@@ -257,6 +275,7 @@ const LANGUAGE_MIGRATIONS: Record<string, string> = { zh: "zh-CN" };
 function migratePreferredLanguage() {
   if (!isBrowser) return;
   const stored = localStorage.getItem("preferredLanguage");
+
   if (stored && LANGUAGE_MIGRATIONS[stored]) {
     localStorage.setItem("preferredLanguage", LANGUAGE_MIGRATIONS[stored]);
   }
@@ -272,6 +291,7 @@ function deriveTranscriptionMode(
   cloudTranscriptionProvider: string | null
 ): InferenceMode {
   if (useLocalWhisper) return "local";
+
   return cloudTranscriptionProvider === "custom" ? "self-hosted" : "providers";
 }
 
@@ -282,26 +302,40 @@ function deriveLegacyReasoningMode(
   provider: string | null
 ): InferenceMode {
   if (cloudMode === "local") return "local";
+
   if (cloudMode === "enterprise") return "enterprise";
+
   if (cloudMode !== "byok") {
     if (provider === "bedrock" || provider === "azure" || provider === "vertex") {
       return "enterprise";
     }
+
     if (provider && localLlmProviderIds.has(provider)) return "local";
+
     return "providers";
   }
+
   if (provider === "custom") return "self-hosted";
+
   if (provider === "bedrock" || provider === "azure" || provider === "vertex") {
     return "enterprise";
   }
+
   if (provider && localLlmProviderIds.has(provider)) return "local";
+
   return "providers";
 }
 
 type DirectInferenceMode = "providers" | "local" | "self-hosted" | "enterprise" | "agent";
 
 function isDirectInferenceMode(value: string): value is DirectInferenceMode {
-  return value === "providers" || value === "local" || value === "self-hosted" || value === "enterprise" || value === "agent";
+  return (
+    value === "providers" ||
+    value === "local" ||
+    value === "self-hosted" ||
+    value === "enterprise" ||
+    value === "agent"
+  );
 }
 
 function readTranscriptionMode(
@@ -311,29 +345,36 @@ function readTranscriptionMode(
   providerFallback = ""
 ): InferenceMode {
   const stored = readString(modeKey, "");
+
   if (stored === "providers" || stored === "local" || stored === "self-hosted") return stored;
+
   return deriveTranscriptionMode(
     readBoolean(useLocalKey, false),
     readString(providerKey, providerFallback)
   );
 }
 
-function readReasoningMode(modeKey: string, cloudModeKey: string, providerKey: string): InferenceMode {
+function readReasoningMode(
+  modeKey: string,
+  cloudModeKey: string,
+  providerKey: string
+): InferenceMode {
   const stored = readString(modeKey, "");
+
   if (isDirectInferenceMode(stored)) return stored;
-  return deriveLegacyReasoningMode(
-    readString(cloudModeKey, "byok"),
-    readString(providerKey, "")
-  );
+
+  return deriveLegacyReasoningMode(readString(cloudModeKey, "byok"), readString(providerKey, ""));
 }
 
 function readDirectCloudMode(key: string, fallback = "byok"): string {
   const stored = readString(key, fallback);
+
   return stored === "byok" || stored === "local" || stored === "enterprise" ? stored : fallback;
 }
 
 function migrateProviderSettings() {
   if (!isBrowser) return;
+
   if (localStorage.getItem("_providerSettingsMigrated") === "1") return;
 
   const cloudMode = localStorage.getItem("cloudTranscriptionMode");
@@ -347,6 +388,7 @@ function migrateProviderSettings() {
     localStorage.setItem("remoteTranscriptionType", "openai-compatible");
     const legacyBaseUrl = localStorage.getItem("cloudTranscriptionBaseUrl");
     const existingRemoteUrl = localStorage.getItem("remoteTranscriptionUrl");
+
     if (!existingRemoteUrl && legacyBaseUrl && legacyBaseUrl !== API_ENDPOINTS.TRANSCRIPTION_BASE) {
       localStorage.setItem("remoteTranscriptionUrl", legacyBaseUrl);
     }
@@ -389,6 +431,7 @@ const MEETING_TRANSCRIPTION_PAIRS: ReadonlyArray<[string, string]> = [
   ["remoteTranscriptionType", "meetingRemoteTranscriptionType"],
   ["remoteTranscriptionUrl", "meetingRemoteTranscriptionUrl"],
 ];
+
 const MEETING_REASONING_PAIRS: ReadonlyArray<[string, string]> = [
   ["reasoningProvider", "meetingReasoningProvider"],
   ["reasoningModel", "meetingReasoningModel"],
@@ -401,15 +444,19 @@ const MEETING_REASONING_PAIRS: ReadonlyArray<[string, string]> = [
 
 function migrateMeetingFollowFlags() {
   if (!isBrowser) return;
+
   for (const [flag, pairs] of [
     ["meetingFollowsTranscription", MEETING_TRANSCRIPTION_PAIRS],
     ["meetingFollowsReasoning", MEETING_REASONING_PAIRS],
   ] as const) {
     if (localStorage.getItem(flag) === "false") continue;
+
     for (const [src, dst] of pairs) {
       const v = localStorage.getItem(src);
+
       if (v !== null) localStorage.setItem(dst, v);
     }
+
     localStorage.setItem(flag, "false");
   }
 }
@@ -441,11 +488,15 @@ const UPLOAD_TRANSCRIPTION_PAIRS: ReadonlyArray<[string, string]> = [
 
 function migrateUploadTranscription() {
   if (!isBrowser) return;
+
   if (localStorage.getItem("uploadTranscriptionMigrated") === "true") return;
+
   for (const [src, dst] of UPLOAD_TRANSCRIPTION_PAIRS) {
     const v = localStorage.getItem(src);
+
     if (v !== null) localStorage.setItem(dst, v);
   }
+
   localStorage.setItem("uploadTranscriptionMigrated", "true");
 }
 
@@ -481,12 +532,15 @@ const TRANSCRIPTION_ROUTING_KEYS: ReadonlyArray<{
 function reconcileTranscriptionRouting(): void {
   if (!isBrowser) return;
   const repaired: string[] = [];
+
   for (const keys of TRANSCRIPTION_ROUTING_KEYS) {
     const mode = localStorage.getItem(keys.mode);
+
     if (mode === "local" && localStorage.getItem(keys.useLocal) !== "true") {
       localStorage.setItem(keys.useLocal, "true");
       repaired.push(keys.useLocal);
     }
+
     // Stored value, not the upload resolver's inherited one: direct provider
     // modes need an explicit BYOK route in their own scope.
     if (
@@ -497,6 +551,7 @@ function reconcileTranscriptionRouting(): void {
       repaired.push(keys.cloudMode);
     }
   }
+
   if (repaired.length === 0) return;
 
   logger.info(
@@ -510,6 +565,7 @@ reconcileTranscriptionRouting();
 
 function migrateAgentMode() {
   if (!isBrowser) return;
+
   if (localStorage.getItem("_agentModeMigrated") === "1") return;
 
   localStorage.setItem(
@@ -527,25 +583,31 @@ migrateAgentMode();
 
 function migrateCustomPrompts() {
   if (!isBrowser) return;
+
   if (localStorage.getItem("_promptsMigrated") === "1") return;
 
   const legacyUnified = localStorage.getItem("customUnifiedPrompt");
+
   if (legacyUnified) {
     try {
       const parsed = JSON.parse(legacyUnified);
+
       if (typeof parsed === "string" && parsed.length > 0) {
         if (!localStorage.getItem("customPrompt.cleanup")) {
           localStorage.setItem("customPrompt.cleanup", parsed);
         }
       }
     } catch {}
+
     localStorage.removeItem("customUnifiedPrompt");
   }
 
   const legacyChat = localStorage.getItem("agentSystemPrompt");
+
   if (legacyChat && legacyChat.length > 0 && !localStorage.getItem("customPrompt.chatAgent")) {
     localStorage.setItem("customPrompt.chatAgent", legacyChat);
   }
+
   if (legacyChat !== null) localStorage.removeItem("agentSystemPrompt");
 
   localStorage.setItem("_promptsMigrated", "1");
@@ -605,14 +667,18 @@ const LLM_SCOPE_KEY_PAIRS: ReadonlyArray<[string, string]> = [
 
 function migrateLLMScopeKeys() {
   if (!isBrowser) return;
+
   if (localStorage.getItem("_llmScopeKeysMigrated") === "1") return;
 
   for (const [oldKey, newKey] of LLM_SCOPE_KEY_PAIRS) {
     const value = localStorage.getItem(oldKey);
+
     if (value === null) continue;
+
     if (localStorage.getItem(newKey) === null) {
       localStorage.setItem(newKey, value);
     }
+
     localStorage.removeItem(oldKey);
   }
 
@@ -646,6 +712,7 @@ function healSkippedMeetingFollowModes(): Record<string, InferenceMode> {
 
   const meetingUseLocal = localStorage.getItem("meetingUseLocalWhisper");
   const meetingCloudMode = localStorage.getItem("meetingCloudTranscriptionMode");
+
   if (
     localStorage.getItem("meetingTranscriptionMode") === null &&
     (meetingUseLocal !== null || meetingCloudMode !== null)
@@ -654,6 +721,7 @@ function healSkippedMeetingFollowModes(): Record<string, InferenceMode> {
       meetingUseLocal === "true",
       localStorage.getItem("meetingCloudTranscriptionProvider")
     );
+
     localStorage.setItem("meetingTranscriptionMode", mode);
     healed.meetingTranscriptionMode = mode;
   }
@@ -664,17 +732,20 @@ function healSkippedMeetingFollowModes(): Record<string, InferenceMode> {
   // routes. The UI writes the flag as `mode === "local"`, so this pair can only
   // be that copy. Follow the flag — local-ward only.
   const meetingMode = localStorage.getItem("meetingTranscriptionMode");
+
   if (meetingUseLocal === "true" && meetingMode !== null && meetingMode !== "local") {
     localStorage.setItem("meetingTranscriptionMode", "local");
     healed.meetingTranscriptionMode = "local";
   }
 
   const noteFormattingCloudMode = localStorage.getItem("noteFormattingCloudMode");
+
   if (localStorage.getItem("noteFormattingMode") === null && noteFormattingCloudMode !== null) {
     const mode = deriveLegacyReasoningMode(
       noteFormattingCloudMode,
       localStorage.getItem("noteFormattingProvider")
     );
+
     // Local-ward only — see the header. Any other snapshot is left absent so
     // note formatting keeps following cleanup, as it does today.
     if (mode === "local") {
@@ -687,6 +758,7 @@ function healSkippedMeetingFollowModes(): Record<string, InferenceMode> {
 }
 
 const healedMeetingFollowModes = healSkippedMeetingFollowModes();
+
 if (Object.keys(healedMeetingFollowModes).length > 0) {
   logger.info(
     "Re-derived Note Recording modes the follow-flag migration had skipped",
@@ -704,6 +776,7 @@ function tinfoilModelName(modelId: string): string {
     modelRegistryData.cloudProviders
       .find((provider) => provider.id === "tinfoil")
       ?.models.find((model) => model.id === modelId);
+
   return named?.name ?? modelId;
 }
 
@@ -713,10 +786,12 @@ function tinfoilModelName(modelId: string): string {
 // session already carries a model the provider serves.
 function migrateRetiredCloudModels() {
   if (!isBrowser) return;
+
   const swept = sweepRetiredCloudModelSelections(
     localStorage,
     Object.values(INFERENCE_SCOPES).map(({ storeKeys }) => storeKeys)
   );
+
   if (swept.length === 0) return;
 
   logger.info(
@@ -728,6 +803,7 @@ function migrateRetiredCloudModels() {
   // Tinfoil is the one provider that tells the user their model was switched
   // out, and getting here first means reconcileSelectedModels no longer will.
   const announced = new Set<string>();
+
   for (const { provider, from, to } of swept) {
     if (provider !== "tinfoil" || announced.has(from)) continue;
     announced.add(from);
@@ -902,10 +978,7 @@ export interface SettingsState
   setCloudTranscriptionModel: (value: string) => void;
   setCloudTranscriptionBaseUrl: (value: string) => void;
   setCloudTranscriptionMode: (value: string) => void;
-  switchCloudTranscriptionProvider: (
-    context: TranscriptionContext,
-    providerId: string
-  ) => void;
+  switchCloudTranscriptionProvider: (context: TranscriptionContext, providerId: string) => void;
   switchReasoningProvider: (
     scope: InferenceScope,
     providerId: string,
@@ -1066,6 +1139,7 @@ function persistReasoningModelMemory(memory: Record<string, string>) {
 function readModelMemory(key: string): Record<string, string> {
   try {
     const parsed = JSON.parse(readString(key, "{}"));
+
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Record<string, string>)
       : {};
@@ -1097,8 +1171,10 @@ function createNumberSetter(key: string) {
 // being persisted. Rolls back to the previous key if registration fails.
 // Resolves to false on failure so optimistic UIs (HotkeyListInput) can revert.
 let envPersistTimer: ReturnType<typeof setTimeout> | null = null;
+
 function debouncedPersistToEnv() {
   if (!isBrowser) return;
+
   if (envPersistTimer) clearTimeout(envPersistTimer);
   envPersistTimer = setTimeout(() => {
     window.electronAPI?.saveAllKeysToEnv?.().catch((err) => {
@@ -1144,14 +1220,20 @@ type SecretSaveResult = { success: boolean };
 async function persistSecret(provider: SecretProvider, key: string): Promise<SecretSaveResult> {
   if (!isBrowser) return { success: false };
   const api = window.electronAPI;
+
   const save = api?.[SECRET_IPC_SAVERS[provider]] as
-    ((value: string) => Promise<SecretSaveResult>) | undefined;
+    | ((value: string) => Promise<SecretSaveResult>)
+    | undefined;
+
   if (!save) return { success: false };
+
   try {
     const result = await save(key);
+
     return result?.success === true ? { success: true } : { success: false };
   } catch {
     logger.warn("Failed to persist secret", { provider }, "settings");
+
     return { success: false };
   }
 }
@@ -1203,13 +1285,16 @@ function invalidateApiKeyCaches(
         .then((mod) => {
           // NodeNext CJS interop: the ESM default (the singleton instance) is
           // exposed on .default; type it through the declared field shape.
-          const service = (mod as unknown as { default: NonNullable<typeof _ReasoningService> }).default;
+          const service = (mod as unknown as { default: NonNullable<typeof _ReasoningService> })
+            .default;
+
           _ReasoningService = service;
           service.clearApiKeyCache(provider);
         })
         .catch(() => {});
     }
   }
+
   if (isBrowser) window.dispatchEvent(new Event("api-key-changed"));
 }
 
@@ -1223,9 +1308,11 @@ function createSecretSetter(
 ) {
   return async (key: string): Promise<SecretSaveResult> => {
     const result = await persistSecret(saver, key);
+
     if (!result.success) return result;
     useSettingsStore.setState({ [storeKey]: key });
     invalidateApiKeyCaches(cacheProvider);
+
     return result;
   };
 }
@@ -1238,10 +1325,12 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   ),
   dateFormat: (() => {
     const value = readString("dateFormat", "locale");
+
     return value === "dmy" || value === "mdy" || value === "ymd" ? value : "locale";
   })(),
   timeFormat: (() => {
     const value = readString("timeFormat", "locale");
+
     return value === "12h" || value === "24h" ? value : "locale";
   })(),
   setDateFormat: (format) => {
@@ -1251,9 +1340,11 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setTimeFormat: (format) => {
     if (isBrowser) localStorage.setItem("timeFormat", format);
     set({ timeFormat: format });
-    if (isBrowser) void window.electronAPI?.setTimeFormat?.(format).catch((error: Error) => {
-      logger.warn("Failed to sync time format", { error: error.message }, "settings");
-    });
+
+    if (isBrowser)
+      void window.electronAPI?.setTimeFormat?.(format).catch((error: Error) => {
+        logger.warn("Failed to sync time format", { error: error.message }, "settings");
+      });
   },
   useLocalWhisper: readBoolean("useLocalWhisper", false),
   whisperModel: readString("whisperModel", "base"),
@@ -1289,6 +1380,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   snippets: (() => {
     try {
       const parsed = JSON.parse(readString("snippets", "[]"));
+
       return Array.isArray(parsed) ? (parsed as Snippet[]) : [];
     } catch {
       return [];
@@ -1322,12 +1414,16 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   // Enterprise providers
   enterpriseSetupMode: (() => {
     const v = readString("enterpriseSetupMode", "auto");
+
     if (v === "auto" || v === "managed" || v === "manual") return v;
+
     return "auto" as EnterpriseSetupMode;
   })(),
   enterpriseTranscriptionSetupMode: (() => {
     const v = readString("enterpriseTranscriptionSetupMode", "auto");
+
     if (v === "auto" || v === "managed" || v === "manual") return v;
+
     return "auto" as EnterpriseSetupMode;
   })(),
   bedrockAuthMode: readString("bedrockAuthMode", "sso"),
@@ -1355,6 +1451,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   microphoneSelectionMode: (() => {
     const mode = readString("microphoneSelectionMode", "system");
+
     return (
       mode === "built-in" || mode === "specific" ? mode : "system"
     ) as MicrophoneSelectionMode;
@@ -1366,7 +1463,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   theme: (() => {
     const v = readString("theme", "auto");
+
     if (v === "light" || v === "dark" || v === "auto") return v;
+
     return "auto" as const;
   })(),
   colorScheme: normalizeColorScheme(readString("colorScheme", DEFAULT_COLOR_SCHEME)),
@@ -1384,12 +1483,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   meetingCompanionEnabled: readBoolean("meetingCompanionEnabled", true),
   ...(() => {
     let accounts: CalendarAccount[] = [];
+
     try {
       const parsed = JSON.parse(readString("gcalAccounts", "[]"));
+
       if (Array.isArray(parsed)) accounts = parsed;
     } catch {
       /* use empty default */
     }
+
     return {
       gcalAccounts: accounts,
       gcalConnected: accounts.length > 0,
@@ -1398,12 +1500,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   })(),
   ...(() => {
     let accounts: CalendarAccount[] = [];
+
     try {
       const parsed = JSON.parse(readString("mcalAccounts", "[]"));
+
       if (Array.isArray(parsed)) accounts = parsed;
     } catch {
       /* use empty default */
     }
+
     return {
       mcalAccounts: accounts,
       mcalConnected: accounts.length > 0,
@@ -1437,7 +1542,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   ),
   panelStartPosition: (() => {
     const v = readString("panelStartPosition", "bottom-right");
+
     if (v === "bottom-right" || v === "center" || v === "bottom-left") return v;
+
     return "bottom-right" as const;
   })(),
   autoPasteEnabled: readBoolean("autoPasteEnabled", true),
@@ -1456,6 +1563,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   ),
   remoteTranscriptionType: (() => {
     const v = readString("remoteTranscriptionType", "lan");
+
     return v === "openai-compatible" ? "openai-compatible" : ("lan" as SelfHostedType);
   })(),
   remoteTranscriptionUrl: readString("remoteTranscriptionUrl", ""),
@@ -1479,6 +1587,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   meetingCloudTranscriptionMode: readString("meetingCloudTranscriptionMode", ""),
   meetingRemoteTranscriptionType: (() => {
     const v = readString("meetingRemoteTranscriptionType", "lan");
+
     return v === "openai-compatible" ? "openai-compatible" : ("lan" as SelfHostedType);
   })(),
   meetingRemoteTranscriptionUrl: readString("meetingRemoteTranscriptionUrl", ""),
@@ -1512,7 +1621,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   noteFormattingBbProvider: readString("noteFormattingBbProvider", ""),
   noteFormattingBbModel: readString("noteFormattingBbModel", ""),
   noteFormattingBbReasoningLevel: readString("noteFormattingBbReasoningLevel", ""),
-  bbAgentPreferences: isBrowser ? parseBbAgentPreferences(localStorage.getItem("bbAgentPreferences")) : null,
+  bbAgentPreferences: isBrowser
+    ? parseBbAgentPreferences(localStorage.getItem("bbAgentPreferences"))
+    : null,
   setBbAgentPreferences: (preferences: BbAgentPreferences) => {
     if (isBrowser) localStorage.setItem("bbAgentPreferences", JSON.stringify(preferences));
     set({ bbAgentPreferences: preferences });
@@ -1629,21 +1740,27 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   switchCloudTranscriptionProvider: (context, providerId) => {
     const s = useSettingsStore.getState();
     const keys = TRANSCRIPTION_CONTEXT_KEYS.find((entry) => entry.context === context);
+
     if (!keys) return;
     // Meeting/upload raw keys default to "" (inherit from transcription), so work
     // against resolved values. Restoring writes a concrete model — the scope
     // stops inheriting the transcription model from that point on.
     const outgoingProvider = (s[keys.provider] as string) || s.cloudTranscriptionProvider;
+
     if (outgoingProvider === providerId) {
       setStringSetting(keys.provider, providerId);
+
       return;
     }
+
     const outgoingModel = (s[keys.model] as string) || s.cloudTranscriptionModel;
     const memory = { ...s.transcriptionModelByProvider };
+
     if (outgoingProvider && outgoingModel) {
       memory[`${context}:${outgoingProvider}`] = outgoingModel;
       persistTranscriptionModelMemory(memory);
     }
+
     const remembered = memory[`${context}:${providerId}`];
     setStringSetting(keys.provider, providerId);
     setStringSetting(
@@ -1660,6 +1777,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     const s = useSettingsStore.getState();
     const cfg = selectResolvedLLMConfig(s, scope);
     const memory = { ...s.reasoningModelByProvider };
+
     // Only remember a model the outgoing provider actually owns — after a
     // local/cloud mode round-trip the shared slot can hold a foreign id.
     if (cfg.provider && cfg.provider !== providerId) {
@@ -1670,8 +1788,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     } else if (reasoningModelBelongsToProvider(providerId, cfg.model)) {
       // Reselecting the current provider with a model it owns: keep it.
       setResolvedLLMConfig(scope, { provider: providerId });
+
       return;
     }
+
     const remembered = memory[`${scope}:${providerId}`];
     setResolvedLLMConfig(scope, {
       provider: providerId,
@@ -1695,31 +1815,34 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setCustomDictionary: (words: string[]) => {
     if (isBrowser) localStorage.setItem("customDictionary", JSON.stringify(words));
     set({ customDictionary: words });
-    window.electronAPI?.setDictionary(words)
-      .catch((err) => {
-        logger.warn(
-          "Failed to sync dictionary to SQLite",
-          { error: (err as Error).message },
-          "settings"
-        );
-      });
+    window.electronAPI?.setDictionary(words).catch((err) => {
+      logger.warn(
+        "Failed to sync dictionary to SQLite",
+        { error: (err as Error).message },
+        "settings"
+      );
+    });
   },
 
   updateCustomDictionary: ({ add = [], remove = [] }) => {
     const removeLower = new Set(remove.map((w) => w.toLowerCase()));
     const addLower = new Set(add.map((w) => w.toLowerCase()));
+
     // Optimistic so the UI updates immediately; the stored list replaces it below.
     const optimistic = [
       ...get().customDictionary.filter((w) => {
         const lower = w.toLowerCase();
+
         return !removeLower.has(lower) && !addLower.has(lower);
       }),
       ...add,
     ];
+
     if (isBrowser) localStorage.setItem("customDictionary", JSON.stringify(optimistic));
     set({ customDictionary: optimistic });
 
     const api = window.electronAPI;
+
     if (!api) return;
     const written = api.applyDictionaryChanges({ add, remove });
 
@@ -1727,6 +1850,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       .then(async () => {
         // SQLite owns ordering, casing and dedupe — adopt what it stored.
         const stored = await api.getDictionary?.();
+
         if (stored) {
           if (isBrowser) localStorage.setItem("customDictionary", JSON.stringify(stored));
           set({ customDictionary: stored });
@@ -1750,14 +1874,13 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setSnippets: (snippets: Snippet[]) => {
     if (isBrowser) localStorage.setItem("snippets", JSON.stringify(snippets));
     set({ snippets });
-    window.electronAPI?.setSnippets?.(snippets)
-      .catch((err) => {
-        logger.warn(
-          "Failed to sync snippets to SQLite",
-          { error: (err as Error).message },
-          "settings"
-        );
-      });
+    window.electronAPI?.setSnippets?.(snippets).catch((err) => {
+      logger.warn(
+        "Failed to sync snippets to SQLite",
+        { error: (err as Error).message },
+        "settings"
+      );
+    });
   },
 
   // For broadcasts from main process — DB is already authoritative, only update UI.
@@ -1768,9 +1891,11 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   setUiLanguage: (language: string) => {
     const normalized = normalizeUiLanguage(language);
+
     if (isBrowser) localStorage.setItem("uiLanguage", normalized);
     set({ uiLanguage: normalized });
     void i18n.changeLanguage(normalized);
+
     if (isBrowser && window.electronAPI?.setUiLanguage) {
       window.electronAPI.setUiLanguage(normalized).catch((err) => {
         logger.warn(
@@ -1830,10 +1955,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     debouncedPersistToEnv();
   },
   setBedrockAccessKeyId: createSecretSetter("bedrockAccessKeyId", "bedrockAccessKeyId"),
-  setBedrockSecretAccessKey: createSecretSetter(
-    "bedrockSecretAccessKey",
-    "bedrockSecretAccessKey"
-  ),
+  setBedrockSecretAccessKey: createSecretSetter("bedrockSecretAccessKey", "bedrockSecretAccessKey"),
   setBedrockSessionToken: createSecretSetter("bedrockSessionToken", "bedrockSessionToken"),
   setAzureEndpoint: (value: string) => {
     if (isBrowser) localStorage.setItem("azureEndpoint", value);
@@ -1895,20 +2017,25 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   setPreferBuiltInMic: (value: boolean) => {
     const mode: MicrophoneSelectionMode = value ? "built-in" : "system";
+
     if (isBrowser) {
       localStorage.setItem("preferBuiltInMic", String(value));
       localStorage.setItem("microphoneSelectionMode", mode);
     }
+
     set({ preferBuiltInMic: value, microphoneSelectionMode: mode });
   },
   setMicrophoneSelectionMode: (mode: MicrophoneSelectionMode) => {
     const normalized: MicrophoneSelectionMode =
       mode === "built-in" || mode === "specific" ? mode : "system";
+
     const preferBuiltInMic = normalized === "built-in";
+
     if (isBrowser) {
       localStorage.setItem("microphoneSelectionMode", normalized);
       localStorage.setItem("preferBuiltInMic", String(preferBuiltInMic));
     }
+
     set({ microphoneSelectionMode: normalized, preferBuiltInMic });
   },
   setSelectedMicDevice: (deviceId: string, label: string) => {
@@ -1916,6 +2043,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       localStorage.setItem("selectedMicDeviceLabel", label);
       localStorage.setItem("selectedMicDeviceId", deviceId);
     }
+
     set({ selectedMicDeviceId: deviceId, selectedMicDeviceLabel: label });
   },
 
@@ -1925,6 +2053,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   },
   setColorScheme: (value: ColorSchemeId) => {
     const scheme = normalizeColorScheme(value);
+
     if (isBrowser) localStorage.setItem("colorScheme", scheme);
     set({ colorScheme: scheme });
   },
@@ -1932,6 +2061,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setTelemetryEnabled: createBooleanSetter("telemetryEnabled"),
   setMicWarmHoldSeconds: (value: number) => {
     const snapped = snapMicWarmHold(value);
+
     if (isBrowser) localStorage.setItem("micWarmHoldSeconds", String(snapped));
     set({ micWarmHoldSeconds: snapped });
   },
@@ -1953,8 +2083,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   setFloatingIconAutoHide: (enabled: boolean) => {
     if (get().floatingIconAutoHide === enabled) return;
+
     if (isBrowser) localStorage.setItem("floatingIconAutoHide", String(enabled));
     set({ floatingIconAutoHide: enabled });
+
     if (isBrowser) {
       window.electronAPI?.notifyFloatingIconAutoHideChanged?.(enabled);
     }
@@ -1962,8 +2094,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   setStartMinimized: (enabled: boolean) => {
     if (get().startMinimized === enabled) return;
+
     if (isBrowser) localStorage.setItem("startMinimized", String(enabled));
     set({ startMinimized: enabled });
+
     if (isBrowser) {
       window.electronAPI?.notifyStartMinimizedChanged?.(enabled);
     }
@@ -1991,11 +2125,13 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setGcalPrimaryOnly: (value: boolean) => {
     if (isBrowser) localStorage.setItem("gcalPrimaryOnly", String(value));
     useSettingsStore.setState({ gcalPrimaryOnly: value });
+
     if (isBrowser) window.electronAPI?.gcalSetPrimaryOnly?.(value);
   },
   setMcalPrimaryOnly: (value: boolean) => {
     if (isBrowser) localStorage.setItem("mcalPrimaryOnly", String(value));
     useSettingsStore.setState({ mcalPrimaryOnly: value });
+
     if (isBrowser) window.electronAPI?.mcalSetPrimaryOnly?.(value);
   },
   setAppleCalendarConnected: createBooleanSetter("appleCalendarConnected"),
@@ -2003,6 +2139,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setNoteRecordingSileroEnabled: (value: boolean) => {
     if (isBrowser) localStorage.setItem("noteRecordingSileroEnabled", String(value));
     useSettingsStore.setState({ noteRecordingSileroEnabled: value });
+
     if (isBrowser) {
       window.electronAPI?.setWhisperVadConfig?.({ noteRecordingSileroEnabled: value });
     }
@@ -2010,62 +2147,77 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setMeetingSileroEnabled: (value: boolean) => {
     if (isBrowser) localStorage.setItem("meetingSileroEnabled", String(value));
     useSettingsStore.setState({ meetingSileroEnabled: value });
+
     if (isBrowser) {
       window.electronAPI?.setWhisperVadConfig?.({ meetingSileroEnabled: value });
     }
   },
   setWhisperVadThreshold: (value: number) => {
     const next = clampVadValue("threshold", value);
+
     if (isBrowser) localStorage.setItem("whisperVadThreshold", String(next));
     useSettingsStore.setState({ whisperVadThreshold: next });
+
     if (isBrowser) {
       window.electronAPI?.setWhisperVadConfig?.({ threshold: next });
     }
   },
   setWhisperVadMinSpeechDurationMs: (value: number) => {
     const next = clampVadValue("minSpeechDurationMs", value);
+
     if (isBrowser) localStorage.setItem("whisperVadMinSpeechDurationMs", String(next));
     useSettingsStore.setState({ whisperVadMinSpeechDurationMs: next });
+
     if (isBrowser) {
       window.electronAPI?.setWhisperVadConfig?.({ minSpeechDurationMs: next });
     }
   },
   setWhisperVadMinSilenceDurationMs: (value: number) => {
     const next = clampVadValue("minSilenceDurationMs", value);
+
     if (isBrowser) localStorage.setItem("whisperVadMinSilenceDurationMs", String(next));
     useSettingsStore.setState({ whisperVadMinSilenceDurationMs: next });
+
     if (isBrowser) {
       window.electronAPI?.setWhisperVadConfig?.({ minSilenceDurationMs: next });
     }
   },
   setWhisperVadMaxSpeechDurationS: (value: number) => {
     const next = clampVadValue("maxSpeechDurationS", value);
+
     if (isBrowser) localStorage.setItem("whisperVadMaxSpeechDurationS", String(next));
     useSettingsStore.setState({ whisperVadMaxSpeechDurationS: next });
+
     if (isBrowser) {
       window.electronAPI?.setWhisperVadConfig?.({ maxSpeechDurationS: next });
     }
   },
   setWhisperVadSpeechPadMs: (value: number) => {
     const next = clampVadValue("speechPadMs", value);
+
     if (isBrowser) localStorage.setItem("whisperVadSpeechPadMs", String(next));
     useSettingsStore.setState({ whisperVadSpeechPadMs: next });
+
     if (isBrowser) {
       window.electronAPI?.setWhisperVadConfig?.({ speechPadMs: next });
     }
   },
   setWhisperVadSamplesOverlap: (value: number) => {
     const next = clampVadValue("samplesOverlap", value);
+
     if (isBrowser) localStorage.setItem("whisperVadSamplesOverlap", String(next));
     useSettingsStore.setState({ whisperVadSamplesOverlap: next });
+
     if (isBrowser) {
       window.electronAPI?.setWhisperVadConfig?.({ samplesOverlap: next });
     }
   },
   setPanelStartPosition: (position: "bottom-right" | "center" | "bottom-left") => {
     if (get().panelStartPosition === position) return;
+
     if (isBrowser) localStorage.setItem("panelStartPosition", position);
     set({ panelStartPosition: position });
+
     if (isBrowser) {
       window.electronAPI?.notifyPanelStartPositionChanged?.(position);
     }
@@ -2095,33 +2247,51 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   updateTranscriptionSettings: (settings: Partial<TranscriptionSettings>) => {
     const s = useSettingsStore.getState();
+
     if (settings.useLocalWhisper !== undefined) s.setUseLocalWhisper(settings.useLocalWhisper);
+
     if (settings.uiLanguage !== undefined) s.setUiLanguage(settings.uiLanguage);
+
     if (settings.whisperModel !== undefined) s.setWhisperModel(settings.whisperModel);
+
     if (settings.localTranscriptionProvider !== undefined)
       s.setLocalTranscriptionProvider(settings.localTranscriptionProvider);
+
     if (settings.parakeetModel !== undefined) s.setParakeetModel(settings.parakeetModel);
+
     if (settings.cohereModel !== undefined) s.setCohereModel(settings.cohereModel);
+
     if (settings.allowOpenAIFallback !== undefined)
       s.setAllowOpenAIFallback(settings.allowOpenAIFallback);
+
     if (settings.allowLocalFallback !== undefined)
       s.setAllowLocalFallback(settings.allowLocalFallback);
+
     if (settings.fallbackWhisperModel !== undefined)
       s.setFallbackWhisperModel(settings.fallbackWhisperModel);
+
     if (settings.preferredLanguage !== undefined)
       s.setPreferredLanguage(settings.preferredLanguage);
+
     if (settings.chineseScriptPreference !== undefined)
       s.setChineseScriptPreference(settings.chineseScriptPreference);
+
     if (settings.cloudTranscriptionProvider !== undefined)
       s.setCloudTranscriptionProvider(settings.cloudTranscriptionProvider);
+
     if (settings.cloudTranscriptionModel !== undefined)
       s.setCloudTranscriptionModel(settings.cloudTranscriptionModel);
+
     if (settings.cloudTranscriptionBaseUrl !== undefined)
       s.setCloudTranscriptionBaseUrl(settings.cloudTranscriptionBaseUrl);
+
     if (settings.cloudTranscriptionMode !== undefined)
       s.setCloudTranscriptionMode(settings.cloudTranscriptionMode);
+
     if (settings.customDictionary !== undefined) s.setCustomDictionary(settings.customDictionary);
+
     if (settings.snippets !== undefined) s.setSnippets(settings.snippets);
+
     if (settings.assemblyAiStreaming !== undefined)
       s.setAssemblyAiStreaming(settings.assemblyAiStreaming);
   },
@@ -2132,19 +2302,19 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   setCloudTranscriptionForAllScopes: (settings: Partial<TranscriptionSettings>) => {
     const s = useSettingsStore.getState();
     s.updateTranscriptionSettings(settings);
+
     const {
       useLocalWhisper,
       cloudTranscriptionMode,
       cloudTranscriptionProvider,
       cloudTranscriptionModel,
     } = useSettingsStore.getState();
+
     // Each Settings tab selects on its InferenceMode field, so set it for every
     // scope — otherwise the UI keeps showing the previous mode even though the
     // routing now points at the new provider.
-    const mode = deriveTranscriptionMode(
-      useLocalWhisper,
-      cloudTranscriptionProvider
-    );
+    const mode = deriveTranscriptionMode(useLocalWhisper, cloudTranscriptionProvider);
+
     s.setTranscriptionMode(mode);
     s.setMeetingTranscriptionMode(mode);
     s.setUploadTranscriptionMode(mode);
@@ -2156,29 +2326,39 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     s.setUploadCloudTranscriptionMode(cloudTranscriptionMode);
     s.setUploadCloudTranscriptionProvider(cloudTranscriptionProvider);
     s.setUploadCloudTranscriptionModel(cloudTranscriptionModel);
+
     if (settings.cloudTranscriptionBaseUrl !== undefined) {
       s.setMeetingCloudTranscriptionBaseUrl(settings.cloudTranscriptionBaseUrl);
       s.setUploadCloudTranscriptionBaseUrl(settings.cloudTranscriptionBaseUrl);
     }
+
     // Seed the per-provider model memory so a later provider switch-and-return
     // in any scope restores the model onboarding chose.
     if (cloudTranscriptionProvider && cloudTranscriptionModel) {
       const memory = { ...useSettingsStore.getState().transcriptionModelByProvider };
+
       for (const { context } of TRANSCRIPTION_CONTEXT_KEYS) {
         memory[`${context}:${cloudTranscriptionProvider}`] = cloudTranscriptionModel;
       }
+
       persistTranscriptionModelMemory(memory);
     }
   },
 
   updateCleanupSettings: (settings: Partial<CleanupSettings>) => {
     const s = useSettingsStore.getState();
+
     if (settings.useCleanupModel !== undefined) s.setUseCleanupModel(settings.useCleanupModel);
+
     if (settings.cleanupModel !== undefined) s.setCleanupModel(settings.cleanupModel);
+
     if (settings.cleanupProvider !== undefined) s.setCleanupProvider(settings.cleanupProvider);
+
     if (settings.cleanupCloudBaseUrl !== undefined)
       s.setCleanupCloudBaseUrl(settings.cleanupCloudBaseUrl);
+
     if (settings.cleanupCloudMode !== undefined) s.setCleanupCloudMode(settings.cleanupCloudMode);
+
     if (settings.cleanupRemoteUrl !== undefined) s.setCleanupRemoteUrl(settings.cleanupRemoteUrl);
   },
 
@@ -2188,22 +2368,30 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // Local and enterprise modes are inference modes, not cloud routing values.
     const requestedCloudMode = settings.cleanupCloudMode ?? s.cleanupCloudMode;
     const isDirectMode = requestedCloudMode === "local" || requestedCloudMode === "enterprise";
+
     // Derive the mode from the incoming patch (falling back to current state) so
     // the helper patches are the single source of truth for every scope's mode.
     const mode = isDirectMode
       ? requestedCloudMode
-      : deriveLegacyReasoningMode(requestedCloudMode, settings.cleanupProvider ?? s.cleanupProvider);
+      : deriveLegacyReasoningMode(
+          requestedCloudMode,
+          settings.cleanupProvider ?? s.cleanupProvider
+        );
+
     const { cleanup, ...mirrored } = buildReasoningScopePatches(
       isDirectMode
         ? { ...settings, cleanupCloudMode: undefined }
         : { ...settings, cleanupCloudMode: "byok" },
       mode
     );
+
     s.updateCleanupSettings(cleanup);
     s.setCleanupMode(cleanup.cleanupMode);
+
     if (cleanup.cleanupCustomApiKey !== undefined) {
       s.setCleanupCustomApiKey(cleanup.cleanupCustomApiKey);
     }
+
     // Each Settings tab selects on its own mode field, so every scope gets the
     // mode even when the routing fields are absent — otherwise the tab keeps
     // showing the previous provider despite the new cloud routing.
@@ -2213,30 +2401,49 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   updateApiKeys: (keys: Partial<ApiKeySettings>) => {
     const s = useSettingsStore.getState();
+
     if (keys.openaiApiKey !== undefined) s.setOpenaiApiKey(keys.openaiApiKey);
+
     if (keys.anthropicApiKey !== undefined) s.setAnthropicApiKey(keys.anthropicApiKey);
+
     if (keys.geminiApiKey !== undefined) s.setGeminiApiKey(keys.geminiApiKey);
+
     if (keys.groqApiKey !== undefined) s.setGroqApiKey(keys.groqApiKey);
+
     if (keys.xaiApiKey !== undefined) s.setXaiApiKey(keys.xaiApiKey);
+
     if (keys.mistralApiKey !== undefined) s.setMistralApiKey(keys.mistralApiKey);
+
     if (keys.openrouterApiKey !== undefined) s.setOpenrouterApiKey(keys.openrouterApiKey);
+
     if (keys.cortiClientId !== undefined) s.setCortiClientId(keys.cortiClientId);
+
     if (keys.cortiClientSecret !== undefined) s.setCortiClientSecret(keys.cortiClientSecret);
+
     if (keys.cortiApiKey !== undefined) s.setCortiApiKey(keys.cortiApiKey);
+
     if (keys.tinfoilApiKey !== undefined) s.setTinfoilApiKey(keys.tinfoilApiKey);
+
     if (keys.deepgramApiKey !== undefined) s.setDeepgramApiKey(keys.deepgramApiKey);
+
     if (keys.elevenLabsApiKey !== undefined) s.setElevenLabsApiKey(keys.elevenLabsApiKey);
+
     if (keys.assemblyaiApiKey !== undefined) s.setAssemblyaiApiKey(keys.assemblyaiApiKey);
+
     if (keys.customTranscriptionApiKey !== undefined)
       s.setCustomTranscriptionApiKey(keys.customTranscriptionApiKey);
+
     if (keys.cleanupCustomApiKey !== undefined) s.setCleanupCustomApiKey(keys.cleanupCustomApiKey);
   },
 
   updateChatAgentSettings: (settings: Partial<ChatAgentSettings>) => {
     const s = useSettingsStore.getState();
+
     if (settings.chatAgentModel !== undefined) s.setChatAgentModel(settings.chatAgentModel);
+
     if (settings.chatAgentProvider !== undefined)
       s.setChatAgentProvider(settings.chatAgentProvider);
+
     if (settings.chatAgentCloudMode !== undefined)
       s.setChatAgentCloudMode(settings.chatAgentCloudMode);
   },
@@ -2258,26 +2465,35 @@ export function setResolvedLLMConfig(
   const def: InferenceScopeDefinition = INFERENCE_SCOPES[scope];
   const updates: Partial<SettingsState> = {};
   let secretWrite: Promise<SecretSaveResult> | undefined;
+
   for (const [field, value] of Object.entries(patch)) {
     if (value === undefined) continue;
     const storeKey = def.storeKeys[field as keyof InferenceScopeStoreKeys];
+
     if (!storeKey) continue;
+
     const secretSetter =
       SECRET_SCOPE_KEY_SETTERS[storeKey as keyof typeof SECRET_SCOPE_KEY_SETTERS];
+
     if (secretSetter) {
       const result = useSettingsStore.getState()[secretSetter](value as string);
+
       if (result) secretWrite = result;
       continue;
     }
+
     if (isBrowser) {
       localStorage.setItem(
         storeKey as string,
         typeof value === "boolean" ? String(value) : (value as string)
       );
     }
+
     (updates as Record<string, unknown>)[storeKey as string] = value;
   }
+
   if (Object.keys(updates).length > 0) useSettingsStore.setState(updates);
+
   return secretWrite;
 }
 
@@ -2334,11 +2550,13 @@ export function getSettings(): SettingsState {
  */
 export function clearMissingLocalModelSelections(isInstalled: (modelId: string) => boolean): void {
   const settings = useSettingsStore.getState() as unknown as Record<string, unknown>;
+
   const staleKeys: string[] = findStaleLocalModelKeys(
     Object.values(INFERENCE_SCOPES),
     settings,
     isInstalled
   );
+
   for (const key of staleKeys) {
     setStringSetting(key as keyof SettingsState, "");
   }
@@ -2362,13 +2580,17 @@ export async function reconcileLocalModelSelections(): Promise<void> {
  */
 export function reconcileRetiredCloudModelSelections(): void {
   const state = useSettingsStore.getState() as unknown as Record<string, unknown>;
+
   for (const scope of Object.values(INFERENCE_SCOPES)) {
     const provider = state[scope.storeKeys.provider] as string;
     const model = state[scope.storeKeys.model] as string;
+
     if (!provider || !model || provider === "tinfoil") continue;
     const providerDef = modelRegistryData.cloudProviders.find((p) => p.id === provider);
+
     if (!providerDef || reasoningModelBelongsToProvider(provider, model)) continue;
     const replacement = pickDefaultModelId(providerDef);
+
     if (!replacement) continue;
     setStringSetting(scope.storeKeys.model as keyof SettingsState, replacement);
     logger.info(
@@ -2386,7 +2608,9 @@ export function getEffectiveCleanupModel() {
 // One store owner serializes hydration and edits. Only confirmed configurations
 // become effective; a failed activation leaves the persisted choice for retry.
 let noteFilesQueue: Promise<unknown> = Promise.resolve();
+
 let noteFilesPending = 0;
+
 let noteFilesHydration: Promise<NoteFilesCommandResult> | null = null;
 
 // MainApp calls this; notification and Companion documents only hydrate
@@ -2396,36 +2620,52 @@ export function initializeNoteFiles(): Promise<NoteFilesCommandResult> {
     enabled: readBoolean("noteFilesEnabled", false),
     path: readString("noteFilesPath", ""),
   });
+
   return noteFilesHydration;
 }
 
-function applyNoteFilesConfiguration(change: { enabled?: boolean; path?: string }): Promise<NoteFilesCommandResult> {
+function applyNoteFilesConfiguration(change: {
+  enabled?: boolean;
+  path?: string;
+}): Promise<NoteFilesCommandResult> {
   noteFilesPending++;
   useSettingsStore.setState({ noteFilesUpdating: true });
+
   const operation = noteFilesQueue.then(async (): Promise<NoteFilesCommandResult> => {
     const state = useSettingsStore.getState();
     const enabled = change.enabled ?? state.noteFilesEnabled;
     const path = change.path ?? state.noteFilesPath;
+
     try {
       if (!isBrowser || !window.electronAPI?.noteFilesSetEnabled) {
         throw new Error("Note files bridge unavailable");
       }
+
       const result = await window.electronAPI.noteFilesSetEnabled(enabled, path);
+
       if (!result.success) throw new Error(result.error || "Failed to configure note files");
       localStorage.setItem("noteFilesEnabled", String(enabled));
       localStorage.setItem("noteFilesPath", path);
-      useSettingsStore.setState({ noteFilesEnabled: enabled, noteFilesPath: path, noteFilesError: null });
+      useSettingsStore.setState({
+        noteFilesEnabled: enabled,
+        noteFilesPath: path,
+        noteFilesError: null,
+      });
+
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       useSettingsStore.setState({ noteFilesEnabled: false, noteFilesError: message });
+
       return { success: false, error: message };
     } finally {
       noteFilesPending--;
       useSettingsStore.setState({ noteFilesUpdating: noteFilesPending > 0 });
     }
   });
+
   noteFilesQueue = operation;
+
   return operation;
 }
 
@@ -2540,6 +2780,7 @@ export async function initializeSettings(): Promise<void> {
         const hasChosenProvider =
           Object.values(INFERENCE_SCOPES).some((scope) => {
             const stored = localStorage.getItem(scope.storeKeys.mode as string);
+
             return Boolean(stored);
           }) ||
           Boolean(
@@ -2547,11 +2788,11 @@ export async function initializeSettings(): Promise<void> {
             (bedrockAccessKeyId && bedrockSecretAccessKey) ||
             azureApiKey
           );
+
         const enterpriseSetupMode: EnterpriseSetupMode = hasChosenProvider ? "manual" : "auto";
         localStorage.setItem("enterpriseSetupMode", enterpriseSetupMode);
         useSettingsStore.setState({ enterpriseSetupMode });
       }
-
     } catch (err) {
       logger.warn(
         "Failed to hydrate secrets from main process",
@@ -2564,10 +2805,12 @@ export async function initializeSettings(): Promise<void> {
     try {
       const envLanguage = await window.electronAPI.getUiLanguage?.();
       const resolved = normalizeUiLanguage(envLanguage || state.uiLanguage);
+
       if (resolved !== state.uiLanguage) {
         if (isBrowser) localStorage.setItem("uiLanguage", resolved);
         useSettingsStore.setState({ uiLanguage: resolved });
       }
+
       await i18n.changeLanguage(resolved);
     } catch (err) {
       logger.warn(
@@ -2579,6 +2822,7 @@ export async function initializeSettings(): Promise<void> {
     }
 
     const migratedLang = isBrowser ? localStorage.getItem("preferredLanguage") : null;
+
     if (migratedLang && migratedLang !== state.preferredLanguage) {
       useSettingsStore.setState({ preferredLanguage: migratedLang });
     }
@@ -2588,17 +2832,20 @@ export async function initializeSettings(): Promise<void> {
     // cache used to win when both sides were non-empty; ensureAgentNameInDictionary
     // then wrote that cache through setDictionary and wiped newer DB words (#1295).
     let dictionarySyncSucceeded = !window.electronAPI?.getDictionary;
+
     try {
       if (window.electronAPI.getDictionary) {
         const currentDictionary = useSettingsStore.getState().customDictionary;
         const dbWords = await window.electronAPI.getDictionary();
         const decision = chooseDictionaryStartupAction(dbWords, currentDictionary);
+
         if (decision.action === "push-local-to-db") {
           await window.electronAPI.setDictionary(decision.words);
         } else if (decision.action === "pull-db-to-local") {
           if (isBrowser) localStorage.setItem("customDictionary", JSON.stringify(decision.words));
           useSettingsStore.setState({ customDictionary: decision.words });
         }
+
         dictionarySyncSucceeded = true;
       }
     } catch (err) {
@@ -2614,9 +2861,11 @@ export async function initializeSettings(): Promise<void> {
       if (window.electronAPI.getSnippets) {
         const currentSnippets = useSettingsStore.getState().snippets;
         const dbSnippets = await window.electronAPI.getSnippets();
+
         if (dbSnippets.length === 0 && currentSnippets.length > 0) {
           await window.electronAPI.setSnippets?.(currentSnippets);
           const normalizedSnippets = await window.electronAPI.getSnippets();
+
           if (isBrowser) localStorage.setItem("snippets", JSON.stringify(normalizedSnippets));
           useSettingsStore.setState({ snippets: normalizedSnippets });
         } else if (dbSnippets.length > 0) {
@@ -2654,6 +2903,7 @@ export async function initializeSettings(): Promise<void> {
     // The main-process DB is the source of truth for the Apple Calendar connection
     try {
       const status = await window.electronAPI.acalGetConnectionStatus?.();
+
       if (status) {
         useSettingsStore.getState().setAppleCalendarConnected(status.connected);
       }
@@ -2734,18 +2984,22 @@ export async function initializeSettings(): Promise<void> {
 
     if (key.startsWith("customPrompt.")) {
       const kind = key.slice("customPrompt.".length) as PromptKind;
+
       if (!PROMPT_KIND_LIST.includes(kind)) return;
       useSettingsStore.setState((s) => ({
         customPrompts: { ...s.customPrompts, [kind]: newValue },
       }));
+
       return;
     }
 
     const state = useSettingsStore.getState();
+
     if (!(key in state) || typeof (state as unknown as Record<string, unknown>)[key] === "function")
       return;
 
     let value: unknown;
+
     if (BOOLEAN_SETTINGS.has(key)) {
       value = newValue === "true";
     } else if (ARRAY_SETTINGS.has(key)) {
@@ -2757,6 +3011,7 @@ export async function initializeSettings(): Promise<void> {
       }
     } else if (NUMERIC_SETTINGS.has(key)) {
       const parsed = Number(newValue);
+
       if (Number.isNaN(parsed)) {
         value =
           key === "audioRetentionDays" ? 7 : (state as unknown as Record<string, unknown>)[key];
@@ -2795,6 +3050,7 @@ export async function initializeSettings(): Promise<void> {
   // Sync settings pushed from main process (e.g., hotkey changed in control panel)
   window.electronAPI?.onSettingUpdated?.((data: { key: string; value: unknown }) => {
     const state = useSettingsStore.getState();
+
     if (
       data.key in state &&
       typeof (state as unknown as Record<string, unknown>)[data.key] !== "function"

@@ -34,9 +34,11 @@ export function MeetingMicButton() {
   // Target state while the gate transition is in flight, so the button reacts at once.
   const [pending, setPending] = useState<boolean | null>(null);
   const [failed, setFailed] = useState(false);
+
   if (phase !== "recording" && phase !== "paused") return null;
   const label = t(muted ? "meetIntegration.unmute" : "meetIntegration.mute");
   const effectiveMuted = pending ?? (muted || platformMuted);
+
   return (
     <span className="inline-flex items-center gap-1">
       <button
@@ -55,6 +57,7 @@ export function MeetingMicButton() {
         onClick={async () => {
           if (pending !== null) return;
           setPending(!muted);
+
           try {
             setFailed(!(await setManualMicMuted(!muted)));
           } finally {

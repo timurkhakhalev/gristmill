@@ -1,4 +1,5 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 // mergeWithTranscript is pure, but diarization.js pulls in helpers that reach
@@ -18,6 +19,7 @@ require.cache[require.resolve("electron")] = {
 const DiarizationManager: typeof import("../../src/helpers/diarization.ts").DiarizationManager = require("../../src/helpers/diarization.ts");
 
 const systemSegment = (timestamp: number, text: string) => ({ source: "system", timestamp, text });
+
 const micSegment = (timestamp: number, text: string) => ({ source: "mic", timestamp, text });
 
 test("a segment between clusters takes the nearest cluster, not the first", () => {
@@ -73,6 +75,7 @@ test("mic segments stay owned by you and survive an empty diarization run", () =
     [{ source: "mic", timestamp: 1, text: "morning" }],
     [{ start: 0, end: 5, speaker: "speaker_0" }]
   );
+
   assert.equal(withClusters[0].speaker, "you");
 
   const withoutClusters = manager.mergeWithTranscript([systemSegment(1, "morning")], []);

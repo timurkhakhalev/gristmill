@@ -29,8 +29,10 @@ export function createMessageSubmissionLock(): MessageSubmissionLock {
     async run(operation: () => Promise<void>): Promise<boolean> {
       if (active) return false;
       active = true;
+
       try {
         await operation();
+
         return true;
       } finally {
         active = false;
@@ -55,29 +57,39 @@ export function useChatMessageSender({
   return useCallback(
     async (text: string, sendOptions?: ChatSendOptions) => {
       const generation = persistence.getSession().generation;
+
       if (submissionLockRef.current?.generation !== generation) {
         submissionLockRef.current = { generation, lock: createMessageSubmissionLock() };
       }
+
       return await submissionLockRef.current.lock.run(async () => {
         onSendingChange?.(true);
+
         try {
           onBeforeSend?.();
           const session = persistence.getSession();
+
           if (persistence.messages.some((message) => message.persistenceError || message.isSaving))
             return;
           const previousMessages = persistence.messages;
+
           const userMessage: Message = {
             id: crypto.randomUUID(),
             role: "user",
             content: text,
             isStreaming: false,
           };
+
           persistence.setMessages((messages) => [...messages, userMessage]);
+
           try {
             const convId = session.conversationId ?? (await createConversation(text));
+
             if (convId === null) return;
             const destination = { ...session, conversationId: convId };
+
             if (!persistence.isCurrent(destination)) return;
+
             if (
               !(await persistence.saveUserMessage(destination, userMessage)) ||
               !persistence.isCurrent(destination)
@@ -88,6 +100,7 @@ export function useChatMessageSender({
               text,
               isFirstMessage: previousMessages.length === 0,
             });
+
             if (!persistence.isCurrent(destination)) return;
             await streaming.sendToAI(text, [...previousMessages, userMessage], {
               ...sendOptions,

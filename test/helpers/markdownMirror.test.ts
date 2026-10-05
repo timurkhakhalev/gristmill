@@ -1,8 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("node:fs");
+
 const os: typeof import("node:os") = require("node:os");
+
 const path = require("node:path");
+
 const Module = require("node:module");
 
 const originalLoad = Module._load;
@@ -11,10 +16,12 @@ Module._load = function loadWithElectronStub(request: string, parent: unknown, i
   if (request === "electron") {
     return { app: { isReady: () => false } };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 let markdownMirror;
+
 try {
   markdownMirror = require("../../src/helpers/markdownMirror");
 } finally {
@@ -107,7 +114,10 @@ test("writes reject a symlinked folder that resolves outside the mirror", (t: im
   fs.symlinkSync(outsidePath, path.join(basePath, "linked"), "dir");
 
   markdownMirror.init(basePath);
-  assert.throws(() => markdownMirror.writeNote({ id: 16, title: "Escaped", content: "Body" }, "linked"), /regular directory/);
+  assert.throws(
+    () => markdownMirror.writeNote({ id: 16, title: "Escaped", content: "Body" }, "linked"),
+    /regular directory/
+  );
 
   assert.equal(fs.existsSync(path.join(outsidePath, "16-escaped.md")), false);
   assert.equal(markdownMirror.getFolderPath("linked"), null);
@@ -124,7 +134,10 @@ test("writes reject a symlinked note file without changing its target", (t: impo
   markdownMirror.init(basePath);
   markdownMirror.ensureFolder("Personal");
   fs.symlinkSync(outsideFile, path.join(basePath, "Personal", "17-linked.md"), "file");
-  assert.throws(() => markdownMirror.writeNote({ id: 17, title: "Linked", content: "Replacement" }, "Personal"), /regular file/);
+  assert.throws(
+    () => markdownMirror.writeNote({ id: 17, title: "Linked", content: "Replacement" }, "Personal"),
+    /regular file/
+  );
 
   assert.equal(fs.readFileSync(outsideFile, "utf8"), "unchanged");
   assert.equal(markdownMirror.getNotePath(17), null);
@@ -147,9 +160,12 @@ test("Windows-reserved and trailing-character folder names use distinct portable
   const diskNames = folderNames.map((folderName) => {
     const folderPath = markdownMirror.getFolderPath(folderName);
     assert.ok(folderPath);
+
     return path.basename(folderPath);
   });
+
   assert.equal(new Set(diskNames).size, folderNames.length);
+
   for (const diskName of diskNames) {
     assert.doesNotMatch(diskName, /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i);
     assert.doesNotMatch(diskName, /[ .]$/);
@@ -211,10 +227,12 @@ function readFrontmatter(fileContent: string) {
   const match = fileContent.match(/^---\n([\s\S]*?)\n---\n/);
   assert.ok(match, "file should start with a --- fenced frontmatter block");
   const map: Record<string, string> = {};
+
   for (const line of match[1].split("\n")) {
     const kv = line.match(/^([A-Za-z_]+): (.*)$/);
     assert.ok(kv, `frontmatter line is a "key: value" mapping entry: ${JSON.stringify(line)}`);
     let value = kv[2];
+
     if (value.startsWith('"') && value.endsWith('"')) {
       value = value
         .slice(1, -1)
@@ -224,8 +242,10 @@ function readFrontmatter(fileContent: string) {
         .replace(/\\"/g, '"')
         .replace(/\\\\/g, "\\");
     }
+
     map[kv[1]] = value;
   }
+
   return map;
 }
 
@@ -282,8 +302,10 @@ test("deleteNote removes the note's other files even when one unlink fails", (t:
       failedPath = target;
       throw Object.assign(new Error("EPERM"), { code: "EPERM" });
     }
+
     return realUnlink(target);
   };
+
   t.after(() => {
     fs.unlinkSync = realUnlink;
   });

@@ -14,6 +14,7 @@ export const saveKeyResultSchema = z
     success: z.boolean(),
   })
   .passthrough();
+
 export type SaveKeyWireResult = z.infer<typeof saveKeyResultSchema>;
 
 export const simpleSuccessSchema = z.object({ success: z.boolean() });
@@ -21,6 +22,7 @@ export const simpleSuccessSchema = z.object({ success: z.boolean() });
 // BYOK credential surface: the getter/setter names come verbatim from the
 // shared manifest, so both sides are catalog-driven.
 export type ByokGetterName = (typeof BYOK_API_KEYS)[number]["get"];
+
 export type ByokSetterName = (typeof BYOK_API_KEYS)[number]["save"];
 
 export type ByokKeySurface = {
@@ -115,7 +117,9 @@ export type AccessStatusWire =
   | "restricted"
   | "unknown"
   | "unsupported";
+
 export type SystemAudioModeWire = "native" | "loopback" | "portal" | "unsupported";
+
 export type SystemAudioStrategyWire =
   | "native"
   | "loopback"
@@ -126,32 +130,22 @@ export type SystemAudioStrategyWire =
 export const systemAudioAccessSchema = z
   .object({
     granted: z.boolean(),
-    status: z.enum([
-      "granted",
-      "denied",
-      "not-determined",
-      "restricted",
-      "unknown",
-      "unsupported",
-    ]),
+    status: z.enum(["granted", "denied", "not-determined", "restricted", "unknown", "unsupported"]),
     mode: z.enum(["native", "loopback", "portal", "unsupported"]),
     supportsPersistentGrant: z.boolean().optional(),
     supportsPersistentPortalGrant: z.boolean().optional(),
     supportsNativeCapture: z.boolean().optional(),
     supportsOnboardingGrant: z.boolean().optional(),
     requiresRuntimeSharePrompt: z.boolean().optional(),
-    strategy: z.enum([
-      "native",
-      "loopback",
-      "pipewire-loopback",
-      "wasapi-loopback",
-      "unsupported",
-    ]).optional(),
+    strategy: z
+      .enum(["native", "loopback", "pipewire-loopback", "wasapi-loopback", "unsupported"])
+      .optional(),
     restoreTokenAvailable: z.boolean().optional(),
     portalVersion: z.number().nullable().optional(),
     error: z.string().optional(),
   })
   .passthrough();
+
 export type SystemAudioAccessWire = z.infer<typeof systemAudioAccessSchema>;
 
 export const systemDefaultMicrophoneSchema = z
@@ -379,9 +373,7 @@ export interface DesktopSettingsApi extends ByokKeySurface {
   getAgentCliStatus(): Promise<z.infer<typeof agentCliStatusSchema>>;
   openMicrophoneSettings(): Promise<SystemSettingsWire>;
   openSoundInputSettings(): Promise<SystemSettingsWire>;
-  getSystemDefaultMicrophone(options?: {
-    refresh?: boolean;
-  }): Promise<SystemDefaultMicrophoneWire>;
+  getSystemDefaultMicrophone(options?: { refresh?: boolean }): Promise<SystemDefaultMicrophoneWire>;
   openAccessibilitySettings(): Promise<SystemSettingsWire>;
   openSystemAudioSettings(): Promise<SystemSettingsWire>;
   openScreenRecordingSettings(): Promise<SystemSettingsWire>;
@@ -406,17 +398,31 @@ export interface DesktopSettingsApi extends ByokKeySurface {
 }
 
 export type HotkeyListeningWireResult = { success: boolean; skipped?: boolean };
+
 export type HotkeyModeInfoWire = z.infer<typeof hotkeyModeInfoSchema>;
+
 export type OpenExternalWireResult = z.infer<typeof openExternalResultSchema>;
+
 export type AutoStartStateWire = { enabled: boolean; requiresApproval: boolean };
+
 export type AutoStartSetResultWire = { success: boolean; error?: string };
+
 export type UiLanguageWireResult = { success: boolean; language: string };
+
 export type DebugStateWire = z.infer<typeof debugStateSchema>;
+
 export type SetDebugLoggingWire = z.infer<typeof setDebugLoggingResultSchema>;
+
 export type SystemSettingsWire = z.infer<typeof systemSettingsResultSchema>;
+
 export type MicrophoneAccessWire = z.infer<typeof microphoneAccessRequestSchema>;
+
 export type MicrophoneStatusWire = z.infer<typeof microphoneAccessStatusSchema>;
+
 export type SystemAudioWire = z.infer<typeof systemAudioAccessSchema>;
+
 export type SystemDefaultMicrophoneWire = z.infer<typeof systemDefaultMicrophoneSchema>;
+
 export type CleanupAppWire = z.infer<typeof cleanupAppResultSchema>;
+
 export type AppVersionWire = z.infer<typeof appVersionSchema>;

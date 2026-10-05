@@ -19,6 +19,7 @@ export async function generateNoteTitle(
       disableThinking: getSettings().noteFormattingDisableThinking,
       ...config,
     });
+
     return sanitizeGeneratedTitle(raw);
   } catch {
     return "";

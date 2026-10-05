@@ -24,7 +24,9 @@ interface RequestEvent {
 export interface SpeakerDatabase {
   searchContacts(query: string): Array<{ email: string; display_name: string | null }>;
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
-  getContactProfiles(emails: string[]): Array<{ email: string; display_name: string | null; photo_url: string | null }>;
+  getContactProfiles(
+    emails: string[]
+  ): Array<{ email: string; display_name: string | null; photo_url: string | null }>;
   upsertSpeakerProfile(
     displayName: string,
     email: string | null,
@@ -32,9 +34,7 @@ export interface SpeakerDatabase {
     profileId: number | null
   ): SpeakerProfileWithEmbedding | null;
   getSpeakerMappings(noteId: number): SpeakerMappingRow[];
-  getNoteSpeakerEmbeddings(
-    noteId: number
-  ): Array<{ speaker_id: string; embedding: Buffer }>;
+  getNoteSpeakerEmbeddings(noteId: number): Array<{ speaker_id: string; embedding: Buffer }>;
   setSpeakerMapping(
     noteId: number,
     speakerId: string,
@@ -50,10 +50,7 @@ export interface SpeakerDatabase {
     created_at?: string;
     updated_at?: string;
   }>;
-  attachEmailToProfile(
-    profileId: number,
-    email: string | null
-  ): SpeakerProfileWithEmbedding | null;
+  attachEmailToProfile(profileId: number, email: string | null): SpeakerProfileWithEmbedding | null;
   saveNoteSpeakerEmbeddings(
     noteId: number,
     embeddings: Array<{ speakerId: string; embedding: Buffer }>
@@ -90,6 +87,7 @@ export function registerSpeakerHandlers(
   ipcMain.handle(c.searchContacts, async (_event, ...args: unknown[]) => {
     try {
       const contacts = deps.databaseManager.searchContacts(args[0] as string);
+
       return { success: true, contacts };
     } catch {
       return { success: false, contacts: [] };
@@ -97,7 +95,10 @@ export function registerSpeakerHandlers(
   });
 
   ipcMain.handle(c.getContactProfiles, async (_event, ...args: unknown[]) => {
-    const emails = Array.isArray(args[0]) ? args[0].filter((email): email is string => typeof email === "string") : [];
+    const emails = Array.isArray(args[0])
+      ? args[0].filter((email): email is string => typeof email === "string")
+      : [];
+
     try {
       return deps.databaseManager.getContactProfiles(emails.slice(0, 500));
     } catch {
@@ -107,7 +108,10 @@ export function registerSpeakerHandlers(
 
   ipcMain.handle(c.upsertContact, async (_event, ...args: unknown[]) => {
     try {
-      deps.databaseManager.upsertContacts([args[0] as { email: string; displayName?: string | null }]);
+      deps.databaseManager.upsertContacts([
+        args[0] as { email: string; displayName?: string | null },
+      ]);
+
       return { success: true };
     } catch {
       return { success: false };
@@ -133,6 +137,7 @@ export function registerSpeakerHandlers(
       const speakerEmbeddingBuffer = noteSpeakerEmbedding?.embedding ?? null;
 
       let resolvedProfileId = profileId ?? null;
+
       if (speakerEmbeddingBuffer) {
         const profile = database.upsertSpeakerProfile(
           displayName,
@@ -140,6 +145,7 @@ export function registerSpeakerHandlers(
           speakerEmbeddingBuffer,
           resolvedProfileId
         );
+
         if (profile) {
           resolvedProfileId = profile.id;
           deps.retroactiveMapping(profile);
@@ -147,12 +153,14 @@ export function registerSpeakerHandlers(
       }
 
       database.setSpeakerMapping(noteId, speakerId, resolvedProfileId, displayName);
+
       return { success: true, profileId: resolvedProfileId };
     }
   );
 
   ipcMain.handle(c.removeSpeakerMapping, async (_event, ...args: unknown[]) => {
     deps.databaseManager.removeSpeakerMapping(args[0] as number, args[1] as string);
+
     return { success: true };
   });
 
@@ -166,10 +174,13 @@ export function registerSpeakerHandlers(
         args[0] as number,
         args[1] as string | null
       );
+
       if (!profile) {
         return { success: false, error: "Speaker profile not found" };
       }
+
       deps.retroactiveMapping(profile);
+
       return {
         success: true,
         profile: {
@@ -180,10 +191,10 @@ export function registerSpeakerHandlers(
         },
       };
     } catch (error) {
-      deps.logError(
-        "Failed to attach email to speaker profile",
-        { error: (error as Error).message },
-      );
+      deps.logError("Failed to attach email to speaker profile", {
+        error: (error as Error).message,
+      });
+
       return { success: false, error: (error as Error).message };
     }
   });
@@ -191,28 +202,32 @@ export function registerSpeakerHandlers(
   ipcMain.handle(c.saveNoteSpeakerEmbeddings, async (_event, ...args: unknown[]) => {
     const noteId = args[0] as number;
     const embeddingsObj = (args[1] ?? {}) as Record<string, number[]>;
+
     const embeddings = Object.entries(embeddingsObj).map(([speakerId, arr]) => ({
       speakerId,
       embedding: Buffer.from(new Float32Array(arr).buffer),
     }));
+
     deps.databaseManager.saveNoteSpeakerEmbeddings(noteId, embeddings);
     deps.tryAutoLabelOneOnOne(noteId);
+
     return { success: true };
   });
 
   ipcMain.handle(c.downloadDiarizationModels, async (rawEvent, ...args: unknown[]) => {
     const event = rawEvent as RequestEvent;
+
     try {
-      const result = await deps.diarizationManager.downloadModels(
-        (progressData) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send(c.diarizationDownloadProgress, progressData);
-          }
+      const result = await deps.diarizationManager.downloadModels((progressData) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send(c.diarizationDownloadProgress, progressData);
         }
-      );
+      });
+
       return result;
     } catch (error) {
       const err = error as { message?: string; code?: string };
+
       if (!event.sender.isDestroyed()) {
         event.sender.send(c.diarizationDownloadProgress, {
           type: "error",
@@ -220,6 +235,7 @@ export function registerSpeakerHandlers(
           code: err.code || "DOWNLOAD_FAILED",
         });
       }
+
       return {
         success: false,
         error: err.message,
@@ -240,9 +256,11 @@ export function registerSpeakerHandlers(
   ipcMain.handle(c.deleteDiarizationModels, async () => {
     try {
       await deps.diarizationManager.deleteModels();
+
       return { success: true };
     } catch (error) {
       deps.logError("Failed to delete diarization models", { error: (error as Error).message });
+
       return { success: false, error: (error as Error).message };
     }
   });

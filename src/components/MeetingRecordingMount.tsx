@@ -21,6 +21,7 @@ import logger from "../utils/logger";
 import { useMeetingCompanionSync } from "../hooks/useMeetingCompanionSync";
 
 const EMA_PREV = 0.5;
+
 const EMA_NEXT = 0.5;
 
 // Sentinel errors set by meetingRecordingStore, translated at display time.
@@ -42,9 +43,11 @@ export default function MeetingRecordingMount(): null {
   const errorNonce = useMeetingRecordingStore((s) => s.errorNonce);
   const systemAudioSilentWarning = useMeetingRecordingStore((s) => s.systemAudioSilentWarning);
   const systemAudioInterrupted = useMeetingRecordingStore((s) => s.systemAudioInterrupted);
+
   const systemAudioInterruptedNonce = useMeetingRecordingStore(
     (s) => s.systemAudioInterruptedNonce
   );
+
   const micCaptureStatus = useMeetingRecordingStore((s) => s.micCaptureStatus);
   const wasMicUnavailable = useRef(false);
   const wasSystemAudioSilent = useRef(false);
@@ -58,6 +61,7 @@ export default function MeetingRecordingMount(): null {
     notifyAutoEnded.current = () => {
       toast({ title: t("notes.meeting.title"), description: t("notes.meeting.autoEnded") });
     };
+
     notifyRestartFailed.current = () => {
       toast({
         title: t("notes.meeting.title"),
@@ -74,14 +78,20 @@ export default function MeetingRecordingMount(): null {
   useEffect(() => {
     const unsubscribe = window.electronAPI?.onMeetingTranscriptionStopRequested?.((request) => {
       if (request.reason === "platform-leave") return;
-      void stopRecording(request.sessionId, { suppressProcessing: request.suppressProcessing === true }).catch((error) => {
+      void stopRecording(request.sessionId, {
+        suppressProcessing: request.suppressProcessing === true,
+      }).catch((error) => {
         logger.error(
           "Meeting capture could not drain before quit",
-          { error: error instanceof Error ? error.message : String(error), sessionId: request.sessionId },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            sessionId: request.sessionId,
+          },
           "meeting"
         );
       });
     });
+
     return () => unsubscribe?.();
   }, []);
 
@@ -91,25 +101,35 @@ export default function MeetingRecordingMount(): null {
         try {
           if (!(await window.electronAPI?.claimMeetingAutoEnd(request.sessionId))?.success) return;
         } catch (error) {
-          logger.error("Meeting auto-end claim failed; recording is still running", {
-            error: error instanceof Error ? error.message : String(error),
-            sessionId: request.sessionId,
-          }, "meeting");
+          logger.error(
+            "Meeting auto-end claim failed; recording is still running",
+            {
+              error: error instanceof Error ? error.message : String(error),
+              sessionId: request.sessionId,
+            },
+            "meeting"
+          );
+
           return;
         }
       }
+
       const restartContext = createMeetingAutoEndRestartContext(
         request.sessionId,
         getActiveRecordingSessionId(),
         useMeetingRecordingStore.getState()
       );
+
       if (!restartContext) return;
 
       requestMeetingRecordingAutoEnd(
         request,
         async (sessionId) => {
           const result = await stopRecording(sessionId);
-          return { stopped: result.stopped && useMeetingRecordingStore.getState().capturePhase === "saved" };
+
+          return {
+            stopped: result.stopped && useMeetingRecordingStore.getState().capturePhase === "saved",
+          };
         },
         (sessionId, stopped) => {
           // Every path that ends the recording without offering a restart card
@@ -118,12 +138,15 @@ export default function MeetingRecordingMount(): null {
             if (pendingAutoEndRestart.current?.sessionId === sessionId) {
               pendingAutoEndRestart.current = null;
             }
+
             notifyAutoEnded.current();
           };
 
           const completion = window.electronAPI?.meetingAutoEndCompleted;
+
           if (!stopped || !completion) {
             abandonRestart();
+
             return;
           }
 
@@ -150,10 +173,16 @@ export default function MeetingRecordingMount(): null {
         }
       );
     };
-    const unsubscribeStop = window.electronAPI?.onMeetingAutoEndRequested?.((request) => handleAutoEnd(request));
-    const unsubscribeLeave = window.electronAPI?.onMeetingTranscriptionStopRequested?.((request) => {
-      if (request.reason === "platform-leave") handleAutoEnd(request, true);
-    });
+
+    const unsubscribeStop = window.electronAPI?.onMeetingAutoEndRequested?.((request) =>
+      handleAutoEnd(request)
+    );
+
+    const unsubscribeLeave = window.electronAPI?.onMeetingTranscriptionStopRequested?.(
+      (request) => {
+        if (request.reason === "platform-leave") handleAutoEnd(request, true);
+      }
+    );
 
     const unsubscribeRestart = window.electronAPI?.onMeetingAutoEndRestartRequested?.((request) => {
       const context = pendingAutoEndRestart.current;
@@ -203,14 +232,19 @@ export default function MeetingRecordingMount(): null {
     const [sentinel, argument] = error.split(":");
     const errorKey = MEETING_ERROR_KEYS[sentinel];
     const captureErrorCode = useMeetingRecordingStore.getState().captureErrorCode;
-    const captureWriteFailed = captureErrorCode === "capture-write-failed"
-      || error === "capture-queue-overflow"
-      || error === "capture-ack-timeout";
+
+    const captureWriteFailed =
+      captureErrorCode === "capture-write-failed" ||
+      error === "capture-queue-overflow" ||
+      error === "capture-ack-timeout";
+
     toast({
       title: t("notes.meeting.title"),
       description: captureWriteFailed
         ? t("notes.meeting.captureError")
-        : errorKey ? t(errorKey, { provider: argument }) : error,
+        : errorKey
+          ? t(errorKey, { provider: argument })
+          : error,
       variant: "destructive",
     });
     // errorNonce re-fires this toast when the same error repeats back-to-back.
@@ -221,8 +255,10 @@ export default function MeetingRecordingMount(): null {
   useEffect(() => {
     if (!systemAudioSilentWarning) {
       wasSystemAudioSilent.current = false;
+
       return;
     }
+
     if (wasSystemAudioSilent.current) return;
     wasSystemAudioSilent.current = true;
     toast({
@@ -235,9 +271,11 @@ export default function MeetingRecordingMount(): null {
   useEffect(() => {
     const deliverInterruption = (): void => {
       const state = useMeetingRecordingStore.getState();
+
       if (!state.isRecording || !state.systemAudioInterrupted) {
         return;
       }
+
       if (
         document.visibilityState !== "visible" ||
         !document.hasFocus() ||
@@ -247,12 +285,15 @@ export default function MeetingRecordingMount(): null {
 
       const interruption = state.systemAudioInterrupted;
       let key = "notes.meeting.systemAudioStopped";
+
       if (interruption.recovering) {
         key = "notes.meeting.systemAudioInterrupted";
       } else if (interruption.reason === "gone_quiet") {
         key = "notes.meeting.systemAudioQuiet";
       }
+
       const sessionId = getActiveRecordingSessionId();
+
       const toastId = toast({
         title: t(`${key}.title`),
         description: t(`${key}.description`),
@@ -272,6 +313,7 @@ export default function MeetingRecordingMount(): null {
               )
             : undefined,
       });
+
       // The provider survives route changes. Keep its warning until the
       // recording stops or a newer interruption supersedes it, even unmounted.
       const unsubscribe = useMeetingRecordingStore.subscribe((next) => {
@@ -284,15 +326,18 @@ export default function MeetingRecordingMount(): null {
           unsubscribe();
         }
       });
+
       // Keep delivery state outside this component: routes may unmount it
       // while the recording and interruption listener continue running.
       useMeetingRecordingStore.setState({
         systemAudioInterruptedDeliveredNonce: state.systemAudioInterruptedNonce,
       });
     };
+
     deliverInterruption();
     document.addEventListener("visibilitychange", deliverInterruption);
     window.addEventListener("focus", deliverInterruption);
+
     return (): void => {
       document.removeEventListener("visibilitychange", deliverInterruption);
       window.removeEventListener("focus", deliverInterruption);
@@ -329,18 +374,23 @@ export default function MeetingRecordingMount(): null {
     const tick = () => {
       const analyser = getMicAnalyser();
       let micRms = 0;
+
       if (analyser) {
         if (buf.length !== analyser.fftSize) {
           buf = new Float32Array(analyser.fftSize);
         }
+
         analyser.getFloatTimeDomainData(buf);
         let sumSquares = 0;
+
         for (let i = 0; i < buf.length; i++) {
           const v = buf[i];
           sumSquares += v * v;
         }
+
         micRms = Math.sqrt(sumSquares / buf.length);
       }
+
       const rms = Math.max(micRms, getSystemAudioLevel());
       smoothed = EMA_PREV * smoothed + EMA_NEXT * rms;
       const clamped = smoothed < 0 ? 0 : smoothed > 1 ? 1 : smoothed;

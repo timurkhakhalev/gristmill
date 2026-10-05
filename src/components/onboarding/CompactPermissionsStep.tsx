@@ -102,7 +102,7 @@ function PermissionRow({
           ? t("common.loading")
           : granted
             ? t("onboarding.rehaul.permissions.enabled")
-            : actionLabel ?? t("onboarding.rehaul.permissions.enable")}
+            : (actionLabel ?? t("onboarding.rehaul.permissions.enable"))}
       </button>
     </div>
   );
@@ -121,6 +121,7 @@ export default function CompactPermissionsStep({
 
   const request = async (id: PermissionRowId, action: () => Promise<unknown>) => {
     setBusyPermission(id);
+
     try {
       await action();
     } finally {
@@ -169,16 +170,25 @@ export default function CompactPermissionsStep({
           <div className="h-px bg-[var(--onboarding-surface-tertiary)]" />
           <PermissionRow
             title={t("hooks.permissions.settingsTitles.accessibility")}
-            description={t(permissions.accessibilityTroubleshooting
-              ? "cleanupSettings.accessibilityHelp"
-              : "cleanupSettings.accessibilityDetection")}
+            description={t(
+              permissions.accessibilityTroubleshooting
+                ? "cleanupSettings.accessibilityHelp"
+                : "cleanupSettings.accessibilityDetection"
+            )}
             badge={t("onboarding.permissions.optional")}
             granted={permissions.accessibilityPermissionGranted}
             busy={busyPermission === "accessibility"}
-            actionLabel={permissions.accessibilityPromptRequested
-              ? t("cleanupSettings.openSettings")
-              : undefined}
-            icon={<Eye className="size-10 shrink-0 p-2 text-[var(--onboarding-text-secondary)]" aria-hidden="true" />}
+            actionLabel={
+              permissions.accessibilityPromptRequested
+                ? t("cleanupSettings.openSettings")
+                : undefined
+            }
+            icon={
+              <Eye
+                className="size-10 shrink-0 p-2 text-[var(--onboarding-text-secondary)]"
+                aria-hidden="true"
+              />
+            }
             onRequest={() => request("accessibility", permissions.requestAccessibilityPermission)}
           />
         </div>

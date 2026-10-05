@@ -1,9 +1,13 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const test: typeof import("node:test") = require("node:test");
 
 const localesDir = path.join(__dirname, "..", "..", "src", "locales");
+
 const locales = fs
   .readdirSync(localesDir)
   .filter((locale: string) => fs.existsSync(path.join(localesDir, locale, "translation.json")));
@@ -13,19 +17,24 @@ const readJson = (locale: string, file: string): Record<string, unknown> =>
 
 const getPath = (value: unknown, dottedPath: string): unknown => {
   let current = value;
+
   for (const part of dottedPath.split(".")) {
     if (!current || typeof current !== "object") return undefined;
     current = (current as Record<string, unknown>)[part];
   }
+
   return current;
 };
 
 test("calendar integrations provide an OAuth not-configured state in every locale", () => {
   for (const locale of locales) {
     const translation = readJson(locale, "translation.json");
+
     for (const provider of ["googleCalendar", "microsoftCalendar"]) {
       assert.equal(
-        typeof (translation.integrations as Record<string, { notConfigured?: unknown }> | undefined)?.[provider]?.notConfigured,
+        typeof (
+          translation.integrations as Record<string, { notConfigured?: unknown }> | undefined
+        )?.[provider]?.notConfigured,
         "string",
         `${locale}: integrations.${provider}.notConfigured`
       );
@@ -67,6 +76,7 @@ test("renderer locales do not retain removed account, dictation, or cloud-paywal
 
   for (const locale of locales) {
     const translation = readJson(locale, "translation.json");
+
     for (const key of removed) {
       assert.equal(getPath(translation, key), undefined, `${locale}: ${key}`);
     }
@@ -84,8 +94,10 @@ test("supported locale values use the Gristmill brand", () => {
   const visit = (value: unknown, path: string): void => {
     if (typeof value === "string") {
       assert.doesNotMatch(value, /OpenWhispr|OpenWispr|Whispr/i, path);
+
       return;
     }
+
     if (value && typeof value === "object") {
       for (const [key, child] of Object.entries(value)) visit(child, `${path}.${key}`);
     }

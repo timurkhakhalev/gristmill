@@ -51,6 +51,7 @@ const EXPANDED_STORAGE_KEY = "notesTree.expanded";
 function readExpandedContainers(): Set<string> {
   try {
     const raw = localStorage.getItem(EXPANDED_STORAGE_KEY);
+
     return new Set(raw ? (JSON.parse(raw) as string[]) : []);
   } catch {
     return new Set();
@@ -84,15 +85,20 @@ const useNoteStore = create<NoteState>()(() => ({
 // Keep unsaved fields outside the mounted editor. Navigation cannot discard
 // the only copy of a failed write, and each Note has one in-flight writer.
 export function retainNoteEditorUpdates(noteId: number, updates: PendingNoteUpdates): void {
-  useNoteStore.setState(state => ({ editorSaves: {
-    ...state.editorSaves,
-    [noteId]: { updates: { ...state.editorSaves[noteId]?.updates, ...updates },
-      saving: state.editorSaves[noteId]?.saving ?? false, error: state.editorSaves[noteId]?.error ?? null },
-  } }));
+  useNoteStore.setState((state) => ({
+    editorSaves: {
+      ...state.editorSaves,
+      [noteId]: {
+        updates: { ...state.editorSaves[noteId]?.updates, ...updates },
+        saving: state.editorSaves[noteId]?.saving ?? false,
+        error: state.editorSaves[noteId]?.error ?? null,
+      },
+    },
+  }));
 }
 
 export function useNoteEditorSave(noteId: number | null): EditorSave | undefined {
-  return useNoteStore(state => noteId == null ? undefined : state.editorSaves[noteId]);
+  return useNoteStore((state) => (noteId == null ? undefined : state.editorSaves[noteId]));
 }
 
 export function getNoteEditorUpdates(noteId: number): PendingNoteUpdates {
@@ -101,43 +107,68 @@ export function getNoteEditorUpdates(noteId: number): PendingNoteUpdates {
 
 export async function flushNoteEditorWrites(noteId: number): Promise<void> {
   const entry = useNoteStore.getState().editorSaves[noteId];
+
   if (!entry || entry.saving) return;
-  useNoteStore.setState(state => ({ editorSaves: { ...state.editorSaves,
-    [noteId]: { ...entry, saving: true, error: null },
-  } }));
+  useNoteStore.setState((state) => ({
+    editorSaves: { ...state.editorSaves, [noteId]: { ...entry, saving: true, error: null } },
+  }));
+
   try {
     while (true) {
       const current = useNoteStore.getState().editorSaves[noteId];
+
       if (!current) return; // The Note was deleted.
       const snapshot = current.updates;
       const result = await window.electronAPI.updateNote(noteId, snapshot);
+
       if (!result?.success) throw new Error(result?.error || "Note was not saved");
+
       if (!result.note) throw new Error("Note was not saved");
       const latest = useNoteStore.getState().editorSaves[noteId];
+
       if (!latest) return;
       const remaining = { ...latest.updates };
+
       for (const field of Object.keys(snapshot) as Array<keyof PendingNoteUpdates>) {
         if (remaining[field] === snapshot[field]) delete remaining[field];
       }
+
       updateNoteInStore(result.note);
+
       if (Object.keys(remaining).length === 0) {
-        useNoteStore.setState(state => {
+        useNoteStore.setState((state) => {
           const editorSaves = { ...state.editorSaves };
           delete editorSaves[noteId];
+
           return { editorSaves };
         });
+
         return;
       }
-      useNoteStore.setState(state => ({ editorSaves: { ...state.editorSaves,
-        [noteId]: { updates: remaining, saving: true, error: null },
-      } }));
+
+      useNoteStore.setState((state) => ({
+        editorSaves: {
+          ...state.editorSaves,
+          [noteId]: { updates: remaining, saving: true, error: null },
+        },
+      }));
     }
   } catch (error) {
-    useNoteStore.setState(state => {
+    useNoteStore.setState((state) => {
       const latest = state.editorSaves[noteId];
-      return latest ? { editorSaves: { ...state.editorSaves,
-        [noteId]: { ...latest, saving: false, error: error instanceof Error ? error.message : String(error) },
-      } } : {};
+
+      return latest
+        ? {
+            editorSaves: {
+              ...state.editorSaves,
+              [noteId]: {
+                ...latest,
+                saving: false,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            },
+          }
+        : {};
     });
   }
 }
@@ -148,12 +179,19 @@ function bumpNoteEventsRevision(): void {
 }
 
 let hasBoundIpcListeners = false;
+
 const DEFAULT_LIMIT = 50;
+
 let currentLimit = DEFAULT_LIMIT;
+
 let loadGeneration = 0;
+
 let treeLoadGeneration = 0;
+
 let spacesLoadGeneration = 0;
+
 let foldersLoadGeneration = 0;
+
 // Folder navigation requested before folders load; consumed once by initializeNotesTree.
 let pendingFolderPreset: number | null = null;
 
@@ -183,10 +221,13 @@ const sameContainers = (a: NoteItem, b: NoteItem) =>
 
 function findNoteInState(state: NoteState, id: number): NoteItem | null {
   if (state.selectedNote?.id === id) return state.selectedNote;
+
   for (const items of Object.values(state.notesByContainer)) {
     const note = items.find((n) => n.id === id);
+
     if (note) return note;
   }
+
   return state.notes.find((n) => n.id === id) ?? null;
 }
 
@@ -199,9 +240,11 @@ function applyContainers(
   const context = state.activeContext;
   const activeKey = context ? contextContainerKey(context) : null;
   const update: Partial<NoteState> = { notesByContainer, ...extra };
+
   if (activeKey && notesByContainer[activeKey] && notesByContainer[activeKey] !== state.notes) {
     update.notes = notesByContainer[activeKey];
   }
+
   useNoteStore.setState(update);
 }
 
@@ -220,6 +263,7 @@ function ensureIpcListeners() {
         loadFolders();
       }
     });
+
     if (typeof dispose === "function") {
       disposers.push(dispose);
     }
@@ -231,11 +275,13 @@ function ensureIpcListeners() {
         const previous = findNoteInState(useNoteStore.getState(), note.id);
         updateNoteInStore(note);
         bumpNoteEventsRevision();
+
         if (previous && !sameContainers(previous, note)) {
           loadFolders();
         }
       }
     });
+
     if (typeof dispose === "function") {
       disposers.push(dispose);
     }
@@ -249,6 +295,7 @@ function ensureIpcListeners() {
       bumpNoteEventsRevision();
       loadFolders();
     });
+
     if (typeof dispose === "function") {
       disposers.push(dispose);
     }
@@ -262,23 +309,29 @@ function ensureIpcListeners() {
       const key = folderContainerKey(id);
       const teardown = teardownNoteContainers(state, [key]);
       persistExpandedContainers(teardown.expandedContainers);
+
       const extra: Partial<NoteState> = {
         expandedContainers: teardown.expandedContainers,
         activeNoteId: teardown.activeNoteId,
       };
+
       let fallbackContext: ActiveContext | null = null;
+
       if (state.activeContext?.folderId === id) {
         // The active folder vanished under us — degrade to its space root.
         fallbackContext = { spaceId: state.activeContext.spaceId, folderId: null };
         extra.activeContext = fallbackContext;
         extra.notes = teardown.notesByContainer[contextContainerKey(fallbackContext)] ?? [];
       }
+
       useNoteStore.setState({ notesByContainer: teardown.notesByContainer, ...extra });
       const deletedFolder = state.folders.find((folder) => folder.id === id);
       const rootSpaceId = deletedFolder?.space_id ?? fallbackContext?.spaceId;
+
       if (rootSpaceId != null) void loadContainerNotes(spaceContainerKey(rootSpaceId));
       void loadFolders();
     });
+
     if (typeof dispose === "function") {
       disposers.push(dispose);
     }
@@ -294,18 +347,22 @@ function ensureIpcListeners() {
 export async function loadSpaces(): Promise<SpaceItem[]> {
   const gen = ++spacesLoadGeneration;
   const items = (await window.electronAPI.getSpaces?.()) ?? [];
+
   // A newer load may have resolved first.
   if (gen !== spacesLoadGeneration) return items;
   useNoteStore.setState({ spaces: items });
+
   return items;
 }
 
 export async function loadFolders(): Promise<FolderItem[]> {
   const gen = ++foldersLoadGeneration;
+
   const [items, counts] = await Promise.all([
     window.electronAPI.getFolders(),
     window.electronAPI.getFolderNoteCounts(),
   ]);
+
   if (gen !== foldersLoadGeneration) return items;
   const folderCounts: Record<number, number> = {};
   const spaceRootCounts: Record<number, number> = {};
@@ -314,10 +371,12 @@ export async function loadFolders(): Promise<FolderItem[]> {
     else if (c.space_id != null) spaceRootCounts[c.space_id] = c.count;
   });
   useNoteStore.setState({ folders: items, folderCounts, spaceRootCounts });
+
   return items;
 }
 
 const containerLoadGenerations = new Map<string, number>();
+
 const containerLoadsInFlight = new Map<string, Promise<NoteItem[]>>();
 
 /**
@@ -341,6 +400,7 @@ export function resetForAccountChange(): void {
   } catch {
     // In-memory state is still cleared below.
   }
+
   useNoteStore.setState({
     notes: [],
     spaces: [],
@@ -363,20 +423,26 @@ export async function loadContainerNotes(
 ): Promise<NoteItem[]> {
   const gen = (containerLoadGenerations.get(key) ?? 0) + 1;
   containerLoadGenerations.set(key, gen);
+
   const load = (async (): Promise<NoteItem[]> => {
     const [kind, idStr] = key.split(":");
     const id = Number(idStr);
+
     const items =
       kind === "f"
         ? ((await window.electronAPI.getNotes(noteType, limit, id)) ?? [])
         : ((await window.electronAPI.getNotes(noteType, limit, null, id)) ?? []);
+
     // A newer load for this container may have resolved first.
     if (containerLoadGenerations.get(key) === gen) {
       applyContainers({ ...useNoteStore.getState().notesByContainer, [key]: items });
     }
+
     return items;
   })();
+
   containerLoadsInFlight.set(key, load);
+
   try {
     return await load;
   } finally {
@@ -386,19 +452,24 @@ export async function loadContainerNotes(
 
 export async function ensureContainerLoaded(key: string): Promise<NoteItem[]> {
   const cached = useNoteStore.getState().notesByContainer[key];
+
   if (cached) return cached;
+
   return containerLoadsInFlight.get(key) ?? loadContainerNotes(key);
 }
 
 export function setContainerExpanded(key: string, expanded: boolean): void {
   const current = useNoteStore.getState().expandedContainers;
+
   if (current.has(key) !== expanded) {
     const next = new Set(current);
+
     if (expanded) next.add(key);
     else next.delete(key);
     useNoteStore.setState({ expandedContainers: next });
     persistExpandedContainers(next);
   }
+
   if (expanded) void ensureContainerLoaded(key);
 }
 
@@ -409,6 +480,7 @@ export function toggleContainerExpanded(key: string): void {
 /** Expand the containers that make a space/folder (and its notes) visible in the tree. */
 export function revealContainer(spaceId: number, folderId: number | null): void {
   setContainerExpanded(spaceContainerKey(spaceId), true);
+
   if (folderId != null) setContainerExpanded(folderContainerKey(folderId), true);
 }
 
@@ -432,23 +504,30 @@ export async function initializeNotesTree(): Promise<void> {
   const gen = ++treeLoadGeneration;
   ensureIpcListeners();
   useNoteStore.setState({ isTreeLoading: true });
+
   try {
     const [spaces, folders] = await Promise.all([loadSpaces(), loadFolders()]);
+
     if (gen !== treeLoadGeneration) return;
 
     const presetFolderId = pendingFolderPreset;
     pendingFolderPreset = null;
+
     const presetFolder =
       presetFolderId != null ? folders.find((f) => f.id === presetFolderId) : undefined;
+
     const preset = useNoteStore.getState().activeContext;
+
     const presetContext =
       preset &&
       spaces.some((s) => s.id === preset.spaceId) &&
       (preset.folderId == null || folders.some((f) => f.id === preset.folderId))
         ? preset
         : null;
+
     const privateSpace = spaces.find((s) => s.kind === "private") ?? spaces[0];
     let context: ActiveContext | null = null;
+
     if (presetFolder) {
       context = { spaceId: presetFolder.space_id, folderId: presetFolder.id };
     } else if (presetContext) {
@@ -458,6 +537,7 @@ export async function initializeNotesTree(): Promise<void> {
       const initialFolder = findDefaultFolder(privateFolders) ?? privateFolders[0];
       context = { spaceId: privateSpace.id, folderId: initialFolder?.id ?? null };
     }
+
     if (!context) return;
 
     revealContainer(context.spaceId, context.folderId);
@@ -466,16 +546,20 @@ export async function initializeNotesTree(): Promise<void> {
     // entry is current — reuse it (or revealContainer's in-flight load)
     // instead of fetching the same container twice on every init.
     const notes = await ensureContainerLoaded(contextContainerKey(context));
+
     if (gen !== treeLoadGeneration) return;
+
     // Containers restored as expanded from a previous session must load their
     // notes too, or they render expanded-but-empty until re-toggled.
     const validKeys = new Set<string>([
       ...spaces.map((s) => spaceContainerKey(s.id)),
       ...folders.map((f) => folderContainerKey(f.id)),
     ]);
+
     useNoteStore.getState().expandedContainers.forEach((key) => {
       if (validKeys.has(key)) void ensureContainerLoaded(key);
     });
+
     if (getActiveNoteIdValue() == null && notes.length > 0) {
       setActiveNoteId(notes[0].id);
     }
@@ -491,14 +575,17 @@ export async function initializeNotes(
 ): Promise<NoteItem[]> {
   currentLimit = limit;
   ensureIpcListeners();
+
   if (folderId != null) {
     return loadContainerNotes(folderContainerKey(folderId), noteType ?? null, limit);
   }
 
   const gen = ++loadGeneration;
   const items = (await window.electronAPI.getNotes(noteType, limit, folderId)) ?? [];
+
   if (gen !== loadGeneration) return items;
   useNoteStore.setState({ notes: items });
+
   return items;
 }
 
@@ -507,8 +594,10 @@ export function addNote(note: NoteItem): void {
   const state = useNoteStore.getState();
   const notesByContainer = { ...state.notesByContainer };
   let changed = false;
+
   for (const key of noteContainerKeys(note)) {
     const items = notesByContainer[key];
+
     // Not-yet-loaded containers pick the note up on their lazy load.
     if (!items) continue;
     notesByContainer[key] = [note, ...items.filter((existing) => existing.id !== note.id)].slice(
@@ -517,6 +606,7 @@ export function addNote(note: NoteItem): void {
     );
     changed = true;
   }
+
   if (changed) applyContainers(notesByContainer);
 }
 
@@ -526,10 +616,13 @@ export function updateNoteInStore(note: NoteItem): void {
   const targetKeys = noteContainerKeys(note);
   const notesByContainer = { ...state.notesByContainer };
   let changed = false;
+
   for (const [key, items] of Object.entries(state.notesByContainer)) {
     const idx = items.findIndex((existing) => existing.id === note.id);
+
     if (idx === -1) continue;
     changed = true;
+
     if (targetKeys.includes(key)) {
       const next = items.slice();
       next[idx] = note;
@@ -539,14 +632,18 @@ export function updateNoteInStore(note: NoteItem): void {
       notesByContainer[key] = items.filter((existing) => existing.id !== note.id);
     }
   }
+
   for (const key of targetKeys) {
     const target = notesByContainer[key];
+
     if (target && !target.some((existing) => existing.id === note.id)) {
       notesByContainer[key] = [note, ...target].slice(0, currentLimit);
       changed = true;
     }
   }
+
   if (changed) applyContainers(notesByContainer);
+
   // The selected row is held independently of the container caches (#185).
   if (state.selectedNote?.id === note.id) {
     useNoteStore.setState({ selectedNote: note });
@@ -554,28 +651,34 @@ export function updateNoteInStore(note: NoteItem): void {
 }
 
 export function removeNote(id: number): void {
-  useNoteStore.setState(state => {
+  useNoteStore.setState((state) => {
     const editorSaves = { ...state.editorSaves };
     delete editorSaves[id];
+
     return { editorSaves };
   });
+
   if (id == null) return;
   const state = useNoteStore.getState();
   const result = removeNoteFromLists(state, id);
+
   if (!result.changed && state.selectedNote?.id !== id) return;
   // applyContainers only mirrors the active container into `notes`; pass the
   // filtered flat list explicitly so flat-only notes disappear too.
   const extra: Partial<NoteState> = { notes: result.notes };
+
   if (result.activeNoteId !== state.activeNoteId) {
     extra.activeNoteId = result.activeNoteId;
     // The relocation is a selection write: drop any in-flight open fetch (#185).
     ++selectedNoteFetchGeneration;
   }
+
   // The selected row is held independently of the container caches (#185):
   // deleting it clears it (the relocation picks a neighbor's id).
   if (state.selectedNote?.id === id) {
     extra.selectedNote = null;
   }
+
   applyContainers(result.notesByContainer, extra);
 }
 
@@ -584,9 +687,11 @@ export async function createFolder(
   spaceId: number
 ): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
   const result = await window.electronAPI.createFolder(name, spaceId);
+
   if (result.success && result.folder) {
     await loadFolders();
   }
+
   return result;
 }
 
@@ -595,9 +700,11 @@ export async function renameFolder(
   name: string
 ): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
   const result = await window.electronAPI.renameFolder(id, name);
+
   if (result.success) {
     await loadFolders();
   }
+
   return result;
 }
 
@@ -606,17 +713,21 @@ export async function updateFolderStyle(
   style: FolderStyle
 ): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
   const result = await window.electronAPI.updateFolderStyle(id, style);
+
   if (result.success) await loadFolders();
+
   return result;
 }
 
 export async function reorderFolders(spaceId: number, folderIds: number[]): Promise<void> {
   const result = await window.electronAPI.reorderFolders(spaceId, folderIds);
+
   if (result.success) await loadFolders();
 }
 
 export async function deleteFolder(id: number): Promise<{ success: boolean; error?: string }> {
   const result = await window.electronAPI.deleteFolder(id);
+
   if (!result.success) return result;
 
   const state = useNoteStore.getState();
@@ -631,16 +742,19 @@ export async function deleteFolder(id: number): Promise<{ success: boolean; erro
   });
 
   await loadFolders();
+
   if (folder) await loadContainerNotes(spaceContainerKey(folder.space_id));
+
   if (getActiveFolderIdValue() === id && folder) {
     setActiveContext(folder.space_id, null);
+
     if (getActiveNoteIdValue() == null) {
-      const notes = await ensureContainerLoaded(
-        spaceContainerKey(folder.space_id)
-      );
+      const notes = await ensureContainerLoaded(spaceContainerKey(folder.space_id));
+
       if (notes.length > 0) setActiveNoteId(notes[0].id);
     }
   }
+
   return result;
 }
 
@@ -649,18 +763,23 @@ export async function moveFolderToSpace(
   spaceId: number
 ): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
   const result = await window.electronAPI.moveFolderToSpace(folderId, spaceId);
+
   if (!result.success) return result;
 
   await loadFolders();
   const key = folderContainerKey(folderId);
+
   if (useNoteStore.getState().notesByContainer[key]) {
     // Refresh the container so its notes carry the new space_id.
     await loadContainerNotes(key);
   }
+
   const { activeContext } = useNoteStore.getState();
+
   if (activeContext?.folderId === folderId && activeContext.spaceId !== spaceId) {
     useNoteStore.setState({ activeContext: { spaceId, folderId } });
   }
+
   return result;
 }
 
@@ -669,11 +788,13 @@ export async function updateSpaceMeta(
   updates: { name?: string; emoji?: string | null }
 ): Promise<{ success: boolean; space?: SpaceItem | null; error?: string }> {
   const result = (await window.electronAPI.updateSpace?.(id, updates)) ?? { success: false };
+
   if (result.success && result.space) {
     const updated = result.space;
     const { spaces } = useNoteStore.getState();
     useNoteStore.setState({ spaces: spaces.map((s) => (s.id === id ? updated : s)) });
   }
+
   return result;
 }
 
@@ -697,17 +818,24 @@ export async function openNoteRow(note: NoteItem): Promise<void> {
   const generation = ++selectedNoteFetchGeneration;
   // A cached row needs no fetch; hold it directly (no extra load).
   const cached = findNoteInState(useNoteStore.getState(), note.id);
+
   if (cached) {
     useNoteStore.setState({ selectedNote: cached, activeNoteId: cached.id });
+
     return;
   }
+
   // A caller-supplied full row (search result, chat citation) is held as-is.
   if (note.title !== undefined && note.content !== undefined) {
     useNoteStore.setState({ selectedNote: note, activeNoteId: note.id });
+
     return;
   }
+
   const fetched = await window.electronAPI.getNote(note.id);
+
   if (generation !== selectedNoteFetchGeneration) return;
+
   if (fetched) {
     useNoteStore.setState({ selectedNote: fetched, activeNoteId: fetched.id });
   } else {
@@ -726,22 +854,28 @@ export function navigateToContainer(spaceId: number, folderId: number | null): v
   // Container jumps land on the overview; flows that open a note afterwards
   // (e.g. CommandSearch note select) re-set activeNoteId themselves.
   setActiveNoteId(null);
+
   if (folderId != null) {
     setActiveFolderId(folderId);
+
     return;
   }
+
   setActiveContext(spaceId, null);
   revealContainer(spaceId, null);
 }
 
 export function setActiveFolderId(id: number | null): void {
   const folder = id != null ? useNoteStore.getState().folders.find((f) => f.id === id) : undefined;
+
   if (folder) {
     pendingFolderPreset = null;
     setActiveContext(folder.space_id, folder.id);
     revealContainer(folder.space_id, folder.id);
+
     return;
   }
+
   // Folder unknown (tree not initialized yet) or id cleared.
   pendingFolderPreset = id;
 }

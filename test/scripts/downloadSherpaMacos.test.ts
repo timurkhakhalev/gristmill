@@ -1,6 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs = require("fs");
+
 const path = require("path");
 
 const sherpaDownloader = require("../../scripts/download-sherpa-onnx.cts");
@@ -44,7 +47,10 @@ test("accepts a universal ONNX Runtime library matching the runtime capability g
 
 test("rejects a packaged ONNX Runtime library missing a universal architecture slice", () => {
   assert.throws(
-    () => sherpaDownloader.validateMacosDeploymentTargets([{ architecture: "arm64", minimumVersion: "15.5" }]),
+    () =>
+      sherpaDownloader.validateMacosDeploymentTargets([
+        { architecture: "arm64", minimumVersion: "15.5" },
+      ]),
     /missing required architecture: x86_64/
   );
 });
@@ -70,9 +76,15 @@ test("macOS install marker requires the arm64 ONNX Runtime replacement", (t: imp
   const binary = path.join(dir, "sherpa-onnx-ws-darwin-arm64");
   const marker = path.join(dir, ".sherpa-onnx-darwin-arm64.json");
   fs.writeFileSync(binary, "binary");
-  fs.writeFileSync(marker, JSON.stringify({ version: sherpaDownloader.SHERPA_ONNX_VERSION, libraries: [] }));
+  fs.writeFileSync(
+    marker,
+    JSON.stringify({ version: sherpaDownloader.SHERPA_ONNX_VERSION, libraries: [] })
+  );
   assert.equal(
-    sherpaDownloader.isCompleteInstall(marker, [binary], { platformArch: "darwin-arm64", binDir: dir }),
+    sherpaDownloader.isCompleteInstall(marker, [binary], {
+      platformArch: "darwin-arm64",
+      binDir: dir,
+    }),
     false
   );
   fs.writeFileSync(
@@ -84,7 +96,10 @@ test("macOS install marker requires the arm64 ONNX Runtime replacement", (t: imp
     })
   );
   assert.equal(
-    sherpaDownloader.isCompleteInstall(marker, [binary], { platformArch: "darwin-arm64", binDir: dir }),
+    sherpaDownloader.isCompleteInstall(marker, [binary], {
+      platformArch: "darwin-arm64",
+      binDir: dir,
+    }),
     true
   );
 });

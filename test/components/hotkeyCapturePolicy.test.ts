@@ -1,4 +1,5 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
 
 const load = () => import("../../src/components/ui/hotkeyCapturePolicy.ts");

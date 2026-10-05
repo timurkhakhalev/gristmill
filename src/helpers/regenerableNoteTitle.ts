@@ -10,12 +10,15 @@ export function isRegenerableNoteTitle(
   calendarEventName: string | null = null
 ): boolean {
   const trimmed = typeof title === "string" ? title.trim() : "";
+
   if (trimmed === "") return true;
 
   const set = new Set(BUILTIN_PLACEHOLDERS);
+
   for (const p of placeholders) {
     if (typeof p === "string" && p.trim()) set.add(p.trim().toLowerCase());
   }
+
   if (set.has(trimmed.toLowerCase())) return true;
 
   return typeof calendarEventName === "string" && calendarEventName.trim() === trimmed;

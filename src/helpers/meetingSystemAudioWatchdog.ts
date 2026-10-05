@@ -1,14 +1,18 @@
 // The macOS tap helper writes a chunk every period whatever the audio is, so a
 // gap this long means delivery stopped rather than the call going quiet.
 export const STALL_MS = 6_000;
+
 // Chunks still arriving but silent for this long, after the call was audible at
 // least once. Warning only: a genuinely quiet call looks exactly the same.
 export const GONE_QUIET_MS = 180_000;
+
 // Consecutive attempts without recovered delivery, not a lifetime meeting limit.
 export const MAX_RESTARTS = 3;
+
 // If all quick attempts fail, keep checking without depending on a device
 // notification from a helper that may have exited.
 export const RECOVERY_RETRY_MS = 30_000;
+
 // A tick gap longer than this means the machine slept or the main process
 // blocked. Delivery evidence from before the gap says nothing about now, and
 // node runs the timers phase before the poll phase, so the tick after a block
@@ -128,13 +132,17 @@ export const createMeetingSystemAudioWatchdog = ({
     if (!capture) {
       return;
     }
+
     const target = capture;
     await target.stop().catch(() => {});
+
     if (generation !== target.generation || session !== active) {
       return;
     }
+
     active.replacementStarting = true;
     await target.start();
+
     if (generation !== target.generation) {
       // The session ended while the helper was coming back up.
       await target.stop().catch(() => {});
@@ -145,18 +153,21 @@ export const createMeetingSystemAudioWatchdog = ({
     if (!session) {
       return;
     }
+
     if (session.recoveryFailed) {
       if (now() < session.retryAt) return;
       // One slow attempt, keeping the existing failure notice until PCM returns.
       session.restarts = MAX_RESTARTS - 1;
       session.retryAt = now() + RECOVERY_RETRY_MS;
     }
+
     if (session.restartInFlight) {
       // Ignore the retiring helper, but retain a warning from its replacement:
       // its start acknowledgement and warning can share the same stderr read.
       if (reason === "device_invalidated" && session.replacementStarting) {
         session.pendingDeviceInvalidation = true;
       }
+
       return;
     }
 
@@ -167,6 +178,7 @@ export const createMeetingSystemAudioWatchdog = ({
       session.quietReported = true;
       session.retryAt = now() + RECOVERY_RETRY_MS;
       notify(session, reason, false);
+
       return;
     }
 
@@ -174,6 +186,7 @@ export const createMeetingSystemAudioWatchdog = ({
     active.restarts += 1;
     active.restartInFlight = true;
     active.interruptionReported = true;
+
     if (!active.recoveryFailed) notify(active, reason, true);
 
     Promise.resolve()
@@ -183,6 +196,7 @@ export const createMeetingSystemAudioWatchdog = ({
         if (session !== active) {
           return;
         }
+
         active.restartInFlight = false;
         active.replacementStarting = false;
         // Give the fresh capture a clean window even if the restart threw; the
@@ -190,9 +204,11 @@ export const createMeetingSystemAudioWatchdog = ({
         const at = now();
         active.deliveryStartedAt = at;
         active.lastChunkAt = null;
+
         if (active.lastAudibleAt !== null) {
           active.lastAudibleAt = at;
         }
+
         if (active.pendingDeviceInvalidation) {
           active.pendingDeviceInvalidation = false;
           requestRestart("device_invalidated");
@@ -240,21 +256,26 @@ export const createMeetingSystemAudioWatchdog = ({
     if (!session) {
       return;
     }
+
     const at = now();
     session.lastChunkAt = at;
+
     // stop() flushes the retiring helper's tail. Only delivery after the
     // replacement has started proves that recovery worked.
     if (!session.restartInFlight) {
       session.restarts = 0;
       session.recoveryFailed = false;
+
       if (session.interruptionReported) {
         session.interruptionReported = false;
         session.quietReported = false;
         onResumed?.();
       }
     }
+
     if (audible) {
       session.lastAudibleAt = at;
+
       if (session.quietReported && !session.recoveryFailed) {
         session.quietReported = false;
         onResumed?.();
@@ -267,6 +288,7 @@ export const createMeetingSystemAudioWatchdog = ({
       session.recoveryFailed = false;
       session.restarts = 0;
     }
+
     requestRestart("device_invalidated");
   };
 
@@ -276,31 +298,34 @@ export const createMeetingSystemAudioWatchdog = ({
     const at = now();
     const gap = lastTickAt === null ? 0 : at - lastTickAt;
     lastTickAt = at;
+
     if (gap > TICK_GAP_MS && session) {
       if (session.deliveryStartedAt !== null) session.deliveryStartedAt = at;
+
       if (session.lastChunkAt !== null) {
         session.lastChunkAt = at;
       }
+
       if (session.lastAudibleAt !== null) {
         session.lastAudibleAt = at;
       }
     }
+
     return at;
   };
 
   const tick = () => {
     const at = observeClock();
+
     if (!session || session.restartInFlight) {
       return;
     }
 
     const deliveryAt = session.lastChunkAt ?? session.deliveryStartedAt;
-    if (
-      session.watchesDelivery &&
-      deliveryAt !== null &&
-      at - deliveryAt > STALL_MS
-    ) {
+
+    if (session.watchesDelivery && deliveryAt !== null && at - deliveryAt > STALL_MS) {
       requestRestart("no_audio_delivered");
+
       return;
     }
 
@@ -328,9 +353,15 @@ export const createMeetingSystemAudioWatchdog = ({
 };
 
 module.exports = createMeetingSystemAudioWatchdog;
+
 module.exports.createMeetingSystemAudioWatchdog = createMeetingSystemAudioWatchdog;
+
 module.exports.STALL_MS = STALL_MS;
+
 module.exports.GONE_QUIET_MS = GONE_QUIET_MS;
+
 module.exports.MAX_RESTARTS = MAX_RESTARTS;
+
 module.exports.RECOVERY_RETRY_MS = RECOVERY_RETRY_MS;
+
 module.exports.TICK_GAP_MS = TICK_GAP_MS;

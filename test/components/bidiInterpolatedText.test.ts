@@ -1,13 +1,20 @@
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const test: typeof import("node:test") = require("node:test");
+
 const React = require("react");
+
 const { renderToStaticMarkup } = require("react-dom/server");
-const { createRendererServer }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const {
+  createRendererServer,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
 test("technical values are isolated without changing localized sentence order", async (t: import("node:test").TestContext) => {
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-bidi-interpolation-",
   });
+
   const { BIDI_VALUE_TOKEN, BidiInterpolatedText } = await vite.ssrLoadModule(
     "/components/ui/BidiInterpolatedText.tsx"
   );
@@ -26,6 +33,7 @@ test("a missing interpolation marker fails closed to the translated text", async
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-bidi-interpolation-fallback-",
   });
+
   const { BidiInterpolatedText } = await vite.ssrLoadModule(
     "/components/ui/BidiInterpolatedText.tsx"
   );

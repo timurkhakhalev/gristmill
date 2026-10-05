@@ -15,6 +15,7 @@ export function elevenLabsFields(
   if (language && !/^[a-z]{2,3}$/i.test(language)) {
     throw new Error("Invalid ElevenLabs language code");
   }
+
   return {
     model_id: model,
     diarize: String(diarize),
@@ -28,6 +29,7 @@ export function parseElevenLabsFileResponse(
   diarize: boolean
 ): RemoteTranscriptionResult {
   const response = record(raw);
+
   if (typeof response?.text !== "string") {
     return {
       success: false,
@@ -35,7 +37,9 @@ export function parseElevenLabsFileResponse(
       code: "ELEVENLABS_INVALID_RESPONSE",
     };
   }
+
   if (!response.text.trim()) return { success: true, text: response.text };
+
   if (!Array.isArray(response.words)) {
     return diarize
       ? {
@@ -47,8 +51,10 @@ export function parseElevenLabsFileResponse(
   }
 
   const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
+
   for (const value of response.words) {
     const word = record(value);
+
     if (!word || typeof word.text !== "string" || typeof word.type !== "string") {
       return {
         success: false,
@@ -56,11 +62,14 @@ export function parseElevenLabsFileResponse(
         code: "ELEVENLABS_INVALID_RESPONSE",
       };
     }
+
     if (word.type === "spacing") {
       if (segments.length) segments[segments.length - 1].text += word.text;
       continue;
     }
+
     if (word.type === "audio_event") continue;
+
     if (word.type !== "word") {
       return {
         success: false,
@@ -68,6 +77,7 @@ export function parseElevenLabsFileResponse(
         code: "ELEVENLABS_INVALID_RESPONSE",
       };
     }
+
     if (
       typeof word.start !== "number" ||
       !Number.isFinite(word.start) ||
@@ -82,6 +92,7 @@ export function parseElevenLabsFileResponse(
         code: "ELEVENLABS_INVALID_RESPONSE",
       };
     }
+
     if (diarize && (typeof word.speaker_id !== "string" || !word.speaker_id)) {
       return {
         success: false,
@@ -89,14 +100,18 @@ export function parseElevenLabsFileResponse(
         code: "ELEVENLABS_DIARIZATION_MISSING",
       };
     }
+
     const speakerId = diarize ? (word.speaker_id as string) : "";
     const speakerNumber = /^speaker_(\d+)$/.exec(speakerId);
+
     const speaker = diarize
       ? speakerNumber
         ? `Speaker ${Number(speakerNumber[1]) + 1}`
         : speakerId
       : undefined;
+
     const previous = segments.at(-1);
+
     if (previous && previous.speaker === speaker && word.start - previous.end < 0.75) {
       previous.text += word.text;
       previous.end = word.end;
@@ -109,6 +124,7 @@ export function parseElevenLabsFileResponse(
       });
     }
   }
+
   if (segments.length === 0) {
     return diarize
       ? {
@@ -118,6 +134,7 @@ export function parseElevenLabsFileResponse(
         }
       : { success: true, text: response.text };
   }
+
   return {
     success: true,
     text: diarize

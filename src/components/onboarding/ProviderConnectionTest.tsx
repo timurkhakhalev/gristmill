@@ -32,6 +32,7 @@ export default function ProviderConnectionTest({
     setStatus("idle");
     setError(null);
     onSuccessChange(false);
+
     return () => {
       requestIdRef.current += 1;
     };
@@ -55,6 +56,7 @@ export default function ProviderConnectionTest({
         defaultValue: result.error ?? t("onboarding.rehaul.provider.connectionFailed"),
       });
     }
+
     return result?.error ?? t("onboarding.rehaul.provider.connectionFailed");
   };
 
@@ -63,10 +65,13 @@ export default function ProviderConnectionTest({
     setStatus("testing");
     setError(null);
     onSuccessChange(false);
+
     try {
       const result: ConnectionTestResult | undefined =
         await window.electronAPI?.testProviderConnection?.(config);
+
       if (requestId !== requestIdRef.current) return;
+
       if (result?.success) {
         setStatus("success");
         onSuccessChange(true);

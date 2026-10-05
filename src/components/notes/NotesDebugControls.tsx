@@ -43,7 +43,11 @@ export type NotesDebugScenario =
   | "summary-recap"
   | "chat-follow-up";
 
-const scenarioGroups: { id: string; label: string; items: { id: NotesDebugScenario; label: string }[] }[] = [
+const scenarioGroups: {
+  id: string;
+  label: string;
+  items: { id: NotesDebugScenario; label: string }[];
+}[] = [
   {
     id: "setup",
     label: "Setup and notes",
@@ -135,18 +139,29 @@ export default function NotesDebugControls({
   onChange: (scenario: NotesDebugScenario | null) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const activeGroup = scenarioGroups.find((group) => group.items.some((item) => item.id === scenario))?.id;
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(activeGroup ? [activeGroup] : []));
+
+  const activeGroup = scenarioGroups.find((group) =>
+    group.items.some((item) => item.id === scenario)
+  )?.id;
+
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(activeGroup ? [activeGroup] : [])
+  );
+
   const toggle = (id: string) =>
     setExpanded((current) => {
       const next = new Set(current);
+
       if (!next.delete(id)) next.add(id);
+
       return next;
     });
+
   const select = (id: NotesDebugScenario | null) => {
     onChange(id);
     setOpen(false);
   };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -177,6 +192,7 @@ export default function NotesDebugControls({
           {scenarioGroups.map((group) => {
             const isOpen = expanded.has(group.id);
             const isActive = group.id === activeGroup;
+
             return (
               <div key={group.id}>
                 <button
@@ -187,8 +203,12 @@ export default function NotesDebugControls({
                 >
                   {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   <span className="flex-1 truncate">{group.label}</span>
-                  {isActive && !isOpen && <span aria-hidden="true" className="size-1.5 rounded-full bg-orange-500" />}
-                  <span className="text-2xs font-normal text-muted-foreground tabular-nums">{group.items.length}</span>
+                  {isActive && !isOpen && (
+                    <span aria-hidden="true" className="size-1.5 rounded-full bg-orange-500" />
+                  )}
+                  <span className="text-2xs font-normal text-muted-foreground tabular-nums">
+                    {group.items.length}
+                  </span>
                 </button>
                 {isOpen && (
                   <div className="ms-3 border-s border-border ps-1">

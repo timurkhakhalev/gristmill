@@ -1,21 +1,31 @@
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const http: typeof import("node:http") = require("node:http");
 
 const LlamaServerManager = require("../../src/helpers/llamaServer.ts");
-import type { LlamaServerManager as LlamaManager, LlamaResponseError } from "../../src/helpers/llamaServer.ts";
+
+import type {
+  LlamaServerManager as LlamaManager,
+  LlamaResponseError,
+} from "../../src/helpers/llamaServer.ts";
 
 // A manager whose spawn is stubbed at the _doStart boundary, recording the
 // options each start was asked for.
 function makeManager() {
   const manager = new LlamaServerManager();
   const starts: unknown[] = [];
-  manager._doStart = async (modelPath: string, options: { draftModelPath?: string; contextSize?: number } = {}) => {
+  manager._doStart = async (
+    modelPath: string,
+    options: { draftModelPath?: string; contextSize?: number } = {}
+  ) => {
     manager.ready = true;
     manager.modelPath = modelPath;
     manager.draftModelPath = options.draftModelPath || null;
     starts.push({ modelPath, contextSize: options.contextSize });
   };
+
   return { manager, starts };
 }
 
@@ -101,6 +111,7 @@ test("a context overflow is reported as a typed error, not as llama.cpp JSON", a
     res.writeHead(400, { "Content-Type": "application/json" });
     res.end(overflowBody);
   });
+
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const manager = new LlamaServerManager();
   manager.ready = true;
@@ -120,6 +131,7 @@ test("a context overflow is reported as a typed error, not as llama.cpp JSON", a
         assert.equal(failure.maxContextTokens, 16384);
         // The whole point: a customer must never be shown a JSON blob.
         assert.ok(!error.message.includes("{"), `raw JSON leaked: ${error.message}`);
+
         return true;
       }
     );
@@ -134,6 +146,7 @@ test("other llama-server failures keep their existing shape", async () => {
     res.writeHead(500, { "Content-Type": "text/plain" });
     res.end("internal error");
   });
+
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const manager = new LlamaServerManager();
   manager.ready = true;
@@ -149,6 +162,7 @@ test("other llama-server failures keep their existing shape", async () => {
         assert.ok(error instanceof Error);
         assert.equal("code" in error ? error.code : undefined, undefined);
         assert.match(error.message, /llama-server returned status 500/);
+
         return true;
       }
     );
@@ -165,18 +179,24 @@ test("other llama-server failures keep their existing shape", async () => {
 // (which can differ from what we asked for), and /apply-template + /tokenize
 // price the real prompt, chat template and all.
 
-function withStubServer(routes: Record<string, (body: string) => { status?: number; payload: unknown }>) {
+function withStubServer(
+  routes: Record<string, (body: string) => { status?: number; payload: unknown }>
+) {
   // A Map rather than indexing the object: req.url is request-controlled, so a
   // plain lookup answers /toString or /constructor with an inherited
   // Object.prototype method and then calls it.
   const routeTable = new Map(Object.entries(routes));
+
   return async (run: (manager: LlamaManager) => Promise<void>) => {
     const server = http.createServer((req, res) => {
       const handler = routeTable.get(req.url ?? "");
+
       if (typeof handler !== "function") {
         res.writeHead(404).end();
+
         return;
       }
+
       let body = "";
       req.on("data", (chunk: unknown) => {
         body += chunk;
@@ -187,6 +207,7 @@ function withStubServer(routes: Record<string, (body: string) => { status?: numb
         res.end(JSON.stringify(payload));
       });
     });
+
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 
     const manager = new LlamaServerManager();
@@ -195,6 +216,7 @@ function withStubServer(routes: Record<string, (body: string) => { status?: numb
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     manager.port = address.port;
+
     try {
       await run(manager);
     } finally {
@@ -229,12 +251,14 @@ test("countPromptTokens prices the rendered template, not just the message text"
   await withStubServer({
     "/apply-template": (body) => {
       templatedWith = JSON.parse(body);
+
       // The real server renders role tags and, with thinking disabled, an
       // empty <think></think> block. All of it costs context.
       return { payload: { prompt: "<|im_start|>system\nSYS<|im_end|>\nhello" } };
     },
     "/tokenize": (body) => {
       tokenized = JSON.parse(body);
+
       return { payload: { tokens: new Array(20514).fill(0) } };
     },
   })(async (manager) => {
@@ -242,6 +266,7 @@ test("countPromptTokens prices the rendered template, not just the message text"
       { role: "system", content: "SYS" },
       { role: "user", content: "hello" },
     ];
+
     assert.equal(await manager.countPromptTokens(messages, { disableThinking: true }), 20514);
     assert.deepEqual(templatedWith.messages, messages);
     assert.deepEqual(templatedWith.chat_template_kwargs, { enable_thinking: false });

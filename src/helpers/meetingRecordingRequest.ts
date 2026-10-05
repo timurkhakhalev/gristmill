@@ -15,6 +15,7 @@ export async function handleMeetingRecordingRequest({
 }: MeetingRecordingRequestOptions): Promise<void> {
   try {
     const accepted = await startRecording(args);
+
     if (!accepted) await restoreFromMeetingMode();
   } finally {
     onHandled();

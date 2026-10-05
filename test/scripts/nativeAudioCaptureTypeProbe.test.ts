@@ -1,11 +1,15 @@
 // Strict compiler probes for the native audio/PCM migration. The probe is
 // compile-only: native helpers are never loaded or executed by vm.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const path: typeof import("node:path") = require("node:path");
+
 const ts: typeof import("typescript") = require("typescript");
 
 const root = path.resolve(__dirname, "../..");
+
 const configPath = path.join(root, "tsconfig.main.json");
 
 function diagnosticsFor(source: string) {
@@ -20,6 +24,7 @@ function diagnosticsFor(source: string) {
       ? ts.createSourceFile(file, source, languageVersion, true)
       : readSource(file, languageVersion, ...args);
   const program = ts.createProgram([probe], { ...parsed.options, noEmit: true }, host);
+
   return ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnostic.code);
 }
 
@@ -33,5 +38,9 @@ tap.start({ onChunk: (chunk: string) => chunk.length });
 createMeetingAudioActivityMonitor({ onActivityChanged: (state) => state.other });
 `);
 
-  assert.deepEqual(codes.sort((a, b) => a - b), [2322, 2339], "only the invalid callback and state property must fail");
+  assert.deepEqual(
+    codes.sort((a, b) => a - b),
+    [2322, 2339],
+    "only the invalid callback and state property must fail"
+  );
 });

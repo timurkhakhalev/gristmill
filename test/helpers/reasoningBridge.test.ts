@@ -4,25 +4,39 @@
 // malformed ones dropped before the callback, unsubscribe, and the shared
 // main registration duplicate-channel guard.
 const test: typeof import("node:test") = require("node:test");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
 const fs: typeof import("node:fs") = require("node:fs");
+
 const path: typeof import("node:path") = require("node:path");
+
 const vm: typeof import("node:vm") = require("node:vm");
+
 const Module = require("node:module");
+
 import type { ReasoningApi, EnterpriseStreamEnvelope } from "../../src/contracts/reasoning.ts";
 import type { ReasoningIpcMain } from "../../src/helpers/reasoningIpcHandlers.ts";
 
 const root = path.resolve(__dirname, "../..");
+
 const bundledPreload = path.join(root, "dist-main", "preload.js");
+
 const requiredMethods = [
-  "processLocalReasoning", "checkLocalReasoningAvailable", "processAnthropicReasoning",
-  "processEnterpriseReasoning", "cancelEnterpriseReasoning", "enterpriseStreamStart",
-  "enterpriseStreamCancel", "onEnterpriseStreamPart",
+  "processLocalReasoning",
+  "checkLocalReasoningAvailable",
+  "processAnthropicReasoning",
+  "processEnterpriseReasoning",
+  "cancelEnterpriseReasoning",
+  "enterpriseStreamStart",
+  "enterpriseStreamCancel",
+  "onEnterpriseStreamPart",
 ] as const satisfies readonly (keyof ReasoningApi)[];
 
 let activeHandlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
 
 const originalLoad = Module._load;
+
 Module._load = function patchedLoad(request: string, parent: unknown, isMain: boolean) {
   if (request === "electron") {
     return {
@@ -36,17 +50,21 @@ Module._load = function patchedLoad(request: string, parent: unknown, isMain: bo
           if (activeHandlers.has(channel)) {
             throw new Error(`Attempted to register a second handler for '${channel}'`);
           }
+
           activeHandlers.set(channel, listener);
         },
-        on: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => activeHandlers.set(channel, listener),
+        on: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) =>
+          activeHandlers.set(channel, listener),
         removeHandler() {},
         emit() {},
       },
       BrowserWindow: { getAllWindows: () => [] },
     };
   }
+
   return originalLoad.call(this, request, parent, isMain);
 };
+
 process.env.NODE_ENV = "test";
 
 test.after(() => {
@@ -67,6 +85,7 @@ function loadBundledPreload(transport: {
     exports: {},
     require(name: string) {
       assert.equal(name, "electron", "the bundled preload must only require electron");
+
       return {
         contextBridge: {
           exposeInMainWorld: (_name: string, value: unknown) => {
@@ -77,7 +96,8 @@ function loadBundledPreload(transport: {
           invoke: (channel: string, ...args: unknown[]) => transport.invoke(channel, ...args),
           send: (channel: string, ...args: unknown[]) => transport.send(channel, ...args),
           on: (channel: string, listener: any) => transport.on(channel, listener),
-          removeListener: (channel: string, listener: any) => transport.removeListener(channel, listener),
+          removeListener: (channel: string, listener: any) =>
+            transport.removeListener(channel, listener),
         },
         webUtils: { getPathForFile: () => "" },
       };
@@ -86,9 +106,15 @@ function loadBundledPreload(transport: {
     console,
   });
   assert.ok(api && typeof api === "object", "Bundled preload did not expose its API");
+
   for (const method of requiredMethods) {
-    assert.equal(typeof (api as Record<string, unknown>)[method], "function", `${method} must be exposed`);
+    assert.equal(
+      typeof (api as Record<string, unknown>)[method],
+      "function",
+      `${method} must be exposed`
+    );
   }
+
   return api as ReasoningApi;
 }
 
@@ -98,14 +124,19 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 async function createFixture() {
   assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
+
   const ipcMain: ReasoningIpcMain = {
-    handle: (channel, listener) => { activeHandlers.set(channel, listener); },
-    on: (channel, listener) => { activeHandlers.set(channel, listener); },
+    handle: (channel, listener) => {
+      activeHandlers.set(channel, listener);
+    },
+    on: (channel, listener) => {
+      activeHandlers.set(channel, listener);
+    },
   };
 
-  const { AgentStreamRequestRegistry } = await import(
-    "../../src/helpers/agentStreamRequestRegistry.ts"
-  );
+  const { AgentStreamRequestRegistry } =
+    await import("../../src/helpers/agentStreamRequestRegistry.ts");
+
   const { registerReasoningHandlers } = await import("../../src/helpers/reasoningIpcHandlers.ts");
   const REAL_ERRORS: typeof import("../../src/helpers/enterpriseProviderErrors") = require("../../src/helpers/enterpriseProviderErrors");
 
@@ -122,9 +153,11 @@ async function createFixture() {
       text: async () => "",
       json: async () => ({ content: [{ type: "text", text: "anthropic text" }] }),
     }),
-    extractAnthropicText: (data) => (data as { content?: { text?: string }[] })?.content?.[0]?.text ?? null,
+    extractAnthropicText: (data) =>
+      (data as { content?: { text?: string }[] })?.content?.[0]?.text ?? null,
     describeMissingAnthropicText: () => "no text",
-    isEnterpriseProvider: (value) => typeof value === "string" && ["bedrock", "azure", "vertex"].includes(value),
+    isEnterpriseProvider: (value) =>
+      typeof value === "string" && ["bedrock", "azure", "vertex"].includes(value),
     mapEnterpriseError: REAL_ERRORS.mapEnterpriseError,
     runAbortableOperation: REAL_ERRORS.runAbortableOperation,
     runBedrockRequest: REAL_ERRORS.runBedrockRequest,
@@ -148,15 +181,22 @@ async function createFixture() {
   const sends: { channel: string; args: unknown[] }[] = [];
   const listeners = new Map<string, Set<(event: unknown, payload: unknown) => void>>();
   const handlersSnapshot = new Map(activeHandlers);
+
   const transport = {
     invoke: async (channel: string, ...args: unknown[]) => {
       const handler = handlersSnapshot.get(channel);
+
       if (!handler) throw new Error(`No handler for ${channel}`);
+
       return handler({ sender: fixtureSender }, ...args);
     },
-    send: (channel: string, ...args: unknown[]) => { sends.push({ channel, args }); },
+    send: (channel: string, ...args: unknown[]) => {
+      sends.push({ channel, args });
+    },
     on: (channel: string, listener: (event: unknown, payload: unknown) => void) => {
-      const channelListeners = listeners.get(channel) ?? new Set<(event: unknown, payload: unknown) => void>();
+      const channelListeners =
+        listeners.get(channel) ?? new Set<(event: unknown, payload: unknown) => void>();
+
       channelListeners.add(listener);
       listeners.set(channel, channelListeners);
     },
@@ -177,6 +217,7 @@ async function createFixture() {
   };
 
   const api = loadBundledPreload(transport);
+
   return { api, sends, listeners, fixtureSender };
 }
 
@@ -188,10 +229,10 @@ test("one-shot operations cross the bundled preload boundary", async () => {
     { success: true, text: "local text" }
   );
   assert.equal(await api.checkLocalReasoningAvailable(), true);
-  assert.deepEqual(
-    plain(await api.processAnthropicReasoning("hi", "claude", null, {})),
-    { success: true, text: "anthropic text" }
-  );
+  assert.deepEqual(plain(await api.processAnthropicReasoning("hi", "claude", null, {})), {
+    success: true,
+    text: "anthropic text",
+  });
   assert.deepEqual(
     plain(
       await api.processEnterpriseReasoning("hi", "m", null, {
@@ -216,14 +257,17 @@ test("stream start/cancel cross the boundary and envelopes reach the callback", 
     modelId: "m",
     options: {},
   });
+
   // The fake model finishes immediately, so the handler's own terminal lands
   // before the manual events below; wait it out first.
   await started;
+
   // Main relays a part and the terminal marker through the sender.
   for (const listener of listeners.get("enterprise-stream-part") ?? []) {
     listener({}, { streamId: "s1", part: { type: "text-delta", text: "x" } });
     listener({}, { streamId: "s1", done: true });
   }
+
   assert.deepEqual(plain(received), [
     { streamId: "s1", done: true },
     { streamId: "s1", part: { type: "text-delta", text: "x" } },
@@ -231,9 +275,11 @@ test("stream start/cancel cross the boundary and envelopes reach the callback", 
   ]);
 
   unsubscribe();
+
   for (const listener of listeners.get("enterprise-stream-part") ?? []) {
     listener({}, { streamId: "s1", done: true });
   }
+
   assert.equal(received.length, 3, "unsubscribed listener receives nothing");
 
   await api.enterpriseStreamCancel("s1");
@@ -254,33 +300,40 @@ test("malformed envelopes are dropped before the callback", async () => {
     null,
     "junk",
   ];
+
   for (const listener of listeners.get("enterprise-stream-part") ?? []) {
     for (const envelope of malformed) listener({}, envelope);
   }
+
   assert.deepEqual(received, [], "no malformed envelope reaches the callback");
 });
 
 test("junk main responses reject at the preload boundary", async () => {
   await createFixture();
   const realHandlers = new Map(activeHandlers);
+
   const api = loadBundledPreload({
     invoke: async (channel: string, ...args: unknown[]) => {
       if (channel === "process-local-reasoning") return { silentlyWrong: true };
+
       if (channel === "process-enterprise-reasoning") return { nope: 1 };
+
       if (channel === "check-local-reasoning-available") return "yes";
+
       if (channel === "enterprise-stream-start") return { noStart: true };
       const handler = realHandlers.get(channel);
+
       if (!handler) throw new Error(`No handler for ${channel}`);
+
       return handler(null, ...args);
     },
     send: () => {},
     on: () => {},
     removeListener: () => {},
   });
+
   await assert.rejects(api.processLocalReasoning("t", "m", null, {}));
-  await assert.rejects(
-    api.processEnterpriseReasoning("t", "m", null, { provider: "azure" })
-  );
+  await assert.rejects(api.processEnterpriseReasoning("t", "m", null, { provider: "azure" }));
   await assert.rejects(api.checkLocalReasoningAvailable());
   await assert.rejects(
     api.enterpriseStreamStart({ streamId: "s", provider: "bedrock", modelId: "m", options: {} })
@@ -292,16 +345,22 @@ test("the shared main registration registers every reasoning channel once", asyn
 
   const handlersModulePath = require.resolve("../../src/helpers/ipcHandlers");
   delete require.cache[handlersModulePath];
-  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(handlersModulePath);
+
+  const Ctor: typeof import("../../src/helpers/ipcHandlers.ts").IPCHandlers = require(
+    handlersModulePath
+  );
 
   const anything = (): unknown =>
     new Proxy(function () {}, {
       get: (_target, property) => {
         if (property === Symbol.toPrimitive || property === "toString") return () => "";
+
         if (property === "then") return undefined;
+
         if (property === "apply" || property === "call" || property === "bind") {
           return () => anything();
         }
+
         return anything();
       },
       apply: () => anything(),

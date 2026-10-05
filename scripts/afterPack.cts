@@ -10,7 +10,9 @@
 //    onnx worker script) are missing from app.asar.unpacked/.
 
 const fs: typeof import("fs") = require("fs");
+
 const path: typeof import("path") = require("path");
+
 const { execFileSync }: typeof import("child_process") = require("child_process");
 
 // ---------------------------------------------------------------------------
@@ -78,11 +80,13 @@ function collectFrameworks(rootDir: string) {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const fullPath = path.join(currentDir, entry.name);
+
       if (entry.name.endsWith(".framework")) {
         out.push(fullPath);
         // Don't descend into a framework — the bundle is signed as a unit.
         continue;
       }
+
       queue.push(fullPath);
     }
   }
@@ -157,6 +161,7 @@ function stripOnnxruntimeBinaries(context: import("electron-builder").AfterPackC
 
   for (const dir of platformDirs) {
     const fullPath = path.join(onnxBinDir, dir);
+
     if (!fs.statSync(fullPath).isDirectory()) continue;
 
     if (dir !== platform) {
@@ -168,9 +173,12 @@ function stripOnnxruntimeBinaries(context: import("electron-builder").AfterPackC
 
     // Right platform — strip non-target architectures
     const archDirs = fs.readdirSync(fullPath);
+
     for (const arch of archDirs) {
       const archPath = path.join(fullPath, arch);
+
       if (!fs.statSync(archPath).isDirectory()) continue;
+
       if (!keepArchs.includes(arch)) {
         fs.rmSync(archPath, { recursive: true, force: true });
         totalRemoved++;
@@ -190,6 +198,7 @@ function verifyUnpackedBinaries(context: import("electron-builder").AfterPackCon
   const unpackedModulesDir = path.join(unpackedDir, "node_modules");
 
   const ffmpegPath = path.join(unpackedModulesDir, "ffmpeg-static", "ffmpeg");
+
   if (!fs.existsSync(ffmpegPath)) {
     throw new Error(
       `afterPack: missing ${ffmpegPath} — ffmpeg-static was not unpacked from app.asar (asarUnpack/packaging failure); the packed app cannot spawn FFmpeg`
@@ -197,6 +206,7 @@ function verifyUnpackedBinaries(context: import("electron-builder").AfterPackCon
   }
 
   const onnxWorkerPath = path.join(unpackedDir, "dist-main", "src", "workers", "onnxWorker.js");
+
   if (!fs.existsSync(onnxWorkerPath)) {
     throw new Error(
       `afterPack: missing ${onnxWorkerPath} — src/workers was not unpacked from app.asar (asarUnpack/packaging failure); the ONNX utility process would crash-loop in the packed app`
@@ -217,12 +227,14 @@ function verifySqliteRuntime(context: import("electron-builder").AfterPackContex
     "MacOS",
     context.packager.appInfo.productFilename
   );
+
   const sqlite = path.join(
     resolveResourcesDir(context),
     "app.asar",
     "node_modules",
     "better-sqlite3"
   );
+
   execFileSync(
     executable,
     [

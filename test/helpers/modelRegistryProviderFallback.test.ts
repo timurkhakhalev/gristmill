@@ -1,8 +1,13 @@
 const test: typeof import("node:test") = require("node:test");
-const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-const { installBrowserGlobals }: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
 
-const modelRegistryData = require("../../src/models/modelRegistryData.json") as typeof import("../../src/models/modelRegistryData.json");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+
+const {
+  installBrowserGlobals,
+}: typeof import("../lib/rendererTestHarness.ts") = require("../lib/rendererTestHarness.ts");
+
+const modelRegistryData =
+  require("../../src/models/modelRegistryData.json") as typeof import("../../src/models/modelRegistryData.json");
 
 // getModelProvider falls back to id heuristics for ids outside the registry
 // (a GGUF the user renamed, a catalog entry not yet synced). Every local model
@@ -22,6 +27,7 @@ test("non-registry ids of every local family fall back to the local provider", a
     "gpt-oss-20b-mxfp4-custom",
     "gemma-4-e4b-custom-q4_0",
   ];
+
   for (const modelId of nonRegistryLocalIds) {
     assert.equal(getModelProvider(modelId), "local", modelId);
   }
@@ -40,7 +46,9 @@ test("gemma fallback does not capture gemini ids or registry cloud gemma models"
   const cloudGemmaIds = modelRegistryData.cloudProviders.flatMap((provider) =>
     provider.models.filter((model) => /gemma/i.test(model.id)).map((model) => model.id)
   );
+
   assert.ok(cloudGemmaIds.length > 0, "expected at least one cloud gemma id in the registry");
+
   for (const modelId of cloudGemmaIds) {
     assert.notEqual(getModelProvider(modelId), "local", modelId);
   }

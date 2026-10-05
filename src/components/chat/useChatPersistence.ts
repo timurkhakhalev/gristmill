@@ -36,6 +36,7 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
   const generation = useRef(0);
+  const pendingCreation = useRef<{ title: string; noteId?: number | null; scope?: ContainerScope } | null>(null);
   const mounted = useRef(true);
   const [previousNoteId, setPreviousNoteId] = useState(noteId);
   const saving = useRef(new Set<string>());
@@ -64,6 +65,7 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
   );
   const handleNewChat = useCallback(() => {
     generation.current++;
+    pendingCreation.current = null;
     conversationIdRef.current = null;
     setConversationId(null);
     setMessages([]);
@@ -79,6 +81,7 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
   const createConversation = useCallback(
     async (title: string, scopeNoteId?: number | null, scope?: ContainerScope) => {
       const session = getSession();
+      pendingCreation.current = { title, noteId: scopeNoteId, scope };
       const conv = await window.electronAPI.createAgentConversation(
         title,
         scopeNoteId ?? undefined,
@@ -87,6 +90,7 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
       );
       if (!mounted.current || !isCurrent(session)) return null;
       if (!conv) throw new Error("Conversation scope is no longer available");
+      pendingCreation.current = null;
       conversationIdRef.current = conv.id;
       setConversationId(conv.id);
       return conv.id;
@@ -166,9 +170,31 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
   const retrySaveMessage = useCallback(
     async (id: string) => {
       const message = messagesRef.current.find((m) => m.id === id && m.persistenceError);
-      if (message) await saveMessage(getSession(), message);
+      if (!message || saving.current.has(id)) return;
+      const session = getSession();
+      if (session.conversationId !== null) {
+        await saveMessage(session, message);
+        return;
+      }
+      const pending = pendingCreation.current;
+      if (!pending || message.role !== "user") return;
+      saving.current.add(id);
+      setMessages(messages => messages.map(m => m.id === id ? { ...m, isSaving: true } : m));
+      try {
+        const conversationId = await createConversation(pending.title, pending.noteId, pending.scope);
+        if (conversationId === null) return;
+        saving.current.delete(id);
+        await saveMessage({ ...session, conversationId }, message);
+      } catch (error) {
+        if (mounted.current && isCurrent(session)) setMessages(messages => messages.map(m =>
+          m.id === id ? { ...m, persistenceError: error instanceof Error ? error.message : String(error) } : m));
+      } finally {
+        saving.current.delete(id);
+        if (mounted.current && generation.current === session.generation) setMessages(messages =>
+          messages.map(m => m.id === id ? { ...m, isSaving: false } : m));
+      }
     },
-    [getSession, saveMessage]
+    [createConversation, getSession, isCurrent, saveMessage]
   );
 
   return {

@@ -273,9 +273,10 @@ export class AppleCalendarManager {
 
       let buffer = "";
       child.stdout?.on("data", (data: Buffer) => {
+        if (this._helperProcess !== child) return;
         buffer += data.toString();
         let newlineIdx: number;
-        while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+        while (this._helperProcess === child && (newlineIdx = buffer.indexOf("\n")) !== -1) {
           const line = buffer.slice(0, newlineIdx).trim();
           buffer = buffer.slice(newlineIdx + 1);
           if (!line) continue;

@@ -90,7 +90,7 @@ test("Stop waits for an in-flight mic boundary commit and rejects later controls
   assert.equal(intervals[0].endFrame, 2_400);
 });
 
-for (const mode of ["open", "manual", "meet", "replacement-muted", "changed-during-ack", "old-intent-pending", "manual-during-drain", "ended-setup-retry"] as const) {
+for (const mode of ["open", "manual", "meet", "replacement-muted", "changed-during-ack", "old-intent-pending", "manual-during-drain", "ended-setup-retry", "stop-during-ack"] as const) {
 test(`renderer recovery ${mode} keeps the gated analyser and current track intent`, async (t: import("node:test").TestContext) => {
   installMicCaptureGlobals(t);
   let currentRenderFrame = 50_400;
@@ -211,6 +211,7 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
     else delete globals.AudioWorkletNode;
   });
 
+  const main = (mode === "ended-setup-retry" || mode === "stop-during-ack") ? captureHarness() : null;
   const sentSequences: number[] = [];
   let stopBoundary: import("../../../../src/contracts/meetingCoordinator.ts").MeetingCaptureStopRequest["microphoneBoundary"];
   const intentRequests: Array<{ sequence: number; boundaryFrame: number; sourceGeneration: number; effectiveMuted: boolean }> = [];
@@ -233,7 +234,7 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
       originAt: "2026-10-01T00:00:00.000Z", systemAudioMode: "unsupported", systemAudioStrategy: "unsupported",
     }),
     meetingTranscriptionSetSystemAudioAvailable: async () => ({ success: true }),
-    meetingTranscriptionSetMicIntent: async (request: { sequence: number; boundaryFrame: number; sourceGeneration: number; manualMuted: boolean; platformMuted: boolean }) => {
+    meetingTranscriptionSetMicIntent: async (request: { sequence: number; boundaryFrame: number; sourceGeneration: number; manualMuted: boolean; platformMuted: boolean; boundaryAlignment: null }) => {
       const effectiveMuted = request.manualMuted || request.platformMuted;
       intentRequests.push({ sequence: request.sequence, boundaryFrame: request.boundaryFrame, sourceGeneration: request.sourceGeneration, effectiveMuted });
       if (mode === "old-intent-pending" && request.sourceGeneration === 1 && request.platformMuted) {
@@ -247,12 +248,14 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
         }
         else {
           resolveRecoveryIntent?.();
-          if (mode === "changed-during-ack" || mode === "manual-during-drain") await lateIntent;
+          if (mode === "changed-during-ack" || mode === "manual-during-drain" || mode === "stop-during-ack") await lateIntent;
         }
       }
+      if (main) return { success: true, ...await main.capture.setMicIntent(request) };
       return { success: true, sequence: request.sequence, boundaryFrame: request.boundaryFrame, sourceGeneration: request.sourceGeneration, effectiveMuted };
     },
-    meetingTranscriptionSend: async (_buffer: unknown, _source: unknown, _sessionId: unknown, packet: { sequence: number }) => {
+    meetingTranscriptionSend: async (buffer: ArrayBuffer, source: "mic" | "system", _sessionId: unknown, packet: import("../../../../src/contracts/meetingCoordinator").MeetingCapturePacket) => {
+      main?.capture.appendRendererSamples(source, packet, Buffer.from(buffer));
       sentSequences.push(packet.sequence);
       return { success: true, sequence: packet.sequence };
     },
@@ -299,6 +302,7 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
     assert.deepEqual(sentSequences, [0, ...Array.from({ length: 60 }, (_, index) => index)]);
     assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
 
+    currentRenderFrame += 60 * 2_400;
     const analyser = store.getMicAnalyser()!;
     const level = () => { const data = new Float32Array(256); analyser.getFloatTimeDomainData(data); return data[0]; };
     assert.equal(level(), 0.25);
@@ -339,15 +343,25 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
       assert.equal(intentRequests.some((request) => request.sourceGeneration === 2), false, "ended replacement never commits an intent");
     }
     await recoveryIntent;
+    if (mode === "stop-during-ack") {
+      const stopping = store.stopRecording();
+      await new Promise(setImmediate);
+      assert.equal(stopBoundary, undefined, "Stop waits for the main handoff ACK");
+      releaseLateIntent();
+      await stopping;
+      assert.equal(store.useMeetingRecordingStore.getState().isRecording, false);
+      assert.equal((stopBoundary as { sourceGeneration: number } | undefined)?.sourceGeneration, 2, "Stop keeps the acknowledged main identity");
+      return;
+    }
     if (mode === "changed-during-ack" || mode === "manual-during-drain") {
       assert.equal(store.useMeetingRecordingStore.getState().micCaptureStatus, "reconnecting", "changed mute must wait for its own persisted intent ACK");
       assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
       releaseLateIntent();
       if (duringDrainIntent) assert.equal(await duringDrainIntent, true);
     }
-    const recoveredGeneration = mode === "ended-setup-retry" ? 3 : 2;
-    const recoveredIndex = recoveredGeneration - 1;
-    assert.equal(acquired, recoveredGeneration);
+    const recoveredGeneration = 2;
+    const recoveredIndex = mode === "ended-setup-retry" ? 2 : 1;
+    assert.equal(acquired, recoveredIndex + 1);
     await new Promise(setImmediate);
     const recoveredIntent = [...intentRequests].reverse().find((request) => request.sourceGeneration === recoveredGeneration)!;
     assert.ok(recoveredIntent);
@@ -365,6 +379,17 @@ test(`renderer recovery ${mode} keeps the gated analyser and current track inten
     assert.equal(level(), 0.25, "unmute restores microphone level after recovery");
     assert.equal(tracks[0].stopCount, mode === "ended-setup-retry" ? 2 : 1, "old device stops only after its replacement graph is attached");
 
+    if (main) {
+      const before = sentSequences.length;
+      processors[recoveredIndex].port.onmessage?.({ data: {
+        type: "chunk", buffer: new ArrayBuffer(4_800), sequence: 0, sampleOffset: 0,
+        renderStartFrame: currentRenderFrame, epochIndex: 2, sourceGeneration: recoveredGeneration,
+      } });
+      await new Promise(setImmediate);
+      assert.equal(sentSequences.length, before + 1, "main accepted the recovered audio packet");
+      assert.equal(store.useMeetingRecordingStore.getState().isRecording, true);
+      assert.equal(main.writes.at(-1)?.epoch, 2);
+    }
     await store.stopRecording();
     assert.deepEqual(stopBoundary, { sourceGeneration: recoveredGeneration, sourceFrame: 192_000, alignment: null }, "Stop persists the recovered microphone's flush boundary");
     assert.equal(tracks[recoveredIndex].stopCount, 1, "Stop releases the healthy replacement device");

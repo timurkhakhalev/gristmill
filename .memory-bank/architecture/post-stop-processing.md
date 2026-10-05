@@ -99,7 +99,7 @@ flowchart TD
 
 ### Device changes
 
-- If the user changes the microphone in Settings during a recording, the microphone capture reconnects.
+- If the user changes the microphone in Settings during a recording, the microphone capture reconnects. A replacement holds its audio gate closed until main confirms its source generation. Failed setup does not consume a generation or a reserved epoch. Stop waits for an in-flight handoff before it drains the graph.
 - The old tail is saved. The new epoch stays in the same recording and group.
 - The System Default mode follows the macOS input changes.
 - A specific selected microphone stays in use while it is available.

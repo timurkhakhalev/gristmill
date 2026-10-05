@@ -5,11 +5,16 @@ import path from "node:path";
 import type { TestContext } from "node:test";
 import { build } from "esbuild";
 
+// Electron's executable path through the CJS interop. SAFETY: the packaged
+// electron main module exports its executable path as a string; the require
+// is the documented way to locate the binary without loading the runtime.
+const electronBinary: string = require("electron") as string;
+
 // Parent owns output and profile even when compilation or the GUI child fails.
 export async function runElectronFixture(
   t: Pick<TestContext, "after">,
   source: string,
-  { timeout = 20_000 } = {}
+  { timeout = 20_000 }: { timeout?: number } = {}
 ) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-electron-fixture-"));
   const cleanup = () => fs.rmSync(root, { recursive: true, force: true });
@@ -31,11 +36,10 @@ export async function runElectronFixture(
       logLevel: "silent",
     });
     const { ELECTRON_RUN_AS_NODE: _ignored, ...env } = process.env;
-    const electron: string = require("electron");
 
     return await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
       const child = execFile(
-        electron,
+        electronBinary,
         [outfile],
         { timeout, env: { ...env, GRISTMILL_ELECTRON_FIXTURE_PROFILE: profile } },
         (error, stdout, stderr) => {

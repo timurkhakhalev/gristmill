@@ -36,7 +36,9 @@ async function renderChat(props: Record<string, unknown>) {
   // Indirect specifier: tsc resolves a literal .tsx import and demands "jsx",
   // which tsconfig.test.json does not set; the runtime loader still gets the path.
   const chatModule: string = "../../src/components/notes/MeetingTranscriptChat.tsx";
-  const mod = (await import(chatModule)) as { MeetingTranscriptChat: unknown };
+  const mod = (await import(chatModule)) as {
+    MeetingTranscriptChat: import("react").ComponentType<Record<string, unknown>>;
+  };
 
   return renderStatic(mod.MeetingTranscriptChat, {
     segments: SEGMENTS,

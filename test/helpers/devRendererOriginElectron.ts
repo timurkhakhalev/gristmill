@@ -14,8 +14,13 @@ app.setPath("userData", profile);
 
 app.setPath("sessionData", profile);
 
-// setAppPath exists at runtime; typed as missing in this Electron version.
-(app as unknown as { setAppPath(p: string): void }).setAppPath(repo);
+// SAFETY: setAppPath exists at runtime but is untyped in this Electron
+// version; the chained probe types just that member.
+const appWithSetAppPath = app as unknown as {
+  setAppPath(p: string): void;
+};
+
+appWithSetAppPath.setAppPath(repo);
 
 app
   .whenReady()
@@ -29,11 +34,16 @@ app
     );
 
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    process.env.VITE_DEV_SERVER_PORT = String((server.address() as { port: number }).port);
+
+    // SAFETY: the server listens on 127.0.0.1:0 above; the probe types the
+    // reported address.
+    const address = server.address() as { port: number };
+    process.env.VITE_DEV_SERVER_PORT = String(address.port);
     process.env.NODE_ENV = "development";
     process.env.GRISTMILL_CHANNEL = "development";
 
-    // Compiled main output; loaded at runtime after app ready.
+    // Compiled main output; loaded at runtime after app ready. SAFETY: the
+    // bundle is this repo's own windowManager build.
     const { WindowManager } = require(
       path.join(repo, "dist-main/src/helpers/windowManager.js")
     ) as typeof import("../../src/helpers/windowManager.js");
@@ -52,12 +62,16 @@ app
     localStorage.setItem("meetingCloudTranscriptionProvider", "deepgram");
     localStorage.setItem("gristmill.paused-meeting", "stale-paused-meeting");
   `);
-    await win.loadURL(`http://localhost:${(server.address() as { port: number }).port}/`);
+    await win.loadURL(`http://localhost:${address.port}/`);
     await win.webContents.executeJavaScript("localStorage.setItem('uiLanguage', 'fr')");
 
+    // SAFETY: the prototype is the compiled repo's own WindowManager; the
+    // assertion types the fixture's instance surface.
     const manager = Object.create(WindowManager.prototype) as InstanceType<typeof WindowManager>;
     await manager.loadWindowContent(win, true);
 
+    // SAFETY: window.firstSettings is the Object.fromEntries(localStorage)
+    // copy the fixture page above builds; the assertion types that record.
     const imported = (await win.webContents.executeJavaScript("window.firstSettings")) as Record<
       string,
       string | undefined
@@ -69,10 +83,9 @@ app
     assert.equal(imported["gristmill.paused-meeting"], "stale-paused-meeting");
 
     await win.webContents.executeJavaScript("localStorage.removeItem('gristmill.paused-meeting')");
-    await (
-      Object.create(WindowManager.prototype) as InstanceType<typeof WindowManager>
-    ).loadWindowContent(win, true);
+    await manager.loadWindowContent(win, true);
 
+    // SAFETY: window.firstSettings is the fixture's localStorage copy.
     const nextLaunch = (await win.webContents.executeJavaScript("window.firstSettings")) as Record<
       string,
       string | undefined
@@ -82,10 +95,9 @@ app
     assert.equal(nextLaunch.uiLanguage, "fr", "existing dev value survives restart");
 
     await win.webContents.session.clearStorageData();
-    await (
-      Object.create(WindowManager.prototype) as InstanceType<typeof WindowManager>
-    ).loadWindowContent(win, true);
+    await manager.loadWindowContent(win, true);
 
+    // SAFETY: window.firstSettings is the fixture's localStorage copy.
     const afterReset = (await win.webContents.executeJavaScript("window.firstSettings")) as Record<
       string,
       string | undefined
@@ -103,10 +115,9 @@ app
     fs.mkdirSync(smoke);
     app.commandLine.appendSwitch("user-data-dir", smoke);
     assert.equal(app.commandLine.getSwitchValue("user-data-dir"), smoke);
-    await (
-      Object.create(WindowManager.prototype) as InstanceType<typeof WindowManager>
-    ).loadWindowContent(win, true);
+    await manager.loadWindowContent(win, true);
 
+    // SAFETY: window.firstSettings is the fixture's localStorage copy.
     const excluded = (await win.webContents.executeJavaScript("window.firstSettings")) as Record<
       string,
       string | undefined
@@ -119,7 +130,7 @@ app
     server.close();
     app.exit(0);
   })
-  .catch((error) => {
+  .catch((error: Error) => {
     console.error(error.stack);
     app.exit(1);
   });

@@ -11,8 +11,10 @@ export function savePcmEpoch(
   index: number,
   pcm: Buffer
 ): void {
+  // SAFETY: the require loads this repo's own meetingOpus module; the
+  // assertion restores the ESM type surface tsc knows for the same file.
   const { convertMeetingPcm } =
-    require("../../src/helpers/meetingOpus.ts") as typeof import("../../src/helpers/meetingOpus.js");
+    require("../../src/helpers/meetingOpus.ts") as typeof import("../../src/helpers/meetingOpus.ts");
 
   const destination = storage.createEpochFile(recordingId, source, index);
   const temporary = `${destination}.fixture-pcm`;

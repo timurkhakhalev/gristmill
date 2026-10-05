@@ -22,7 +22,9 @@ interface NodeModuleLike {
 type ModuleParent = NodeModuleLike | null;
 
 // ponytail: Module._load is an unsafe loader internal; keep it localized here
-// until tests no longer need loader-level electron interception.
+// until tests no longer need loader-level electron interception. SAFETY: the
+// chained assertion is the only way to reach the undocumented Node loader
+// member (no structural overlap with the typed Module surface).
 const moduleLoad = (
   Module as unknown as {
     _load: (request: string, parent: ModuleParent, isMain: boolean) => unknown;
@@ -52,6 +54,8 @@ export function installElectronStub(): void {
     return originalLoad(request, parent, isMain);
   };
 
+  // SAFETY: same undocumented loader member as above; the chained assertion
+  // installs the patched loader in place of the original.
   (Module as unknown as { _load: unknown })._load = patchedLoad;
 }
 
@@ -60,7 +64,7 @@ export function installElectronStub(): void {
 process.env.NODE_ENV = "test";
 
 export function setUserDataDir(dir: string): void {
-  if (typeof dir !== "string" || dir.length === 0) {
+  if (dir.length === 0) {
     throw new TypeError("setUserDataDir requires a non-empty path");
   }
 
@@ -73,7 +77,7 @@ export function getUserDataDir(): string {
 }
 
 export function setAppDataDir(dir: string): void {
-  if (typeof dir !== "string" || dir.length === 0) {
+  if (dir.length === 0) {
     throw new TypeError("setAppDataDir requires a non-empty path");
   }
 

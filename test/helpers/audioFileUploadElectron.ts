@@ -42,6 +42,9 @@ app
 
     try {
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+      // SAFETY: the server listens on 127.0.0.1:0 above; the probe types the
+      // reported address.
       const address = server.address() as { port: number };
       const url = new URL(`http://127.0.0.1:${address.port}/upload`);
       assert.deepEqual(await postRawAudioFile(url, filePath, "audio/wav", "test-key"), {

@@ -124,7 +124,7 @@ export interface MicrosoftManagerDb {
 export class MicrosoftCalendarManager {
   private readonly databaseManager: MicrosoftManagerDb &
     ConstructorParameters<typeof MicrosoftCalendarOAuth>[0];
-  private readonly reminderScheduler: { scheduleNextMeeting(): void; reset(p: string): void };
+  private readonly reminderScheduler: { scheduleNextMeeting(): void; reset(p: string): void; reconcileProvider(p: string): void };
   private readonly oauth: MicrosoftCalendarOAuth;
   private accounts = new Map<string, { email: string }>();
   private primaryOnly = true;
@@ -132,7 +132,7 @@ export class MicrosoftCalendarManager {
 
   constructor(
     databaseManager: MicrosoftManagerDb & ConstructorParameters<typeof MicrosoftCalendarOAuth>[0],
-    reminderScheduler: { scheduleNextMeeting(): void; reset(p: string): void }
+    reminderScheduler: { scheduleNextMeeting(): void; reset(p: string): void; reconcileProvider(p: string): void }
   ) {
     this.databaseManager = databaseManager;
     this.reminderScheduler = reminderScheduler;
@@ -178,12 +178,13 @@ export class MicrosoftCalendarManager {
     this.accounts.delete(email);
     this.databaseManager.removeMicrosoftAccount(email);
     this._broadcastAccountsChanged();
+    this.reminderScheduler.reconcileProvider("microsoft");
 
     if (this.accounts.size === 0) {
       this.stop();
       this.reminderScheduler.reset("microsoft");
-      this.reminderScheduler.scheduleNextMeeting();
     }
+    this.reminderScheduler.scheduleNextMeeting();
   }
 
   async startOAuth(): Promise<{ success: boolean; email?: string; error?: string }> {

@@ -22,12 +22,31 @@ app.disableHardwareAcceleration();
 app
   .whenReady()
   .then(async () => {
-    const { build, stop }: typeof import("esbuild") = require(
-      path.join(repo, "node_modules/esbuild")
-    );
+    // SAFETY: the require loads the repo's own esbuild install; the assertion
+    // names its module surface for the fixture build.
+    const esbuild = require(path.join(repo, "node_modules/esbuild")) as typeof import("esbuild");
+    const { build, stop } = esbuild;
 
-    const Database = require(path.join(repo, "node_modules/better-sqlite3"));
+    // SAFETY: better-sqlite3 ships no declarations; this probe pins the
+    // statement surface the fixture drives (prepare/run/get/exec/close).
+    interface FixtureDatabase {
+      exec(statement: string): void;
+      prepare(statement: string): {
+        run(...parameters: unknown[]): { lastInsertRowid: number | bigint };
+        get(): { count: number } | undefined;
+      };
+      close(): void;
+    }
+
+    type FixtureDatabaseConstructor = new (file: string) => FixtureDatabase;
+
+    // SAFETY: the require loads the repo's own better-sqlite3 build.
+    const Database = require(
+      path.join(repo, "node_modules/better-sqlite3")
+    ) as FixtureDatabaseConstructor;
+
     const db = new Database(path.join(profile, "notes.db"));
+
     db.exec("CREATE TABLE notes(id INTEGER PRIMARY KEY, title TEXT NOT NULL)");
     db.prepare("INSERT INTO notes(id, title) VALUES (99, 'Existing note')").run();
 
@@ -53,7 +72,7 @@ app
       expected_speaker_count: null,
     });
 
-    let releaseSpaces: (() => void) | undefined;
+    const gate = { release: () => {} };
     let spaces = Promise.resolve();
     ipcMain.handle(containerChannels.getSpaces, async () => {
       await spaces;
@@ -93,7 +112,7 @@ app
     const renderer = path.join(profile, "renderer.js");
     const empty = "export default function Empty(){return null;}";
 
-    const mocks: Record<string, string> = {
+    const mockSources = {
       "react-i18next":
         'export const initReactI18next={type:"3rdParty",init(){}};const t=key=>key;export function useTranslation(){return {t,i18n:{resolvedLanguage:"en"}};}',
       "/ui/useToast": "export function useToast(){return {toast(){}};}",
@@ -112,6 +131,8 @@ app
       "/home/HomeSkeleton": "export function HomeSkeleton(){return null;}",
     };
 
+    const mocks = new Map(Object.entries(mockSources));
+
     for (const leaf of [
       "ControlPanelSidebar",
       "ControlPanelTopBar",
@@ -126,7 +147,7 @@ app
       "notes/NotesDebugPreview",
       "notes/NoteSkeleton",
     ])
-      mocks[`/${leaf}`] = empty;
+      mocks.set(`/${leaf}`, empty);
 
     try {
       await build({
@@ -150,12 +171,19 @@ app
             name: "fixture-leaves",
             setup(plugin) {
               plugin.onResolve({ filter: /.*/ }, (args) => {
-                const key = Object.keys(mocks).find((suffix) => args.path.endsWith(suffix));
+                let key: string | undefined;
+
+                for (const suffix of mocks.keys()) {
+                  if (args.path.endsWith(suffix)) {
+                    key = suffix;
+                    break;
+                  }
+                }
 
                 return key ? { path: key, namespace: "fixture" } : undefined;
               });
               plugin.onLoad({ filter: /.*/, namespace: "fixture" }, (args) => ({
-                contents: mocks[args.path],
+                contents: mocks.get(args.path) ?? "",
                 resolveDir: repo,
               }));
             },
@@ -164,7 +192,7 @@ app
         logLevel: "silent",
       });
     } finally {
-      stop();
+      await stop();
     }
 
     const server = http.createServer((request, response) =>
@@ -186,8 +214,28 @@ app
       },
     });
 
-    const { WindowManager } = require(path.join(repo, "dist-main/src/helpers/windowManager.js"));
-    const manager = Object.create(WindowManager.prototype);
+    // SAFETY: the compiled main bundle exports this repo's own WindowManager;
+    // the assertion restores the class type tsc knows from the source.
+    interface ManagerShape {
+      controlPanelWindow: unknown;
+      createControlPanelWindow(): Promise<void>;
+      requestNewNote(): Promise<void>;
+      requestOpenCalendarEvent(event: {
+        id: string;
+        summary: string;
+        start_time: string;
+      }): Promise<void>;
+      openSettings(): Promise<void>;
+    }
+
+    // SAFETY: the compiled main bundle is this repo's own windowManager build.
+    const windowManagerModule = require(
+      path.join(repo, "dist-main/src/helpers/windowManager.js")
+    ) as { WindowManager: { prototype: object } };
+
+    // SAFETY: the manager is the compiled repo's own WindowManager prototype;
+    // the assertion types the fixture's stubbed manager surface.
+    const manager = Object.create(windowManagerModule.WindowManager.prototype) as ManagerShape;
     manager.controlPanelWindow = win;
     manager.createControlPanelWindow = async () => {};
 
@@ -205,13 +253,14 @@ app
 
       for (const phase of ["before", "after", "reload", "remount"] as const)
         for (const action of ["note", "event", "settings"] as const) {
-          spaces = new Promise((done) => {
-            releaseSpaces = done;
+          spaces = new Promise<void>((done) => {
+            gate.release = done;
           });
 
-          const loading = win.loadURL(
-            `http://127.0.0.1:${(server.address() as { port: number }).port}/?${phase}-${action}`
-          );
+          // SAFETY: the server listens on 127.0.0.1:0 above; the probe types
+          // the address the listener reports.
+          const address = server.address() as { port: number };
+          const loading = win.loadURL(`http://127.0.0.1:${address.port}/?${phase}-${action}`);
 
           const send = async () => {
             if (action === "note") await manager.requestNewNote();
@@ -229,12 +278,12 @@ app
           await waitFor("window.bootstrapReady === true");
 
           if (phase === "remount") {
-            releaseSpaces!();
+            gate.release();
             await win.webContents.executeJavaScript("window.mountPanel()");
             await waitFor("window.panelReady === true");
             await win.webContents.executeJavaScript("window.unmountPanel()");
-            spaces = new Promise((done) => {
-              releaseSpaces = done;
+            spaces = new Promise<void>((done) => {
+              gate.release = done;
             });
             await send();
             await new Promise((done) => setTimeout(done, 20));
@@ -245,7 +294,7 @@ app
             await new Promise((done) => setTimeout(done, 20));
           }
 
-          if (phase === "after") releaseSpaces!();
+          if (phase === "after") gate.release();
           await win.webContents.executeJavaScript("window.mountPanel()");
 
           if (phase !== "after") {
@@ -258,7 +307,7 @@ app
                 ),
                 false
               );
-            releaseSpaces!();
+            gate.release();
           } else {
             await waitFor("window.panelReady === true");
             await send();
@@ -283,7 +332,9 @@ app
         }
 
       assert.deepEqual(missing, [], "all actions must reach their mounted owner");
-      assert.equal(db.prepare("SELECT COUNT(*) AS count FROM notes WHERE id != 99").get().count, 4);
+      const counted = db.prepare("SELECT COUNT(*) AS count FROM notes WHERE id != 99").get();
+
+      assert.equal(counted?.count, 4);
       console.log(
         "tray readiness actions passed: before/after subscription, document reload and remount retry; 4 persisted Notes"
       );
@@ -295,7 +346,7 @@ app
 
     app.exit(0);
   })
-  .catch((error) => {
+  .catch((error: Error) => {
     console.error(error.stack);
     app.exit(1);
   });

@@ -86,8 +86,13 @@ function encodeScalar(type: number, value: string | number | bigint | boolean | 
     case TYPE.STRING:
       return ggufString(String(value ?? ""));
     case TYPE.UINT64:
-    case TYPE.INT64:
-      return u64(typeof value === "bigint" ? value : Number(value ?? 0));
+    case TYPE.INT64: {
+      // GGUF scalars arrive as fixture numbers; BigInt() is the exact decode.
+      const raw = Number(value ?? 0);
+
+      return u64(BigInt(Math.trunc(raw)));
+    }
+
     case TYPE.FLOAT64: {
       const b = Buffer.alloc(8);
       b.writeDoubleLE(Number(value ?? 0));

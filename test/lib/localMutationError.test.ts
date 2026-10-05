@@ -1,12 +1,18 @@
-const test: typeof import("node:test") = require("node:test");
+import assert from "node:assert/strict";
+import test from "node:test";
 
-const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+import { localMutationErrorKey } from "../../src/lib/localMutationError.ts";
 
-const load = () => import("../../src/lib/localMutationError.js");
+// The canonical runner loads these files through tsx in CJS mode, so top-level
+// await is unavailable; node:test awaits every root registration itself, and
+// this wrapper only keeps the registration promise observed.
+const it = (name: string, fn: () => void | Promise<void>): void => {
+  test(name, fn).catch((error: Error) => {
+    throw error;
+  });
+};
 
-test("maps database validation messages to translation keys", async () => {
-  const { localMutationErrorKey } = await load();
-
+it("maps database validation messages to translation keys", () => {
   assert.equal(
     localMutationErrorKey("A folder with that name already exists"),
     "notes.mutationErrors.folderAlreadyExists"
@@ -21,9 +27,7 @@ test("maps database validation messages to translation keys", async () => {
   );
 });
 
-test("does not expose arbitrary main-process or cloud error text", async () => {
-  const { localMutationErrorKey } = await load();
-
+it("does not expose arbitrary main-process or cloud error text", () => {
   assert.equal(
     localMutationErrorKey("connect ECONNREFUSED api.example.test"),
     "notes.mutationErrors.generic"

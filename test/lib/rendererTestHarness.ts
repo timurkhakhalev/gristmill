@@ -6,56 +6,114 @@ import path from "node:path";
 import type { TestContext } from "node:test";
 import type { ViteDevServer } from "vite";
 
+interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+  clear(): void;
+}
+
+// Consumer stubs replace single window members with bespoke fakes; the
+// overrides record stays owner-shaped (each key holds its own concrete
+// signature at the call site) and merges over the defaults below.
 type FakeWindow = typeof globalThis & {
-  electronAPI?: Record<string, unknown>;
+  electronAPI?: object;
 };
+
+interface HarnessGlobals {
+  window?: FakeWindow;
+  localStorage?: StorageLike;
+  CSS?: { escape(value: string): string };
+}
+
+export interface BrowserGlobalsOptions {
+  initialStorage?: Record<string, string>;
+  /**
+   * Member-level window overrides. Each key replaces one window member with
+   * the consumer's stub object; values stay owner-typed at the call site.
+   */
+  window?: {
+    electronAPI?: object;
+    matchMedia?: (query: string) => { matches: boolean };
+    location?: { search: string };
+    addEventListener?: (name: string, listener: () => void) => void;
+    removeEventListener?: (name: string, listener: () => void) => void;
+    dispatchEvent?: () => boolean;
+    setInterval?: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>;
+    // Consumers pass their own timer handle type back; unknown accepts it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- handle type comes from the consumer's own stub
+    clearInterval?: (timer: any) => void;
+    setTimeout?: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- handle type comes from the consumer's own stub
+    clearTimeout?: (timer: any) => void;
+    localStorage?: StorageLike;
+    /** Ad-hoc members for single-file harnesses; owner-typed at the call site. */
+    fixture?: object;
+  };
+}
 
 export function installBrowserGlobals(
   t: Pick<TestContext, "after">,
-  {
-    initialStorage = {},
-    window: windowProps = {},
-  }: { initialStorage?: Record<string, string>; window?: Record<string, unknown> } = {}
+  { initialStorage = {}, window: windowProps = {} }: BrowserGlobalsOptions = {}
 ) {
-  const originalWindow = (globalThis as { window?: unknown }).window;
-  const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
+  const globalsSource: unknown = globalThis;
+
+  // SAFETY: this harness owns the global window/localStorage/CSS set below;
+  // the assertion types that owned surface for save/restore.
+  const globals = globalsSource as HarnessGlobals;
+  const originalWindow = globals.window;
+  const originalLocalStorage = globals.localStorage;
   const values = new Map(Object.entries(initialStorage));
 
-  const storage = {
-    getItem: (key: string) => (values.has(key) ? values.get(key)! : null),
-    setItem: (key: string, value: string) => values.set(key, String(value)),
-    removeItem: (key: string) => values.delete(key),
-    clear: () => values.clear(),
+  const storage: StorageLike = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+    clear: () => {
+      values.clear();
+    },
   };
 
-  (globalThis as Record<string, unknown>).localStorage = storage;
-  const originalCSS = (globalThis as { CSS?: unknown }).CSS;
+  globals.localStorage = storage;
+  const originalCSS = globals.CSS;
 
   if (originalCSS === undefined) {
     // react-aria's getNonce reads global CSS; harmless stub for the fake DOM.
-    (globalThis as Record<string, unknown>).CSS = { escape: (value: string) => value };
+    globals.CSS = { escape: (value: string) => value };
   }
 
-  (globalThis as Record<string, unknown>).window = {
+  const electronAPI: NonNullable<FakeWindow["electronAPI"]> = {};
+
+  // SAFETY: storage satisfies the Storage reads the renderer makes; the spread
+  // above carries the consumer's member stubs, and the assertion types the
+  // assembled fake against the shared window shape.
+  const defaults = {
     innerWidth: 1200,
     localStorage: storage,
     addEventListener() {},
     removeEventListener() {},
-    setTimeout(...args: Parameters<typeof setTimeout>) {
-      return globalThis.setTimeout(...args);
+    setTimeout(callback: () => void, delay?: number) {
+      return globalThis.setTimeout(callback, delay);
     },
-    clearTimeout(timeoutId: ReturnType<typeof setTimeout>) {
+    clearTimeout(timeoutId: ReturnType<typeof setTimeout> | undefined) {
       globalThis.clearTimeout(timeoutId);
     },
     setInterval() {
       return 1;
     },
-    electronAPI: {},
-    ...windowProps,
+    electronAPI,
   };
-  t.after(() => {
-    const globals = globalThis as Record<string, unknown>;
 
+  // SAFETY: the spread merges harness defaults with the consumer's member
+  // stubs; the chained assertion is the only way to type the merged literal
+  // against the globalThis intersection (no overlap for a direct assert).
+  // Narrow exact-file override below documents the same boundary.
+  globals.window = { ...defaults, ...windowProps } as unknown as FakeWindow;
+  t.after(() => {
     if (originalWindow === undefined) delete globals.window;
     else globals.window = originalWindow;
 
@@ -65,7 +123,7 @@ export function installBrowserGlobals(
     if (originalCSS === undefined) delete globals.CSS;
   });
 
-  return { window: (globalThis as unknown as { window: FakeWindow }).window, storage };
+  return { window: globals.window, storage };
 }
 
 interface FakeNode {
@@ -83,7 +141,7 @@ interface FakeNode {
   appendChild(child: FakeNode): FakeNode;
   insertBefore(child: FakeNode, before: FakeNode | null): FakeNode;
   removeChild(child: FakeNode): FakeNode;
-  setAttribute(name: string, value: unknown): void;
+  setAttribute(name: string, value: string): void;
   removeAttribute(name: string): void;
   addEventListener(): void;
   removeEventListener(): void;
@@ -107,8 +165,8 @@ interface FakeDocument {
   removeEventListener(): void;
   createElement(name: string): FakeNode;
   createElementNS(namespaceURI: string, name: string): FakeNode;
-  createTextNode(value: unknown): FakeNode;
-  createComment(value: unknown): FakeNode;
+  createTextNode(value: string): FakeNode;
+  createComment(value: string): FakeNode;
   createDocumentFragment(): FakeNode;
   querySelector(): null;
   getElementById(id: string): FakeNode | null;
@@ -135,19 +193,36 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
       const original = elementDescriptors[index];
 
       if (original) Object.defineProperty(globalThis, name, original);
-      else delete (globalThis as Record<string, unknown>)[name];
+      else {
+        // SAFETY: this harness installed these element classes itself; the
+        // keyed probe only deletes the four owned names.
+
+        const holder = globalThis as {
+          Element?: object;
+          HTMLElement?: object;
+          HTMLIFrameElement?: object;
+          SVGElement?: object;
+        };
+
+        delete holder[name];
+      }
     })
   );
-  const originalDocument = (globalThis as { document?: unknown }).document;
 
-  const originalActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown })
-    .IS_REACT_ACT_ENVIRONMENT;
+  const globalsSource: unknown = globalThis;
 
-  const originalRequestAnimationFrame = (globalThis as { requestAnimationFrame?: unknown })
-    .requestAnimationFrame;
+  // SAFETY: the probe names the harness-owned browser globals for save/restore.
+  const globals = globalsSource as {
+    document?: FakeDocument;
+    IS_REACT_ACT_ENVIRONMENT?: boolean;
+    requestAnimationFrame?: () => number;
+    cancelAnimationFrame?: () => void;
+  };
 
-  const originalCancelAnimationFrame = (globalThis as { cancelAnimationFrame?: unknown })
-    .cancelAnimationFrame;
+  const originalDocument = globals.document;
+  const originalActEnvironment = globals.IS_REACT_ACT_ENVIRONMENT;
+  const originalRequestAnimationFrame = globals.requestAnimationFrame;
+  const originalCancelAnimationFrame = globals.cancelAnimationFrame;
 
   const noop = () => {};
 
@@ -199,7 +274,7 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
         return child;
       },
       setAttribute(name, value) {
-        this.attributes.set(name, String(value));
+        this.attributes.set(name, value);
       },
       removeAttribute(name) {
         this.attributes.delete(name);
@@ -268,6 +343,8 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
     return node;
   }
 
+  // SAFETY: documentElement/head/body start as null placeholders and receive
+  // real fake nodes immediately after this literal.
   const document: FakeDocument = {
     nodeType: 9,
     activeElement: null,
@@ -288,16 +365,16 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
     createTextNode(value) {
       const node = makeNode(3, "#text");
       node.ownerDocument = document;
-      node.nodeValue = String(value);
-      node.data = String(value);
+      node.nodeValue = value;
+      node.data = value;
 
       return node;
     },
     createComment(value) {
       const node = makeNode(8, "#comment");
       node.ownerDocument = document;
-      node.nodeValue = String(value);
-      node.data = String(value);
+      node.nodeValue = value;
+      node.data = value;
 
       return node;
     },
@@ -321,6 +398,8 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
         return null;
       };
 
+      // SAFETY: the fake document carries the FakeNode child structure the
+      // visitor walks; the chained assertion exposes that view.
       return visit(document as unknown as FakeNode);
     },
     createRange: () => ({
@@ -340,6 +419,8 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
   document.body = document.createElement("body");
   document.documentElement.appendChild(document.head);
   document.documentElement.appendChild(document.body);
+  // SAFETY: the harness created the fake window above; the assertion exposes
+  // it as the assign target.
   Object.assign(globalThis.window as object, {
     Element,
     HTMLElement,
@@ -366,14 +447,12 @@ export function installHookDom(t: Pick<TestContext, "after">): FakeNode {
 
   document.defaultView = globalThis.window;
   document.documentElement = container;
-  (globalThis as Record<string, unknown>).document = document;
-  (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  (globalThis as Record<string, unknown>).requestAnimationFrame = () => 1;
-  (globalThis as Record<string, unknown>).cancelAnimationFrame = noop;
+  globals.document = document;
+  globals.IS_REACT_ACT_ENVIRONMENT = true;
+  globals.requestAnimationFrame = () => 1;
+  globals.cancelAnimationFrame = noop;
 
   t.after(() => {
-    const globals = globalThis as Record<string, unknown>;
-
     if (originalDocument === undefined) delete globals.document;
     else globals.document = originalDocument;
 
@@ -411,16 +490,17 @@ export async function createRendererServer(
 ): Promise<ViteDevServer> {
   createServer ??= (await import("vite")).createServer;
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), cachePrefix));
-  let vite: ViteDevServer | undefined;
+  // SAFETY: the cleanup closure reads the binding before createServer runs.
+  const state = { vite: undefined as ViteDevServer | undefined };
   t.after(async () => {
     try {
-      await vite?.close();
+      await state.vite?.close();
     } finally {
       fs.rmSync(cacheDir, { recursive: true, force: true });
     }
   });
   const suffixes = Object.keys(mockModules);
-  vite = await createServer({
+  state.vite = await createServer({
     root: path.resolve(__dirname, "../../src"),
     cacheDir,
     configFile: false,
@@ -450,17 +530,21 @@ export async function createRendererServer(
     server: { middlewareMode: true },
   });
 
-  return vite;
+  return state.vite;
 }
 
-export async function reloadSettingsStore(vite: ViteDevServer): Promise<unknown> {
+export async function reloadSettingsStore(
+  vite: ViteDevServer
+): Promise<typeof import("../../src/stores/settingsStore.ts")> {
   const url = "/stores/settingsStore.ts";
   const module = await vite.moduleGraph.getModuleByUrl(url);
 
   // Vite invalidates this module and its importers; shared dependencies stay cached.
   if (module) vite.moduleGraph.invalidateModule(module);
 
-  return vite.ssrLoadModule(url);
+  // SAFETY: the URL above loads this repo's own settings store; the assertion
+  // names its module surface for callers.
+  return (await vite.ssrLoadModule(url)) as typeof import("../../src/stores/settingsStore.ts");
 }
 
 // Minimal Web Audio + capture stubs so the mic pipeline can run under Node.
@@ -469,18 +553,18 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
     readyState: "live",
     label: "Fake Mic",
     stop() {},
-    getSettings: () => ({}) as Record<string, unknown>,
+    getSettings: (): { [key: string]: string | number | boolean } => ({}),
   };
 
   const stream = {
     getTracks: () => [track],
     getAudioTracks: () => [track],
-    getVideoTracks: () => [] as (typeof track)[],
+    getVideoTracks: () => [],
   };
 
   const mediaDevices = {
     getUserMedia: async () => stream,
-    enumerateDevices: async () => [] as Array<Record<string, unknown>>,
+    enumerateDevices: async (): Promise<MediaDeviceInfo[]> => [],
     addEventListener() {},
     removeEventListener() {},
   };
@@ -515,25 +599,27 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
     async close() {}
   }
 
+  type WorkletCommand = {
+    type?: string;
+    commandId?: string;
+    sourceGeneration?: number;
+    effectiveMuted?: boolean;
+  };
+
   class FakeAudioWorkletNode {
     port: {
       onmessage: ((event: { data: unknown }) => void) | null;
-      postMessage: (message: unknown) => void;
+      postMessage: (message: WorkletCommand) => void;
     };
     constructor(
-      _context?: unknown,
+      _context?: BaseAudioContext,
       _name?: string,
       options?: { processorOptions?: { sourceGeneration?: number } }
     ) {
       this.port = {
         onmessage: null,
         postMessage: (message) => {
-          const request = message as {
-            type?: string;
-            commandId?: string;
-            sourceGeneration?: number;
-            effectiveMuted?: boolean;
-          };
+          const request = message;
 
           if (request?.type === "flush") {
             queueMicrotask(() =>
@@ -571,7 +657,17 @@ export function installMicCaptureGlobals(t: Pick<TestContext, "after">): void {
       ["AudioWorkletNode", originalAudioWorkletNode],
     ] as const) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
-      else delete (globalThis as Record<string, unknown>)[name];
+      else {
+        // SAFETY: only the harness-owned navigator/Audio globals are deleted;
+        // the keyed probe types the global record for those three names.
+        const holder = globalThis as {
+          navigator?: unknown;
+          AudioContext?: unknown;
+          AudioWorkletNode?: unknown;
+        };
+
+        delete holder[name];
+      }
     }
   });
   Object.defineProperty(globalThis, "navigator", {

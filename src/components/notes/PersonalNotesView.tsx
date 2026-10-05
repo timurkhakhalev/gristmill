@@ -275,13 +275,13 @@ export default function PersonalNotesView({
             ...(pending.title !== undefined ? { title: pending.title } : {}),
             ...(pending.content !== undefined ? { content: pending.content } : {}),
           });
-          // The write landed: the editor state matches the row again.
+          // Confirm only the captured values; later edits still need their save.
           const draft = draftRef.current;
           if (draft?.noteId === pending.noteId) {
             commitDraft({
               ...draft,
-              ...(pending.title !== undefined && draft.dirtyTitle ? { dirtyTitle: false } : {}),
-              ...(pending.content !== undefined && draft.dirtyContent ? { dirtyContent: false } : {}),
+              ...(pending.title !== undefined && draft.title === pending.title && draft.dirtyTitle ? { dirtyTitle: false } : {}),
+              ...(pending.content !== undefined && draft.content === pending.content && draft.dirtyContent ? { dirtyContent: false } : {}),
             });
           }
         } catch (err) {

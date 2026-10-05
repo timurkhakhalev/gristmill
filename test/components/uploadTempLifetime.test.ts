@@ -394,7 +394,8 @@ test("a thrown settlement after unmount deletes the temp instead of leaking it",
 // Issue #145: a failed Note save used to report a complete upload. The save
 // failure must surface as an error state and Retry must re-save the ASR
 // result without re-transcribing.
-test("a failed Note save is an error, and Retry re-saves without re-transcribing", async () => {
+for (const failure of ["structured", "rejected"] as const) {
+test(`a ${failure} first Note save retries without re-transcribing`, async () => {
   const deletes: string[] = [];
   const sandbox = buildSandbox({ deletes });
   const states: string[] = [];
@@ -403,6 +404,7 @@ test("a failed Note save is an error, and Retry re-saves without re-transcribing
   let saveFails = true;
   sandbox.saveUploadNote = async (params: { text: string }) => {
     savedTexts.push(params.text);
+    if (saveFails && failure === "rejected") throw new Error("DB unavailable");
     return saveFails ? { success: false } : { success: true, note: { id: 7 } };
   };
   sandbox.downloadedTempPath = "/tmp/dl-6.wav";
@@ -424,6 +426,7 @@ test("a failed Note save is an error, and Retry re-saves without re-transcribing
 
   // Retry re-saves the kept result: no second transcription.
   saveFails = false;
+  sandbox.transcribeFileWithSpeakers = async () => { transcriptions++; throw new Error("provider offline"); };
   await sandbox.handleRetry();
   assert.equal(transcriptions, 1, "Retry must not re-transcribe");
   assert.deepEqual(savedTexts, ["hello world", "hello world"]);
@@ -437,6 +440,8 @@ test("a failed Note save is an error, and Retry re-saves without re-transcribing
   assert.equal(sandbox.pendingSaveRef.current, null);
   assert.deepEqual(deletes, ["/tmp/dl-6.wav"]);
 });
+
+}
 
 // The pending re-save's own settlement paths.
 test("a rejected save in the pending re-save is caught and Retry still re-saves", async () => {

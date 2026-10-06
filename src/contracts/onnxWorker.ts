@@ -168,8 +168,14 @@ export function isOnnxWorkerMethod(value: unknown): value is OnnxWorkerMethod {
 // Identity of a rejected request, used only to build the "unknown method" error
 // reply both sides agree on. Lives on this boundary so the worker does not
 // re-probe an untrusted port payload itself.
-export function onnxWorkerRequestIdentity(raw: unknown): { id: number; method: string } {
+export interface OnnxWorkerRequestIdentity {
+  id: number;
+  method: string;
+}
+
+export function onnxWorkerRequestIdentity(raw: unknown): OnnxWorkerRequestIdentity {
   if (typeof raw !== "object" || raw === null) return { id: 0, method: "" };
+
   const id = "id" in raw && typeof raw.id === "number" && Number.isInteger(raw.id) ? raw.id : 0;
   const method = "method" in raw ? String(raw.method) : "";
 

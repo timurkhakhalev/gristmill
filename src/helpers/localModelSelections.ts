@@ -7,9 +7,7 @@ import type { InferenceSettingsSnapshot } from "../contracts/inferenceSettings.j
 // Only string-valued routing keys are read here (a scope's mode and model), so
 // the settings input is the store snapshot projected to those keys.
 type StringSettingKey = {
-  [K in keyof InferenceSettingsSnapshot]-?: InferenceSettingsSnapshot[K] extends string
-    ? K
-    : never;
+  [K in keyof InferenceSettingsSnapshot]-?: InferenceSettingsSnapshot[K] extends string ? K : never;
 }[keyof InferenceSettingsSnapshot];
 
 export interface LocalScopeEntry {

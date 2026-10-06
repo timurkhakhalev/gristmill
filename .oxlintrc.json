@@ -125,19 +125,12 @@
     {
       "files": ["src/helpers/downloadUtils.ts"],
       "rules": {
-        // This module owns the download error boundary: asDownloadError,
-        // isTlsError, isRetryable and the attempt's fail() classify a value
-        // that arrives as a rejected promise (genuinely unknown) into the
-        // DownloadError shape before any field is read.
         "quality/no-unknown-parameters": "off"
       }
     },
     {
       "files": ["src/utils/retry.ts"],
       "rules": {
-        // The retry strategies classify a value rejected from an awaited call
-        // (genuinely unknown) into an HTTP-status or errno-code decision before
-        // any field is read. The strategy functions are that boundary.
         "quality/no-unknown-parameters": "off"
       }
     },
@@ -185,9 +178,6 @@
         "src/helpers/localLlmModelIpcHandlers.ts"
       ],
       "rules": {
-        // These register ipcMain.handle listeners: the event and its variadic
-        // arguments are untrusted, each channel parses them below. The
-        // IpcEventListener seam is that boundary.
         "quality/no-unknown-parameters": "off",
         "quality/no-unknown-returns": "off"
       }

@@ -43,7 +43,7 @@ const BINARIES: BinaryTable = {
     binaryName: "whisper-server-darwin-arm64",
     outputName: "whisper-server-darwin-arm64",
   },
-} satisfies Record<string, BinaryConfig>
+} satisfies Record<string, BinaryConfig>;
 
 const BIN_DIR =
   process.env.GRISTMILL_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");

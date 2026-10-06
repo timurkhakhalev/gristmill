@@ -24,10 +24,8 @@ const {
 // Plain Node (this script runs from the pack hook, not under tsx) still
 // loads the pure-ESM helper via Node type-stripping.
 // SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
-const {
-  PARAKEET_MINIMUM_MACOS_VERSION,
-  compareVersions,
-} = require("../src/helpers/parakeetCapability.ts") as typeof import("../src/helpers/parakeetCapability.ts");
+const { PARAKEET_MINIMUM_MACOS_VERSION, compareVersions } =
+  require("../src/helpers/parakeetCapability.ts") as typeof import("../src/helpers/parakeetCapability.ts");
 
 const SHERPA_ONNX_VERSION = "1.13.4";
 
@@ -74,7 +72,7 @@ const BINARIES: BinaryTable = {
     diarizeOutputName: "sherpa-onnx-diarize-darwin-arm64",
     libPattern: "*.dylib",
   },
-} satisfies Record<string, BinaryConfig>
+} satisfies Record<string, BinaryConfig>;
 
 const BIN_DIR =
   process.env.GRISTMILL_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");

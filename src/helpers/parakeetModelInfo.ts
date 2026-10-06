@@ -28,7 +28,9 @@ export type ParakeetModelKind = "transducer" | "cohere-transcribe";
 function getModelInfo(modelName: string): ParakeetModelRegistryEntry | undefined {
   // SAFETY: modelRegistryData.json is this repo's own packaged catalog; the
   // assertion pins its per-model entry shape declared above.
-  return (modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry>)[modelName];
+  return (modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry>)[
+    modelName
+  ];
 }
 
 export function getModelRuntime(modelName: string): ParakeetRuntime {

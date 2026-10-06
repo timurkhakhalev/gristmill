@@ -12,10 +12,8 @@ const path = require("path") as typeof import("path");
 const { execFileSync } = require("child_process") as typeof import("child_process");
 
 // SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
-const {
-  downloadFile,
-  parseArgs,
-} = require("./lib/download-utils.cts") as import("./lib/download-utils.cts").API;
+const { downloadFile, parseArgs } =
+  require("./lib/download-utils.cts") as import("./lib/download-utils.cts").API;
 
 const SEGMENTATION_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";

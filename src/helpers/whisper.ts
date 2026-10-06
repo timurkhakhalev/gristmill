@@ -174,7 +174,9 @@ function toAudioBuffer(input: AudioInput): Buffer {
 }
 
 function isDownloadAbort(error: unknown): error is DownloadError {
-  return typeof error === "object" && error !== null && "isAbort" in error && error.isAbort === true;
+  return (
+    typeof error === "object" && error !== null && "isAbort" in error && error.isAbort === true
+  );
 }
 
 // The download result additionally reports whether the file is now on disk,
@@ -659,11 +661,11 @@ export class WhisperManager {
     return text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   }
 
-// Both string (CLI stdout) and object (server reply) inputs cross this
-// parse boundary; a non-JSON string is retried as plain text exactly like
-// the previous reader, and a response with neither shape is reported as an
-// engine failure rather than silence. The schema below validates the object
-// case and ignores unknown keys.
+  // Both string (CLI stdout) and object (server reply) inputs cross this
+  // parse boundary; a non-JSON string is retried as plain text exactly like
+  // the previous reader, and a response with neither shape is reported as an
+  // engine failure rather than silence. The schema below validates the object
+  // case and ignores unknown keys.
   parseWhisperResult(output: WhisperRawResult | string | null | undefined): TranscriptionResponse {
     let raw: WhisperRawResult;
 

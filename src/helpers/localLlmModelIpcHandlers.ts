@@ -1,3 +1,6 @@
+// `quality/no-unknown-parameters` / `no-unknown-returns` are off for this file
+// (exact-file override): it registers ipcMain.handle listeners, whose event and
+// variadic arguments are untrusted and parsed per channel below.
 // Local LLM (llama.cpp) model IPC: catalog with download status, downloads
 // with sequence-stamped progress, deletion, runtime availability, the
 // llama.cpp installer checks and llama-server lifecycle — moved out of
@@ -56,7 +59,10 @@ export interface LlmModelManagerLike {
   ensureLlamaCpp(): Promise<boolean>;
   findModelById(modelId: string): { model: { fileName: string }; provider: unknown } | null;
   modelsDir: string | null;
-  serverStartOptions(modelInfo: unknown, overrides?: LlamaServerOptions): Promise<LlamaServerOptions>;
+  serverStartOptions(
+    modelInfo: unknown,
+    overrides?: LlamaServerOptions
+  ): Promise<LlamaServerOptions>;
   serverManager: {
     start(modelPath: string, options?: LlamaServerOptions): Promise<void>;
     port: number | null;

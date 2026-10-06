@@ -978,7 +978,9 @@ export class ModelManager {
         try {
           await startAt(restorableContextSize);
         } catch (restoreError) {
-          throw unavailable(restoreError instanceof Error ? restoreError : new Error(String(restoreError)));
+          throw unavailable(
+            restoreError instanceof Error ? restoreError : new Error(String(restoreError))
+          );
         }
       }
 

@@ -1,3 +1,6 @@
+// `quality/no-unknown-parameters` / `no-unknown-returns` are off for this file
+// (exact-file override): it registers ipcMain.handle listeners, whose event and
+// variadic arguments are untrusted and parsed per channel below.
 // The local Whisper/Parakeet model lifecycle handlers, moved out of
 // ipcHandlers.js. Downloads flow through the shared status tracker
 // (sequence-stamped progress to the control panel), failures keep their

@@ -159,7 +159,9 @@ function audioInputByteLength(input: AudioInput | null | undefined): number {
 }
 
 function isDownloadAbort(error: unknown): error is DownloadError {
-  return typeof error === "object" && error !== null && "isAbort" in error && error.isAbort === true;
+  return (
+    typeof error === "object" && error !== null && "isAbort" in error && error.isAbort === true
+  );
 }
 
 // The several audio shapes the IPC bridge hands over; all collapse to the one
@@ -956,9 +958,7 @@ export class ParakeetManager {
       if (fs.existsSync(modelsDir)) {
         const entries = fs.readdirSync(modelsDir, { withFileTypes: true });
         diagnostics.models = entries
-          .filter(
-            (e) => e.isDirectory() && this.serverManager.isModelDownloaded(e.name)
-          )
+          .filter((e) => e.isDirectory() && this.serverManager.isModelDownloaded(e.name))
           .map((e) => e.name);
       }
     } catch {

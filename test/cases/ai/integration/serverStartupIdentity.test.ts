@@ -253,7 +253,7 @@ test("llama: pending context/draft changes are distinct and options are captured
       [8192, "draft-B"],
     ]
   );
-  assert.equal(h.manager.contextSize, 8192);
+  assert.equal((h.manager as InstanceType<typeof Llama.LlamaServerManager>).contextSize, 8192);
   await h.manager.stop();
 });
 

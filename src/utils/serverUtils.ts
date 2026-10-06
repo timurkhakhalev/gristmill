@@ -11,12 +11,12 @@ function tryBind(port: number, host: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const s = net.createServer();
     // A host whose address family is absent (e.g. IPv6 disabled) can't conflict on the port.
-    s.once("error", (err) =>
-      resolve(
-        (err as NodeJS.ErrnoException).code === "EADDRNOTAVAIL" ||
-          (err as NodeJS.ErrnoException).code === "EAFNOSUPPORT"
-      )
-    );
+    s.once("error", (err) => {
+      // SAFETY: a listen() error is a NodeJS.ErrnoException; only code is read.
+      const code = (err as NodeJS.ErrnoException).code;
+
+      resolve(code === "EADDRNOTAVAIL" || code === "EAFNOSUPPORT");
+    });
     s.once("listening", () => s.close(() => resolve(true)));
     s.listen(port, host);
   });

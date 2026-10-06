@@ -1,3 +1,7 @@
+// Retry boundary. `quality/no-unknown-parameters` is off for this file
+// (exact-file override): the retry strategies classify a value rejected from an
+// awaited call (genuinely unknown) into an HTTP-status or errno-code decision
+// before any field is read.
 import { RETRY_CONFIG } from "../config/constants.mts";
 
 // An error that carries an HTTP status; network faults arrive without one and

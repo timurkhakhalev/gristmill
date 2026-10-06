@@ -13,7 +13,11 @@ import { getSafeTempDir } from "./safeTempDir.js";
 import { convertToWav } from "./ffmpegUtils.js";
 import { createAbortError } from "./abortError.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
-import { sanitizeWhisperVadConfig, DEFAULT_WHISPER_VAD_CONFIG, type VadConfig } from "./whisperVadConfig.js";
+import {
+  sanitizeWhisperVadConfig,
+  DEFAULT_WHISPER_VAD_CONFIG,
+  type VadConfig,
+} from "./whisperVadConfig.js";
 import {
   computeTranscriptionTimeoutMs,
   PCM16_MONO_16K_BYTES_PER_SECOND,
@@ -231,9 +235,7 @@ export interface WhisperTranscribeRequestOptions {
 export const whisperServerResponseSchema = z.looseObject({
   text: z.unknown().optional(),
   error: z.unknown().optional(),
-  transcription: z
-    .array(z.looseObject({ text: z.string().optional() }).catch({}))
-    .optional(),
+  transcription: z.array(z.looseObject({ text: z.string().optional() }).catch({})).optional(),
 });
 
 export type WhisperTranscriptionResult = z.infer<typeof whisperServerResponseSchema>;
@@ -481,9 +483,7 @@ export class WhisperServerManager extends EventEmitter {
   async start(modelPath: string, options: WhisperServerStartOptions = {}): Promise<void> {
     const requestedOptions: WhisperServerStartOptions = {
       ...options,
-      ...(options.vadConfig
-        ? { vadConfig: sanitizeVadConfig(options.vadConfig) }
-        : {}),
+      ...(options.vadConfig ? { vadConfig: sanitizeVadConfig(options.vadConfig) } : {}),
     };
 
     const threadResolution = resolveWhisperThreads(requestedOptions);

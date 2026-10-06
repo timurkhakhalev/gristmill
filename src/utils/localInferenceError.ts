@@ -15,6 +15,7 @@ export interface LocalInferenceFailureDetails {
   modelName?: string;
   neededTokens?: number;
   maxContextTokens?: number;
+  error?: string;
 }
 
 export interface LocalInferenceFailure {

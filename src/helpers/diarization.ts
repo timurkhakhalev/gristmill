@@ -32,7 +32,9 @@ import {
 type DiarizeChild = ChildProcessByStdio<null, Readable, Readable>;
 
 function isDownloadAbort(error: unknown): error is DownloadError {
-  return typeof error === "object" && error !== null && "isAbort" in error && error.isAbort === true;
+  return (
+    typeof error === "object" && error !== null && "isAbort" in error && error.isAbort === true
+  );
 }
 
 type SystemSegmentWithText = TranscriptSegment & { source: "system"; text: string };
@@ -329,7 +331,10 @@ export class DiarizationManager {
       }
 
       if (progressCallback) {
-        progressCallback({ type: "error", error: error instanceof Error ? error.message : String(error) });
+        progressCallback({
+          type: "error",
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
 
       throw error;

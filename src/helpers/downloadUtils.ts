@@ -1,3 +1,7 @@
+// Download/HTTP boundary. `quality/no-unknown-parameters` is off for this file
+// (exact-file override): asDownloadError, isTlsError, isRetryable and fail()
+// classify a value that arrives as a rejected promise (genuinely unknown) into
+// the DownloadError shape before any field is read.
 import fs from "fs";
 import { promises as fsPromises } from "fs";
 import path from "path";

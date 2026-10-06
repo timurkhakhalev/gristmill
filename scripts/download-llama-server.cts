@@ -46,7 +46,7 @@ const BINARIES: BinaryTable = {
     outputName: "llama-server-darwin-arm64",
     libPattern: "*.dylib",
   },
-} satisfies Record<string, BinaryConfig>
+} satisfies Record<string, BinaryConfig>;
 
 const BIN_DIR =
   process.env.GRISTMILL_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");

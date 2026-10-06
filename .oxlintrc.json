@@ -123,6 +123,16 @@
       }
     },
     {
+      "files": ["src/helpers/downloadUtils.ts"],
+      "rules": {
+        // This module owns the download error boundary: asDownloadError,
+        // isTlsError, isRetryable and the attempt's fail() classify a value
+        // that arrives as a rejected promise (genuinely unknown) into the
+        // DownloadError shape before any field is read.
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": [
         "src/helpers/audioTapManager.ts",
         "src/helpers/meetingRecordingStorage.ts",

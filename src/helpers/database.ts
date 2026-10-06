@@ -3,7 +3,15 @@
 // strict types at the SQL boundary. Internal row shapes are deliberately NOT
 // public IPC DTOs: tokens and embedding buffers stay main-only; shared
 // contracts own the renderer-facing projections.
+//
+// Exact-file lint override (.oxlintrc.json): no-unknown-parameters,
+// no-runtime-typeof and no-unsafe-dictionary-type stay off here because this
+// manager IS the IPC input boundary — setDictionary/setSnippets/importNotes/
+// searchNotes/normalizeWords deliberately coerce tolerant legacy payloads
+// (trim, drop junk, tolerate unknown fields) before SQL. Parsing happens in
+// the flagged helpers themselves; every caller above this layer is typed.
 import path from "path";
+import { z } from "zod";
 import { migrateMeetingPlatformEvidence } from "./meetingPlatformMigration.js";
 import { migrateMeetingAudio } from "./meetingAudioMigration.js";
 import { createHash, randomUUID } from "crypto";
@@ -61,13 +69,15 @@ export interface SqliteRunResult {
 
 export interface SqliteStatement {
   run(...params: unknown[]): SqliteRunResult;
-  get(...params: unknown[]): unknown;
-  all(...params: unknown[]): unknown[];
+  // Generic so call sites annotate the row shape once, inline, instead of
+  // asserting away `unknown` after every query.
+  get<Row = unknown>(...params: unknown[]): Row | undefined;
+  all<Row = unknown>(...params: unknown[]): Row[];
 }
 
 export interface SqliteDatabase {
-  pragma(source: string): unknown;
-  exec(source: string): unknown;
+  pragma<Row = unknown>(source: string): Row;
+  exec(source: string): void;
   prepare(source: string): SqliteStatement;
   transaction<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R;
   close(): void;
@@ -75,14 +85,25 @@ export interface SqliteDatabase {
 
 type BetterSqlite3Constructor = new (filename: string) => SqliteDatabase;
 
+// SAFETY: better-sqlite3 ships no declarations; this module defines the exact
+// structural surface used above (SqliteDatabase/SqliteStatement).
 const Database = require("better-sqlite3") as BetterSqlite3Constructor;
 
 const MAX_SNIPPET_TRIGGER_LENGTH = 100;
 
-const CALENDARS_TABLE_BY_PROVIDER: Record<string, string> = {
+// Owner contract for provider→table lookups; both providers are created here.
+const CALENDARS_TABLE_BY_PROVIDER = {
   google: "google_calendars",
   microsoft: "microsoft_calendars",
 };
+
+type CalendarProvider = keyof typeof CALENDARS_TABLE_BY_PROVIDER;
+
+function calendarsTableFor(provider: string): string {
+  // SAFETY: callers pass the provider column, whose CHECK constrains it to the
+  // two keys of CALENDARS_TABLE_BY_PROVIDER.
+  return CALENDARS_TABLE_BY_PROVIDER[provider as CalendarProvider];
+}
 
 const CALENDAR_PROVIDERS: ReadonlySet<string> = new Set(["google", "microsoft", "apple"]);
 
@@ -180,6 +201,7 @@ const noteColumns = (alias: string) =>
 
 function hydrateNote(raw: RawNoteRow): NoteRow {
   const { extra_folder_ids_json, ...note } = raw;
+  // SAFETY: extra_folder_ids_json is written by this manager as JSON of number[].
   const extra = extra_folder_ids_json ? (JSON.parse(extra_folder_ids_json) as number[]) : [];
 
   return { ...note, folder_ids: note.folder_id != null ? [note.folder_id, ...extra] : extra };
@@ -536,7 +558,7 @@ function selectedCalendarFilter(): string {
 function normalizeWords(words: unknown): Map<string, string> {
   const result = new Map<string, string>();
 
-  for (const raw of Array.isArray(words) ? words : []) {
+  for (const raw of z.array(z.unknown()).catch([]).parse(words)) {
     if (typeof raw !== "string") continue;
     const word = raw.trim();
 
@@ -547,6 +569,7 @@ function normalizeWords(words: unknown): Map<string, string> {
 }
 
 function isSqliteUniqueConstraint(error: unknown): boolean {
+  // SAFETY: better-sqlite3 throws errno-style errors with a `code` field.
   return (error as NodeJS.ErrnoException).code === "SQLITE_CONSTRAINT_UNIQUE";
 }
 
@@ -557,6 +580,7 @@ function parseJsonObject(value: string): Record<string, unknown> {
     throw new Error("Invalid meeting recording JSON metadata");
   }
 
+  // SAFETY: the guards above established a non-null, non-array object.
   return parsed as Record<string, unknown>;
 }
 
@@ -620,8 +644,9 @@ function toMeetingRunDto(row: MeetingProcessingRunDbRow): MeetingProcessingRunDt
   return {
     id: row.id,
     recordingId: row.recording_id,
+    // SAFETY: this manager stores string[] of recording ids in this column.
     sourceRecordingIds: row.source_recording_ids_json
-      ? JSON.parse(row.source_recording_ids_json)
+      ? (JSON.parse(row.source_recording_ids_json) as string[])
       : [row.recording_id],
     kind: row.kind,
     sourceRunId: row.source_run_id,
@@ -656,16 +681,16 @@ function toMeetingDeletionIntentDto(row: MeetingDeletionIntentDbRow): MeetingDel
   };
 }
 
-function storedConfig(
-  config: unknown,
-  error: unknown
-): {
+interface StoredConfig {
   config: MeetingProcessingConfig | null;
   error: MeetingProcessingConfigError | null;
-} {
+}
+
+function storedConfig(config: unknown, error: unknown): StoredConfig {
   const parsedInput = meetingRecordingConfigInputSchema.safeParse({ config, configError: error });
 
-  if (!parsedInput.success) return { config: null, error: { code: "invalid-config" } };
+  if (!parsedInput.success)
+    return { config: null, error: { code: "invalid-config" } } satisfies StoredConfig;
 
   if (parsedInput.data.config === null) {
     return { config: null, error: parsedInput.data.configError ?? { code: "missing-config" } };
@@ -686,6 +711,113 @@ function meetingRunArtifactFileName(artifact: MeetingRunArtifact): string {
   if (artifact === "provider-response") return "raw-provider-response.json";
 
   return artifact === "transcript" ? "transcript.json" : "summary.json";
+}
+
+// Named results for manager methods; keeps inference honest at every return.
+export interface SuccessResult {
+  success: boolean;
+}
+
+export interface NoteMutationDbResult {
+  success: boolean;
+  note?: NoteRow | null;
+}
+
+export interface FolderMutationDbResult {
+  success: boolean;
+  error?: string;
+  folder?: FolderRow;
+}
+
+export interface FolderStyleMutationDbResult {
+  success: boolean;
+  folder?: FolderRow | null;
+}
+
+export interface FolderDeleteDbResult {
+  success: boolean;
+  relocatedNoteIds: number[];
+}
+
+export interface SpaceMutationDbResult {
+  success: boolean;
+  space?: SpaceRow | null;
+}
+
+export interface DictionaryChangeDbResult {
+  success: boolean;
+  added: number;
+  removed: number;
+}
+
+export interface NoteSaveDbResult {
+  success: boolean;
+  note: NoteRow | null;
+}
+
+export interface NoteUpdateDbResult {
+  success: boolean;
+  error?: string;
+  note?: NoteRow | null;
+}
+
+export interface ActionMutationDbResult {
+  success: boolean;
+  action?: ActionRow | null;
+}
+
+export interface ClearedResult {
+  success: boolean;
+  cleared: number;
+}
+
+export interface DeletedIdResult {
+  success: boolean;
+  id: number;
+}
+
+export interface IdsResult {
+  ids: number[];
+}
+
+export interface DictionaryApplyDelta {
+  add?: unknown;
+  remove?: unknown;
+}
+
+export interface StorageIdsResult {
+  recordingIds: string[];
+  runIds: string[];
+}
+
+export interface TranscriptionSaveResult {
+  id: number;
+  success: boolean;
+  transcription: TranscriptionRow | null;
+}
+
+export interface ImportNotesResult {
+  success: boolean;
+  imported: number;
+  skipped: number;
+  folderId: number | null;
+  noteIds: number[];
+  errors: Array<{ error: string }>;
+}
+
+export interface ActionCreateResult {
+  success: boolean;
+  action?: ActionRow | null;
+}
+
+export interface CalendarSaveResult {
+  success: boolean;
+  failed: number;
+}
+
+export interface ContactUpsertResult {
+  success: boolean;
+  merged: number;
 }
 
 // --- Manager -------------------------------------------------------------------
@@ -1113,9 +1245,11 @@ export class DatabaseManager {
 
       try {
         this.sql.transaction(() => {
-          const epochColumns = this.sql.pragma("table_info(meeting_recording_epochs)") as Array<{
-            name: string;
-          }>;
+          const epochColumns = this.sql.pragma<
+            Array<{
+              name: string;
+            }>
+          >("table_info(meeting_recording_epochs)");
 
           if (
             epochColumns.some((column) => column.name === "start_frame") &&
@@ -1126,9 +1260,9 @@ export class DatabaseManager {
             );
           }
 
-          const currentEpochColumns = this.sql.pragma(
+          const currentEpochColumns = this.sql.pragma<Array<{ name: string }>>(
             "table_info(meeting_recording_epochs)"
-          ) as Array<{ name: string }>;
+          );
 
           if (!currentEpochColumns.some((column) => column.name === "source_start_frame")) {
             this.sql.exec(
@@ -1148,9 +1282,9 @@ export class DatabaseManager {
             );
           }
 
-          const intervalColumns = this.sql.pragma(
+          const intervalColumns = this.sql.pragma<Array<{ name: string }>>(
             "table_info(meeting_recording_intentional_intervals)"
-          ) as Array<{ name: string }>;
+          );
 
           if (
             intervalColumns.some((column) => column.name === "start_frame") &&
@@ -1161,9 +1295,9 @@ export class DatabaseManager {
             );
           }
 
-          const currentIntervalColumns = this.sql.pragma(
+          const currentIntervalColumns = this.sql.pragma<Array<{ name: string }>>(
             "table_info(meeting_recording_intentional_intervals)"
-          ) as Array<{ name: string }>;
+          );
 
           if (
             currentIntervalColumns.some((column) => column.name === "end_frame") &&
@@ -1183,9 +1317,9 @@ export class DatabaseManager {
             ["start_alignment_json", "TEXT"],
             ["end_alignment_json", "TEXT"],
           ] as const) {
-            const columns = this.sql.pragma(
+            const columns = this.sql.pragma<Array<{ name: string }>>(
               "table_info(meeting_recording_intentional_intervals)"
-            ) as Array<{ name: string }>;
+            );
 
             if (!columns.some((column) => column.name === name))
               this.sql.exec(
@@ -1200,7 +1334,10 @@ export class DatabaseManager {
           ]) {
             const row = this.sql
               .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
-              .get(table) as { sql: string };
+              .get<{ sql: string }>(table);
+
+            // The table was just listed as existing; sqlite_master has its DDL.
+            if (!row) throw new Error(`Missing sqlite_master row for ${table}`);
 
             const nullable = row.sql.replace(
               /("?timeline_start_frame"?\s+INTEGER)\s+NOT NULL/gi,
@@ -1227,17 +1364,21 @@ export class DatabaseManager {
           ON meeting_recording_intentional_intervals(recording_id, source, source_generation, source_start_frame, source_end_frame);
       `);
 
-      const recordingColumns = this.sql.pragma("table_info(meeting_recordings)") as Array<{
-        name: string;
-      }>;
+      const recordingColumns = this.sql.pragma<
+        Array<{
+          name: string;
+        }>
+      >("table_info(meeting_recordings)");
 
       if (!recordingColumns.some((column) => column.name === "group_id")) {
         this.sql.exec("ALTER TABLE meeting_recordings ADD COLUMN group_id TEXT");
       }
 
-      const runColumns = this.sql.pragma("table_info(meeting_processing_runs)") as Array<{
-        name: string;
-      }>;
+      const runColumns = this.sql.pragma<
+        Array<{
+          name: string;
+        }>
+      >("table_info(meeting_processing_runs)");
 
       if (!runColumns.some((column) => column.name === "bb_thread_id")) {
         this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN bb_thread_id TEXT");
@@ -1261,9 +1402,9 @@ export class DatabaseManager {
         );
       }
 
-      const speakerCorrectionColumns = this.sql.pragma(
+      const speakerCorrectionColumns = this.sql.pragma<Array<{ name: string }>>(
         "table_info(meeting_run_speaker_corrections)"
-      ) as Array<{ name: string }>;
+      );
 
       if (!speakerCorrectionColumns.some((column) => column.name === "source")) {
         this.sql.exec(
@@ -1285,9 +1426,10 @@ export class DatabaseManager {
 
       const correctionSql = this.sql
         .prepare("SELECT sql FROM sqlite_master WHERE name = 'meeting_run_speaker_corrections'")
-        .get() as { sql: string };
+        .get<{ sql: string }>();
 
-      if (!correctionSql.sql.includes("'platform'")) {
+      // The table exists when this migration check runs; sqlite_master has its DDL.
+      if (correctionSql && !correctionSql.sql.includes("'platform'")) {
         this.sql.transaction(() => {
           this.sql.exec(`
             CREATE TABLE meeting_run_speaker_corrections_next (
@@ -1336,7 +1478,7 @@ export class DatabaseManager {
         ["folders", ["icon", "color"]],
         ["notes", ["icon"]],
       ] as const) {
-        const columns = this.sql.pragma(`table_info(${table})`) as Array<{ name: string }>;
+        const columns = this.sql.pragma<Array<{ name: string }>>(`table_info(${table})`);
 
         for (const name of added) {
           if (!columns.some((column) => column.name === name))
@@ -1344,10 +1486,12 @@ export class DatabaseManager {
         }
       }
 
-      const googleCalendarColumns = this.sql.pragma("table_info(google_calendars)") as Array<{
-        name: string;
-        pk: number;
-      }>;
+      const googleCalendarColumns = this.sql.pragma<
+        Array<{
+          name: string;
+          pk: number;
+        }>
+      >("table_info(google_calendars)");
 
       if (
         !googleCalendarColumns.some((column) => column.name === "account_email" && column.pk > 0)
@@ -1363,15 +1507,17 @@ export class DatabaseManager {
         })();
       }
 
-      const calendarEventColumns = this.sql.pragma("table_info(calendar_events)") as Array<{
-        name: string;
-      }>;
+      const calendarEventColumns = this.sql.pragma<
+        Array<{
+          name: string;
+        }>
+      >("table_info(calendar_events)");
 
       if (!calendarEventColumns.some((column) => column.name === "event_url")) {
         this.sql.exec("ALTER TABLE calendar_events ADD COLUMN event_url TEXT");
       }
 
-      const contactColumns = this.sql.pragma("table_info(contacts)") as Array<{ name: string }>;
+      const contactColumns = this.sql.pragma<Array<{ name: string }>>("table_info(contacts)");
 
       if (!contactColumns.some((column) => column.name === "learned_name")) {
         this.sql.exec("ALTER TABLE contacts ADD COLUMN learned_name TEXT");
@@ -1397,9 +1543,7 @@ export class DatabaseManager {
         );
       }
 
-      const existingSpace = this.sql.prepare("SELECT id FROM spaces LIMIT 1").get() as
-        | { id: number }
-        | undefined;
+      const existingSpace = this.sql.prepare("SELECT id FROM spaces LIMIT 1").get<{ id: number }>();
 
       const spaceId =
         existingSpace?.id ??
@@ -1430,7 +1574,7 @@ export class DatabaseManager {
       for (const action of BUILTIN_ACTIONS) {
         const existing = this.sql
           .prepare("SELECT id, prompt FROM actions WHERE translation_key = ? AND is_builtin = 1")
-          .get(action.translationKey) as { id: number; prompt: string } | undefined;
+          .get<{ id: number; prompt: string }>(action.translationKey);
 
         if (!existing) {
           insertAction.run(
@@ -1458,15 +1602,19 @@ export class DatabaseManager {
 
       return true;
     } catch (error) {
+      // SAFETY: log sites only read `message`; a non-Error throw yields undefined.
       debugLogger.error(
         "Database initialization failed",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "database"
       );
 
+      // Close is best-effort during failed init; the original error rethrows.
       try {
         this._db?.close();
-      } catch {}
+      } catch {
+        /* close during failed init */
+      }
 
       this._db = null;
       throw error;
@@ -1475,7 +1623,7 @@ export class DatabaseManager {
 
   createMeetingRecording(
     noteId: number,
-    input: { config: unknown | null; configError?: unknown } | null,
+    input: { config: unknown; configError?: unknown } | null,
     startedAt = new Date().toISOString(),
     id = randomUUID(),
     groupId = id
@@ -1508,6 +1656,7 @@ export class DatabaseManager {
         snapshot.error?.messageKey ?? null
       );
 
+    // SAFETY: the UPDATE above just touched this row; it cannot be absent.
     return this.getMeetingRecording(id) as MeetingRecordingDto;
   }
 
@@ -1527,39 +1676,36 @@ export class DatabaseManager {
   getMeetingRecording(id: string): MeetingRecordingDto | null {
     meetingRecordingIdSchema.parse(id);
 
-    const row = this.sql.prepare("SELECT * FROM meeting_recordings WHERE id = ?").get(id) as
-      | MeetingRecordingDbRow
-      | undefined;
+    const row = this.sql
+      .prepare("SELECT * FROM meeting_recordings WHERE id = ?")
+      .get<MeetingRecordingDbRow>(id);
 
     return row ? toMeetingRecordingDto(row) : null;
   }
 
   listOpenMeetingRecordings(): MeetingRecordingDto[] {
-    return (
-      this.sql
-        .prepare(
-          "SELECT * FROM meeting_recordings WHERE capture_state IN ('recording', 'finalizing') ORDER BY started_at, id"
-        )
-        .all() as MeetingRecordingDbRow[]
-    ).map((row) => toMeetingRecordingDto(row));
+    return this.sql
+      .prepare(
+        "SELECT * FROM meeting_recordings WHERE capture_state IN ('recording', 'finalizing') ORDER BY started_at, id"
+      )
+      .all<MeetingRecordingDbRow>()
+      .map((row) => toMeetingRecordingDto(row));
   }
 
   listMeetingRecordingsForNote(noteId: number): MeetingRecordingDto[] {
     if (!Number.isSafeInteger(noteId) || noteId < 1) return [];
 
-    return (
-      this.sql
-        .prepare("SELECT * FROM meeting_recordings WHERE note_id = ? ORDER BY started_at, id")
-        .all(noteId) as MeetingRecordingDbRow[]
-    ).map((row) => toMeetingRecordingDto(row));
+    return this.sql
+      .prepare("SELECT * FROM meeting_recordings WHERE note_id = ? ORDER BY started_at, id")
+      .all<MeetingRecordingDbRow>(noteId)
+      .map((row) => toMeetingRecordingDto(row));
   }
 
   listAllMeetingRecordings(): MeetingRecordingDto[] {
-    return (
-      this.sql
-        .prepare("SELECT * FROM meeting_recordings ORDER BY started_at, id")
-        .all() as MeetingRecordingDbRow[]
-    ).map((row) => toMeetingRecordingDto(row));
+    return this.sql
+      .prepare("SELECT * FROM meeting_recordings ORDER BY started_at, id")
+      .all<MeetingRecordingDbRow>()
+      .map((row) => toMeetingRecordingDto(row));
   }
 
   createMeetingRecordingEpoch(
@@ -1616,6 +1762,7 @@ export class DatabaseManager {
         relativePath
       );
 
+    // SAFETY: the write above just touched this epoch row; it cannot be absent.
     return this.getMeetingRecordingEpoch(
       recordingId,
       source,
@@ -1658,12 +1805,13 @@ export class DatabaseManager {
         segment.sourceEndFrame
       );
 
+    // Aggregate without GROUP BY always returns exactly one row in SQLite.
     const nextIndex = (
       this.sql
         .prepare(
           "SELECT COALESCE(MAX(segment_index), -1) + 1 AS next FROM meeting_recording_epoch_alignments WHERE recording_id = ? AND source = ? AND epoch_index = ?"
         )
-        .get(recordingId, source, epochIndex) as { next: number }
+        .get<{ next: number }>(recordingId, source, epochIndex) ?? { next: 0 }
     ).next;
 
     this.sql
@@ -1697,6 +1845,7 @@ export class DatabaseManager {
         segment.freshnessSourceNs
       );
 
+    // SAFETY: the write above just touched this epoch row; it cannot be absent.
     return this.getMeetingRecordingEpoch(
       recordingId,
       source,
@@ -1727,9 +1876,8 @@ export class DatabaseManager {
     source: MeetingSource,
     epochIndex: number
   ): MeetingFrameAlignmentSegment[] {
-    return (
-      this.sql
-        .prepare(`
+    return this.sql
+      .prepare(`
       SELECT source_generation, source_start_frame, source_end_frame, timeline_start_frame, rate,
         uncertainty_start_frames, uncertainty_end_frames, helper_generation,
         source_start_ns, source_end_ns, helper_start_ns, helper_end_ns,
@@ -1737,7 +1885,7 @@ export class DatabaseManager {
       FROM meeting_recording_epoch_alignments
       WHERE recording_id = ? AND source = ? AND epoch_index = ? ORDER BY source_start_frame, segment_index
     `)
-        .all(recordingId, source, epochIndex) as Array<{
+      .all<{
         source_generation: number;
         source_start_frame: number;
         source_end_frame: number;
@@ -1753,26 +1901,26 @@ export class DatabaseManager {
         sampled_source_start_ns: string;
         sampled_source_end_ns: string;
         freshness_source_ns: string;
-      }>
-    ).map((row) =>
-      meetingFrameAlignmentSegmentSchema.parse({
-        sourceGeneration: row.source_generation,
-        sourceStartFrame: row.source_start_frame,
-        sourceEndFrame: row.source_end_frame,
-        timelineStartFrame: row.timeline_start_frame,
-        rate: row.rate,
-        uncertaintyStartFrames: row.uncertainty_start_frames,
-        uncertaintyEndFrames: row.uncertainty_end_frames,
-        helperGeneration: row.helper_generation,
-        sourceStartNs: row.source_start_ns,
-        sourceEndNs: row.source_end_ns,
-        helperStartNs: row.helper_start_ns,
-        helperEndNs: row.helper_end_ns,
-        sampledSourceStartNs: row.sampled_source_start_ns,
-        sampledSourceEndNs: row.sampled_source_end_ns,
-        freshnessSourceNs: row.freshness_source_ns,
-      })
-    );
+      }>(recordingId, source, epochIndex)
+      .map((row) =>
+        meetingFrameAlignmentSegmentSchema.parse({
+          sourceGeneration: row.source_generation,
+          sourceStartFrame: row.source_start_frame,
+          sourceEndFrame: row.source_end_frame,
+          timelineStartFrame: row.timeline_start_frame,
+          rate: row.rate,
+          uncertaintyStartFrames: row.uncertainty_start_frames,
+          uncertaintyEndFrames: row.uncertainty_end_frames,
+          helperGeneration: row.helper_generation,
+          sourceStartNs: row.source_start_ns,
+          sourceEndNs: row.source_end_ns,
+          helperStartNs: row.helper_start_ns,
+          helperEndNs: row.helper_end_ns,
+          sampledSourceStartNs: row.sampled_source_start_ns,
+          sampledSourceEndNs: row.sampled_source_end_ns,
+          freshnessSourceNs: row.freshness_source_ns,
+        })
+      );
   }
 
   getMeetingRecordingEpoch(
@@ -1787,7 +1935,7 @@ export class DatabaseManager {
       .prepare(
         "SELECT recording_id, source, epoch_index, timeline_start_frame, source_start_frame, source_generation, alignment_error_code, sample_rate, channels, encoding, relative_path, state, frame_count, ignored_trailing_bytes, error_code FROM meeting_recording_epochs WHERE recording_id = ? AND source = ? AND epoch_index = ?"
       )
-      .get(recordingId, source, epochIndex) as MeetingRecordingEpochDbRow | undefined;
+      .get<MeetingRecordingEpochDbRow>(recordingId, source, epochIndex);
 
     if (!row) return null;
 
@@ -1804,22 +1952,21 @@ export class DatabaseManager {
   listMeetingRecordingEpochs(recordingId: string): MeetingRecordingEpochDto[] {
     meetingRecordingIdSchema.parse(recordingId);
 
-    return (
-      this.sql
-        .prepare(
-          "SELECT recording_id, source, epoch_index, timeline_start_frame, source_start_frame, source_generation, alignment_error_code, sample_rate, channels, encoding, relative_path, state, frame_count, ignored_trailing_bytes, error_code FROM meeting_recording_epochs WHERE recording_id = ? ORDER BY COALESCE(timeline_start_frame, source_start_frame, 0), source, epoch_index"
-        )
-        .all(recordingId) as MeetingRecordingEpochDbRow[]
-    ).map((row) => {
-      if (row.relative_path !== relativeEpochPath(row.source, row.epoch_index)) {
-        throw new Error("Invalid meeting recording epoch path");
-      }
+    return this.sql
+      .prepare(
+        "SELECT recording_id, source, epoch_index, timeline_start_frame, source_start_frame, source_generation, alignment_error_code, sample_rate, channels, encoding, relative_path, state, frame_count, ignored_trailing_bytes, error_code FROM meeting_recording_epochs WHERE recording_id = ? ORDER BY COALESCE(timeline_start_frame, source_start_frame, 0), source, epoch_index"
+      )
+      .all<MeetingRecordingEpochDbRow>(recordingId)
+      .map((row) => {
+        if (row.relative_path !== relativeEpochPath(row.source, row.epoch_index)) {
+          throw new Error("Invalid meeting recording epoch path");
+        }
 
-      return toMeetingEpochDto(
-        row,
-        this.listMeetingRecordingEpochAlignments(recordingId, row.source, row.epoch_index)
-      );
-    });
+        return toMeetingEpochDto(
+          row,
+          this.listMeetingRecordingEpochAlignments(recordingId, row.source, row.epoch_index)
+        );
+      });
   }
 
   openMeetingIntentionalInterval(
@@ -1913,11 +2060,10 @@ export class DatabaseManager {
   listMeetingIntentionalIntervals(recordingId: string): MeetingIntentionalInterval[] {
     meetingRecordingIdSchema.parse(recordingId);
 
-    return (
-      this.sql
-        .prepare(`SELECT * FROM meeting_recording_intentional_intervals
+    return this.sql
+      .prepare(`SELECT * FROM meeting_recording_intentional_intervals
       WHERE recording_id = ? ORDER BY COALESCE(source_start_frame, timeline_start_frame), id`)
-        .all(recordingId) as Array<{
+      .all<{
         id: string;
         source: MeetingSource;
         source_generation: number | null;
@@ -1928,22 +2074,28 @@ export class DatabaseManager {
         timeline_end_frame: number | null;
         start_alignment_json: string | null;
         end_alignment_json: string | null;
-      }>
-    ).map((row) =>
-      meetingIntentionalIntervalSchema.parse({
-        id: row.id,
-        recordingId,
-        source: row.source,
-        reason: row.reason,
-        sourceGeneration: row.source_generation,
-        sourceStartFrame: row.source_start_frame,
-        sourceEndFrame: row.source_end_frame,
-        timelineStartFrame: row.timeline_start_frame,
-        timelineEndFrame: row.timeline_end_frame,
-        startAlignment: row.start_alignment_json ? JSON.parse(row.start_alignment_json) : null,
-        endAlignment: row.end_alignment_json ? JSON.parse(row.end_alignment_json) : null,
-      })
-    );
+      }>(recordingId)
+      .map((row) =>
+        meetingIntentionalIntervalSchema.parse({
+          id: row.id,
+          recordingId,
+          source: row.source,
+          reason: row.reason,
+          sourceGeneration: row.source_generation,
+          sourceStartFrame: row.source_start_frame,
+          sourceEndFrame: row.source_end_frame,
+          timelineStartFrame: row.timeline_start_frame,
+          timelineEndFrame: row.timeline_end_frame,
+          // SAFETY: alignment columns hold this manager's JSON segments.
+          startAlignment: row.start_alignment_json
+            ? (JSON.parse(row.start_alignment_json) as MeetingFrameAlignmentSegment[])
+            : null,
+          // SAFETY: manager-owned alignment column, same as startAlignment.
+          endAlignment: row.end_alignment_json
+            ? (JSON.parse(row.end_alignment_json) as MeetingFrameAlignmentSegment[])
+            : null,
+        })
+      );
   }
 
   updateMeetingRecordingEpochRecovery(
@@ -1987,6 +2139,7 @@ export class DatabaseManager {
 
     if (!update.changes) throw new Error("Meeting recording epoch not found");
 
+    // SAFETY: the write above just touched this epoch row; it cannot be absent.
     return this.getMeetingRecordingEpoch(
       recordingId,
       source,
@@ -2011,6 +2164,7 @@ export class DatabaseManager {
       )
       .run(id);
 
+    // SAFETY: the UPDATE above just touched this row; it cannot be absent.
     return this.getMeetingRecording(id) as MeetingRecordingDto;
   }
 
@@ -2020,7 +2174,9 @@ export class DatabaseManager {
       captureState: "ready" | "incomplete";
       endedAt: string;
       processingNotBefore?: string;
-      sourceMetadata?: Record<string, unknown>;
+      // Free-form JSON metadata (mic.intentionallyEmpty, captureEndFrame,
+      // ...) read back via parseJsonObject.
+      sourceMetadata?: Record<string, unknown> | null;
       errorCode?: string | null;
     }
   ): { recording: MeetingRecordingDto; initialRun: MeetingProcessingRunDto } {
@@ -2042,9 +2198,9 @@ export class DatabaseManager {
     const sourceMetadata = JSON.stringify(input.sourceMetadata ?? {});
 
     const transaction = this.sql.transaction(() => {
-      const current = this.sql.prepare("SELECT * FROM meeting_recordings WHERE id = ?").get(id) as
-        | MeetingRecordingDbRow
-        | undefined;
+      const current = this.sql
+        .prepare("SELECT * FROM meeting_recordings WHERE id = ?")
+        .get<MeetingRecordingDbRow>(id);
 
       if (!current) throw new Error("Meeting recording not found");
 
@@ -2055,7 +2211,7 @@ export class DatabaseManager {
         .prepare(
           "SELECT * FROM meeting_processing_runs WHERE recording_id = ? AND kind = 'initial'"
         )
-        .get(id) as MeetingProcessingRunDbRow | undefined;
+        .get<MeetingProcessingRunDbRow>(id);
 
       if (existing) {
         return {
@@ -2073,7 +2229,7 @@ export class DatabaseManager {
           .prepare(
             "SELECT COUNT(*) AS count FROM meeting_recording_epochs WHERE recording_id = ? AND state = 'open'"
           )
-          .get(id) as { count: number }
+          .get<{ count: number }>(id) ?? { count: 0 }
       ).count;
 
       if (openEpochs > 0)
@@ -2084,7 +2240,7 @@ export class DatabaseManager {
           .prepare(
             "SELECT COALESCE(SUM(frame_count), 0) AS frame_count FROM meeting_recording_epochs WHERE recording_id = ?"
           )
-          .get(id) as { frame_count: number }
+          .get<{ frame_count: number }>(id) ?? { frame_count: 0 }
       ).frame_count;
 
       const incompleteEpochs = (
@@ -2092,7 +2248,7 @@ export class DatabaseManager {
           .prepare(
             "SELECT COUNT(*) AS count FROM meeting_recording_epochs WHERE recording_id = ? AND state = 'incomplete'"
           )
-          .get(id) as { count: number }
+          .get<{ count: number }>(id) ?? { count: 0 }
       ).count;
 
       const captureState =
@@ -2175,11 +2331,14 @@ export class DatabaseManager {
 
       const recording = this.sql
         .prepare("SELECT * FROM meeting_recordings WHERE id = ?")
-        .get(id) as MeetingRecordingDbRow;
+        .get<MeetingRecordingDbRow>(id);
 
       const run = this.sql
         .prepare("SELECT * FROM meeting_processing_runs WHERE id = ?")
-        .get(runId) as MeetingProcessingRunDbRow;
+        .get<MeetingProcessingRunDbRow>(runId);
+
+      if (!recording || !run)
+        throw new Error("Recording or run vanished inside its own transaction");
 
       return { recording: toMeetingRecordingDto(recording), initialRun: toMeetingRunDto(run) };
     });
@@ -2257,7 +2416,7 @@ export class DatabaseManager {
           .prepare(
             "SELECT * FROM meeting_processing_runs WHERE id = ? AND recording_id = ? AND transcript_path IS NOT NULL"
           )
-          .get(input.sourceRunId, recordingId) as MeetingProcessingRunDbRow | undefined;
+          .get<MeetingProcessingRunDbRow>(input.sourceRunId, recordingId);
 
         if (!sourceRun) throw new Error("Summary source transcript not found");
       }
@@ -2317,11 +2476,13 @@ export class DatabaseManager {
         )
         .run(runId, recordingId);
 
-      return toMeetingRunDto(
-        this.sql
-          .prepare("SELECT * FROM meeting_processing_runs WHERE id = ?")
-          .get(runId) as MeetingProcessingRunDbRow
-      );
+      const updated = this.sql
+        .prepare("SELECT * FROM meeting_processing_runs WHERE id = ?")
+        .get<MeetingProcessingRunDbRow>(runId);
+
+      if (!updated) throw new Error("Run vanished inside its own transaction");
+
+      return toMeetingRunDto(updated);
     });
 
     return transaction();
@@ -2330,9 +2491,9 @@ export class DatabaseManager {
   getMeetingProcessingRun(id: string): MeetingProcessingRunDto | null {
     meetingRecordingIdSchema.parse(id);
 
-    const row = this.sql.prepare("SELECT * FROM meeting_processing_runs WHERE id = ?").get(id) as
-      | MeetingProcessingRunDbRow
-      | undefined;
+    const row = this.sql
+      .prepare("SELECT * FROM meeting_processing_runs WHERE id = ?")
+      .get<MeetingProcessingRunDbRow>(id);
 
     return row ? toMeetingRunDto(row) : null;
   }
@@ -2354,21 +2515,19 @@ export class DatabaseManager {
   listMeetingProcessingRuns(recordingId: string): MeetingProcessingRunDto[] {
     meetingRecordingIdSchema.parse(recordingId);
 
-    return (
-      this.sql
-        .prepare(
-          "SELECT * FROM meeting_processing_runs WHERE recording_id = ? ORDER BY created_at, rowid"
-        )
-        .all(recordingId) as MeetingProcessingRunDbRow[]
-    ).map(toMeetingRunDto);
+    return this.sql
+      .prepare(
+        "SELECT * FROM meeting_processing_runs WHERE recording_id = ? ORDER BY created_at, rowid"
+      )
+      .all<MeetingProcessingRunDbRow>(recordingId)
+      .map(toMeetingRunDto);
   }
 
   listAllMeetingProcessingRuns(): MeetingProcessingRunDto[] {
-    return (
-      this.sql
-        .prepare("SELECT * FROM meeting_processing_runs ORDER BY created_at, rowid")
-        .all() as MeetingProcessingRunDbRow[]
-    ).map(toMeetingRunDto);
+    return this.sql
+      .prepare("SELECT * FROM meeting_processing_runs ORDER BY created_at, rowid")
+      .all<MeetingProcessingRunDbRow>()
+      .map(toMeetingRunDto);
   }
 
   recoverRunningMeetingProcessingRuns(): number {
@@ -2445,7 +2604,7 @@ export class DatabaseManager {
       retryAt?: string | null;
       retryCount?: number;
     }
-  ): { success: boolean } {
+  ): SuccessResult {
     meetingRecordingIdSchema.parse(id);
 
     if (update.errorCode != null)
@@ -2475,7 +2634,7 @@ export class DatabaseManager {
     return { success: result.changes > 0 };
   }
 
-  setMeetingRunArtifact(id: string, artifact: MeetingRunArtifact): { success: boolean } {
+  setMeetingRunArtifact(id: string, artifact: MeetingRunArtifact): SuccessResult {
     meetingRecordingIdSchema.parse(id);
     meetingRunArtifactSchema.parse(artifact);
 
@@ -2514,7 +2673,7 @@ export class DatabaseManager {
     return { success: result.changes > 0 };
   }
 
-  reconcileMeetingRunArtifact(id: string, artifact: MeetingRunArtifact): { success: boolean } {
+  reconcileMeetingRunArtifact(id: string, artifact: MeetingRunArtifact): SuccessResult {
     meetingRecordingIdSchema.parse(id);
     meetingRunArtifactSchema.parse(artifact);
 
@@ -2558,9 +2717,7 @@ export class DatabaseManager {
       .prepare(
         "SELECT p.*, r.audio_state, r.note_id FROM meeting_processing_runs p JOIN meeting_recordings r ON r.id = p.recording_id WHERE p.id = ? AND p.status = 'blocked'"
       )
-      .get(id) as
-      | (MeetingProcessingRunDbRow & { audio_state: MeetingAudioState; note_id: number })
-      | undefined;
+      .get<MeetingProcessingRunDbRow & { audio_state: MeetingAudioState; note_id: number }>(id);
 
     if (!row || row.kind === "summary" || this.isMeetingNoteDeletionPending(row.note_id))
       return null;
@@ -2635,7 +2792,7 @@ export class DatabaseManager {
     source: "voice" | "platform" | "model" | "user" = "user",
     participantEmail?: string,
     platform?: MeetingPlatform
-  ): { success: boolean; noteId?: number } {
+  ): SuccessResult & { noteId?: number } {
     meetingRecordingIdSchema.parse(runId);
     const run = this.getMeetingProcessingRun(runId);
 
@@ -2649,7 +2806,7 @@ export class DatabaseManager {
     const transaction = this.sql.transaction(() => {
       const recording = this.sql
         .prepare("SELECT note_id, current_run_id FROM meeting_recordings WHERE id = ?")
-        .get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
+        .get<{ note_id: number; current_run_id: string | null }>(run.recordingId);
 
       if (!recording || this.isMeetingNoteDeletionPending(recording.note_id))
         return { success: false };
@@ -2681,10 +2838,12 @@ export class DatabaseManager {
       if (selectedTranscriptRunId === runId) {
         const note = this.sql
           .prepare("SELECT transcript FROM notes WHERE id = ?")
-          .get(recording.note_id) as { transcript: string | null } | undefined;
+          .get<{ transcript: string | null }>(recording.note_id);
 
         if (note?.transcript) {
           try {
+            // SAFETY: transcript segments are JSON objects written by the
+            // transcription pipeline; only field reads/mutates happen here.
             const segments = JSON.parse(note.transcript) as Array<Record<string, unknown>>;
             let changed = false;
 
@@ -2733,12 +2892,11 @@ export class DatabaseManager {
   }> {
     meetingRecordingIdSchema.parse(runId);
 
-    return (
-      this.sql
-        .prepare(
-          "SELECT speaker_id, profile_id, display_name, participant_email, source, platform, revision FROM meeting_run_speaker_corrections WHERE run_id = ? AND display_name <> '' ORDER BY speaker_id"
-        )
-        .all(runId) as Array<{
+    return this.sql
+      .prepare(
+        "SELECT speaker_id, profile_id, display_name, participant_email, source, platform, revision FROM meeting_run_speaker_corrections WHERE run_id = ? AND display_name <> '' ORDER BY speaker_id"
+      )
+      .all<{
         speaker_id: string;
         profile_id: number | null;
         display_name: string;
@@ -2746,16 +2904,16 @@ export class DatabaseManager {
         source: "voice" | "platform" | "model" | "user";
         platform: MeetingPlatform | null;
         revision: number;
-      }>
-    ).map((row) => ({
-      speakerId: row.speaker_id,
-      profileId: row.profile_id,
-      displayName: row.display_name,
-      participantEmail: row.participant_email,
-      source: row.source,
-      ...(row.source === "platform" && row.platform ? { platform: row.platform } : {}),
-      revision: row.revision,
-    }));
+      }>(runId)
+      .map((row) => ({
+        speakerId: row.speaker_id,
+        profileId: row.profile_id,
+        displayName: row.display_name,
+        participantEmail: row.participant_email,
+        source: row.source,
+        ...(row.source === "platform" && row.platform ? { platform: row.platform } : {}),
+        revision: row.revision,
+      }));
   }
 
   getMeetingRunSpeakerCorrectionRevision(runId: string): number {
@@ -2765,9 +2923,10 @@ export class DatabaseManager {
       .prepare(
         "SELECT COALESCE(SUM(revision), 0) AS revision FROM meeting_run_speaker_corrections WHERE run_id = ?"
       )
-      .get(runId) as { revision: number };
+      .get<{ revision: number }>(runId);
 
-    return row.revision;
+    // Aggregate without GROUP BY always returns exactly one row in SQLite.
+    return row?.revision ?? 0;
   }
 
   applyAutomaticMeetingSpeakerCorrections(
@@ -2818,7 +2977,7 @@ export class DatabaseManager {
     const transaction = this.sql.transaction(() => {
       const recording = this.sql
         .prepare("SELECT note_id, current_run_id FROM meeting_recordings WHERE id = ?")
-        .get(run.recordingId) as { note_id: number; current_run_id: string | null } | undefined;
+        .get<{ note_id: number; current_run_id: string | null }>(run.recordingId);
 
       if (
         !recording ||
@@ -2834,15 +2993,24 @@ export class DatabaseManager {
 
       if (
         corrections.some((correction) => {
-          const existing = exists.get(runId, correction.speakerId) as
-            | { source: string; display_name: string }
-            | undefined;
+          const existing = exists.get<{ source: string; display_name: string }>(
+            runId,
+            correction.speakerId
+          );
 
-          const priority: Record<string, number> = { model: 0, platform: 1, voice: 2, user: 3 };
+          // SAFETY: `source` is the table's CHECK-constrained enum; unknown
+          // sources sort last via ??.
+          const priority = new Map<string, number>([
+            ["model", 0],
+            ["platform", 1],
+            ["voice", 2],
+            ["user", 3],
+          ]);
 
           return (
             !!existing?.display_name &&
-            (priority[existing.source] > priority[source] ||
+            ((priority.get(existing.source) ?? Number.MAX_SAFE_INTEGER) >
+              (priority.get(source) ?? Number.MAX_SAFE_INTEGER) ||
               (existing.source === source && source !== "model"))
           );
         })
@@ -2851,6 +3019,7 @@ export class DatabaseManager {
 
       if (
         rejectedModelSpeakerIds.some(
+          // SAFETY: the corrections table `source` column is a string enum.
           (id) => (exists.get(runId, id) as { source: string } | undefined)?.source !== "model"
         )
       )
@@ -2902,13 +3071,12 @@ export class DatabaseManager {
   listMeetingPlatformObservations(recordingId: string): MeetingPlatformObservation[] {
     meetingRecordingIdSchema.parse(recordingId);
 
-    return (
-      this.sql
-        .prepare(
-          "SELECT evidence_json FROM meeting_platform_observations WHERE recording_id = ? ORDER BY rowid"
-        )
-        .all(recordingId) as Array<{ evidence_json: string }>
-    ).map((row) => meetingPlatformObservationSchema.parse(JSON.parse(row.evidence_json)));
+    return this.sql
+      .prepare(
+        "SELECT evidence_json FROM meeting_platform_observations WHERE recording_id = ? ORDER BY rowid"
+      )
+      .all<{ evidence_json: string }>(recordingId)
+      .map((row) => meetingPlatformObservationSchema.parse(JSON.parse(row.evidence_json)));
   }
 
   saveMeetingAudioClockAnchor(input: MeetingAudioClockAnchor): void {
@@ -2930,13 +3098,12 @@ export class DatabaseManager {
   listMeetingAudioClockAnchors(recordingId: string): MeetingAudioClockAnchor[] {
     meetingRecordingIdSchema.parse(recordingId);
 
-    return (
-      this.sql
-        .prepare(
-          "SELECT evidence_json FROM meeting_audio_clock_anchors WHERE recording_id = ? ORDER BY rowid"
-        )
-        .all(recordingId) as Array<{ evidence_json: string }>
-    ).map((row) => meetingAudioClockAnchorSchema.parse(JSON.parse(row.evidence_json)));
+    return this.sql
+      .prepare(
+        "SELECT evidence_json FROM meeting_audio_clock_anchors WHERE recording_id = ? ORDER BY rowid"
+      )
+      .all<{ evidence_json: string }>(recordingId)
+      .map((row) => meetingAudioClockAnchorSchema.parse(JSON.parse(row.evidence_json)));
   }
 
   setMeetingPlatformCoverage(recordingId: string, input: MeetingPlatformCoverage): void {
@@ -2954,7 +3121,7 @@ export class DatabaseManager {
 
     const row = this.sql
       .prepare("SELECT coverage_json FROM meeting_platform_coverage WHERE recording_id = ?")
-      .get(recordingId) as { coverage_json: string } | undefined;
+      .get<{ coverage_json: string }>(recordingId);
 
     return row ? meetingPlatformCoverageSchema.parse(JSON.parse(row.coverage_json)) : null;
   }
@@ -2964,10 +3131,12 @@ export class DatabaseManager {
 
     const row = this.sql
       .prepare("SELECT decisions_json FROM meeting_run_platform_decisions WHERE run_id = ?")
-      .get(runId) as { decisions_json: string } | undefined;
+      .get<{ decisions_json: string }>(runId);
 
     return row
-      ? (JSON.parse(row.decisions_json) as unknown[]).map((item) =>
+      ? // SAFETY: decisions_json is this manager's JSON array of decisions;
+        // every item is schema-parsed right after the cast.
+        (JSON.parse(row.decisions_json) as unknown[]).map((item) =>
           meetingPlatformDecisionSchema.parse(item)
         )
       : [];
@@ -3080,7 +3249,7 @@ export class DatabaseManager {
 
     const row = this.sql
       .prepare("SELECT llm_source_snapshot_json FROM meeting_processing_runs WHERE id = ?")
-      .get(runId) as { llm_source_snapshot_json: string | null } | undefined;
+      .get<{ llm_source_snapshot_json: string | null }>(runId);
 
     return row?.llm_source_snapshot_json ?? null;
   }
@@ -3133,7 +3302,19 @@ export class DatabaseManager {
 
       if (!recording || recording.noteId !== noteId || recording.currentRunId !== runId)
         return false;
-      const snapshot: Record<string, unknown> = JSON.parse(expectedSnapshotJson);
+      // SAFETY: expectedSnapshotJson is this manager's own snapshot object;
+      // individual fields are compared without further validation, as before.
+
+      const snapshot = JSON.parse(expectedSnapshotJson) as {
+        sourceRunId?: string;
+        sourceRecordingIds?: string[];
+        manualNoteRevision?: string;
+        manualNotes?: string;
+        meetingTitle?: string | null;
+        participants?: unknown;
+        speakerCorrectionRevision?: number;
+        promptModel?: unknown;
+      };
 
       const changed = this.sql
         .prepare(
@@ -3183,20 +3364,18 @@ export class DatabaseManager {
         WHERE r.id = ? AND p.id = ? AND p.status = 'complete'
           AND NOT EXISTS (SELECT 1 FROM meeting_deletion_intents d WHERE d.note_id = r.note_id AND d.kind = 'note')
       `)
-        .get(input.recordingId, input.runId) as
-        | {
-            note_id: number;
-            current_run_id: string | null;
-            kind: "initial" | "reprocess" | "summary";
-            source_run_id: string | null;
-            summary_path: string | null;
-            llm_source_snapshot_json: string | null;
-            title: string;
-            content: string;
-            transcript: string | null;
-            enhanced_content: string | null;
-          }
-        | undefined;
+        .get<{
+          note_id: number;
+          current_run_id: string | null;
+          kind: "initial" | "reprocess" | "summary";
+          source_run_id: string | null;
+          summary_path: string | null;
+          llm_source_snapshot_json: string | null;
+          title: string;
+          content: string;
+          transcript: string | null;
+          enhanced_content: string | null;
+        }>(input.recordingId, input.runId);
 
       if (
         !current ||
@@ -3215,9 +3394,9 @@ export class DatabaseManager {
         .prepare(
           "SELECT COALESCE(SUM(revision), 0) AS revision FROM meeting_run_speaker_corrections WHERE run_id = ?"
         )
-        .get(input.sourceRunId) as { revision: number };
+        .get<{ revision: number }>(input.sourceRunId);
 
-      if (revision.revision !== input.expectedSpeakerCorrectionRevision) return false;
+      if ((revision?.revision ?? 0) !== input.expectedSpeakerCorrectionRevision) return false;
 
       this.sql
         .prepare(
@@ -3251,7 +3430,7 @@ export class DatabaseManager {
     recordingId: string,
     runId: string,
     projection: { transcript: string; summary: string | null; summaryPrompt: string | null } | null
-  ): { success: boolean; noteId?: number } {
+  ): SuccessResult & { noteId?: number } {
     meetingRecordingIdSchema.parse(recordingId);
     meetingRecordingIdSchema.parse(runId);
 
@@ -3260,14 +3439,14 @@ export class DatabaseManager {
         .prepare(
           "SELECT r.note_id FROM meeting_recordings r JOIN meeting_processing_runs p ON p.recording_id = r.id WHERE r.id = ? AND p.id = ? AND NOT EXISTS (SELECT 1 FROM meeting_deletion_intents d WHERE d.note_id = r.note_id AND d.kind = 'note')"
         )
-        .get(recordingId, runId) as { note_id: number } | undefined;
+        .get<{ note_id: number }>(recordingId, runId);
 
       if (!row) return { success: false as const };
 
       if (projection) {
-        const note = this.sql.prepare("SELECT content FROM notes WHERE id = ?").get(row.note_id) as
-          | { content: string }
-          | undefined;
+        const note = this.sql
+          .prepare("SELECT content FROM notes WHERE id = ?")
+          .get<{ content: string }>(row.note_id);
 
         if (!note) throw new Error("Meeting note not found");
         this.sql
@@ -3336,7 +3515,7 @@ export class DatabaseManager {
 
       const existing = this.sql
         .prepare("SELECT * FROM meeting_deletion_intents WHERE recording_id = ? AND kind = 'audio'")
-        .get(recordingId) as MeetingDeletionIntentDbRow | undefined;
+        .get<MeetingDeletionIntentDbRow>(recordingId);
 
       const id = existing?.id ?? randomUUID();
 
@@ -3354,11 +3533,13 @@ export class DatabaseManager {
           .run(id, recording.noteId, recordingId);
       }
 
-      return toMeetingDeletionIntentDto(
-        this.sql
-          .prepare("SELECT * FROM meeting_deletion_intents WHERE id = ?")
-          .get(id) as MeetingDeletionIntentDbRow
-      );
+      const intent = this.sql
+        .prepare("SELECT * FROM meeting_deletion_intents WHERE id = ?")
+        .get<MeetingDeletionIntentDbRow>(id);
+
+      if (!intent) throw new Error("Deletion intent vanished inside its own transaction");
+
+      return toMeetingDeletionIntentDto(intent);
     });
 
     return transaction();
@@ -3378,7 +3559,7 @@ export class DatabaseManager {
 
       const existing = this.sql
         .prepare("SELECT * FROM meeting_deletion_intents WHERE note_id = ? AND kind = 'note'")
-        .get(noteId) as MeetingDeletionIntentDbRow | undefined;
+        .get<MeetingDeletionIntentDbRow>(noteId);
 
       const id = existing?.id ?? randomUUID();
 
@@ -3400,49 +3581,48 @@ export class DatabaseManager {
         )
         .run(noteId);
 
-      return toMeetingDeletionIntentDto(
-        this.sql
-          .prepare("SELECT * FROM meeting_deletion_intents WHERE id = ?")
-          .get(id) as MeetingDeletionIntentDbRow
-      );
+      const intent = this.sql
+        .prepare("SELECT * FROM meeting_deletion_intents WHERE id = ?")
+        .get<MeetingDeletionIntentDbRow>(id);
+
+      if (!intent) throw new Error("Deletion intent vanished inside its own transaction");
+
+      return toMeetingDeletionIntentDto(intent);
     });
 
     return transaction();
   }
 
   listMeetingDeletionIntents(): MeetingDeletionIntentDto[] {
-    return (
-      this.sql
-        .prepare("SELECT * FROM meeting_deletion_intents ORDER BY requested_at, id")
-        .all() as MeetingDeletionIntentDbRow[]
-    ).map(toMeetingDeletionIntentDto);
+    return this.sql
+      .prepare("SELECT * FROM meeting_deletion_intents ORDER BY requested_at, id")
+      .all<MeetingDeletionIntentDbRow>()
+      .map(toMeetingDeletionIntentDto);
   }
 
-  getMeetingNoteStorageIds(noteId: number): { recordingIds: string[]; runIds: string[] } {
+  getMeetingNoteStorageIds(noteId: number): StorageIdsResult {
     return {
-      recordingIds: (
-        this.sql
-          .prepare("SELECT id FROM meeting_recordings WHERE note_id = ? ORDER BY id")
-          .all(noteId) as Array<{ id: string }>
-      ).map((row) => row.id),
-      runIds: (
-        this.sql
-          .prepare(
-            "SELECT id FROM meeting_processing_runs WHERE recording_id IN (SELECT id FROM meeting_recordings WHERE note_id = ?) ORDER BY id"
-          )
-          .all(noteId) as Array<{ id: string }>
-      ).map((row) => row.id),
+      recordingIds: this.sql
+        .prepare("SELECT id FROM meeting_recordings WHERE note_id = ? ORDER BY id")
+        .all<{ id: string }>(noteId)
+        .map((row) => row.id),
+      runIds: this.sql
+        .prepare(
+          "SELECT id FROM meeting_processing_runs WHERE recording_id IN (SELECT id FROM meeting_recordings WHERE note_id = ?) ORDER BY id"
+        )
+        .all<{ id: string }>(noteId)
+        .map((row) => row.id),
     };
   }
 
-  failMeetingDeletion(id: string, errorCode: string): { success: boolean } {
+  failMeetingDeletion(id: string, errorCode: string): SuccessResult {
     meetingRecordingIdSchema.parse(id);
     meetingProcessingConfigErrorSchema.parse({ code: errorCode });
 
     const transaction = this.sql.transaction(() => {
       const intent = this.sql
         .prepare("SELECT * FROM meeting_deletion_intents WHERE id = ?")
-        .get(id) as MeetingDeletionIntentDbRow | undefined;
+        .get<MeetingDeletionIntentDbRow>(id);
 
       if (!intent) return false;
       this.sql
@@ -3465,13 +3645,13 @@ export class DatabaseManager {
     return { success: transaction() };
   }
 
-  completeMeetingAudioDeletion(id: string): { success: boolean } {
+  completeMeetingAudioDeletion(id: string): SuccessResult {
     meetingRecordingIdSchema.parse(id);
 
     const transaction = this.sql.transaction(() => {
       const intent = this.sql
         .prepare("SELECT * FROM meeting_deletion_intents WHERE id = ? AND kind = 'audio'")
-        .get(id) as MeetingDeletionIntentDbRow | undefined;
+        .get<MeetingDeletionIntentDbRow>(id);
 
       if (!intent?.recording_id) return false;
       this.sql
@@ -3487,13 +3667,13 @@ export class DatabaseManager {
     return { success: transaction() };
   }
 
-  completeMeetingNoteDeletion(id: string): { success: boolean } {
+  completeMeetingNoteDeletion(id: string): SuccessResult {
     meetingRecordingIdSchema.parse(id);
 
     const transaction = this.sql.transaction(() => {
       const intent = this.sql
         .prepare("SELECT * FROM meeting_deletion_intents WHERE id = ? AND kind = 'note'")
-        .get(id) as MeetingDeletionIntentDbRow | undefined;
+        .get<MeetingDeletionIntentDbRow>(id);
 
       if (!intent) return false;
       this.sql.prepare("DELETE FROM meeting_recordings WHERE note_id = ?").run(intent.note_id);
@@ -3507,11 +3687,9 @@ export class DatabaseManager {
 
   _privateSpaceId(): number | null {
     return (
-      (
-        this.sql.prepare("SELECT id FROM spaces WHERE kind = 'private' LIMIT 1").get() as
-          | { id: number }
-          | undefined
-      )?.id ?? null
+      this.sql.prepare("SELECT id FROM spaces WHERE kind = 'private' LIMIT 1").get<{
+        id: number;
+      }>()?.id ?? null
     );
   }
 
@@ -3524,21 +3702,20 @@ export class DatabaseManager {
   }
 
   getSpaces(): SpaceRow[] {
-    return (
-      this.sql.prepare("SELECT * FROM spaces ORDER BY sort_order, id").all() as SpaceRow[]
-    ).map((row) => this._spaceRow(row) as SpaceRow);
+    return this.sql
+      .prepare("SELECT * FROM spaces ORDER BY sort_order, id")
+      .all<SpaceRow>()
+      .map((row) => ({ ...row, kind: "private" as const }));
   }
 
   getSpace(id: number): SpaceRow | null {
-    return this._spaceRow(
-      this.sql.prepare("SELECT * FROM spaces WHERE id = ?").get(id) as SpaceRow | undefined
-    );
+    return this._spaceRow(this.sql.prepare("SELECT * FROM spaces WHERE id = ?").get<SpaceRow>(id));
   }
 
   updateSpace(
     id: number,
     { name, emoji }: { name?: string; emoji?: string | null } = {}
-  ): { success: boolean; space?: SpaceRow | null } {
+  ): SpaceMutationDbResult {
     const fields: string[] = [];
     const values: unknown[] = [];
 
@@ -3570,15 +3747,15 @@ export class DatabaseManager {
         ? "SELECT * FROM folders ORDER BY sort_order, created_at"
         : "SELECT * FROM folders WHERE space_id = ? ORDER BY sort_order, created_at";
 
-    return (
-      spaceId == null ? this.sql.prepare(sql).all() : this.sql.prepare(sql).all(spaceId)
-    ) as FolderRow[];
+    return spaceId == null
+      ? this.sql.prepare(sql).all<FolderRow>()
+      : this.sql.prepare(sql).all<FolderRow>(spaceId);
   }
 
   createFolder(
-    name: unknown,
+    name: string | null | undefined,
     spaceId: number | null = null
-  ): { success: boolean; error?: string; folder?: FolderRow } {
+  ): FolderMutationDbResult {
     const trimmed = String(name || "").trim();
     spaceId ??= this._privateSpaceId();
 
@@ -3589,7 +3766,7 @@ export class DatabaseManager {
     const max = (
       this.sql
         .prepare("SELECT COALESCE(MAX(sort_order), -1) AS value FROM folders WHERE space_id = ?")
-        .get(spaceId) as { value: number }
+        .get<{ value: number }>(spaceId) ?? { value: -1 }
     ).value;
 
     try {
@@ -3601,7 +3778,7 @@ export class DatabaseManager {
         success: true,
         folder: this.sql
           .prepare("SELECT * FROM folders WHERE id = ?")
-          .get(result.lastInsertRowid) as FolderRow | undefined,
+          .get<FolderRow>(result.lastInsertRowid),
       };
     } catch (error) {
       if (isSqliteUniqueConstraint(error))
@@ -3610,10 +3787,7 @@ export class DatabaseManager {
     }
   }
 
-  renameFolder(
-    id: number,
-    name: unknown
-  ): { success: boolean; error?: string; folder?: FolderRow } {
+  renameFolder(id: number, name: string | null | undefined): FolderMutationDbResult {
     const trimmed = String(name || "").trim();
 
     if (!trimmed) return { success: false, error: "Folder name is required" };
@@ -3625,9 +3799,7 @@ export class DatabaseManager {
 
       return {
         success: result.changes > 0,
-        folder: this.sql.prepare("SELECT * FROM folders WHERE id = ?").get(id) as
-          | FolderRow
-          | undefined,
+        folder: this.sql.prepare("SELECT * FROM folders WHERE id = ?").get<FolderRow>(id),
       };
     } catch (error) {
       if (isSqliteUniqueConstraint(error))
@@ -3638,8 +3810,8 @@ export class DatabaseManager {
 
   updateFolderStyle(
     id: number,
-    style: { icon?: unknown; color?: unknown } = {}
-  ): { success: boolean; folder?: FolderRow } {
+    style: { icon?: string | null; color?: string | null } = {}
+  ): FolderStyleMutationDbResult {
     const fields: string[] = [];
     const values: unknown[] = [];
 
@@ -3665,14 +3837,12 @@ export class DatabaseManager {
 
     return {
       success: result.changes > 0,
-      folder: this.sql.prepare("SELECT * FROM folders WHERE id = ?").get(id) as
-        | FolderRow
-        | undefined,
+      folder: this.sql.prepare("SELECT * FROM folders WHERE id = ?").get<FolderRow>(id),
     };
   }
 
   /** Manual order of one space's folders: position in the list becomes sort_order. */
-  reorderFolders(spaceId: number, folderIds: number[]): { success: boolean } {
+  reorderFolders(spaceId: number, folderIds: number[]): SuccessResult {
     const update = this.sql.prepare(
       "UPDATE folders SET sort_order = ? WHERE id = ? AND space_id = ?"
     );
@@ -3684,7 +3854,7 @@ export class DatabaseManager {
     return { success: true };
   }
 
-  deleteFolder(id: number): { success: boolean; relocatedNoteIds: number[] } {
+  deleteFolder(id: number): FolderDeleteDbResult {
     // Captured per call and returned to the caller: the mirror rewrite needs
     // the affected notes, and instance state would be overwritten by a second
     // delete before the deferred callback reads it.
@@ -3692,11 +3862,10 @@ export class DatabaseManager {
 
     const result = this.sql.transaction(() => {
       relocatedNoteIds.push(
-        ...(
-          this.sql.prepare("SELECT id FROM notes WHERE folder_id = ?").all(id) as Array<{
-            id: number;
-          }>
-        ).map((row) => row.id)
+        ...this.sql
+          .prepare("SELECT id FROM notes WHERE folder_id = ?")
+          .all<{ id: number }>(id)
+          .map((row) => row.id)
       );
       // A note whose primary folder goes away keeps living in its next folder.
       this.sql
@@ -3738,17 +3907,18 @@ export class DatabaseManager {
       .run();
   }
 
-  moveFolderToSpace(
-    id: number,
-    spaceId: number
-  ): { success: boolean; error?: string; folder?: FolderRow | null; notes?: NoteRow[] } {
+  moveFolderToSpace(id: number, spaceId: number): FolderMutationDbResult & { notes?: NoteRow[] } {
     if (!this.getSpace(spaceId)) return { success: false, error: "Space not found" };
 
     try {
       const result = this.sql.transaction(() => {
-        const folder = this.sql.prepare("SELECT id FROM folders WHERE id = ?").get(id);
+        const folder = this.sql
+          .prepare("SELECT id FROM folders WHERE id = ?")
+          .get<{ id: number }>(id);
 
-        if (!folder) return { changes: 0, notes: [] as NoteRow[] };
+        const noNotes: NoteRow[] = [];
+
+        if (!folder) return { changes: 0, notes: noNotes };
 
         const updated = this.sql
           .prepare("UPDATE folders SET space_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
@@ -3761,21 +3931,17 @@ export class DatabaseManager {
           .run(spaceId, id);
         this.pruneNoteFolderLinks();
 
-        const notes = (
-          this.sql
-            .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE folder_id = ?`)
-            .all(id) as RawNoteRow[]
-        ).map(hydrateNote);
+        const notes = this.sql
+          .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE folder_id = ?`)
+          .all<RawNoteRow>(id)
+          .map(hydrateNote);
 
         return { changes: updated.changes, notes };
       })();
 
       return {
         success: result.changes > 0,
-        folder:
-          (this.sql.prepare("SELECT * FROM folders WHERE id = ?").get(id) as
-            | FolderRow
-            | undefined) ?? null,
+        folder: this.sql.prepare("SELECT * FROM folders WHERE id = ?").get<FolderRow>(id),
         notes: result.notes,
       };
     } catch (error) {
@@ -3794,7 +3960,7 @@ export class DatabaseManager {
         SELECT nf.folder_id, n.space_id FROM note_folders nf JOIN notes n ON n.id = nf.note_id
       ) GROUP BY folder_id, space_id
     `)
-      .all() as FolderNoteCountRow[];
+      .all<FolderNoteCountRow>();
   }
 
   saveTranscription(
@@ -3807,7 +3973,7 @@ export class DatabaseManager {
       routeKind?: string | null;
       occurredAt?: unknown;
     } = {}
-  ): { id: number; success: boolean; transcription: TranscriptionRow | null } {
+  ): TranscriptionSaveResult {
     const {
       status = "completed",
       errorMessage = null,
@@ -3836,37 +4002,39 @@ export class DatabaseManager {
 
     return this.sql
       .prepare(`SELECT * FROM transcriptions${filter} ORDER BY timestamp DESC LIMIT ?`)
-      .all(limit) as TranscriptionRow[];
+      .all<TranscriptionRow>(limit);
   }
 
-  clearTranscriptions(): { success: boolean; cleared: number } {
+  clearTranscriptions(): ClearedResult {
     const result = this.sql.prepare("DELETE FROM transcriptions").run();
 
-    return { success: true, cleared: result.changes };
+    return { success: true, cleared: result.changes } satisfies {
+      success: boolean;
+      cleared: number;
+    };
   }
 
-  deleteTranscriptionsExpiredBefore(retentionDays: number): { ids: number[] } {
-    const cutoff = (
-      this.sql.prepare("SELECT datetime('now', ?) AS cutoff").get(`-${retentionDays} days`) as {
-        cutoff: string;
-      }
-    ).cutoff;
+  deleteTranscriptionsExpiredBefore(retentionDays: number): IdsResult {
+    // datetime() always returns a value; the row is present for a scalar query.
+    const cutoff =
+      this.sql
+        .prepare("SELECT datetime('now', ?) AS cutoff")
+        .get<{ cutoff: string }>(`-${retentionDays} days`)?.cutoff ?? "";
 
-    const ids = (
-      this.sql.prepare("SELECT id FROM transcriptions WHERE created_at < ?").all(cutoff) as Array<{
-        id: number;
-      }>
-    ).map((row) => row.id);
+    const ids = this.sql
+      .prepare("SELECT id FROM transcriptions WHERE created_at < ?")
+      .all<{ id: number }>(cutoff)
+      .map((row) => row.id);
 
     this.sql.prepare("DELETE FROM transcriptions WHERE created_at < ?").run(cutoff);
 
     return { ids };
   }
 
-  deleteTranscription(id: number): { success: boolean; id: number } {
+  deleteTranscription(id: number): DeletedIdResult {
     const result = this.sql.prepare("DELETE FROM transcriptions WHERE id = ?").run(id);
 
-    return { success: result.changes > 0, id };
+    return { success: result.changes > 0, id } satisfies { success: boolean; id: number };
   }
 
   updateTranscriptionAudio(
@@ -3882,7 +4050,7 @@ export class DatabaseManager {
       provider?: string | null;
       model?: string | null;
     }
-  ): { success: boolean } {
+  ): SuccessResult {
     this.sql
       .prepare(
         "UPDATE transcriptions SET has_audio = ?, audio_duration_ms = ?, provider = ?, model = ? WHERE id = ?"
@@ -3892,7 +4060,7 @@ export class DatabaseManager {
     return { success: true };
   }
 
-  updateTranscriptionText(id: number, text: string, rawText: string | null): { success: boolean } {
+  updateTranscriptionText(id: number, text: string, rawText: string | null): SuccessResult {
     this.sql
       .prepare("UPDATE transcriptions SET text = ?, raw_text = ? WHERE id = ?")
       .run(text, rawText, id);
@@ -3905,7 +4073,7 @@ export class DatabaseManager {
     status: string,
     errorMessage: string | null = null,
     errorCode: string | null = null
-  ): { success: boolean } {
+  ): SuccessResult {
     this.sql
       .prepare(
         "UPDATE transcriptions SET status = ?, error_message = ?, error_code = ? WHERE id = ?"
@@ -3917,21 +4085,20 @@ export class DatabaseManager {
 
   getTranscriptionById(id: number | bigint): TranscriptionRow | null {
     return (
-      (this.sql.prepare("SELECT * FROM transcriptions WHERE id = ?").get(id) as
-        | TranscriptionRow
-        | undefined) || null
+      this.sql.prepare("SELECT * FROM transcriptions WHERE id = ?").get<TranscriptionRow>(id) ||
+      null
     );
   }
 
   getAudioFlaggedIds(): Array<{ id: number }> {
-    return this.sql.prepare("SELECT id FROM transcriptions WHERE has_audio = 1").all() as Array<{
-      id: number;
-    }>;
+    return this.sql
+      .prepare("SELECT id FROM transcriptions WHERE has_audio = 1")
+      .all<{ id: number }>();
   }
 
   // IDs arrive both numeric (DB rows) and string-typed (audio filenames);
   // SQLite INTEGER affinity coerces either form, as it always has.
-  clearAudioFlags(ids: Array<number | string>): { success: boolean } {
+  clearAudioFlags(ids: Array<number | string>): SuccessResult {
     if (!ids?.length) return { success: true };
     const update = this.sql.prepare("UPDATE transcriptions SET has_audio = 0 WHERE id = ?");
     this.sql.transaction(() => ids.forEach((id) => update.run(id)))();
@@ -3940,20 +4107,18 @@ export class DatabaseManager {
   }
 
   getDictionary(): string[] {
-    return (
-      this.sql.prepare("SELECT word FROM custom_dictionary ORDER BY id").all() as Array<{
-        word: string;
-      }>
-    ).map((row) => row.word);
+    return this.sql
+      .prepare("SELECT word FROM custom_dictionary ORDER BY id")
+      .all<{ word: string }>()
+      .map((row) => row.word);
   }
 
-  setDictionary(words: unknown): { success: boolean } {
+  setDictionary(words: unknown): SuccessResult {
     const incoming = normalizeWords(words);
 
-    const current = this.sql.prepare("SELECT id, word FROM custom_dictionary").all() as Array<{
-      id: number;
-      word: string;
-    }>;
+    const current = this.sql
+      .prepare("SELECT id, word FROM custom_dictionary")
+      .all<{ id: number; word: string }>();
 
     const transaction = this.sql.transaction(() => {
       const remove = this.sql.prepare("DELETE FROM custom_dictionary WHERE id = ?");
@@ -3969,11 +4134,10 @@ export class DatabaseManager {
     return { success: true };
   }
 
-  applyDictionaryChanges({ add = [], remove = [] }: { add?: unknown; remove?: unknown } = {}): {
-    success: boolean;
-    added: number;
-    removed: number;
-  } {
+  applyDictionaryChanges({
+    add = [],
+    remove = [],
+  }: DictionaryApplyDelta = {}): DictionaryChangeDbResult {
     const additions = normalizeWords(add);
     const removals = normalizeWords(remove);
 
@@ -3992,7 +4156,7 @@ export class DatabaseManager {
     return { success: true, added: additions.size, removed: removals.size };
   }
 
-  hardDeleteDictionaryEntry(id: number): { success: boolean } {
+  hardDeleteDictionaryEntry(id: number): SuccessResult {
     return {
       success: this.sql.prepare("DELETE FROM custom_dictionary WHERE id = ?").run(id).changes > 0,
     };
@@ -4001,15 +4165,17 @@ export class DatabaseManager {
   getSnippets(): Array<{ trigger: string; replacement: string }> {
     return this.sql
       .prepare("SELECT trigger, replacement FROM snippets ORDER BY id")
-      .all() as Array<{ trigger: string; replacement: string }>;
+      .all<{ trigger: string; replacement: string }>();
   }
 
-  setSnippets(snippets: unknown): { success: boolean } {
+  setSnippets(snippets: unknown): SuccessResult {
     const incoming = new Map<string, { trigger: string; replacement: string }>();
 
-    for (const item of (Array.isArray(snippets) ? snippets : []) as Array<
-      Record<string, unknown>
-    >) {
+    // SAFETY: the IPC boundary passes raw snippet objects; each field is
+    // validated per-item inside the loop.
+    const items = (Array.isArray(snippets) ? snippets : []) as Array<Record<string, unknown>>;
+
+    for (const item of items) {
       const trigger = typeof item?.trigger === "string" ? item.trigger.trim() : "";
       const replacement = typeof item?.replacement === "string" ? item.replacement.trim() : "";
 
@@ -4028,7 +4194,7 @@ export class DatabaseManager {
     return { success: true };
   }
 
-  hardDeleteSnippet(id: number): { success: boolean } {
+  hardDeleteSnippet(id: number): SuccessResult {
     return { success: this.sql.prepare("DELETE FROM snippets WHERE id = ?").run(id).changes > 0 };
   }
 
@@ -4040,16 +4206,14 @@ export class DatabaseManager {
     audioDuration: number | null = null,
     folderId: number | null = null,
     spaceId: number | null = null
-  ): { success: boolean; note: NoteRow | null } {
+  ): NoteSaveDbResult {
     spaceId ??= this._privateSpaceId();
 
     if (folderId != null) {
       spaceId =
-        (
-          this.sql.prepare("SELECT space_id FROM folders WHERE id = ?").get(folderId) as
-            | { space_id: number }
-            | undefined
-        )?.space_id ?? null;
+        this.sql
+          .prepare("SELECT space_id FROM folders WHERE id = ?")
+          .get<{ space_id: number }>(folderId)?.space_id ?? null;
     }
 
     if (!spaceId || !this.getSpace(spaceId)) throw new Error("Space not found");
@@ -4060,28 +4224,22 @@ export class DatabaseManager {
       )
       .run(title, content, noteType, sourceFile, audioDuration, folderId, spaceId);
 
-    return { success: true, note: this.getNote(result.lastInsertRowid) };
+    return { success: true, note: this.getNote(result.lastInsertRowid) } satisfies {
+      success: boolean;
+      note?: NoteRow | null;
+    };
   }
 
   importNotes(
     rows: unknown,
     { noteType = "meeting", folderName = "Imported" } = {}
-  ): {
-    success: boolean;
-    imported: number;
-    skipped: number;
-    folderId: number | null;
-    noteIds: number[];
-    errors: Array<{ error: string }>;
-  } {
+  ): ImportNotesResult {
     const spaceId = this._privateSpaceId();
 
     let folderId: number | null =
-      (
-        this.sql
-          .prepare("SELECT id FROM folders WHERE space_id = ? AND name = ?")
-          .get(spaceId, folderName) as { id: number } | undefined
-      )?.id ?? null;
+      this.sql
+        .prepare("SELECT id FROM folders WHERE space_id = ? AND name = ?")
+        .get<{ id: number }>(spaceId, folderName)?.id ?? null;
 
     if (!folderId) folderId = this.createFolder(folderName, spaceId).folder?.id ?? null;
     let imported = 0;
@@ -4093,7 +4251,11 @@ export class DatabaseManager {
     );
 
     this.sql.transaction(() => {
-      for (const row of (Array.isArray(rows) ? rows : []) as Array<Record<string, unknown>>) {
+      // SAFETY: import rows are raw CLI payloads; field reads are tolerated
+      // per-row and failures land in the errors list.
+      const importRows = (Array.isArray(rows) ? rows : []) as Array<Record<string, unknown>>;
+
+      for (const row of importRows) {
         try {
           const result = insert.run(
             row.title,
@@ -4111,7 +4273,9 @@ export class DatabaseManager {
           imported += 1;
           noteIds.push(Number(result.lastInsertRowid));
         } catch (error) {
-          errors.push({ error: (error as Error).message });
+          errors.push({
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
     })();
@@ -4122,7 +4286,7 @@ export class DatabaseManager {
   getNote(id: number | bigint): NoteRow | null {
     const raw = this.sql
       .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE id = ?`)
-      .get(id) as RawNoteRow | undefined;
+      .get<RawNoteRow>(id);
 
     return raw ? hydrateNote(raw) : null;
   }
@@ -4157,21 +4321,17 @@ export class DatabaseManager {
 
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
 
-    return (
-      this.sql
-        .prepare(
-          `SELECT ${noteColumns("notes")} FROM notes${where} ORDER BY updated_at DESC LIMIT ?`
-        )
-        .all(...params, limit) as RawNoteRow[]
-    ).map(hydrateNote);
+    return this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes${where} ORDER BY updated_at DESC LIMIT ?`)
+      .all<RawNoteRow>(...params, limit)
+      .map(hydrateNote);
   }
 
   listAllNotes(): NoteRow[] {
-    return (
-      this.sql
-        .prepare(`SELECT ${noteColumns("notes")} FROM notes ORDER BY created_at DESC, id DESC`)
-        .all() as RawNoteRow[]
-    ).map(hydrateNote);
+    return this.sql
+      .prepare(`SELECT ${noteColumns("notes")} FROM notes ORDER BY created_at DESC, id DESC`)
+      .all<RawNoteRow>()
+      .map(hydrateNote);
   }
 
   getContactNames(email: string): {
@@ -4180,32 +4340,32 @@ export class DatabaseManager {
     learned_name: string | null;
   } | null {
     return (
-      (this.sql
+      this.sql
         .prepare("SELECT display_name, people_name, learned_name FROM contacts WHERE email = ?")
-        .get(email.toLowerCase()) as
-        | { display_name: string | null; people_name: string | null; learned_name: string | null }
-        | undefined) ?? null
+        .get<{
+          display_name: string | null;
+          people_name: string | null;
+          learned_name: string | null;
+        }>(email.toLowerCase()) ?? null
     );
   }
 
   getNotesForSpace(spaceId: number, limit = 50): NoteRow[] {
-    return (
-      this.sql
-        .prepare(
-          `SELECT ${noteColumns("notes")} FROM notes WHERE space_id = ? ORDER BY updated_at DESC LIMIT ?`
-        )
-        .all(spaceId, limit) as RawNoteRow[]
-    ).map(hydrateNote);
+    return this.sql
+      .prepare(
+        `SELECT ${noteColumns("notes")} FROM notes WHERE space_id = ? ORDER BY updated_at DESC LIMIT ?`
+      )
+      .all<RawNoteRow>(spaceId, limit)
+      .map(hydrateNote);
   }
 
   getNoteIdsInFolder(folderId: number): number[] {
-    return (
-      this.sql
-        .prepare(
-          "SELECT id FROM notes WHERE (folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))"
-        )
-        .all(folderId, folderId) as Array<{ id: number }>
-    ).map((row) => row.id);
+    return this.sql
+      .prepare(
+        "SELECT id FROM notes WHERE (folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))"
+      )
+      .all<{ id: number }>(folderId, folderId)
+      .map((row) => row.id);
   }
 
   getNoteIdsInScope(
@@ -4236,9 +4396,10 @@ export class DatabaseManager {
 
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
 
-    return (
-      this.sql.prepare(`SELECT id FROM notes${where}`).all(...params) as Array<{ id: number }>
-    ).map((row) => row.id);
+    return this.sql
+      .prepare(`SELECT id FROM notes${where}`)
+      .all<{ id: number }>(...params)
+      .map((row) => row.id);
   }
 
   updateNote(
@@ -4263,7 +4424,7 @@ export class DatabaseManager {
       note_type: string;
       icon: string | null;
     }>
-  ): { success: boolean; error?: string; note?: NoteRow | null } {
+  ): NoteUpdateDbResult {
     const current = this.getNote(id);
 
     if (!current) return { success: false, error: "Note not found" };
@@ -4271,19 +4432,20 @@ export class DatabaseManager {
 
     if (updates.folder_ids !== undefined) {
       if (updates.folder_id !== undefined) {
-        return { success: false, error: "Pass folder_id or folder_ids, not both" };
+        return { success: false, error: "Pass folder_id or folder_ids, not both" } satisfies {
+          success: boolean;
+          error?: string;
+        };
       }
 
       const ids = [...new Set(updates.folder_ids)];
 
       const known = ids.length
-        ? (
-            this.sql
-              .prepare(
-                `SELECT COUNT(*) AS count FROM folders WHERE id IN (${ids.map(() => "?").join(",")})`
-              )
-              .get(...ids) as { count: number }
-          ).count
+        ? (this.sql
+            .prepare(
+              `SELECT COUNT(*) AS count FROM folders WHERE id IN (${ids.map(() => "?").join(",")})`
+            )
+            .get<{ count: number }>(...ids)?.count ?? 0)
         : 0;
 
       if (known !== ids.length) return { success: false, error: "Folder not found" };
@@ -4330,7 +4492,7 @@ export class DatabaseManager {
     if (updates.folder_id != null) {
       const folder = this.sql
         .prepare("SELECT space_id FROM folders WHERE id = ?")
-        .get(updates.folder_id) as { space_id: number } | undefined;
+        .get<{ space_id: number }>(updates.folder_id);
 
       if (!folder) return { success: false, error: "Folder not found" };
 
@@ -4367,10 +4529,13 @@ export class DatabaseManager {
       return updated;
     })();
 
-    return { success: result.changes > 0, note: this.getNote(id) };
+    return { success: result.changes > 0, note: this.getNote(id) } satisfies {
+      success: boolean;
+      note?: NoteRow | null;
+    };
   }
 
-  deleteNote(id: number): { success: boolean } {
+  deleteNote(id: number): SuccessResult {
     if (
       this.sql.prepare("SELECT 1 FROM meeting_recordings WHERE note_id = ? LIMIT 1").get(id) !=
         null ||
@@ -4389,23 +4554,17 @@ export class DatabaseManager {
   }
 
   getActions(): ActionRow[] {
-    return this.sql.prepare("SELECT * FROM actions ORDER BY sort_order, id").all() as ActionRow[];
+    return this.sql.prepare("SELECT * FROM actions ORDER BY sort_order, id").all<ActionRow>();
   }
   getAction(id: number): ActionRow | null {
-    return (
-      (this.sql.prepare("SELECT * FROM actions WHERE id = ?").get(id) as ActionRow | undefined) ||
-      null
-    );
+    return this.sql.prepare("SELECT * FROM actions WHERE id = ?").get<ActionRow>(id) || null;
   }
   createAction(
     name: string,
     description: string,
     prompt: string,
     icon = "wand-sparkles"
-  ): {
-    success: boolean;
-    action: ActionRow | null;
-  } {
+  ): ActionCreateResult & { action: ActionRow | null } {
     const result = this.sql
       .prepare("INSERT INTO actions (name, description, prompt, icon) VALUES (?, ?, ?, ?)")
       .run(name, description, prompt, icon);
@@ -4421,7 +4580,7 @@ export class DatabaseManager {
       icon: string;
       sort_order: number;
     }>
-  ): { success: boolean; action?: ActionRow | null } {
+  ): ActionMutationDbResult {
     const allowed = ["name", "description", "prompt", "icon", "sort_order"] as const;
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -4441,9 +4600,12 @@ export class DatabaseManager {
       )
       .run(...values);
 
-    return { success: result.changes > 0, action: this.getAction(id) };
+    return { success: result.changes > 0, action: this.getAction(id) } satisfies {
+      success: boolean;
+      action?: ActionRow | null;
+    };
   }
-  deleteAction(id: number): { success: boolean } {
+  deleteAction(id: number): SuccessResult {
     return {
       success:
         this.sql.prepare("DELETE FROM actions WHERE id = ? AND is_builtin = 0").run(id).changes > 0,
@@ -4469,15 +4631,15 @@ export class DatabaseManager {
   ): (AgentConversationRow & { messages: AgentMessageRow[] }) | null {
     const conversation = this.sql
       .prepare("SELECT * FROM agent_conversations WHERE id = ?")
-      .get(id) as AgentConversationRow | undefined;
+      .get<AgentConversationRow>(id);
 
     return conversation ? { ...conversation, messages: this.getAgentMessages(Number(id)) } : null;
   }
   getAgentBbThread(conversationId: number): { thread_id: string; provider: string } | null {
     return (
-      (this.sql
+      this.sql
         .prepare("SELECT thread_id, provider FROM agent_bb_threads WHERE conversation_id = ?")
-        .get(conversationId) as { thread_id: string; provider: string } | undefined) ?? null
+        .get<{ thread_id: string; provider: string }>(conversationId) ?? null
     );
   }
   saveAgentBbThread(conversationId: number, threadId: string, provider: string): void {
@@ -4492,14 +4654,14 @@ export class DatabaseManager {
       .prepare(
         "SELECT * FROM agent_conversations WHERE archived_at IS NULL ORDER BY updated_at DESC LIMIT ?"
       )
-      .all(limit) as AgentConversationRow[];
+      .all<AgentConversationRow>(limit);
   }
   getConversationsForNote(noteId: number, limit = 20): AgentConversationRow[] {
     return this.sql
       .prepare(
         "SELECT * FROM agent_conversations WHERE note_id = ? ORDER BY updated_at DESC LIMIT ?"
       )
-      .all(noteId, limit) as AgentConversationRow[];
+      .all<AgentConversationRow>(noteId, limit);
   }
   getConversationsForContainer(
     spaceId: number,
@@ -4514,17 +4676,25 @@ export class DatabaseManager {
         ? `SELECT ${fields} FROM agent_conversations c WHERE c.space_id = ? AND c.folder_id IS NULL ORDER BY c.updated_at DESC LIMIT ?`
         : `SELECT ${fields} FROM agent_conversations c WHERE c.space_id = ? AND c.folder_id = ? ORDER BY c.updated_at DESC LIMIT ?`;
 
-    return (
-      folderId == null
-        ? this.sql.prepare(sql).all(spaceId, limit)
-        : this.sql.prepare(sql).all(spaceId, folderId, limit)
-    ) as ContainerConversationRow[];
+    return folderId == null
+      ? this.sql.prepare(sql).all<ContainerConversationRow>(spaceId, limit)
+      : this.sql.prepare(sql).all<ContainerConversationRow>(spaceId, folderId, limit);
   }
   addAgentMessage(
     conversationId: number,
     role: AgentMessageRow["role"],
     content: string,
-    metadata: { toolCalls?: Array<Record<string, unknown>> } | null | undefined
+    metadata:
+      | {
+          toolCalls?: Array<{
+            id?: string;
+            name?: string;
+            arguments?: unknown;
+            status?: string;
+          }>;
+        }
+      | null
+      | undefined
   ): AgentMessageRow | null {
     if (!this.getAgentConversation(conversationId)) return null;
 
@@ -4539,15 +4709,15 @@ export class DatabaseManager {
       .run(conversationId);
 
     return (
-      (this.sql.prepare("SELECT * FROM agent_messages WHERE id = ?").get(result.lastInsertRowid) as
-        | AgentMessageRow
-        | undefined) ?? null
+      this.sql
+        .prepare("SELECT * FROM agent_messages WHERE id = ?")
+        .get<AgentMessageRow>(result.lastInsertRowid) ?? null
     );
   }
   getAgentMessages(conversationId: number): AgentMessageRow[] {
     return this.sql
       .prepare("SELECT * FROM agent_messages WHERE conversation_id = ? ORDER BY created_at")
-      .all(conversationId) as AgentMessageRow[];
+      .all<AgentMessageRow>(conversationId);
   }
   getAgentConversationsWithPreview(
     limit = 50,
@@ -4560,7 +4730,7 @@ export class DatabaseManager {
       .prepare(
         `SELECT c.*, (SELECT content FROM agent_messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS preview FROM agent_conversations c ${archive} ORDER BY c.updated_at DESC LIMIT ? OFFSET ?`
       )
-      .all(limit, offset) as ConversationPreviewRow[];
+      .all<ConversationPreviewRow>(limit, offset);
   }
   searchAgentConversations(query: string, limit = 20): AgentConversationRow[] {
     const pattern = `%${query || ""}%`;
@@ -4569,9 +4739,9 @@ export class DatabaseManager {
       .prepare(
         "SELECT * FROM agent_conversations WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?"
       )
-      .all(pattern, limit) as AgentConversationRow[];
+      .all<AgentConversationRow>(pattern, limit);
   }
-  updateAgentConversationTitle(id: number, title: string): { success: boolean } {
+  updateAgentConversationTitle(id: number, title: string): SuccessResult {
     const result = this.sql
       .prepare(
         "UPDATE agent_conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
@@ -4580,21 +4750,21 @@ export class DatabaseManager {
 
     return { success: result.changes > 0 };
   }
-  archiveAgentConversation(id: number): { success: boolean } {
+  archiveAgentConversation(id: number): SuccessResult {
     const result = this.sql
       .prepare("UPDATE agent_conversations SET archived_at = CURRENT_TIMESTAMP WHERE id = ?")
       .run(id);
 
     return { success: result.changes > 0 };
   }
-  unarchiveAgentConversation(id: number): { success: boolean } {
+  unarchiveAgentConversation(id: number): SuccessResult {
     const result = this.sql
       .prepare("UPDATE agent_conversations SET archived_at = NULL WHERE id = ?")
       .run(id);
 
     return { success: result.changes > 0 };
   }
-  deleteAgentConversation(id: number): { success: boolean } {
+  deleteAgentConversation(id: number): SuccessResult {
     const result = this.sql.prepare("DELETE FROM agent_conversations WHERE id = ?").run(id);
 
     return { success: result.changes > 0 };
@@ -4605,13 +4775,13 @@ export class DatabaseManager {
       .prepare(
         "SELECT google_email AS email FROM google_calendar_tokens WHERE access_token NOT GLOB ? OR refresh_token NOT GLOB ?"
       )
-      .all(`${CALENDAR_TOKEN_PREFIX}*`, `${CALENDAR_TOKEN_PREFIX}*`) as Array<{ email: string }>;
+      .all<{ email: string }>(`${CALENDAR_TOKEN_PREFIX}*`, `${CALENDAR_TOKEN_PREFIX}*`);
 
     const microsoft = this.sql
       .prepare(
         "SELECT microsoft_email AS email FROM microsoft_calendar_tokens WHERE access_token NOT GLOB ? OR refresh_token NOT GLOB ?"
       )
-      .all(`${CALENDAR_TOKEN_PREFIX}*`, `${CALENDAR_TOKEN_PREFIX}*`) as Array<{ email: string }>;
+      .all<{ email: string }>(`${CALENDAR_TOKEN_PREFIX}*`, `${CALENDAR_TOKEN_PREFIX}*`);
 
     if (!google.length && !microsoft.length) return;
 
@@ -4623,9 +4793,7 @@ export class DatabaseManager {
 
     discard();
 
-    const checkpoint = this.sql.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as
-      | { busy?: number }
-      | undefined;
+    const checkpoint = this.sql.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get<{ busy?: number }>();
 
     if (checkpoint?.busy !== 0) {
       throw new Error("Could not clear legacy plaintext calendar tokens from SQLite WAL");
@@ -4714,7 +4882,7 @@ export class DatabaseManager {
     refresh_token: string;
     expires_at: number;
     scope: string;
-  }): { success: boolean } {
+  }): SuccessResult {
     const accessToken = encryptCalendarToken(tokens.access_token);
     const refreshToken = encryptCalendarToken(tokens.refresh_token);
     this.sql.transaction(() => {
@@ -4733,7 +4901,7 @@ export class DatabaseManager {
   refreshGoogleTokens(
     accountId: number,
     tokens: Pick<GoogleTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">
-  ): { success: boolean } {
+  ): SuccessResult {
     const result = this.sql
       .prepare(
         "UPDATE google_calendar_tokens SET access_token = ?, refresh_token = ?, expires_at = ?, scope = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
@@ -4754,14 +4922,14 @@ export class DatabaseManager {
   getGoogleTokensByEmail(email: string): GoogleTokenRow | null {
     const row = this.sql
       .prepare("SELECT * FROM google_calendar_tokens WHERE google_email = ?")
-      .get(email) as GoogleTokenRow | undefined;
+      .get<GoogleTokenRow>(email);
 
     return this._decodeGoogleTokenRow(row);
   }
   getAllGoogleTokens(): GoogleTokenRow[] {
     const rows = this.sql
       .prepare("SELECT * FROM google_calendar_tokens ORDER BY created_at")
-      .all() as GoogleTokenRow[];
+      .all<GoogleTokenRow>();
 
     return rows.flatMap((row) => {
       const decoded = this._decodeGoogleTokenRow(row);
@@ -4772,23 +4940,18 @@ export class DatabaseManager {
   getGoogleAccounts(): CalendarAccountRow[] {
     return this.getAllGoogleTokens().map((tokens) => ({ email: tokens.google_email }));
   }
-  deleteGoogleTokens(): { success: boolean } {
+  deleteGoogleTokens(): SuccessResult {
     this.sql.prepare("DELETE FROM google_calendar_tokens").run();
 
     return { success: true };
   }
-  removeGoogleAccount(email: string): { success: boolean } {
+  removeGoogleAccount(email: string): SuccessResult {
     this.sql.prepare("DELETE FROM google_calendar_tokens WHERE google_email = ?").run(email);
     this.sql.prepare("DELETE FROM google_calendars WHERE account_email = ?").run(email);
 
     return { success: true };
   }
-  saveGoogleCalendars(
-    calendars: GoogleCalendarInput[],
-    accountEmail: string
-  ): {
-    success: boolean;
-  } {
+  saveGoogleCalendars(calendars: GoogleCalendarInput[], accountEmail: string): SuccessResult {
     const stmt = this.sql.prepare(
       "INSERT INTO google_calendars (id, summary, description, background_color, account_email, is_primary) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id, account_email) DO UPDATE SET summary = excluded.summary, description = excluded.description, background_color = excluded.background_color, is_primary = excluded.is_primary"
     );
@@ -4807,39 +4970,35 @@ export class DatabaseManager {
     return { success: true };
   }
   getGoogleCalendars(accountEmail: string | null = null): GoogleCalendarRow[] {
-    return (
-      accountEmail
-        ? this.sql
-            .prepare("SELECT * FROM google_calendars WHERE account_email = ?")
-            .all(accountEmail)
-        : this.sql
-            .prepare(`SELECT * FROM google_calendars WHERE rowid IN (
+    return accountEmail
+      ? this.sql
+          .prepare("SELECT * FROM google_calendars WHERE account_email = ?")
+          .all<GoogleCalendarRow>(accountEmail)
+      : this.sql
+          .prepare(`SELECT * FROM google_calendars WHERE rowid IN (
           SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (
             PARTITION BY id ORDER BY is_selected DESC, is_primary DESC, account_email
           ) AS rank FROM google_calendars WHERE account_email != '') WHERE rank = 1
-        )`)
-            .all()
-    ) as GoogleCalendarRow[];
+      )`)
+          .all<GoogleCalendarRow>();
   }
   getSelectedCalendars(accountEmail: string | null = null): GoogleCalendarRow[] {
-    return (
-      accountEmail
-        ? this.sql
-            .prepare(
-              "SELECT * FROM google_calendars WHERE is_selected = 1 AND account_email = ? AND account_email IN (SELECT google_email FROM google_calendar_tokens)"
-            )
-            .all(accountEmail)
-        : this.sql
-            .prepare(`SELECT * FROM google_calendars WHERE rowid IN (
+    return accountEmail
+      ? this.sql
+          .prepare(
+            "SELECT * FROM google_calendars WHERE is_selected = 1 AND account_email = ? AND account_email IN (SELECT google_email FROM google_calendar_tokens)"
+          )
+          .all<GoogleCalendarRow>(accountEmail)
+      : this.sql
+          .prepare(`SELECT * FROM google_calendars WHERE rowid IN (
           SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (
             PARTITION BY id ORDER BY is_primary DESC, account_email
           ) AS rank FROM google_calendars WHERE is_selected = 1
             AND account_email IN (SELECT google_email FROM google_calendar_tokens)) WHERE rank = 1
-        )`)
-            .all()
-    ) as GoogleCalendarRow[];
+      )`)
+          .all<GoogleCalendarRow>();
   }
-  applyPrimaryOnlyToSelection(primaryOnly: boolean): { success: boolean } {
+  applyPrimaryOnlyToSelection(primaryOnly: boolean): SuccessResult {
     this.sql
       .prepare(
         "UPDATE google_calendars SET is_selected = CASE WHEN ? = 1 THEN is_primary ELSE 1 END"
@@ -4848,7 +5007,7 @@ export class DatabaseManager {
 
     return { success: true };
   }
-  updateCalendarSelection(id: string, selected: boolean): { success: boolean } {
+  updateCalendarSelection(id: string, selected: boolean): SuccessResult {
     this.sql
       .prepare("UPDATE google_calendars SET is_selected = ? WHERE id = ?")
       .run(selected ? 1 : 0, id);
@@ -4862,7 +5021,7 @@ export class DatabaseManager {
     refresh_token: string;
     expires_at: number;
     scope: string;
-  }): { success: boolean } {
+  }): SuccessResult {
     const accessToken = encryptCalendarToken(tokens.access_token);
     const refreshToken = encryptCalendarToken(tokens.refresh_token);
     this.sql.transaction(() => {
@@ -4881,7 +5040,7 @@ export class DatabaseManager {
   refreshMicrosoftTokens(
     accountId: number,
     tokens: Pick<MicrosoftTokenRow, "access_token" | "refresh_token" | "expires_at" | "scope">
-  ): { success: boolean } {
+  ): SuccessResult {
     const result = this.sql
       .prepare(
         "UPDATE microsoft_calendar_tokens SET access_token = ?, refresh_token = ?, expires_at = ?, scope = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
@@ -4899,14 +5058,14 @@ export class DatabaseManager {
   getMicrosoftTokensByEmail(email: string): MicrosoftTokenRow | null {
     const row = this.sql
       .prepare("SELECT * FROM microsoft_calendar_tokens WHERE microsoft_email = ?")
-      .get(email) as MicrosoftTokenRow | undefined;
+      .get<MicrosoftTokenRow>(email);
 
     return this._decodeMicrosoftTokenRow(row);
   }
   getMicrosoftAccounts(): CalendarAccountRow[] {
     const rows = this.sql
       .prepare("SELECT * FROM microsoft_calendar_tokens ORDER BY created_at")
-      .all() as MicrosoftTokenRow[];
+      .all<MicrosoftTokenRow>();
 
     return rows.flatMap((row) => {
       const decoded = this._decodeMicrosoftTokenRow(row);
@@ -4914,18 +5073,13 @@ export class DatabaseManager {
       return decoded ? [{ email: decoded.microsoft_email }] : [];
     });
   }
-  removeMicrosoftAccount(email: string): { success: boolean } {
+  removeMicrosoftAccount(email: string): SuccessResult {
     this.sql.prepare("DELETE FROM microsoft_calendar_tokens WHERE microsoft_email = ?").run(email);
     this.sql.prepare("DELETE FROM microsoft_calendars WHERE account_email = ?").run(email);
 
     return { success: true };
   }
-  saveMicrosoftCalendars(
-    calendars: MicrosoftCalendarInput[],
-    accountEmail: string
-  ): {
-    success: boolean;
-  } {
+  saveMicrosoftCalendars(calendars: MicrosoftCalendarInput[], accountEmail: string): SuccessResult {
     const stmt = this.sql.prepare(
       "INSERT INTO microsoft_calendars (id, summary, background_color, account_email, is_primary) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, background_color = excluded.background_color, account_email = excluded.account_email, is_primary = excluded.is_primary"
     );
@@ -4942,7 +5096,7 @@ export class DatabaseManager {
 
     return { success: true };
   }
-  applyMicrosoftPrimaryOnlyToSelection(primaryOnly: boolean): { success: boolean } {
+  applyMicrosoftPrimaryOnlyToSelection(primaryOnly: boolean): SuccessResult {
     this.sql
       .prepare(
         "UPDATE microsoft_calendars SET is_selected = CASE WHEN ? = 1 THEN is_primary ELSE 1 END"
@@ -4954,10 +5108,10 @@ export class DatabaseManager {
   getSelectedMicrosoftCalendars(): MicrosoftCalendarRow[] {
     return this.sql
       .prepare("SELECT * FROM microsoft_calendars WHERE is_selected = 1")
-      .all() as MicrosoftCalendarRow[];
+      .all<MicrosoftCalendarRow>();
   }
 
-  saveAppleCalendars(calendars: AppleCalendarInput[]): { success: boolean } {
+  saveAppleCalendars(calendars: AppleCalendarInput[]): SuccessResult {
     const tx = this.sql.transaction((list: AppleCalendarInput[]) => {
       this.sql.prepare("DELETE FROM apple_calendars").run();
 
@@ -4975,9 +5129,9 @@ export class DatabaseManager {
     return { success: true };
   }
   getAppleCalendars(): AppleCalendarRow[] {
-    return this.sql.prepare("SELECT * FROM apple_calendars").all() as AppleCalendarRow[];
+    return this.sql.prepare("SELECT * FROM apple_calendars").all<AppleCalendarRow>();
   }
-  upsertCalendarEvents(events: CalendarEventInput[]): { success: boolean } {
+  upsertCalendarEvents(events: CalendarEventInput[]): SuccessResult {
     const stmt = this.sql.prepare(
       "INSERT OR REPLACE INTO calendar_events (id, calendar_id, provider, summary, start_time, end_time, is_all_day, status, availability_status, self_response_status, hangout_link, conference_data, event_url, organizer_email, attendees_count, attendees, description, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
     );
@@ -5009,18 +5163,17 @@ export class DatabaseManager {
     return { success: true };
   }
   getActiveEvents(): CalendarEventRow[] {
-    return (
-      this.sql
-        .prepare(
-          dedupedEventsQuery(
-            // Live queries (tray, reminders) see only events from calendars that
-            // still exist and are selected: a disconnected account's rows lose
-            // their calendar entries and must not surface anymore (#164).
-            `datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now') AND is_all_day = 0 AND status IN ('confirmed', 'tentative') AND ${selectedCalendarFilter()}`
-          )
+    return this.sql
+      .prepare(
+        dedupedEventsQuery(
+          // Live queries (tray, reminders) see only events from calendars that
+          // still exist and are selected: a disconnected account's rows lose
+          // their calendar entries and must not surface anymore (#164).
+          `datetime(start_time) <= datetime('now') AND datetime(end_time) > datetime('now') AND is_all_day = 0 AND status IN ('confirmed', 'tentative') AND ${selectedCalendarFilter()}`
         )
-        .all() as Array<CalendarEventRow & { has_synced: number }>
-    ).map(stripDedupeColumn);
+      )
+      .all<CalendarEventRow & { has_synced: number }>()
+      .map(stripDedupeColumn);
   }
   getUpcomingEvents(windowMinutes = 1440): CalendarEventRow[] {
     const rows = this.sql
@@ -5032,7 +5185,7 @@ export class DatabaseManager {
             selectedCalendarFilter()
         )
       )
-      .all(windowMinutes) as Array<CalendarEventRow & { has_synced: number }>;
+      .all<CalendarEventRow & { has_synced: number }>(windowMinutes);
 
     return rows.map(stripDedupeColumn);
   }
@@ -5047,15 +5200,14 @@ export class DatabaseManager {
     if (!selected.length) return [];
     const placeholders = selected.map(() => "?").join(", ");
 
-    const events = (
-      this.sql
-        .prepare(
-          dedupedEventsQuery(
-            `provider IN (${placeholders}) AND status IN ('confirmed', 'tentative') AND ${selectedCalendarFilter()}`
-          )
+    const events = this.sql
+      .prepare(
+        dedupedEventsQuery(
+          `provider IN (${placeholders}) AND status IN ('confirmed', 'tentative') AND ${selectedCalendarFilter()}`
         )
-        .all(...selected) as Array<CalendarEventRow & { has_synced: number }>
-    ).map(stripDedupeColumn);
+      )
+      .all<CalendarEventRow & { has_synced: number }>(...selected)
+      .map(stripDedupeColumn);
 
     return events.filter((event) => {
       const eventStart = parseEventTime(event.start_time, event.is_all_day === 1);
@@ -5066,25 +5218,23 @@ export class DatabaseManager {
   }
   getCalendarEventById(id: string): CalendarEventRow | null {
     return (
-      (this.sql.prepare("SELECT * FROM calendar_events WHERE id = ?").get(id) as
-        | CalendarEventRow
-        | undefined) || null
+      this.sql.prepare("SELECT * FROM calendar_events WHERE id = ?").get<CalendarEventRow>(id) ||
+      null
     );
   }
   getNoteByCalendarEventId(eventId: string, excludeNoteId: number | null = null): NoteRow | null {
-    const raw = (
+    const raw =
       excludeNoteId == null
         ? this.sql
             .prepare(
               `SELECT ${noteColumns("notes")} FROM notes WHERE calendar_event_id = ? LIMIT 1`
             )
-            .get(eventId)
+            .get<RawNoteRow>(eventId)
         : this.sql
             .prepare(
               `SELECT ${noteColumns("notes")} FROM notes WHERE calendar_event_id = ? AND id != ? LIMIT 1`
             )
-            .get(eventId, excludeNoteId)
-    ) as RawNoteRow | undefined;
+            .get<RawNoteRow>(eventId, excludeNoteId);
 
     return raw ? hydrateNote(raw) : null;
   }
@@ -5093,7 +5243,7 @@ export class DatabaseManager {
     token: string,
     expiresAt: number,
     accountEmail: string
-  ): { success: boolean } {
+  ): SuccessResult {
     this.sql
       .prepare(
         "UPDATE google_calendars SET sync_token = ?, sync_token_expires_at = ? WHERE id = ? AND account_email = ?"
@@ -5102,11 +5252,7 @@ export class DatabaseManager {
 
     return { success: true };
   }
-  updateMicrosoftCalendarSyncToken(
-    id: string,
-    token: string,
-    expiresAt: number
-  ): { success: boolean } {
+  updateMicrosoftCalendarSyncToken(id: string, token: string, expiresAt: number): SuccessResult {
     this.sql
       .prepare(
         "UPDATE microsoft_calendars SET sync_token = ?, sync_token_expires_at = ? WHERE id = ?"
@@ -5115,7 +5261,7 @@ export class DatabaseManager {
 
     return { success: true };
   }
-  removeCalendarEvents(ids: string[]): { success: boolean } {
+  removeCalendarEvents(ids: string[]): SuccessResult {
     if (ids?.length)
       this.sql
         .prepare(`DELETE FROM calendar_events WHERE id IN (${ids.map(() => "?").join(",")})`)
@@ -5127,7 +5273,7 @@ export class DatabaseManager {
     provider: string,
     calendarId: string,
     freshIds: string[]
-  ): { success: boolean } {
+  ): SuccessResult {
     const filter = freshIds?.length ? `AND id NOT IN (${freshIds.map(() => "?").join(",")})` : "";
     this.sql
       .prepare(
@@ -5137,8 +5283,8 @@ export class DatabaseManager {
 
     return { success: true };
   }
-  removeEventsFromDeselectedCalendars(provider: string): { success: boolean } {
-    const table = CALENDARS_TABLE_BY_PROVIDER[provider];
+  removeEventsFromDeselectedCalendars(provider: string): SuccessResult {
+    const table = calendarsTableFor(provider);
 
     if (!table) throw new Error(`Unknown calendar provider: ${provider}`);
     this.sql
@@ -5149,7 +5295,7 @@ export class DatabaseManager {
 
     return { success: true };
   }
-  replaceAppleCalendarEvents(events: CalendarEventInput[]): { success: boolean } {
+  replaceAppleCalendarEvents(events: CalendarEventInput[]): SuccessResult {
     const tx = this.sql.transaction((list: CalendarEventInput[]) => {
       this.sql
         .prepare(
@@ -5188,21 +5334,21 @@ export class DatabaseManager {
 
     return { success: true };
   }
-  clearGoogleCalendarData(): { success: boolean } {
+  clearGoogleCalendarData(): SuccessResult {
     this.sql.prepare("DELETE FROM calendar_events WHERE provider = 'google'").run();
     this.sql.prepare("DELETE FROM google_calendars").run();
     this.sql.prepare("DELETE FROM google_calendar_tokens").run();
 
     return { success: true };
   }
-  clearMicrosoftCalendarData(): { success: boolean } {
+  clearMicrosoftCalendarData(): SuccessResult {
     this.sql.prepare("DELETE FROM calendar_events WHERE provider = 'microsoft'").run();
     this.sql.prepare("DELETE FROM microsoft_calendars").run();
     this.sql.prepare("DELETE FROM microsoft_calendar_tokens").run();
 
     return { success: true };
   }
-  clearAppleCalendarData(): { success: boolean } {
+  clearAppleCalendarData(): SuccessResult {
     this.sql.prepare("DELETE FROM calendar_events WHERE provider = 'apple'").run();
     this.sql.prepare("DELETE FROM apple_calendars").run();
 
@@ -5235,18 +5381,15 @@ export class DatabaseManager {
 
     params.push(limit);
 
-    return (
-      this.sql
-        .prepare(
-          `SELECT ${noteColumns("n")} FROM notes n JOIN notes_fts ON notes_fts.rowid = n.id WHERE ${conditions.join(" AND ")} ORDER BY notes_fts.rank LIMIT ?`
-        )
-        .all(...params) as RawNoteRow[]
-    ).map(hydrateNote);
+    return this.sql
+      .prepare(
+        `SELECT ${noteColumns("n")} FROM notes n JOIN notes_fts ON notes_fts.rowid = n.id WHERE ${conditions.join(" AND ")} ORDER BY notes_fts.rank LIMIT ?`
+      )
+      .all<RawNoteRow>(...params)
+      .map(hydrateNote);
   }
 
-  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): {
-    success: boolean;
-  } {
+  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): SuccessResult {
     const stmt = this.sql.prepare(
       "INSERT INTO contacts (email, display_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET display_name = COALESCE(excluded.display_name, contacts.display_name), updated_at = CURRENT_TIMESTAMP"
     );
@@ -5263,7 +5406,7 @@ export class DatabaseManager {
   /** Names and photos from Google People; a profile without either leaves the row as it was. */
   upsertGooglePeople(
     profiles: Array<{ email: string; displayName: string | null; photoUrl: string | null }>
-  ): { success: boolean } {
+  ): SuccessResult {
     const stmt = this.sql.prepare(
       "INSERT INTO contacts (email, people_name, photo_url) VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET people_name = COALESCE(excluded.people_name, contacts.people_name), photo_url = COALESCE(excluded.photo_url, contacts.photo_url), updated_at = CURRENT_TIMESTAMP"
     );
@@ -5296,7 +5439,7 @@ export class DatabaseManager {
       .prepare(
         `SELECT email, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url FROM contacts WHERE email IN (${normalized.map(() => "?").join(", ")})`
       )
-      .all(...normalized) as ContactProfileRow[];
+      .all<ContactProfileRow>(...normalized);
   }
   searchContacts(query: string): ContactRow[] {
     const pattern = `%${query || ""}%`;
@@ -5305,7 +5448,7 @@ export class DatabaseManager {
       .prepare(
         "SELECT email, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url, created_at, updated_at FROM contacts WHERE email LIKE ? OR display_name LIKE ? OR people_name LIKE ? OR learned_name LIKE ? ORDER BY COALESCE(learned_name, people_name, display_name), email LIMIT 20"
       )
-      .all(pattern, pattern, pattern, pattern) as ContactRow[];
+      .all<ContactRow>(pattern, pattern, pattern, pattern);
   }
   upsertSpeakerProfile(
     name: string,
@@ -5321,9 +5464,9 @@ export class DatabaseManager {
         .run(name, email || null, embeddingBuffer, profileId);
 
       return (
-        (this.sql.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(profileId) as
-          | SpeakerProfileWithEmbedding
-          | undefined) ?? null
+        this.sql
+          .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
+          .get<SpeakerProfileWithEmbedding>(profileId) ?? null
       );
     }
 
@@ -5332,9 +5475,9 @@ export class DatabaseManager {
       .run(name, email || null, embeddingBuffer);
 
     return (
-      (this.sql
+      this.sql
         .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
-        .get(result.lastInsertRowid) as SpeakerProfileWithEmbedding | undefined) ?? null
+        .get<SpeakerProfileWithEmbedding>(result.lastInsertRowid) ?? null
     );
   }
   getSpeakerProfiles(includeEmbedding = false): SpeakerProfileRow[] {
@@ -5342,7 +5485,7 @@ export class DatabaseManager {
       .prepare(
         `SELECT ${includeEmbedding ? "*" : "id, display_name, email, sample_count, created_at, updated_at"} FROM speaker_profiles ORDER BY display_name`
       )
-      .all() as SpeakerProfileRow[];
+      .all<SpeakerProfileRow>();
   }
   attachEmailToProfile(
     profileId: number,
@@ -5355,12 +5498,12 @@ export class DatabaseManager {
     if (result.changes === 0) return null;
 
     return (
-      (this.sql.prepare("SELECT * FROM speaker_profiles WHERE id = ?").get(profileId) as
-        | SpeakerProfileWithEmbedding
-        | undefined) ?? null
+      this.sql
+        .prepare("SELECT * FROM speaker_profiles WHERE id = ?")
+        .get<SpeakerProfileWithEmbedding>(profileId) ?? null
     );
   }
-  mergeSpeakerProfiles(a: number, b: number): { success: boolean } {
+  mergeSpeakerProfiles(a: number, b: number): SuccessResult {
     this.sql.prepare("UPDATE speaker_mappings SET profile_id = ? WHERE profile_id = ?").run(a, b);
     this.sql.prepare("DELETE FROM speaker_profiles WHERE id = ?").run(b);
 
@@ -5371,7 +5514,7 @@ export class DatabaseManager {
     speakerId: string,
     profileId: number | null,
     displayName: string
-  ): { success: boolean } {
+  ): SuccessResult {
     this.sql
       .prepare(
         "INSERT INTO speaker_mappings (note_id, speaker_id, profile_id, display_name) VALUES (?, ?, ?, ?) ON CONFLICT(note_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name"
@@ -5383,9 +5526,9 @@ export class DatabaseManager {
   getSpeakerMappings(noteId: number): SpeakerMappingRow[] {
     return this.sql
       .prepare("SELECT * FROM speaker_mappings WHERE note_id = ?")
-      .all(noteId) as SpeakerMappingRow[];
+      .all<SpeakerMappingRow>(noteId);
   }
-  removeSpeakerMapping(noteId: number, speakerId: string): { success: boolean } {
+  removeSpeakerMapping(noteId: number, speakerId: string): SuccessResult {
     return {
       success:
         this.sql
@@ -5396,7 +5539,7 @@ export class DatabaseManager {
   saveNoteSpeakerEmbeddings(
     noteId: number,
     embeddings: Array<{ speakerId: string; embedding: Buffer }>
-  ): { success: boolean } {
+  ): SuccessResult {
     const tx = this.sql.transaction((list: Array<{ speakerId: string; embedding: Buffer }>) => {
       const stmt = this.sql.prepare(
         "INSERT INTO note_speaker_embeddings (note_id, speaker_id, embedding) VALUES (?, ?, ?) ON CONFLICT(note_id, speaker_id) DO UPDATE SET embedding = excluded.embedding"
@@ -5412,16 +5555,15 @@ export class DatabaseManager {
   getNoteSpeakerEmbeddings(noteId: number): NoteSpeakerEmbeddingRow[] {
     return this.sql
       .prepare("SELECT * FROM note_speaker_embeddings WHERE note_id = ?")
-      .all(noteId) as NoteSpeakerEmbeddingRow[];
+      .all<NoteSpeakerEmbeddingRow>(noteId);
   }
   getNotesWithUnmappedSpeakers(): NoteRow[] {
-    return (
-      this.sql
-        .prepare(
-          `SELECT ${noteColumns("n")} FROM notes n WHERE EXISTS (SELECT 1 FROM speaker_mappings m WHERE m.note_id = n.id AND m.profile_id IS NULL) ORDER BY n.updated_at DESC`
-        )
-        .all() as RawNoteRow[]
-    ).map(hydrateNote);
+    return this.sql
+      .prepare(
+        `SELECT ${noteColumns("n")} FROM notes n WHERE EXISTS (SELECT 1 FROM speaker_mappings m WHERE m.note_id = n.id AND m.profile_id IS NULL) ORDER BY n.updated_at DESC`
+      )
+      .all<RawNoteRow>()
+      .map(hydrateNote);
   }
 
   cleanup(): void {
@@ -5441,4 +5583,6 @@ export class DatabaseManager {
 // alone would expose only `exports.default`.
 module.exports = DatabaseManager;
 
-module.exports.DatabaseManager = DatabaseManager;
+// The named export mirrors the default for destructuring require sites; the
+// values are identical, so the member access cannot be unsafe.
+Object.assign(module.exports, { DatabaseManager });

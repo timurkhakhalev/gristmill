@@ -202,7 +202,11 @@ export class NoteReadService {
     try {
       result = readMeetingRunOutput(this.db, this.storage, run);
     } catch (error) {
-      diagnostics.push((error as { code?: string }).code ?? "run-artifact-invalid");
+      diagnostics.push(
+        // SAFETY: the reader throws plain errors whose optional `code` carries
+        // the failure kind; a non-Error throw has no code and falls back.
+        (error as { code?: string }).code ?? "run-artifact-invalid"
+      );
     }
 
     if (result && !result.result.transcript) diagnostics.push("transcript-artifact-missing");
@@ -377,6 +381,8 @@ export class NoteReadService {
   }
 
   show(note: NoteRow) {
+    // SAFETY: participants are stored as a JSON array of contact references;
+    // malformed JSON would have failed at write time.
     const participants = note.participants
       ? (JSON.parse(note.participants) as Array<{ email?: string; displayName?: string }>)
       : [];

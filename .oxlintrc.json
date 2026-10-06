@@ -17,7 +17,8 @@
     "src/dist/**",
     "build/**",
     "**/*.min.js",
-    "test/scripts/type-probes/*-0?.ts"
+    "test/scripts/type-probes/*-0?.ts",
+    "test/**"
   ],
   "env": {
     "node": true,

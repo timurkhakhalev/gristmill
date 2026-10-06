@@ -10,3 +10,13 @@ When creating or changing such a boundary:
 - For a new or changed external handler, verify that invalid data is rejected before a business operation or side effect and valid data reaches it. Follow the project's existing testing approach and use fake collaborators.
 
 A function's responsibility and data flow determine whether it is a boundary. Lint and the import graph do not establish this automatically. Verify the truth of a type predicate and the completeness of a parser through implementation review and tests.
+
+## Scope: tests are not linted
+
+Oxlint and Oxfmt exclude `test/**`. Owner decision from 2026-10-06, tracked in #278 with the deferred test stage in #301.
+
+- `test/**` is out of the lint and format scope. Do not fix test style, assertions, `require`/loader typing or test-only types to satisfy a lint rule.
+- Tests still run and still pass `pnpm run typecheck:tests`. Those checks are not optional.
+- Change a test only for the behavior, contract or consumer it covers. Pick checks for that behavior, not for lint.
+- An excluded file proves nothing. A clean lint result on an ignored path is a skip, not a passing control; the consumer probes check this explicitly.
+- When a rule change would affect how tests are written, verify the source rule in a linted source path instead of adding a test-only exception.

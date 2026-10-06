@@ -1,19 +1,39 @@
 import type { MeetingRecordingStorage as MeetingRecordingStorageType } from "./meetingRecordingStorage.js";
 
-const fs = require("fs");
+import fs from "node:fs";
+import path from "node:path";
+import { app } from "electron";
 
-const path = require("path");
-
-const { app } = require("electron");
-
-const debugLogger = require("./debugLogger");
-
-const { parseDbTimestamp } = require("./dbTimestamp");
-
-const MeetingRecordingStorage = require("./meetingRecordingStorage");
+import debugLogger from "./debugLogger.js";
+import { parseDbTimestamp } from "./dbTimestamp.js";
+import { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 
 export interface AudioCleanupDatabase {
-  clearAudioFlags(ids: string[]): unknown;
+  clearAudioFlags(ids: string[]): void;
+}
+
+export interface AudioDeleteResult {
+  success: boolean;
+}
+
+export interface AudioSaveResult {
+  success: boolean;
+  path?: string;
+}
+
+export interface AudioCleanupResult {
+  deleted: number;
+  kept: number;
+}
+
+export interface AudioDeleteAllResult {
+  deleted: number;
+  failed: number;
+}
+
+export interface AudioStorageUsage {
+  fileCount: number;
+  totalBytes: number;
 }
 
 export class AudioStorageManager {
@@ -32,7 +52,7 @@ export class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to create audio directory",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "audio-storage"
       );
     }
@@ -60,7 +80,7 @@ export class AudioStorageManager {
     transcriptionId: number,
     audioBuffer: Buffer,
     timestamp?: string | null
-  ): { success: boolean; path?: string } {
+  ): AudioSaveResult {
     try {
       const filename = this._buildFilename(transcriptionId, timestamp);
       const filePath = path.join(this.audioDir, filename);
@@ -75,7 +95,7 @@ export class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to save audio",
-        { transcriptionId, error: (error as Error).message },
+        { transcriptionId, error: error instanceof Error ? error.message : String(error) },
         "audio-storage"
       );
 
@@ -92,7 +112,9 @@ export class AudioStorageManager {
       );
 
       if (match) return path.join(this.audioDir, match);
-    } catch {}
+    } catch {
+      /* unreadable audio directory globs to no path */
+    }
 
     return null;
   }
@@ -107,7 +129,7 @@ export class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to read audio",
-        { transcriptionId, error: (error as Error).message },
+        { transcriptionId, error: error instanceof Error ? error.message : String(error) },
         "audio-storage"
       );
 
@@ -115,7 +137,7 @@ export class AudioStorageManager {
     }
   }
 
-  deleteAudio(transcriptionId: number): { success: boolean } {
+  deleteAudio(transcriptionId: number): AudioDeleteResult {
     try {
       const filePath = this.getAudioPath(transcriptionId);
 
@@ -128,7 +150,7 @@ export class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to delete audio",
-        { transcriptionId, error: (error as Error).message },
+        { transcriptionId, error: error instanceof Error ? error.message : String(error) },
         "audio-storage"
       );
 
@@ -139,7 +161,7 @@ export class AudioStorageManager {
   cleanupExpiredAudio(
     retentionDays: number,
     databaseManager?: AudioCleanupDatabase | null
-  ): { deleted: number; kept: number } {
+  ): AudioCleanupResult {
     try {
       const cutoffMs = Date.now() - retentionDays * 86400000;
       const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
@@ -165,7 +187,7 @@ export class AudioStorageManager {
         } catch (error) {
           debugLogger.error(
             "Failed to process audio file during cleanup",
-            { file, error: (error as Error).message },
+            { file, error: error instanceof Error ? error.message : String(error) },
             "audio-storage"
           );
         }
@@ -185,7 +207,7 @@ export class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Audio cleanup failed",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "audio-storage"
       );
 
@@ -193,7 +215,7 @@ export class AudioStorageManager {
     }
   }
 
-  deleteAllAudio(): { deleted: number; failed: number } {
+  deleteAllAudio(): AudioDeleteAllResult {
     try {
       const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
       let deleted = 0;
@@ -207,7 +229,7 @@ export class AudioStorageManager {
           failed += 1;
           debugLogger.error(
             "Failed to delete audio file",
-            { file, error: (error as Error).message },
+            { file, error: error instanceof Error ? error.message : String(error) },
             "audio-storage"
           );
         }
@@ -219,7 +241,7 @@ export class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to delete all audio",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "audio-storage"
       );
 
@@ -227,7 +249,7 @@ export class AudioStorageManager {
     }
   }
 
-  getStorageUsage(): { fileCount: number; totalBytes: number } {
+  getStorageUsage(): AudioStorageUsage {
     try {
       const files = fs.readdirSync(this.audioDir).filter((f: string) => f.endsWith(".webm"));
       let totalBytes = 0;
@@ -237,7 +259,7 @@ export class AudioStorageManager {
           const stats = fs.statSync(path.join(this.audioDir, file));
           totalBytes += stats.size;
         } catch {
-          // Skip files that can't be stat'd
+          // Skip files that can't be stat'd.
         }
       }
 
@@ -245,7 +267,7 @@ export class AudioStorageManager {
     } catch (error) {
       debugLogger.error(
         "Failed to get storage usage",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "audio-storage"
       );
 
@@ -258,4 +280,5 @@ export class AudioStorageManager {
 // every require site (ipcHandlers.js, main.js, tests) invokes it directly.
 module.exports = AudioStorageManager;
 
-module.exports.AudioStorageManager = AudioStorageManager;
+// CommonJS contract for legacy destructuring requires.
+Object.assign(module.exports, { AudioStorageManager });

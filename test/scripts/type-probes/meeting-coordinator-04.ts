@@ -28,9 +28,12 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
     setMeetingRecordingMicIntentionallyEmpty() {},
     createMeetingRecording: () =>
       ({}) as import("./src/contracts/meetingRecording.js").MeetingRecordingDto,
-    createMeetingRecordingEpoch: () => undefined,
-    updateMeetingRecordingEpochRecovery: () => undefined,
-    addMeetingRecordingEpochAlignment: () => undefined,
+    createMeetingRecordingEpoch: () =>
+      ({}) as import("./src/contracts/meetingRecording.js").MeetingRecordingEpochDto,
+    updateMeetingRecordingEpochRecovery: () =>
+      ({}) as import("./src/contracts/meetingRecording.js").MeetingRecordingEpochDto,
+    addMeetingRecordingEpochAlignment: () =>
+      ({}) as import("./src/contracts/meetingRecording.js").MeetingRecordingEpochDto,
     markMeetingRecordingEpochAlignmentUnknown: () => undefined,
     openMeetingIntentionalInterval: () => ({
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -47,7 +50,8 @@ const deps: import("./src/helpers/meetingCoordinatorIpcHandlers.js").MeetingCoor
     }),
     closeMeetingIntentionalInterval: () => null,
     listMeetingIntentionalIntervals: () => [],
-    markMeetingRecordingFinalizing: () => undefined,
+    markMeetingRecordingFinalizing: () =>
+      ({}) as import("./src/contracts/meetingRecording.js").MeetingRecordingDto,
     finalizeMeetingRecording: () => ({
       recording: {} as import("./src/contracts/meetingRecording.js").MeetingRecordingDto,
       initialRun: { id: "run-1" },

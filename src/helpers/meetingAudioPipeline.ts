@@ -19,7 +19,8 @@ export const createMeetingCaptureAudioContext = (): AudioContext => {
   const context = new AudioContext({ sampleRate: 24_000 });
 
   if (context.sampleRate !== 24_000) {
-    void context.close();
+    // Close is fire-and-forget on the failure path; the error rethrows below.
+    context.close().catch(() => undefined);
     throw new Error("Meeting capture requires a 24 kHz audio context");
   }
 
@@ -266,6 +267,7 @@ export const createAudioPipeline = async ({
       const send = window.electronAPI?.meetingTranscriptionSend;
 
       if (!send) throw new Error("Meeting recording bridge is unavailable");
+      // SAFETY: the bridge contract returns the ack for the sent packet.
       const ack = await send(buffer, source, sessionId, packet);
 
       if (!ack.success || ack.sequence !== packet.sequence) {
@@ -274,8 +276,6 @@ export const createAudioPipeline = async ({
 
       onAck(packet.sequence, packet.epochIndex);
       processor.port.postMessage({ type: "ack", sequence: packet.sequence });
-
-      return ack;
     },
     onFailure: (error) => {
       processor.port.postMessage({ type: "failed" });
@@ -300,15 +300,20 @@ export const createAudioPipeline = async ({
 
   const checkDrain = () => {
     if (flushSequence === null || !drainPromise) return;
-    void queue.drain().then(
-      () => {
-        resolveDrain?.(flushSequence as number);
-      },
-      (error: unknown) => flushReject?.(error instanceof Error ? error : new Error(String(error)))
-    );
+    const sequence = flushSequence;
+
+    // The queue rejects only with Error instances it constructs itself.
+    void queue
+      .drain()
+      .then(() => {
+        // SAFETY: flushSequence was non-null at entry and stored above.
+        resolveDrain?.(sequence as number);
+      })
+      .catch((error: Error) => flushReject?.(error));
   };
 
   processor.port.onmessage = (event) => {
+    // SAFETY: the worklet protocol emits only the message union below.
     const message = event.data as
       | MeetingCapturePacketMessage
       | { type: "flush-complete"; lastSequence: number; boundaryRenderFrame: number }
@@ -429,14 +434,17 @@ export const createAudioPipeline = async ({
       resolvePromise = resolve;
       rejectPromise = reject;
     });
-    // Store the resolver for the ordered flush-complete + write-ack barrier.
-    resolveDrain = resolvePromise!;
-    flushReject = rejectPromise!;
+    // Store the resolver for the ordered flush-complete + write-ack barrier;
+    // both callbacks are set synchronously by the Promise constructor above.
+    // Store the resolver for the ordered flush-complete + write-ack barrier;
+    // both callbacks are set synchronously by the Promise constructor above.
+    resolveDrain = resolvePromise;
+    flushReject = rejectPromise;
 
     const timeout = window.setTimeout(() => {
       const error = new Error("Meeting audio flush did not complete");
       onFailure(error);
-      rejectPromise!(error);
+      rejectPromise(error);
     }, MEETING_CAPTURE_DRAIN_TIMEOUT_MS);
 
     void drainPromise.then(

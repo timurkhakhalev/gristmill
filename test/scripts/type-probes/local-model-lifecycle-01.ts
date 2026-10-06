@@ -2,6 +2,7 @@
 // @probe-codes [2740]
 // @probe-origin test/scripts/localModelLifecycleTypeProbe.test.js
 import { registerLocalModelLifecycleHandlers } from "./src/helpers/localModelLifecycleIpcHandlers.ts";
+import type { WhisperVadConfigUpdate, WhisperVadWireConfig } from "./src/contracts/localModelLifecycle.ts";
 
 declare const ipcMain: {
   handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
@@ -18,8 +19,8 @@ registerLocalModelLifecycleHandlers(ipcMain, {
   },
   progressSender: { sendToControlPanel: () => undefined },
   updateDownloadStatus: () => null,
-  getWhisperVadSettings: () => ({}),
-  setWhisperVadSettings: (payload: Record<string, unknown>) => payload,
+  getWhisperVadSettings: () => ({} as WhisperVadWireConfig),
+  setWhisperVadSettings: (payload: WhisperVadConfigUpdate) => payload as WhisperVadWireConfig,
   persistParakeetProviderSelection: async () => undefined,
   clearParakeetProviderSelection: async () => undefined,
   resolveParakeetProviderName: () => "cohere",

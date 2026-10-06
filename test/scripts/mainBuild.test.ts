@@ -233,7 +233,7 @@ test("emitted modules resolve preload beside code and native resources from the 
 
       if (name === "path") return path;
 
-      if (name === "./debugLogger") return { info() {} };
+      if (name === "./debugLogger" || name === "./debugLogger.js") return { info() {} };
 
       if (name === "fs")
         return {

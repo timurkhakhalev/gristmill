@@ -1,23 +1,23 @@
-const fs = require("fs");
-
-const path = require("path");
-
-const debugLogger = require("./debugLogger.js");
-
-const { getModelsDirForService } = require("./modelDirUtils.js");
-
-const {
+import fs from "fs";
+import path from "path";
+import debugLogger from "./debugLogger.js";
+import { getModelsDirForService } from "./modelDirUtils.js";
+import {
   getFFmpegPath,
   isWavFormat,
   parseWavFormat,
   convertToWav,
   wavToFloat32Samples,
   computeFloat32RMS,
-} = require("./ffmpegUtils.js");
-
+} from "./ffmpegUtils.js";
 import { getSafeTempDir } from "./safeTempDir.js";
 import { createAbortError } from "./abortError.js";
-import { ParakeetWsServer } from "./parakeetWsServer.js";
+import {
+  ParakeetWsServer,
+  type ParakeetWsStatus,
+  type ParakeetOnlineStream,
+  type ParakeetOnlineStreamOptions,
+} from "./parakeetWsServer.js";
 import {
   getModelRuntime,
   getModelType,
@@ -263,7 +263,7 @@ export class ParakeetServerManager {
       } catch (err) {
         debugLogger.warn("Failed to cleanup temp audio file", {
           path: filePath,
-          error: (err as Error).message,
+          error: err instanceof Error ? err.message : String(err),
         });
       }
     }
@@ -290,9 +290,11 @@ export class ParakeetServerManager {
 
       return { success: true, port: this.wsServer.port ?? undefined };
     } catch (error) {
-      debugLogger.error("Failed to start parakeet WS server", { error: (error as Error).message });
+      debugLogger.error("Failed to start parakeet WS server", {
+        error: error instanceof Error ? error.message : String(error),
+      });
 
-      return { success: false, reason: (error as Error).message };
+      return { success: false, reason: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -300,17 +302,11 @@ export class ParakeetServerManager {
     await this.wsServer.stop();
   }
 
-  getServerStatus(): {
-    available: boolean;
-    running: boolean;
-    starting: boolean;
-    port: number | null;
-    modelName: string | null;
-  } {
+  getServerStatus(): ParakeetWsStatus {
     return this.wsServer.getStatus();
   }
 
-  createOnlineStream(options: Record<string, unknown>): unknown {
+  createOnlineStream(options: ParakeetOnlineStreamOptions): ParakeetOnlineStream {
     return this.wsServer.createOnlineStream(options);
   }
 }
@@ -319,4 +315,4 @@ export class ParakeetServerManager {
 // the TS graph imports the named export.
 module.exports = ParakeetServerManager;
 
-module.exports.ParakeetServerManager = ParakeetServerManager;
+Object.assign(module.exports, { ParakeetServerManager });

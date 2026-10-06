@@ -1,32 +1,22 @@
-const fs = require("fs");
-
-const fsPromises = require("fs").promises;
-
-const path = require("path");
-
-const { pipeline } = require("stream/promises");
-
-const debugLogger = require("./debugLogger.js");
-
-const { runSystemTar } = require("./systemTar.js");
-
-const {
+import fs from "fs";
+import fsPromises from "fs/promises";
+import path from "path";
+import { pipeline } from "stream/promises";
+import debugLogger from "./debugLogger.js";
+import { runSystemTar } from "./systemTar.js";
+import {
   downloadFile,
   createDownloadSignal,
   createDownloadInProgressError,
   cleanupStaleDownloads,
   checkDiskSpace,
-} = require("./downloadUtils.js");
-
+} from "./downloadUtils.js";
 import { fetchJson } from "./downloadUtils.js";
 import { ParakeetServerManager } from "./parakeetServer.js";
-
-const { getModelsDirForService } = require("./modelDirUtils.js");
-
+import type { ParakeetWsStatus } from "./parakeetWsServer.js";
+import { getModelsDirForService } from "./modelDirUtils.js";
 import { assertParakeetSupported, getParakeetCapability } from "./parakeetCapability.js";
-
-const modelRegistryData = require("../models/modelRegistryData.json");
-
+import modelRegistryData from "../models/modelRegistryData.json";
 import {
   getModelRuntime,
   getRequiredModelFiles,
@@ -54,16 +44,15 @@ interface ParakeetModelConfig {
 }
 
 function getParakeetModelConfig(modelName: string): ParakeetModelConfig | null {
-  const modelInfo = (
-    modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry>
-  )[modelName];
+  const registry = modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry>;
+  const modelInfo = registry[modelName];
 
   if (!modelInfo) return null;
 
   return {
     url: modelInfo.downloadUrl,
     manifestUrl: modelInfo.manifestUrl,
-    size: modelInfo.expectedSizeBytes || (modelInfo.sizeMb as number) * 1_000_000,
+    size: modelInfo.expectedSizeBytes || (modelInfo.sizeMb ?? 0) * 1_000_000,
     expectedSizeBytes: modelInfo.expectedSizeBytes,
     language: modelInfo.language,
     supportedLanguages: modelInfo.supportedLanguages || [],
@@ -136,7 +125,9 @@ export class ParakeetManager {
     for (const file of ["encoder.int8.onnx.data", "encoder.int8.onnx"]) {
       try {
         return fs.statSync(path.join(modelDir, file)).size;
-      } catch {}
+      } catch {
+        /* try the next candidate weights file */
+      }
     }
 
     return 0;
@@ -281,7 +272,7 @@ export class ParakeetManager {
     await this.serverManager.stopServer();
   }
 
-  getServerStatus(): Record<string, unknown> {
+  getServerStatus(): ParakeetWsStatus {
     return this.serverManager.getServerStatus();
   }
 
@@ -480,7 +471,6 @@ export class ParakeetManager {
 
       if (!archiveReady) {
         await downloadFile(modelConfig.url, archivePath, {
-          timeout: 600000,
           signal,
           onProgress: (downloadedBytes: number, totalBytes: number) => {
             downloadProcess.percentage =

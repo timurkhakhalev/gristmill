@@ -1,10 +1,7 @@
-const { app } = require("electron");
-
-const fs = require("fs");
-
-const path = require("path");
-
-const debugLogger = require("./debugLogger");
+import { app } from "electron";
+import fs from "fs";
+import path from "path";
+import debugLogger from "./debugLogger.js";
 
 // Resolves a bundled helper binary across the dev layout (resources/) and the
 // packaged layouts (process.resourcesPath, asar-unpacked). Returns null when

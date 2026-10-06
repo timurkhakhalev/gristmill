@@ -1,10 +1,7 @@
-const { app } = require("electron");
-
-const os = require("os");
-
-const fs = require("fs");
-
-const path = require("path");
+import { app } from "electron";
+import os from "os";
+import fs from "fs";
+import path from "path";
 
 // Same rule as safeTempDir: native whisper/parakeet binaries crash on Windows
 // when model paths contain spaces or non-ASCII (CJK / Cyrillic profile dirs).
@@ -29,7 +26,9 @@ function getAsciiSafeFallbackRoot(): string | null {
 
     try {
       return ensureDir(candidate);
-    } catch {}
+    } catch {
+      /* try the next candidate root */
+    }
   }
 
   return null;
@@ -90,7 +89,9 @@ function rollbackMigration(completedMoves: CompletedMove[]): void {
       } else if (!fs.existsSync(move.from)) {
         fs.renameSync(move.to, move.from);
       }
-    } catch {}
+    } catch {
+      /* rollback continues for the remaining moves */
+    }
   }
 }
 
@@ -137,7 +138,9 @@ function migrateLegacyModelDirs(legacyRoot: string, targetRoot: string): boolean
     if (staging) {
       try {
         fs.rmSync(staging, { recursive: true, force: true });
-      } catch {}
+      } catch {
+        /* best-effort staging cleanup */
+      }
     }
 
     rollbackMigration(completedMoves);

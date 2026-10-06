@@ -1,31 +1,21 @@
-const { app } = require("electron");
-
-const fs = require("fs");
-
-const fsPromises = require("fs").promises;
-
-const path = require("path");
-
-const debugLogger = require("./debugLogger.js");
-
-const { ensureWhisperVadModel } = require("./whisperVadModel.js");
-
-const {
+import { app } from "electron";
+import fs from "fs";
+import fsPromises from "fs/promises";
+import path from "path";
+import debugLogger from "./debugLogger.js";
+import { ensureWhisperVadModel } from "./whisperVadModel.js";
+import {
   downloadFile,
   createDownloadSignal,
   createDownloadInProgressError,
   validateFileSize,
   cleanupStaleDownloads,
   checkDiskSpace,
-} = require("./downloadUtils.js");
-
+} from "./downloadUtils.js";
 import { WhisperServerManager } from "./whisperServer.js";
-
-const { createAbortError } = require("./abortError.js");
-
-const { getModelsDirForService } = require("./modelDirUtils.js");
-
-const modelRegistryData = require("../models/modelRegistryData.json");
+import { createAbortError } from "./abortError.js";
+import { getModelsDirForService } from "./modelDirUtils.js";
+import modelRegistryData from "../models/modelRegistryData.json";
 
 const CACHE_TTL_MS = 30000;
 
@@ -313,7 +303,7 @@ export class WhisperManager {
         port: this.serverManager.port,
       });
 
-      return { success: true, port: this.serverManager.port };
+      return { success: true, port: this.serverManager.port ?? undefined };
     } catch (error) {
       debugLogger.error("Failed to start whisper-server", { error: (error as Error).message });
 
@@ -727,7 +717,6 @@ export class WhisperManager {
       }
 
       await downloadFile(modelConfig.url, modelPath, {
-        timeout: 600000,
         signal,
         expectedSize: modelConfig.size,
         onProgress: (downloadedBytes: number, totalBytes: number) => {

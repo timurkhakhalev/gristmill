@@ -1,12 +1,8 @@
-const fs = require("fs");
-
-const path = require("path");
-
-const { app } = require("electron");
-
-const { downloadFile } = require("./downloadUtils.js");
-
-const debugLogger = require("./debugLogger.js");
+import fs from "fs";
+import path from "path";
+import { app } from "electron";
+import { downloadFile } from "./downloadUtils.js";
+import debugLogger from "./debugLogger.js";
 
 // Issue #89: the Silero VAD model for whisper.cpp is a model asset, not a
 // runtime binary, so it is fetched on first VAD-enabled use instead of being

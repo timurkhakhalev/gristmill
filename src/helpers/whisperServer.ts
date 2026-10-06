@@ -1,27 +1,15 @@
-const { spawn } = require("child_process");
-
-const EventEmitter = require("events");
-
-const fs = require("fs");
-
-const path = require("path");
-
+import { spawn, type ChildProcess } from "child_process";
+import EventEmitter from "events";
+import fs from "fs";
+import path from "path";
 import http from "http";
-
-const os = require("os");
-
-const debugLogger = require("./debugLogger.js");
-
-const { ensureLocalEngine } = require("./localEngineInstaller.js");
-
-const { killProcess } = require("../utils/process.js");
-
-const { isPortAvailable, resolveBinaryPath } = require("../utils/serverUtils.js");
-
+import os from "os";
+import debugLogger from "./debugLogger.js";
+import { ensureLocalEngine } from "./localEngineInstaller.js";
+import { killProcess } from "../utils/process.js";
+import { isPortAvailable, resolveBinaryPath } from "../utils/serverUtils.js";
 import { getSafeTempDir } from "./safeTempDir.js";
-
-const { convertToWav } = require("./ffmpegUtils.js");
-
+import { convertToWav } from "./ffmpegUtils.js";
 import { createAbortError } from "./abortError.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
 import { sanitizeWhisperVadConfig, DEFAULT_WHISPER_VAD_CONFIG } from "./whisperVadConfig.js";
@@ -254,24 +242,25 @@ export class WhisperServerManager extends EventEmitter {
   private activeStartIdentity: string | null = null;
   private stopGeneration = 0;
 
+  process: ChildProcess | null = null;
+  hostname = "127.0.0.1";
+  port: number | null = null;
+  ready = false;
+  isRemote = false;
+  modelPath: string | null = null;
+  startupPromise: Promise<void> | null = null;
+  healthCheckInterval: NodeJS.Timeout | null = null;
+  cachedServerBinaryPath: string | null = null;
+  cachedFFmpegPath: string | null = null;
+  canConvert = false;
+  startGeneration = 0;
+  private _stopRequested = false;
+  vadSignature = "vad:off";
+  threadSignature = "threads:default";
+  lastStartOptions: Record<string, unknown> = {};
+
   constructor() {
     super();
-    this.process = null;
-    this.hostname = "127.0.0.1";
-    this.port = null;
-    this.ready = false;
-    this.isRemote = false;
-    this.modelPath = null;
-    this.startupPromise = null;
-    this.healthCheckInterval = null;
-    this.cachedServerBinaryPath = null;
-    this.cachedFFmpegPath = null;
-    this.canConvert = false;
-    this.startGeneration = 0;
-    this._stopRequested = false;
-    this.vadSignature = "vad:off";
-    this.threadSignature = "threads:default";
-    this.lastStartOptions = {};
   }
 
   getFFmpegPath() {
@@ -554,7 +543,7 @@ export class WhisperServerManager extends EventEmitter {
       cwd: serverBinaryDir,
       detached: true,
     });
-    sidecarPidFile.write("whisper", this.process.pid);
+    if (this.process.pid !== undefined) sidecarPidFile.write("whisper", this.process.pid);
 
     let stderrBuffer = "";
     let exitCode: number | null = null;
@@ -1019,12 +1008,10 @@ export class WhisperServerManager extends EventEmitter {
 // named exports.
 module.exports = WhisperServerManager;
 
-module.exports.WhisperServerManager = WhisperServerManager;
-
-module.exports.buildWhisperServerArgs = buildWhisperServerArgs;
-
-module.exports.INFERENCE_DECODER_FIELDS = INFERENCE_DECODER_FIELDS;
-
-module.exports.getVadSignature = getVadSignature;
-
-module.exports.resolveWhisperThreads = resolveWhisperThreads;
+Object.assign(module.exports, {
+  WhisperServerManager,
+  buildWhisperServerArgs,
+  INFERENCE_DECODER_FIELDS,
+  getVadSignature,
+  resolveWhisperThreads,
+});

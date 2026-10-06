@@ -1,6 +1,20 @@
 import type { MeetingProcessingConfig } from "../contracts/meetingRecording.js";
 import { resolveSelfHostedOpenAIBase } from "../services/ai/openaiBaseCore.js";
 
+export interface SummaryGenerateTextOptions {
+  model: unknown;
+  system: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  maxOutputTokens: number;
+  temperature: number;
+  maxRetries: number;
+  abortSignal: AbortSignal;
+  // The injected generateText is the ai SDK wrapper whose options bag is
+  // Record-based (see ipcHandlers GenerateTextOptions, package-3 seam); the
+  // index signature keeps that seam compatible. Override: no-unsafe-dictionary-type.
+  [key: string]: unknown;
+}
+
 export interface MeetingSummaryDeps {
   getAIModel: (
     provider: string,
@@ -8,14 +22,14 @@ export interface MeetingSummaryDeps {
     apiKey: string,
     baseUrl?: string,
     options?: { disableThinking?: boolean; omitAuthorization?: boolean }
-  ) => Promise<unknown>;
+  ) => Promise<import("ai").LanguageModel>;
   generateText: (
-    options: Record<string, unknown>
+    options: SummaryGenerateTextOptions
   ) => Promise<{ text: string; finishReason?: string }>;
   processLocalText: (
     input: string,
     model: string,
-    config: Record<string, unknown>,
+    config: import("../contracts/reasoning.js").LocalReasoningConfig,
     signal: AbortSignal
   ) => Promise<string>;
   getCredential: (reference: string | undefined, provider: string) => string;
@@ -23,8 +37,8 @@ export interface MeetingSummaryDeps {
     provider: string,
     model: string,
     apiKey: string,
-    enterprise: Record<string, unknown>
-  ) => Promise<unknown>;
+    enterprise: import("./enterpriseAiProviders.js").EnterpriseRuntimeConfig
+  ) => Promise<import("ai").LanguageModel>;
   validateEnterpriseEndpoint?: (endpoint: string | undefined) => void;
   runBedrockRequest?: <T>(
     operation: () => Promise<T>,
@@ -79,7 +93,7 @@ export async function createMeetingTextConversation(
 
   if (summary.reasoningMode === "agent") throw codedError("bb-summary-route-unavailable");
 
-  let languageModel: unknown;
+  let languageModel: import("ai").LanguageModel | null = null;
   const provider = summary.provider;
 
   if (summary.reasoningMode === "enterprise") {

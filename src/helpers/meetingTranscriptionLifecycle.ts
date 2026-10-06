@@ -1,22 +1,25 @@
-import type { MeetingCaptureStopRequest } from "../contracts/meetingCoordinator.js";
+import type {
+  MeetingCaptureStopRequest,
+  MeetingStartResult,
+} from "../contracts/meetingCoordinator.js";
 import type { WebContents } from "electron";
 
+// Opaque start options forwarded to the coordinator's start callback; the
+// coordinator owns parsing (meetingOptionsSchema) at the IPC boundary.
 export interface MeetingTranscriptionSessionOptions {
-  [key: string]: unknown;
+  autoEndEligible?: boolean;
+  groupId?: string;
+  manualMicMuted?: boolean;
+  noteId?: number | null;
+  recordingConfig?: unknown;
+  restartSessionId?: string;
+  sessionId?: string;
 }
 
 export interface MeetingStartInvocation {
   sessionId: string;
   ownerWebContents: WebContents | null;
   options: MeetingTranscriptionSessionOptions;
-}
-
-export interface MeetingStartResult {
-  success?: boolean;
-  error?: string;
-  reason?: string;
-  sessionId?: string;
-  [key: string]: unknown;
 }
 
 export interface MeetingStopResult {
@@ -68,6 +71,10 @@ export interface MeetingTranscriptionLifecycle {
   ): Promise<MeetingStopResult>;
 }
 
+function toError(reason: PromiseRejectedResult["reason"]): Error {
+  return reason instanceof Error ? reason : new Error(String(reason));
+}
+
 export function createMeetingTranscriptionLifecycle({
   start,
   stop,
@@ -85,7 +92,7 @@ export function createMeetingTranscriptionLifecycle({
       suppressProcessing?: boolean;
     }
   ) => Promise<MeetingStopResult>;
-  onError?: (error: unknown, sessionId: string) => void;
+  onError?: (error: Error, sessionId: string) => void;
 }): MeetingTranscriptionLifecycle {
   let operationTail: Promise<unknown> = Promise.resolve();
   const sessions = new Map<string, MeetingLifecycleSession>();
@@ -105,12 +112,14 @@ export function createMeetingTranscriptionLifecycle({
 
     session.ownerWebContents?.removeListener?.("destroyed", session.ownerLossHandler);
     session.ownerWebContents?.removeListener?.("render-process-gone", session.ownerLossHandler);
-    session.ownerWebContents?.removeListener?.(
-      "did-start-navigation",
-      // The navigation handler takes details; removeListener only compares
-      // identity, so passing it as the stored handler reference is safe.
-      session.ownerNavigationHandler as unknown as () => void
-    );
+    const navigationHandler = session.ownerNavigationHandler;
+
+    if (navigationHandler) {
+      // removeListener only compares listener identity; the stored handler's
+      // details parameter is compatible with the EventListener signature.
+      session.ownerWebContents?.removeListener?.("did-start-navigation", navigationHandler);
+    }
+
     session.ownerLossHandler = null;
     session.ownerNavigationHandler = null;
   };
@@ -203,8 +212,8 @@ export function createMeetingTranscriptionLifecycle({
         session.ownerWebContents === ownerWebContents &&
         session.state !== "stopping"
       ) {
-        void stopSession(session.sessionId, { incomplete: true }).catch((error) =>
-          onError(error, session.sessionId)
+        void stopSession(session.sessionId, { incomplete: true }).catch((caught) =>
+          onError(toError(caught), session.sessionId)
         );
       }
     }
@@ -254,15 +263,15 @@ export function createMeetingTranscriptionLifecycle({
         }
 
         return result;
-      } catch (error) {
+      } catch (caught) {
         removeSession(session);
-        throw error;
+        throw caught;
       }
     });
 
     const handleOwnerLoss = () => {
-      void stopSession(sessionId, { incomplete: true }).catch((error) => {
-        onError(error, sessionId);
+      void stopSession(sessionId, { incomplete: true }).catch((caught) => {
+        onError(toError(caught), sessionId);
       });
     };
 
@@ -294,4 +303,4 @@ export function createMeetingTranscriptionLifecycle({
 
 module.exports = createMeetingTranscriptionLifecycle;
 
-module.exports.createMeetingTranscriptionLifecycle = createMeetingTranscriptionLifecycle;
+Object.assign(module.exports, { createMeetingTranscriptionLifecycle });

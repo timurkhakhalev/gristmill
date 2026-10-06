@@ -119,7 +119,7 @@ const longestCommonTokenSubsequence = (a: string[], b: string[]): number => {
 };
 
 const countCommonTokens = (a: string[], b: string[]): number => {
-  const counts = new Map();
+  const counts = new Map<string, number>();
   let common = 0;
 
   for (const token of a) {
@@ -147,8 +147,8 @@ export const transcriptsOverlap = (
   a: string | null | undefined,
   b: string | null | undefined
 ): boolean => {
-  const normalizedA = typeof a === "string" ? normalizeTranscriptText(a) : a;
-  const normalizedB = typeof b === "string" ? normalizeTranscriptText(b) : b;
+  const normalizedA = a === null || a === undefined ? a : normalizeTranscriptText(a);
+  const normalizedB = b === null || b === undefined ? b : normalizeTranscriptText(b);
 
   if (!normalizedA || !normalizedB) return false;
 
@@ -177,8 +177,8 @@ export const transcriptsLooselyOverlap = (
   a: string | null | undefined,
   b: string | null | undefined
 ): boolean => {
-  const normalizedA = typeof a === "string" ? normalizeTranscriptText(a) : a;
-  const normalizedB = typeof b === "string" ? normalizeTranscriptText(b) : b;
+  const normalizedA = a === null || a === undefined ? a : normalizeTranscriptText(a);
+  const normalizedB = b === null || b === undefined ? b : normalizeTranscriptText(b);
 
   if (!normalizedA || !normalizedB) return false;
 
@@ -238,5 +238,6 @@ export const buildMergedCandidates = ({
     }
   }
 
+  // SAFETY: texts is constructed above as a local Set<string>.
   return [...(texts as Set<string>)];
 };

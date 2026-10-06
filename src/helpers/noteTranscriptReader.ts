@@ -12,6 +12,7 @@ import {
   type NoteTranscriptSpeaker,
   type TranscriptFilter,
 } from "../contracts/noteRead.js";
+import { z } from "zod";
 import { meetingTimelineFrameCount } from "./meetingAudioMixer.js";
 
 const FRAMES_PER_MS = 24;
@@ -72,13 +73,15 @@ export function readNoteTranscript(deps: NoteTranscriptDeps, noteId: number): No
   return readNoteTranscriptOutput(deps, noteId).transcript;
 }
 
+export interface NoteTranscriptOutput {
+  transcript: NoteTranscript;
+  sources: Array<{ runId: string; recordingIds: string[] }>;
+}
+
 export function readNoteTranscriptOutput(
   deps: NoteTranscriptDeps,
   noteId: number
-): {
-  transcript: NoteTranscript;
-  sources: Array<{ runId: string; recordingIds: string[] }>;
-} {
+): NoteTranscriptOutput {
   const recordings = deps
     .listRecordings(noteId)
     .slice()
@@ -290,27 +293,36 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
   const raw = deps.getProjection(noteId);
 
   if (!raw?.trim()) return absent(noteId, "absent");
-  let parsed: unknown;
+  let parsed: ReturnType<typeof projectionEntrySchema.parse>;
+
+  const projectionEntrySchema = z
+    .looseObject({
+      speaker: z.string().optional(),
+      speakerName: z.string().optional(),
+      source: z.string().optional(),
+      timestamp: z.number().optional(),
+      endTimestamp: z.number().optional(),
+      text: z.string().optional(),
+    })
+    .array()
+    .nullish()
+    .catch(null);
 
   try {
-    parsed = raw.trimStart().startsWith("[") ? JSON.parse(raw) : null;
+    parsed = raw.trimStart().startsWith("[") ? projectionEntrySchema.parse(JSON.parse(raw)) : null;
   } catch {
     return absent(noteId, "error", ["projection-invalid"]);
   }
 
-  if (!Array.isArray(parsed)) {
+  if (parsed === null || parsed === undefined) {
     return { ...absent(noteId, "ready"), text: raw, diagnostics: [] };
-  }
-
-  if (parsed.some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
-    return absent(noteId, "error", ["projection-invalid"]);
   }
 
   const speakers: NoteTranscriptSpeaker[] = [];
   const ids = new Map<string, string>();
 
-  const segments = parsed.map((item: Record<string, unknown>): NoteTranscriptSegment => {
-    const label = typeof item.speaker === "string" ? item.speaker : null;
+  const segments = parsed.map((item): NoteTranscriptSegment => {
+    const label = item.speaker ?? null;
     let speakerId: string | null = null;
 
     if (label) {
@@ -321,7 +333,7 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
         ids.set(label, speakerId);
         speakers.push({
           id: speakerId,
-          name: typeof item.speakerName === "string" ? item.speakerName : null,
+          name: item.speakerName ?? null,
           email: null,
           source: item.source === "mic" ? "microphone" : item.source === "system" ? "system" : null,
         });
@@ -329,10 +341,10 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
     }
 
     const start =
-      typeof item.timestamp === "number" && Number.isFinite(item.timestamp) ? item.timestamp : null;
+      item.timestamp !== undefined && Number.isFinite(item.timestamp) ? item.timestamp : null;
 
     const end =
-      typeof item.endTimestamp === "number" && Number.isFinite(item.endTimestamp)
+      item.endTimestamp !== undefined && Number.isFinite(item.endTimestamp)
         ? item.endTimestamp
         : null;
 
@@ -340,7 +352,7 @@ function readProjection(deps: NoteTranscriptDeps, noteId: number): NoteTranscrip
       speaker_id: speakerId,
       start_ms: start === null ? null : Math.round(start * 1000),
       end_ms: end === null ? null : Math.round(end * 1000),
-      text: typeof item.text === "string" ? item.text : "",
+      text: item.text ?? "",
     };
   });
 

@@ -1,8 +1,26 @@
+import { z } from "zod";
+
 import { i18nMain } from "./i18nMain.js";
 
 // The export formats read whatever the note/segment producers actually store:
 // speaker fields are optional (uploads have none), timestamps may be missing,
 // and SQLite dates arrive as UTC-without-suffix strings.
+// Tolerant views of stored segment/note fields: junk falls back to undefined
+// exactly like the previous typeof guards did.
+const finiteTimestampSchema = z
+  .number()
+  .refine((v) => Number.isFinite(v))
+  .nullish()
+  .catch(undefined);
+
+const participantsSchema = z
+  .array(z.looseObject({ displayName: z.string().nullish(), email: z.string().nullish() }))
+  .nullish()
+  .catch(undefined);
+
+const isFiniteTimestamp = (value: number | null | undefined): value is number =>
+  finiteTimestampSchema.parse(value) !== undefined;
+
 export interface TranscriptExportSegment {
   text: string;
   timestamp?: number | null;
@@ -59,8 +77,10 @@ export function parseNoteDate(createdAt: string | number | null | undefined): Da
     return new Date(NaN);
   }
 
-  if (typeof createdAt === "number") {
-    return new Date(createdAt);
+  const asNumber = finiteTimestampSchema.parse(createdAt);
+
+  if (asNumber !== undefined && asNumber !== null) {
+    return new Date(asNumber);
   }
 
   const value = String(createdAt).trim();
@@ -77,9 +97,7 @@ export function normalizeSegmentTimestamps(
   segments: TranscriptExportSegment[],
   note: TranscriptExportNote | null | undefined
 ): TranscriptExportSegment[] {
-  const segmentTimestamps = segments
-    .map((seg) => seg.timestamp)
-    .filter((ts): ts is number => typeof ts === "number" && Number.isFinite(ts));
+  const segmentTimestamps = segments.map((seg) => seg.timestamp).filter(isFiniteTimestamp);
 
   let startMs: number | null = null;
 
@@ -97,11 +115,11 @@ export function normalizeSegmentTimestamps(
   return segments.map((seg) => {
     const normalized = { ...seg };
 
-    if (typeof seg.timestamp === "number" && Number.isFinite(seg.timestamp)) {
+    if (isFiniteTimestamp(seg.timestamp)) {
       normalized.timestamp = (seg.timestamp - startMs) / 1000;
     }
 
-    if (typeof seg.endTimestamp === "number" && Number.isFinite(seg.endTimestamp)) {
+    if (isFiniteTimestamp(seg.endTimestamp)) {
       normalized.endTimestamp = (seg.endTimestamp - startMs) / 1000;
     }
 
@@ -129,16 +147,21 @@ function mergeSegments(segments: TranscriptExportSegment[]): MergedSegment[] {
     const ts = seg.timestamp || 0;
     const last = merged[merged.length - 1];
 
-    if (last && speakerKey(last) === speakerKey(seg) && ts - (lastTimestamp as number) < 2) {
+    if (
+      last &&
+      lastTimestamp !== null &&
+      speakerKey(last) === speakerKey(seg) &&
+      ts - lastTimestamp < 2
+    ) {
       last.text = last.text + " " + seg.text.trim();
-      last.endTimestamp = typeof seg.endTimestamp === "number" ? seg.endTimestamp : ts;
-      last.hasExplicitEndTimestamp = typeof seg.endTimestamp === "number";
+      last.endTimestamp = isFiniteTimestamp(seg.endTimestamp) ? seg.endTimestamp : ts;
+      last.hasExplicitEndTimestamp = isFiniteTimestamp(seg.endTimestamp);
     } else {
       merged.push({
         ...seg,
         timestamp: ts,
-        endTimestamp: typeof seg.endTimestamp === "number" ? seg.endTimestamp : ts,
-        hasExplicitEndTimestamp: typeof seg.endTimestamp === "number",
+        endTimestamp: isFiniteTimestamp(seg.endTimestamp) ? seg.endTimestamp : ts,
+        hasExplicitEndTimestamp: isFiniteTimestamp(seg.endTimestamp),
         text: seg.text.trim(),
       });
     }
@@ -169,11 +192,13 @@ function formatSrtTimestamp(seconds: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
 }
 
-function extractMetadata(note: TranscriptExportNote): {
+interface NoteMetadata {
   title: string;
   dateStr: string;
   participants: string[];
-} {
+}
+
+function extractMetadata(note: TranscriptExportNote): NoteMetadata {
   const title = note.title || "Untitled";
   const noteDate = parseNoteDate(note.created_at);
 
@@ -185,12 +210,9 @@ function extractMetadata(note: TranscriptExportNote): {
   let participants: string[] = [];
 
   try {
-    const parsed = JSON.parse(note.participants || "[]") as Array<{
-      displayName?: string | null;
-      email?: string | null;
-    }>;
+    const parsed = participantsSchema.parse(JSON.parse(note.participants || "[]"));
 
-    participants = parsed.map((p) => p.displayName || p.email || "").filter(Boolean);
+    participants = (parsed ?? []).map((p) => p.displayName || p.email || "").filter(Boolean);
   } catch {
     // Malformed participants stay out of the export header.
   }

@@ -34,7 +34,9 @@ interface AwsCredentialChain {
 
 // The model factories return an AI SDK LanguageModel; the narrow call surface
 // (generateText/doStream) is what callers consume.
-type ProviderModel = unknown;
+// SAFETY: every branch returns an AI SDK LanguageModel (@ai-sdk/* factories);
+// callers feed it straight into generateText's `model` option.
+type ProviderModel = import("ai").LanguageModel;
 
 export async function getEnterpriseAIModel(
   provider: string,

@@ -1,6 +1,10 @@
-const { rebuild }: typeof import("@electron/rebuild") = require("@electron/rebuild");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { rebuild } = require("@electron/rebuild") as typeof import("@electron/rebuild");
 
-const installedElectronVersion: string = require("electron/package.json").version;
+// SAFETY: electron ships package.json with a string version; the same field
+// drives electron-builder, and this is the installed version the rebuild needs.
+const installedElectronVersion: string = (require("electron/package.json") as { version: string })
+  .version;
 
 // Node tests and Electron use different SQLite ABIs. A Node prebuild replaces
 // the binary without invalidating electron-rebuild's .forge-meta marker.

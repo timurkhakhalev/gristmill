@@ -1,16 +1,42 @@
 #!/usr/bin/env node
-const { spawnSync }: typeof import("node:child_process") = require("node:child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
 
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
 
 const appDir = path.resolve(__dirname, "..");
+
+// SAFETY: outside the Electron runtime `require("electron")` returns the binary
+// path recorded by the package shim, which is what the probe needs to spawn.
+function resolveElectronBinary(): string {
+  // SAFETY: the package shim resolves to the platform binary path.
+  const binary = require("electron") as string;
+
+  return binary;
+}
+
+// SAFETY: the installed Electron package always ships package.json with a
+// string `version`; electron-builder reads the same field.
+function resolveElectronVersion(): string {
+  // SAFETY: electron ships package.json with a string version.
+  const { version } = require("electron/package.json") as { version: string };
+
+  return version;
+}
 
 const sqliteProbe =
   'const Database = require("better-sqlite3"); const db = new Database(":memory:"); db.close()';
 
 function probeSqlite(
   runtime: string,
-  { spawn = spawnSync, electronBinary = () => require("electron") } = {}
+  {
+    spawn = spawnSync,
+    electronBinary = resolveElectronBinary,
+  }: {
+    spawn?: typeof spawnSync;
+    electronBinary?: () => string;
+  } = {}
 ) {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -45,7 +71,7 @@ async function repairSqlite(
   {
     spawn = spawnSync,
     loadRebuild = () => import("@electron/rebuild"),
-    electronVersion = () => require("electron/package.json").version,
+    electronVersion = resolveElectronVersion,
   } = {}
 ) {
   if (runtime === "electron") {

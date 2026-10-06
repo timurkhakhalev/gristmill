@@ -1,6 +1,8 @@
-const { execFileSync }: typeof import("node:child_process") = require("node:child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
 
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
 
 if (process.platform === "darwin") {
   const executable = path.join(

@@ -1,10 +1,14 @@
-const fs: typeof import("node:fs") = require("node:fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("node:fs") as typeof import("node:fs");
 
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
 
-const { stripTypeScriptTypes }: typeof import("node:module") = require("node:module");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { stripTypeScriptTypes } = require("node:module") as typeof import("node:module");
 
-const { build }: typeof import("esbuild") = require("esbuild");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { build } = require("esbuild") as typeof import("esbuild");
 
 const root = path.resolve(__dirname, "..");
 

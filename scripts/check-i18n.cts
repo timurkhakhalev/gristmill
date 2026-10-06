@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("path") as typeof import("path");
 
 const LOCALES_DIR = path.join(__dirname, "..", "src", "locales");
 
@@ -10,28 +12,48 @@ const BASE_LANG = "en";
 
 const NAMESPACES = ["translation", "prompts"];
 
-function readJson(filePath: string): Record<string, unknown> {
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+// Locale files are nested string dictionaries. The JSON is external input, so
+// readJson validates the whole tree into StringTree before any key is read.
+interface StringTree {
+  [key: string]: string | StringTree;
 }
 
-function flatten(obj: Record<string, unknown>, prefix = ""): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isStringTree(value: unknown): value is StringTree {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+
+  for (const child of Object.values(value)) {
+    if (!isString(child) && !isStringTree(child)) return false;
+  }
+
+  return true;
+}
+
+function readJson(filePath: string): StringTree {
+  const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
+
+  if (!isStringTree(parsed)) throw new Error(`Locale file is not a string tree: ${filePath}`);
+
+  return parsed;
+}
+
+function flatten(obj: StringTree, prefix = ""): Map<string, string> {
+  const out = new Map<string, string>();
 
   for (const [key, value] of Object.entries(obj)) {
     const next = prefix ? `${prefix}.${key}` : key;
 
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      Object.assign(out, flatten(value as Record<string, unknown>, next));
-    } else {
-      out[next] = value;
-    }
+    if (isString(value)) out.set(next, value);
+    else for (const [nestedKey, nested] of flatten(value, next)) out.set(nestedKey, nested);
   }
 
   return out;
 }
 
-function getPlaceholders(value: unknown) {
-  if (typeof value !== "string") return [];
+function getPlaceholders(value: string) {
   const matches = value.match(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g) || [];
 
   return [...new Set(matches.map((match) => match.replace(/\{\{|\}\}/g, "").trim()))].sort();
@@ -56,9 +78,10 @@ function pluralProbe(lang: string) {
 
   for (let count = 0; count <= PROBE_LIMIT; count++) {
     const category = rules.select(count);
+    const counts = selected.get(category);
 
-    if (!selected.has(category)) selected.set(category, []);
-    selected.get(category)!.push(count);
+    if (counts) counts.push(count);
+    else selected.set(category, [count]);
   }
 
   return selected;
@@ -71,17 +94,19 @@ function pluralProbe(lang: string) {
  * Russian's `one` also covers 21 and 31, French's covers 0, so a form for one of
  * those has to interpolate the count instead of writing the digit.
  */
-function checkPlurals(lang: string, namespace: string, flat: Record<string, unknown>) {
+function checkPlurals(lang: string, namespace: string, flat: Map<string, string>) {
   const selected = pluralProbe(lang);
   const forms = new Map<string, Set<string>>();
 
-  for (const key of Object.keys(flat)) {
+  for (const key of flat.keys()) {
     const match = key.match(PLURAL_SUFFIX);
 
     if (!match) continue;
 
-    if (!forms.has(match[1])) forms.set(match[1], new Set());
-    forms.get(match[1])!.add(match[2]);
+    const categories = forms.get(match[1]);
+
+    if (categories) categories.add(match[2]);
+    else forms.set(match[1], new Set([match[2]]));
   }
 
   let missing = false;
@@ -101,9 +126,9 @@ function checkPlurals(lang: string, namespace: string, flat: Record<string, unkn
 
       if (!counts || counts.every((count) => count === 1)) continue;
 
-      const value = flat[`${base}_${category}`];
+      const value = flat.get(`${base}_${category}`);
 
-      if (typeof value === "string" && !value.includes("{{count}}")) {
+      if (value !== undefined && !value.includes("{{count}}")) {
         console.error(
           `[i18n] Hardcoded count ${lang}/${namespace}: ${base}_${category} also renders for ${counts
             .filter((count) => count !== 1)
@@ -152,15 +177,17 @@ for (const namespace of NAMESPACES) {
 
     if (checkPlurals(lang, namespace, flat)) failed = true;
 
-    for (const key of Object.keys(baseFlat)) {
-      if (!(key in flat)) {
+    for (const [key, baseValue] of baseFlat) {
+      const langValue = flat.get(key);
+
+      if (langValue === undefined) {
         console.error(`[i18n] Missing key ${lang}/${namespace}: ${key}`);
         failed = true;
         continue;
       }
 
-      const basePlaceholders = getPlaceholders(baseFlat[key]);
-      const langPlaceholders = getPlaceholders(flat[key]);
+      const basePlaceholders = getPlaceholders(baseValue);
+      const langPlaceholders = getPlaceholders(langValue);
 
       if (!arraysEqual(basePlaceholders, langPlaceholders)) {
         console.error(

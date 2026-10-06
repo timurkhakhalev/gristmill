@@ -1,20 +1,61 @@
 #!/usr/bin/env node
-const fs: typeof import("node:fs") = require("node:fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("node:fs") as typeof import("node:fs");
 
-const os: typeof import("node:os") = require("node:os");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const os = require("node:os") as typeof import("node:os");
 
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
+
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { z } = require("zod") as typeof import("zod");
 
 type NoteReadService = import("../src/helpers/noteReadService.ts").NoteReadService;
 
 type NoteTranscript = import("../src/contracts/noteRead.ts").NoteTranscript;
+
+type ListResult = ReturnType<NoteReadService["list"]>;
+
+type SearchResult = ReturnType<NoteReadService["search"]>;
+
+type ShowResult = ReturnType<NoteReadService["show"]>;
+
+type ContentResult = ReturnType<NoteReadService["content"]>;
+
+type SummaryResult = ReturnType<NoteReadService["summary"]>;
+
+// The decoded body of a CLI request. request<T> returns the route's declared
+// shape; formatHuman receives that shape and the resource that produced it.
+type CliResponse =
+  | ListResult
+  | SearchResult
+  | ShowResult
+  | ContentResult
+  | SummaryResult
+  | NoteTranscript;
+
+// The read-connection file and error bodies are external JSON written by the
+// app; these schemas are the boundary that decodes them before use.
+const readConnectionSchema = z.looseObject({
+  port: z.number().int(),
+  token: z.string(),
+});
+
+const errorBodySchema = z.looseObject({
+  error: z.looseObject({ message: z.string().optional(), code: z.string().optional() }).optional(),
+});
 
 type Parsed =
   | { help: string }
   | { profile: string; doctor: true }
   | { profile: string; url: URL; plainText: boolean; resource: string };
 
-const help: Record<string, string> = {
+interface HelpTexts {
+  [key: string]: string;
+}
+
+const help: HelpTexts = {
   "": "Gristmill Notes CLI\nUsage: gristmill [--profile NAME] [--json] notes <command> | doctor\nCommands: notes list, notes search QUERY, notes show ID, notes content show ID, notes summary show ID, notes transcript show ID, doctor\nInteractive output is readable text. Redirected output is JSON; --json forces JSON in a terminal. Errors use the same output mode on stderr (exit 1); invalid arguments exit 2.\nInside a Gristmill BB workspace, commands use the workspace profile. Elsewhere the installed launcher defaults to its app channel: production or development. --profile dev is shorthand for development; GRISTMILL_PROFILE also selects a profile. Dates use local calendar days in the selected profile's machine time zone.\nExamples: gristmill notes list; gristmill --profile dev notes search release; gristmill --json notes transcript show 42 --from 00:12:00 --to 00:13:00",
   notes:
     "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\n       gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n       gristmill notes show ID\n       gristmill notes content show ID\n       gristmill notes summary show ID\n       gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nAdd --json for machine-readable output in a terminal. Redirected output is JSON. No result limit is applied. Empty lists and absent content are successful.",
@@ -91,7 +132,7 @@ function parseArgs(argv: string[]): Parsed {
 
   if (command !== "notes") throw new Error("Expected notes or doctor. Run gristmill --help");
   const resource = args.shift() || "";
-  let pathname;
+  let pathname = "";
   let id;
   let query;
 
@@ -114,7 +155,7 @@ function parseArgs(argv: string[]): Parsed {
     pathname += id + (resource === "show" ? "" : `/${resource}`);
   }
 
-  const url = new URL(pathname!, "http://127.0.0.1");
+  const url = new URL(pathname, "http://127.0.0.1");
 
   if (query) url.searchParams.set("q", query);
   let plainText = false;
@@ -129,7 +170,9 @@ function parseArgs(argv: string[]): Parsed {
           : [];
 
   while (args.length) {
-    const flag = args.shift()!;
+    const flag = args.shift();
+
+    if (flag === undefined) break;
 
     if (!flag.startsWith("--") || !allowed.includes(flag.slice(2)))
       throw new Error(`Unknown option ${flag}`);
@@ -167,11 +210,10 @@ function parseArgs(argv: string[]): Parsed {
   if (fromMs !== null && toMs !== null && Number(fromMs) >= Number(toMs))
     throw new Error("--from must be before --to");
 
-  if (
-    url.searchParams.has("from") &&
-    url.searchParams.has("to") &&
-    url.searchParams.get("from")! > url.searchParams.get("to")!
-  )
+  const fromParam = url.searchParams.get("from");
+  const toParam = url.searchParams.get("to");
+
+  if (fromParam !== null && toParam !== null && fromParam > toParam)
     throw new Error("--from must be before --to");
 
   if (plainText && jsonAt !== -1) throw new Error("--json and --plain-text cannot be combined");
@@ -190,7 +232,30 @@ function profileDir(profile: string) {
   );
 }
 
-function connection(profile: string) {
+interface ReadConnection {
+  port: number;
+  token: string;
+}
+
+// CLI failures carry an exit classification alongside the message; a named
+// class keeps the code readable at every catch without widening Error.
+class CliError extends Error {
+  readonly code: string;
+
+  constructor(message: string, code: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+function parseConnection(raw: string): ReadConnection | null {
+  const parsed: unknown = JSON.parse(raw);
+  const result = readConnectionSchema.safeParse(parsed);
+
+  return result.success ? result.data : null;
+}
+
+function connection(profile: string): ReadConnection {
   const file = path.join(profileDir(profile), ".cli-read-connection.json");
   let stat;
 
@@ -204,24 +269,16 @@ function connection(profile: string) {
           ? "No Notes CLI connection for development. Open Gristmill Dev and retry"
           : "No Notes CLI connection for this profile. Open Gristmill with the selected profile and retry";
 
-    const error = new Error(message);
-    (error as NodeJS.ErrnoException).code = "app_unavailable";
-    throw error;
+    throw new CliError(message, "app_unavailable");
   }
 
   if (!stat.isFile() || (stat.mode & 0o077) !== 0) {
-    const error = new Error("Read connection file is not private");
-    (error as NodeJS.ErrnoException).code = "read_access_unavailable";
-    throw error;
+    throw new CliError("Read connection file is not private", "read_access_unavailable");
   }
 
-  const value = JSON.parse(fs.readFileSync(file, "utf8"));
+  const value = parseConnection(fs.readFileSync(file, "utf8"));
 
-  if (!Number.isInteger(value.port) || typeof value.token !== "string") {
-    const error = new Error("Invalid read connection file");
-    (error as NodeJS.ErrnoException).code = "read_access_unavailable";
-    throw error;
-  }
+  if (value === null) throw new CliError("Invalid read connection file", "read_access_unavailable");
 
   return value;
 }
@@ -262,9 +319,11 @@ function plain(value: NoteTranscript, title: string) {
   return out.join("\n") + "\n";
 }
 
-function formatHuman(resource: string, input: unknown, title = "") {
+function formatHuman(resource: string, input: CliResponse, title = "") {
   if (resource === "list") {
-    const value = input as ReturnType<NoteReadService["list"]>;
+    // SAFETY: the list request's body is the list route's own shape; the local
+    // app writes it, and the resource branch selects that shape.
+    const value = input as ListResult;
 
     if (!value.notes.length) return "No Notes.\n";
 
@@ -276,7 +335,8 @@ function formatHuman(resource: string, input: unknown, title = "") {
   }
 
   if (resource === "search") {
-    const value = input as ReturnType<NoteReadService["search"]>;
+    // SAFETY: the search request's body is the search route's own shape.
+    const value = input as SearchResult;
     const out = [];
 
     if (value.notes.length) {
@@ -307,7 +367,8 @@ function formatHuman(resource: string, input: unknown, title = "") {
   }
 
   if (resource === "show") {
-    const value = input as ReturnType<NoteReadService["show"]>;
+    // SAFETY: the show request's body is the show route's own shape.
+    const value = input as ShowResult;
 
     const out = [
       `Note #${value.note_id} · ${value.title}`,
@@ -328,22 +389,41 @@ function formatHuman(resource: string, input: unknown, title = "") {
   }
 
   if (resource === "content") {
-    const value = input as ReturnType<NoteReadService["content"]>;
+    // SAFETY: the content request's body is the content route's own shape.
+    const value = input as ContentResult;
 
     return value.content ? value.content + "\n" : "No user notes.\n";
   }
 
   if (resource === "summary") {
-    const value = input as ReturnType<NoteReadService["summary"]>;
+    // SAFETY: the summary request's body is the summary route's own shape.
+    const value = input as SummaryResult;
 
     return value.summary ? value.summary + "\n" : "No saved Summary.\n";
   }
 
-  if (resource === "transcript") return plain(input as NoteTranscript, title);
+  if (resource === "transcript") {
+    // SAFETY: the transcript request's body is the transcript route's own shape.
+    const value = input as NoteTranscript;
+
+    return plain(value, title);
+  }
+
   throw new Error(`Unknown output type: ${resource}`);
 }
 
-async function request<T = unknown>(profile: string, url: URL): Promise<T> {
+interface ErrorBody {
+  error?: { message?: string; code?: string };
+}
+
+function parseErrorBody(raw: string): ErrorBody {
+  const parsed: unknown = JSON.parse(raw);
+  const result = errorBodySchema.safeParse(parsed);
+
+  return result.success ? { error: result.data.error } : {};
+}
+
+async function request<T>(profile: string, url: URL): Promise<T> {
   const { port, token } = connection(profile);
 
   const response = await fetch(`http://127.0.0.1:${port}${url.pathname}${url.search}`, {
@@ -351,15 +431,20 @@ async function request<T = unknown>(profile: string, url: URL): Promise<T> {
     signal: AbortSignal.timeout(10000),
   });
 
-  const body = (await response.json()) as T & { error?: { message?: string; code?: string } };
+  const text = await response.text();
 
   if (!response.ok) {
-    const error = new Error(body.error?.message || `HTTP ${response.status}`);
-    (error as NodeJS.ErrnoException).code = body.error?.code || "http_error";
-    throw error;
+    const detail = parseErrorBody(text);
+
+    throw new CliError(
+      detail.error?.message || `HTTP ${response.status}`,
+      detail.error?.code || "http_error"
+    );
   }
 
-  return body;
+  // SAFETY: the local app returns the route's declared JSON shape; the caller
+  // selects T to match the route it requested.
+  return JSON.parse(text) as T;
 }
 
 async function main() {
@@ -396,9 +481,8 @@ async function main() {
           : `Gristmill ${parsed.profile}: connected (read-only)\n`
       );
     } catch (error) {
-      const reachable =
-        (error as NodeJS.ErrnoException).code === "unauthorized" ||
-        (error as NodeJS.ErrnoException).code === "read_only";
+      const code = error instanceof CliError ? error.code : "";
+      const reachable = code === "unauthorized" || code === "read_only";
 
       const result = {
         ok: false,
@@ -450,19 +534,21 @@ async function main() {
           : formatHuman(parsed.resource, value, title)
     );
   } catch (error) {
+    const known = [
+      "note_not_found",
+      "validation_error",
+      "speaker_not_found",
+      "transcript_filter_unavailable",
+      "read_access_unavailable",
+      "app_unavailable",
+      "read_only",
+      "unauthorized",
+    ];
+
+    const code = error instanceof CliError ? error.code : "";
+
     failure(
-      [
-        "note_not_found",
-        "validation_error",
-        "speaker_not_found",
-        "transcript_filter_unavailable",
-        "read_access_unavailable",
-        "app_unavailable",
-        "read_only",
-        "unauthorized",
-      ].includes((error as NodeJS.ErrnoException).code || "")
-        ? (error as NodeJS.ErrnoException).code!
-        : "app_unavailable",
+      known.includes(code) ? code : "app_unavailable",
       (error instanceof Error ? error.message : String(error)).includes("token")
         ? "Gristmill read access is unavailable"
         : error instanceof Error
@@ -474,10 +560,15 @@ async function main() {
 
 if (require.main === module) {
   process.stdout.on("error", (error) => {
+    // SAFETY: the stdout stream emits a NodeJS.ErrnoException; only `code` is
+    // read, and EPIPE just means the reader (e.g. `head`) closed early.
     if ((error as NodeJS.ErrnoException).code === "EPIPE") process.exit(0);
     throw error;
   });
-  void main();
+  main().catch((error) => {
+    process.stderr.write(`[gristmill] ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
 }
 
 const api = { formatHuman };

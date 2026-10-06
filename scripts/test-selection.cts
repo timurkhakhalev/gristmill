@@ -6,6 +6,17 @@ export interface RegistryGroup {
   files: string[];
 }
 
+// Raw shape read from test/test-groups.json before validation. Every field is
+// unknown: the JSON is external input, so createPlan parses it into
+// RegistryGroup only after the guard below checks each field.
+interface RawRegistryGroup {
+  domains?: unknown;
+  kind?: unknown;
+  buildMain?: unknown;
+  serial?: unknown;
+  files?: unknown;
+}
+
 export interface TestEntry {
   file: string;
   domains: string[];
@@ -24,15 +35,50 @@ export interface Options {
   processes: number;
 }
 
-const fs: typeof import("node:fs") = require("node:fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("node:fs") as typeof import("node:fs");
 
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
 
 const DOMAINS = ["notes", "recording", "transcription", "calendar", "ai", "settings", "platform"];
 
 const KINDS = ["unit", "integration", "types", "native"];
 
 const root = path.resolve(__dirname, "..");
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => isString(item));
+}
+
+function isRegistryGroup(value: unknown): value is RegistryGroup {
+  if (typeof value !== "object" || value === null) return false;
+
+  // SAFETY: JSON.parse output; the guard below reads only RawRegistryGroup's
+  // declared keys, and each is validated before RegistryGroup is exposed.
+  const group = value as RawRegistryGroup;
+
+  return (
+    isStringArray(group.domains) &&
+    group.domains.length > 0 &&
+    new Set(group.domains).size === group.domains.length &&
+    group.domains.every((domain) => DOMAINS.includes(domain)) &&
+    isString(group.kind) &&
+    KINDS.includes(group.kind) &&
+    isBoolean(group.buildMain) &&
+    (group.serial === undefined || isBoolean(group.serial)) &&
+    isStringArray(group.files) &&
+    group.files.length > 0
+  );
+}
 
 function discoverTests(directory = root) {
   const files: string[] = [];
@@ -54,28 +100,17 @@ function discoverTests(directory = root) {
   return files.sort();
 }
 
-function validateRegistry(files: string[], groups: RegistryGroup[]) {
+function validateRegistry(files: string[], groups: unknown[]): TestEntry[] {
   const assigned = new Map<string, TestEntry>();
   const knownFiles = new Set(files);
 
-  for (const group of groups) {
-    if (
-      !Array.isArray(group.domains) ||
-      !group.domains.length ||
-      new Set(group.domains).size !== group.domains.length ||
-      group.domains.some((domain) => !DOMAINS.includes(domain)) ||
-      !KINDS.includes(group.kind) ||
-      typeof group.buildMain !== "boolean" ||
-      (group.serial !== undefined && typeof group.serial !== "boolean") ||
-      !Array.isArray(group.files) ||
-      !group.files.length
-    ) {
-      throw new Error(`Invalid test group: ${JSON.stringify(group)}`);
-    }
+  for (const raw of groups) {
+    if (!isRegistryGroup(raw)) throw new Error(`Invalid test group: ${JSON.stringify(raw)}`);
+
+    const group = raw;
 
     for (const pattern of group.files) {
       if (
-        typeof pattern !== "string" ||
         !pattern.startsWith("test/") ||
         pattern.split("/").includes("..") ||
         !/\.test\.(js|ts)$/.test(pattern)
@@ -131,7 +166,13 @@ function validateRegistry(files: string[], groups: RegistryGroup[]) {
       `Unclassified tests (put new tests under test/cases/<domain>/<kind>/):\n${missing.join("\n")}`
     );
 
-  return files.map((file) => assigned.get(file)!);
+  return files.map((file) => {
+    const entry = assigned.get(file);
+
+    if (entry === undefined) throw new Error(`Unclassified test: ${file}`);
+
+    return entry;
+  });
 }
 
 function parseArgs(input: string[]) {
@@ -150,7 +191,9 @@ function parseArgs(input: string[]) {
   };
 
   while (args.length) {
-    const arg = args.shift()!;
+    const arg = args.shift();
+
+    if (arg === undefined) break;
 
     if (arg === "--list") result.list = true;
     else if (arg === "--help") result.help = true;
@@ -205,9 +248,15 @@ function selectTests(entries: TestEntry[], options: Options) {
 function createPlan(args: string[], directory = root) {
   const options = parseArgs(args);
 
-  if (options.help) return { options, tests: [] as TestEntry[], buildMain: false };
-  const groups = JSON.parse(fs.readFileSync(path.join(directory, "test/test-groups.json"), "utf8"));
-  const entries = validateRegistry(discoverTests(directory), groups);
+  if (options.help) return { options, tests: [], buildMain: false };
+
+  const parsed: unknown = JSON.parse(
+    fs.readFileSync(path.join(directory, "test/test-groups.json"), "utf8")
+  );
+
+  if (!Array.isArray(parsed)) throw new Error("test/test-groups.json must be an array");
+
+  const entries = validateRegistry(discoverTests(directory), parsed);
 
   return { options, ...selectTests(entries, options) };
 }

@@ -5,30 +5,35 @@
  * (e.g., when running from Claude Code or other Node.js-based tools).
  */
 
-const { spawn }: typeof import("child_process") = require("child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { spawn } = require("child_process") as typeof import("child_process");
 
-const { constants }: typeof import("os") = require("os");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { constants } = require("os") as typeof import("os");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("path") as typeof import("path");
 
-const {
-  ensureSqliteRuntime,
-}: import("./ensure-sqlite-runtime.cts").API = require("./ensure-sqlite-runtime.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { ensureSqliteRuntime } =
+  require("./ensure-sqlite-runtime.cts") as import("./ensure-sqlite-runtime.cts").API;
 
-const {
-  launchMacElectron,
-}: import("./launch-macos-electron.cts").API = require("./launch-macos-electron.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { launchMacElectron } =
+  require("./launch-macos-electron.cts") as import("./launch-macos-electron.cts").API;
 
-const {
-  prepareDevBundle,
-}: import("./dev-electron-bundle.cts").API = require("./dev-electron-bundle.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { prepareDevBundle } =
+  require("./dev-electron-bundle.cts") as import("./dev-electron-bundle.cts").API;
 
 // Get the app directory (parent of scripts directory)
 const appDir = path.resolve(__dirname, "..");
 
 function resolveElectronPath(): string {
   try {
-    return require("electron");
+    // SAFETY: outside the Electron runtime, `require("electron")` returns the
+    // absolute path to the platform binary recorded by the package shim.
+    return require("electron") as string;
   } catch (err) {
     console.error(
       "[run-electron] Electron is installed as an npm package, but its platform binary is missing."

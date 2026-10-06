@@ -9,11 +9,14 @@
 // 2. Fails the build if required binaries (ffmpeg-static,
 //    onnx worker script) are missing from app.asar.unpacked/.
 
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("path") as typeof import("path");
 
-const { execFileSync }: typeof import("child_process") = require("child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { execFileSync } = require("child_process") as typeof import("child_process");
 
 // ---------------------------------------------------------------------------
 // macOS resource binary signing
@@ -46,7 +49,9 @@ function collectFiles(rootDir: string, skipDirs = new Set<string>()) {
   const queue = [rootDir];
 
   while (queue.length > 0) {
-    const currentDir = queue.pop()!;
+    const currentDir = queue.pop();
+
+    if (currentDir === undefined) break;
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -74,7 +79,9 @@ function collectFrameworks(rootDir: string) {
   const queue = [rootDir];
 
   while (queue.length > 0) {
-    const currentDir = queue.pop()!;
+    const currentDir = queue.pop();
+
+    if (currentDir === undefined) break;
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -124,7 +131,13 @@ function registerMacResourceBinariesForSigning(
     return;
   }
 
-  const macConfig = context.packager.platformSpecificBuildOptions;
+  // SAFETY: electron-builder's packager is generic over `any`, so
+  // platformSpecificBuildOptions is untyped here; on darwin it is the mac
+  // config whose only field this hook touches is the signing `binaries` list.
+  const macConfig = context.packager.platformSpecificBuildOptions as {
+    binaries?: string[] | null;
+  };
+
   const existingBinaries = Array.isArray(macConfig.binaries) ? macConfig.binaries : [];
 
   macConfig.binaries = [...new Set([...existingBinaries, ...toRegister])];
@@ -250,11 +263,13 @@ function verifySqliteRuntime(context: import("electron-builder").AfterPackContex
   console.log("  afterPack: verified SQLite against the packaged Electron runtime");
 }
 
-exports.default = async function (context: import("electron-builder").AfterPackContext) {
+async function afterPack(context: import("electron-builder").AfterPackContext) {
   stripOnnxruntimeBinaries(context);
   verifyUnpackedBinaries(context);
   verifySqliteRuntime(context);
   registerMacResourceBinariesForSigning(context);
-};
+}
+
+module.exports = { default: afterPack };
 
 export type {};

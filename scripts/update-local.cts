@@ -1,15 +1,21 @@
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
 
-const { execFileSync }: typeof import("node:child_process") = require("node:child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
 
-const {
-  installApp,
-  assertAppStopped,
-}: import("./install-macos-local.cts").API = require("./install-macos-local.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { installApp, assertAppStopped } =
+  require("./install-macos-local.cts") as import("./install-macos-local.cts").API;
 
 const root = path.resolve(__dirname, "..");
 
 const installedApp = "/Applications/Gristmill.app";
+
+interface UpdateLocalOptions {
+  target?: string;
+  userDataDir?: string;
+}
 
 const run = (command: string, args: string[]) => {
   const env = { ...process.env };
@@ -48,7 +54,7 @@ if (require.main === module) {
     if (process.platform !== "darwin" || process.arch !== "arm64")
       throw new Error("Local update requires macOS Apple Silicon");
     const args = process.argv.slice(2);
-    const options: { target?: string; userDataDir?: string } = {};
+    const options: UpdateLocalOptions = {};
 
     while (args.length) {
       const flag = args.shift();

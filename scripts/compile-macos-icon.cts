@@ -7,13 +7,17 @@
 // unavailable — CI runners without full Xcode will simply fall back to the
 // existing .icns.
 
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const os: typeof import("os") = require("os");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const os = require("os") as typeof import("os");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("path") as typeof import("path");
 
-const { execFileSync, spawnSync }: typeof import("child_process") = require("child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { execFileSync, spawnSync } = require("child_process") as typeof import("child_process");
 
 const ICON_BUNDLE = path.join(__dirname, "..", "src", "assets", "gristmill.icon");
 

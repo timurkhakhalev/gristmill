@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
 import { EventEmitter } from "events";
 
-const debugLogger = require("./debugLogger");
+import debugLogger from "./debugLogger.js";
 
 import { resolveBundledBinary } from "./binaryResolver.js";
 import { getOwnProcessPids } from "./ownProcessPids.js";
@@ -399,8 +399,8 @@ export class AudioActivityDetector extends EventEmitter {
 
   private _readLines(stream: NodeJS.ReadableStream, onLine: (line: string) => void): void {
     let buffer = "";
-    stream.on("data", (data) => {
-      buffer += data.toString();
+    stream.on("data", (chunk: string | Buffer) => {
+      buffer += chunk.toString();
       let newlineIdx;
 
       while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
@@ -500,7 +500,8 @@ export class AudioActivityDetector extends EventEmitter {
     debugLogger.info("Retrying the macOS microphone listener", { delayMs }, "meeting");
     this._respawnTimer = setTimeout(() => {
       this._respawnTimer = null;
-      void this._respawnListener();
+      // Failure inside the respawn is logged by its own error path.
+      this._respawnListener().catch(() => undefined);
     }, delayMs);
   }
 
@@ -799,4 +800,5 @@ export class AudioActivityDetector extends EventEmitter {
 
 module.exports = AudioActivityDetector;
 
-module.exports.AudioActivityDetector = AudioActivityDetector;
+// CommonJS contract for legacy destructuring requires.
+Object.assign(module.exports, { AudioActivityDetector });

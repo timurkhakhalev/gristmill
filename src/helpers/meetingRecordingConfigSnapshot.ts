@@ -21,15 +21,19 @@ const credentialRefForProvider = (provider: string): string | undefined => {
   return BYOK_API_KEYS.find((entry) => entry.base === provider)?.env;
 };
 
+interface SnapshotMeetingRecordingConfigResult {
+  config: MeetingProcessingConfig | null;
+  configError: MeetingProcessingConfigError | null;
+}
+
 export function snapshotMeetingRecordingConfig(
   transcriptionOverride?: MeetingProcessingConfig["transcription"],
   generateSummary?: boolean
-): {
-  config: MeetingProcessingConfig | null;
-  configError: MeetingProcessingConfigError | null;
-} {
+): SnapshotMeetingRecordingConfigResult {
   const state = getSettings();
-  let transcription: unknown = transcriptionOverride ?? null;
+
+  let transcription: MeetingProcessingConfig["transcription"] | null =
+    transcriptionOverride ?? null;
 
   if (transcriptionOverride === undefined) {
     const meeting = selectResolvedMeetingTranscription(state);
@@ -79,7 +83,25 @@ export function snapshotMeetingRecordingConfig(
 
   if (!detailedNotes)
     return { config: null, configError: { code: "detailed-notes-action-missing" } };
-  let summary: Record<string, unknown> | null = null;
+  // Owner contract for the summary block this file builds; the full schema
+  // lives in contracts (package 3) and safeParse validates the final shape.
+
+  interface SummaryConfig {
+    actionId?: string | number;
+    instruction: string;
+    reasoningMode: string;
+    agentProvider?: string;
+    model?: string;
+    agentReasoningLevel?: string;
+    provider?: string;
+    cloudBaseUrl?: string;
+    remoteUrl?: string;
+    credentialRef?: string;
+    enterprise?: Record<string, string>;
+    options?: { disableThinking: boolean; cloudMode: string };
+  }
+
+  let summary: SummaryConfig | null = null;
 
   if (
     detailedNotes &&

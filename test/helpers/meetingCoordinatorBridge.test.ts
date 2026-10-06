@@ -193,7 +193,8 @@ async function createFixture({
       createMeetingRecording: unused,
       createMeetingRecordingEpoch: unused,
       updateMeetingRecordingEpochRecovery: unused,
-      addMeetingRecordingEpochAlignment() {},
+      addMeetingRecordingEpochAlignment: () =>
+        ({}) as import("../../src/contracts/meetingRecording.js").MeetingRecordingEpochDto,
       markMeetingRecordingEpochAlignmentUnknown() {},
       openMeetingIntentionalInterval: () => ({
         id: "interval-1",

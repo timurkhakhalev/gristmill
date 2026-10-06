@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type { StartRecordingArgs, TranscriptSegment } from "../stores/meetingRecordingStore";
 import type { MeetingAutoEndRestartRequest } from "../contracts/meetingCoordinator";
 import type { NoteItem } from "../contracts/notes";
@@ -21,16 +23,22 @@ export function requestMeetingRecordingAutoEnd(
   // Always called once the stop settles. `stopped` is false when the recording
   // ended without a persisted result — the caller still has to tell the user,
   // because no restart card will be offered for it.
-  onStopSettled: (sessionId: string, stopped: boolean) => Promise<unknown> | unknown,
-  onError: (error: unknown, sessionId: string) => void
+  onStopSettled: (sessionId: string, stopped: boolean) => Promise<void> | void,
+  onError: (error: Error, sessionId: string) => void
 ): boolean {
-  const sessionId = payload?.sessionId;
+  // The payload is raw wire data; the schema is its parse.
+  const sessionId = z
+    .object({ sessionId: z.string().trim().min(1) })
+    .nullish()
+    .catch(null)
+    .parse(payload)?.sessionId;
 
-  if (typeof sessionId !== "string" || sessionId.trim().length === 0) return false;
+  if (!sessionId) return false;
 
   void Promise.resolve(stopRecording(sessionId))
     .then((result) => onStopSettled(sessionId, result.stopped))
-    .catch((error) => onError(error, sessionId));
+    // The catch is the rejection boundary; rejections only carry Error/message.
+    .catch((error: Error) => onError(error, sessionId));
 
   return true;
 }
@@ -164,17 +172,21 @@ export function isMeetingAutoEndEligible(
 
 export interface MeetingRecordingStopBarrier {
   runStop<T>(operation: () => Promise<T> | T): Promise<T>;
-  waitForPendingStop(): Promise<unknown>;
+  waitForPendingStop(): Promise<void>;
 }
 
 export function createMeetingRecordingStopBarrier(): MeetingRecordingStopBarrier {
   let pendingStop: Promise<unknown> | null = null;
 
-  const waitForPendingStop = (): Promise<unknown> => pendingStop ?? Promise.resolve();
+  const waitForPendingStop = (): Promise<void> =>
+    (pendingStop ?? Promise.resolve()).then(() => undefined);
 
   const runStop = <T>(operation: () => Promise<T> | T): Promise<T> => {
     // Concurrent callers share the in-flight stop's result.
-    if (pendingStop) return pendingStop as Promise<T>;
+    if (pendingStop) {
+      // SAFETY: pendingStop was created from this same generic operation shape.
+      return pendingStop as Promise<T>;
+    }
 
     const stopPromise = Promise.resolve().then(operation);
     pendingStop = stopPromise;
@@ -198,20 +210,20 @@ export interface MeetingRecordingStartOperation {
   isCurrent(): boolean;
   markMainStartAttempted(): void;
   markCommitted(): void;
-  stopMainOnce(stopMain: () => Promise<unknown> | unknown): Promise<unknown>;
+  stopMainOnce(stopMain: () => Promise<void> | void): Promise<void>;
 }
 
 interface PendingStart<T> {
   sessionId: string;
   start: (operation: MeetingRecordingStartOperation) => Promise<T> | T;
   resolveStart: (value: T) => void;
-  rejectStart: (error: unknown) => void;
+  rejectStart: (error: Error) => void;
   settleStart: () => void;
   settled: Promise<void>;
   canceled: boolean;
   committed: boolean;
   mainStartAttempted: boolean;
-  mainStopPromise: Promise<unknown> | null;
+  mainStopPromise: Promise<void> | null;
 }
 
 export interface MeetingRecordingStartCoordinator {
@@ -229,6 +241,7 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
   const startNext = (): void => {
     if (activeStart || pendingStarts.length === 0) return;
 
+    // SAFETY: the guard above established pendingStarts is non-empty.
     const state = pendingStarts.shift() as PendingStart<unknown>;
     activeStart = state;
 
@@ -245,7 +258,9 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
         if (!state.mainStartAttempted) return Promise.resolve();
 
         if (!state.mainStopPromise) {
-          state.mainStopPromise = Promise.resolve().then(stopMain);
+          state.mainStopPromise = Promise.resolve()
+            .then(stopMain)
+            .then(() => undefined);
         }
 
         return state.mainStopPromise;
@@ -261,9 +276,12 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
           state.resolveStart(value);
           startNext();
         },
-        (error) => {
+        // SAFETY: the queue rejects only with Error instances (see rejectStart).
+        (rejection) => {
           if (activeStart === state) activeStart = null;
           state.settleStart();
+          const error = rejection instanceof Error ? rejection : new Error(String(rejection));
+
           state.rejectStart(error);
           startNext();
         }
@@ -274,8 +292,10 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
     sessionId: string,
     start: (operation: MeetingRecordingStartOperation) => Promise<T> | T
   ): Promise<T> => {
+    // SAFETY notes: push/reject casts below widen T inside a heterogeneous
+    // start queue; each entry's T is only observed by its own resolve pair.
     let resolveStart!: (value: T) => void;
-    let rejectStart!: (error: unknown) => void;
+    let rejectStart!: (error: Error) => void;
 
     const startPromise = new Promise<T>((resolve, reject) => {
       resolveStart = resolve;
@@ -289,11 +309,14 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
     });
 
     // The queue is heterogeneous; each entry's T is only observed by its own
-    // resolve/reject pair, so widening to unknown is safe.
-    pendingStarts.push({
+    // resolve/reject pair, so the unknown-widened entry is safe.
+    const entry: PendingStart<unknown> = {
       sessionId,
-      start,
-      resolveStart,
+      start: (operation) => Promise.resolve(start(operation)),
+      resolveStart: (value) => {
+        // SAFETY: the value came from this entry's own start<T> promise.
+        resolveStart(value as T);
+      },
       rejectStart,
       settleStart,
       settled,
@@ -301,7 +324,9 @@ export function createMeetingRecordingStartCoordinator(): MeetingRecordingStartC
       committed: false,
       mainStartAttempted: false,
       mainStopPromise: null,
-    } as PendingStart<unknown>);
+    };
+
+    pendingStarts.push(entry);
     startNext();
 
     return startPromise;
@@ -331,8 +356,8 @@ export async function teardownFailedMeetingRecordingSetup({
   releaseSession,
 }: {
   stopBarrier: MeetingRecordingStopBarrier;
-  cleanup: () => Promise<unknown> | unknown;
-  stopMain: () => Promise<unknown> | unknown;
+  cleanup: () => Promise<void> | void;
+  stopMain: () => Promise<void> | void;
   releaseSession: () => void;
 }): Promise<void> {
   try {

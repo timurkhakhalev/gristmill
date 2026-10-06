@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { create } from "zustand";
 import { getSettings, useSettingsStore } from "./settingsStore";
 import { snapshotMeetingRecordingConfig } from "../helpers/meetingRecordingConfigSnapshot";
@@ -11,11 +12,7 @@ import { followsSystemDefaultMic } from "../helpers/micSelectionRecovery";
 import { resolvePreferredMicrophone } from "../helpers/microphoneSelection";
 import { ActiveMicRecoveryController } from "../helpers/activeMicRecovery";
 import { MeetingClockSync } from "../helpers/meetingClockSync";
-import type {
-  MeetingPlatform,
-  MeetingFrameAlignmentPoint,
-  MeetingFrameAlignmentSegment,
-} from "../contracts/meetingRecording";
+import type { MeetingPlatform } from "../contracts/meetingRecording";
 import {
   resolveInitialSpeakerCountOverride,
   resolveParticipantSpeakerCountSync,
@@ -55,6 +52,23 @@ import {
   createMeetingRecordingSessionId,
   teardownFailedMeetingRecordingSetup,
 } from "../helpers/meetingRecordingSession";
+
+interface SystemCaptureSetup {
+  stream: MediaStream | null;
+  error: Error | null;
+}
+
+// Deferred stop failures must surface without crashing the capture flow;
+// the store already recorded a terminal state before these run.
+// Promise.catch hands its handler `unknown`; this is the rejection boundary
+// (no-unknown-parameters override documented in .oxlintrc.json).
+function logStopFailure(error: unknown): void {
+  logger.error(
+    "Deferred meeting recording stop failed",
+    { error: error instanceof Error ? error.message : String(error) },
+    "meeting"
+  );
+}
 
 export interface TranscriptSegment {
   id: string;
@@ -141,11 +155,14 @@ const buildTranscriptText = (segments: TranscriptSegment[]) =>
 const getMeetingRecordingConfig = () => snapshotMeetingRecordingConfig();
 
 const stopMediaStream = (stream: MediaStream | null) => {
+  // stop() on an already-ended track can throw; stopping is best-effort.
   try {
     stream?.getTracks().forEach((track) => {
       if (track.readyState !== "ended") track.stop();
     });
-  } catch {}
+  } catch {
+    /* best-effort */
+  }
 };
 
 const getDisplayCaptureOptions = (mode: "loopback" | "portal") => {
@@ -153,6 +170,8 @@ const getDisplayCaptureOptions = (mode: "loopback" | "portal") => {
     return { video: true, audio: true };
   }
 
+  // SAFETY: Chromium's getDisplayMedia accepts these non-standard capture
+  // options; the base lib type does not know them yet.
   return {
     video: true,
     audio: true,
@@ -181,6 +200,7 @@ const requestSystemAudioDisplayStream = async (mode: "loopback" | "portal") => {
 
     return { stream, error: null };
   } catch (error) {
+    // SAFETY: getDisplayMedia rejects with DOMException (an Error subclass).
     return { stream: null, error: error as Error };
   }
 };
@@ -252,7 +272,7 @@ const getMeetingMicConstraints = async (
   } catch (err) {
     logger.debug(
       "Failed to resolve microphone for meeting transcription",
-      { error: (err as Error).message },
+      { error: err instanceof Error ? err.message : String(err) },
       "meeting"
     );
   }
@@ -344,17 +364,26 @@ function readPausedMeeting(): {
   restartSessionId?: string;
 } | null {
   try {
-    const value = JSON.parse(localStorage.getItem(PAUSED_MEETING_KEY) ?? "null");
+    // localStorage is the boundary; the schema is the parse.
+    const raw = z
+      .object({
+        groupId: z.string(),
+        noteId: z.number().int().safe(),
+        manualMicMuted: z.boolean().optional(),
+        restartSessionId: z.string().optional(),
+      })
+      .nullish()
+      .catch(null)
+      .parse(JSON.parse(localStorage.getItem(PAUSED_MEETING_KEY) ?? "null"));
 
-    return typeof value?.groupId === "string" && Number.isSafeInteger(value?.noteId)
-      ? {
-          groupId: value.groupId,
-          noteId: value.noteId,
-          manualMicMuted: value.manualMicMuted === true,
-          restartSessionId:
-            typeof value.restartSessionId === "string" ? value.restartSessionId : undefined,
-        }
-      : null;
+    if (!raw) return null;
+
+    return {
+      groupId: raw.groupId,
+      noteId: raw.noteId,
+      manualMicMuted: raw.manualMicMuted === true,
+      restartSessionId: raw.restartSessionId,
+    };
   } catch {
     return null;
   }
@@ -542,9 +571,11 @@ async function commitMicIntent(
 
     if (activeRecordingSessionId !== sessionId || !isRecordingFlag) return false;
     captureDrainErrorCode ??= "mic-intent-transition-failed";
-    reportMeetingError((error as Error).message, { captureErrorCode: captureDrainErrorCode });
+    reportMeetingError(error instanceof Error ? error.message : String(error), {
+      captureErrorCode: captureDrainErrorCode,
+    });
 
-    if (isRecordingFlag) void stopRecording(sessionId);
+    if (isRecordingFlag) stopRecording(sessionId).catch(logStopFailure);
 
     return false;
   }
@@ -600,15 +631,14 @@ export function setPlatformMicMuted(muted: boolean): Promise<boolean> {
 function pushConfig(enabled: boolean, expectedCount: number, countIsExplicit: boolean) {
   if (pushConfigTimeout) clearTimeout(pushConfigTimeout);
   pushConfigTimeout = setTimeout(() => {
-    (
-      window.electronAPI as unknown as {
-        setMeetingSessionSpeakerConfig?: (config: {
-          enabled: boolean;
-          expectedCount: number;
-          countIsExplicit: boolean;
-        }) => void;
-      }
-    )?.setMeetingSessionSpeakerConfig?.({ enabled, expectedCount, countIsExplicit });
+    // Config delivery is advisory; Stop re-reads the authoritative DB row.
+    window.electronAPI
+      ?.setMeetingSessionSpeakerConfig?.({
+        enabled,
+        expectedCount,
+        countIsExplicit,
+      })
+      .catch(() => undefined);
   }, 150);
 }
 
@@ -621,7 +651,17 @@ export function setSessionDiarizationEnabled(enabled: boolean): void {
   const noteId = useMeetingRecordingStore.getState().recordingNoteId;
 
   if (noteId != null) {
-    window.electronAPI?.updateNote?.(noteId, { diarization_enabled: enabled ? 1 : 0 });
+    window.electronAPI
+      ?.updateNote?.(noteId, { diarization_enabled: enabled ? 1 : 0 })
+      .then((result) => {
+        if (result && !result.success)
+          logger.error(
+            "Failed to persist diarization preference",
+            { noteId, error: result.error },
+            "meeting"
+          );
+      })
+      .catch(logStopFailure);
   }
 }
 
@@ -635,7 +675,17 @@ export function setSessionExpectedCount(count: number): void {
   const noteId = useMeetingRecordingStore.getState().recordingNoteId;
 
   if (noteId != null) {
-    window.electronAPI?.updateNote?.(noteId, { expected_speaker_count: clamped });
+    window.electronAPI
+      ?.updateNote?.(noteId, { expected_speaker_count: clamped })
+      .then((result) => {
+        if (result && !result.success)
+          logger.error(
+            "Failed to persist expected speaker count",
+            { noteId, error: result.error },
+            "meeting"
+          );
+      })
+      .catch(logStopFailure);
   }
 }
 
@@ -699,7 +749,9 @@ async function cleanup(): Promise<void> {
 
   try {
     await micContext?.close();
-  } catch {}
+  } catch {
+    /* best-effort close; the context is discarded either way */
+  }
 
   micContext = null;
 
@@ -713,7 +765,9 @@ async function cleanup(): Promise<void> {
 
   try {
     await systemContext?.close();
-  } catch {}
+  } catch {
+    /* best-effort close; the context is discarded either way */
+  }
 
   systemContext = null;
   captureRendererOrigins = {};
@@ -758,7 +812,7 @@ export async function prepareTranscription(noteId?: number | null): Promise<bool
     } catch (err) {
       logger.error(
         "Meeting transcription prepare error",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "meeting"
       );
     } finally {
@@ -903,7 +957,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
 
     let setupMicResult: MediaStream | null = null;
 
-    let setupSystemCaptureResult: { stream: MediaStream | null; error: Error | null } = {
+    let setupSystemCaptureResult: SystemCaptureSetup = {
       stream: null,
       error: null,
     };
@@ -974,9 +1028,9 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             activeRecordingSessionId !== sessionId
           )
             return;
-          void stopRecording(sessionId, {
+          stopRecording(sessionId, {
             suppressProcessing: request.suppressProcessing === true,
-          });
+          }).catch(logStopFailure);
         }
       );
 
@@ -986,7 +1040,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           request.recordingId !== useMeetingRecordingStore.getState().recordingId
         )
           return;
-        void setManualMicMuted(request.muted);
+        setManualMicMuted(request.muted).catch(logStopFailure);
       });
 
       const platformMuteCleanup = window.electronAPI?.onMeetPlatformMute((request) => {
@@ -999,7 +1053,8 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         requestedPlatformMicMuted = meetMicMuted || deviceMicMuted;
         useMeetingRecordingStore.setState({ platformMicMuted: requestedPlatformMicMuted });
 
-        if (micProcessor) void setPlatformMicMuted(requestedPlatformMicMuted);
+        // Mute best-effort during teardown; failures land in capture errors.
+        if (micProcessor) setPlatformMicMuted(requestedPlatformMicMuted).catch(() => undefined);
       });
 
       const resumedCleanup = window.electronAPI?.onMeetingSystemAudioResumed?.(() => {
@@ -1062,10 +1117,15 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         try {
           return await navigator.mediaDevices.getUserMedia(constraints);
         } catch (err) {
-          const hasExactDevice =
-            typeof constraints.audio === "object" &&
-            constraints.audio !== null &&
-            "deviceId" in constraints.audio;
+          // Only a constraints object can carry an explicit deviceId.
+          const audio = z
+            .object({ deviceId: z.string() })
+            .loose()
+            .nullish()
+            .catch(null)
+            .parse(constraints.audio);
+
+          const hasExactDevice = audio !== null && audio !== undefined;
 
           if (hasExactDevice && isCurrentStart()) {
             try {
@@ -1075,7 +1135,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
 
               logger.info(
                 "Meeting mic capture recovered using default device",
-                { error: (err as Error).message },
+                { error: err instanceof Error ? err.message : String(err) },
                 "meeting"
               );
 
@@ -1083,7 +1143,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             } catch (fallbackErr) {
               logger.error(
                 "Meeting mic capture failed, continuing with system audio only",
-                { error: (fallbackErr as Error).message },
+                { error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr) },
                 "meeting"
               );
 
@@ -1093,7 +1153,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
 
           logger.error(
             "Meeting mic capture failed, continuing with system audio only",
-            { error: (err as Error).message, constraints },
+            { error: err instanceof Error ? err.message : String(err), constraints },
             "meeting"
           );
 
@@ -1105,7 +1165,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         mainStartPromise,
         micCapturePromise,
         systemCapturePromise,
-      ] as const);
+      ]);
 
       if (micOutcome.status === "fulfilled") setupMicResult = micOutcome.value;
 
@@ -1221,7 +1281,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           "meeting"
         );
 
-        if (isRecordingFlag) void stopRecording(sessionId);
+        if (isRecordingFlag) stopRecording(sessionId).catch(logStopFailure);
       });
 
       if (fatalErrorCleanup) ipcCleanups.push(fatalErrorCleanup);
@@ -1284,7 +1344,11 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         }
 
         captureClockProbeTimer = setInterval(() => {
-          void probeMeetingCaptureClock(sessionId, startResult.recordingId as string);
+          // A missed clock probe only delays anchoring; the next tick retries.
+          // SAFETY: the start result contract guarantees a recordingId here.
+          probeMeetingCaptureClock(sessionId, startResult.recordingId as string).catch(
+            () => undefined
+          );
         }, 500);
       }
 
@@ -1394,7 +1458,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             );
             reportMeetingError(error.message, { captureErrorCode: captureDrainErrorCode });
 
-            if (isRecordingFlag) void stopRecording(sessionId);
+            if (isRecordingFlag) stopRecording(sessionId).catch(logStopFailure);
           },
         });
       };
@@ -1639,6 +1703,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
           useMeetingRecordingStore.getState().manualMicMuted ||
             useMeetingRecordingStore.getState().platformMicMuted
         );
+        // SAFETY: micStream was narrowed non-null by the caller above.
         await micRecovery.start(micStream as MediaStream, {
           followDefault: followsSystemDefaultMic(getSettings()),
         });
@@ -1662,7 +1727,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
             systemCaptureStatus: "unavailable",
             captureErrorCode: captureDrainErrorCode,
           });
-          void stopRecording(sessionId);
+          stopRecording(sessionId).catch(logStopFailure);
         };
 
         systemTrack?.addEventListener("ended", onSystemTrackEnded, { once: true });
@@ -1738,7 +1803,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         // Recording remains usable; auto-end stays disabled for this session.
         logger.warn(
           "Meeting auto-end system-audio confirmation failed",
-          { sessionId, error: (error as Error).message },
+          { sessionId, error: error instanceof Error ? error.message : String(error) },
           "meeting"
         );
       }
@@ -1778,11 +1843,18 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         }
       };
 
-      void refreshOutputDevice();
-      navigator.mediaDevices?.addEventListener?.("devicechange", refreshOutputDevice);
+      // Output lookup is advisory (labels only); failures keep the last value.
+
+      refreshOutputDevice().catch(() => undefined);
+
+      const onDeviceChange = (): void => {
+        refreshOutputDevice().catch(() => undefined);
+      };
+
+      navigator.mediaDevices?.addEventListener?.("devicechange", onDeviceChange);
       ipcCleanups.push(() => {
         outputLookup += 1;
-        navigator.mediaDevices?.removeEventListener?.("devicechange", refreshOutputDevice);
+        navigator.mediaDevices?.removeEventListener?.("devicechange", onDeviceChange);
       });
 
       if (recovery)
@@ -1796,7 +1868,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
               settings.preferBuiltInMic === previousSettings.preferBuiltInMic
             )
               return;
-            void recovery.changeSelection(followsSystemDefaultMic(settings));
+            recovery.changeSelection(followsSystemDefaultMic(settings)).catch(() => undefined);
           })
         );
       useMeetingRecordingStore.setState({
@@ -1822,10 +1894,13 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
     } catch (err) {
       logger.error(
         "Meeting transcription setup failed",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "meeting"
       );
-      reportMeetingError((err as Error).message, { isRecording: false, isTranscribing: false });
+      reportMeetingError(err instanceof Error ? err.message : String(err), {
+        isRecording: false,
+        isTranscribing: false,
+      });
       isRecordingFlag = false;
       isStartingFlag = false;
       await teardownStart();
@@ -1942,14 +2017,14 @@ export async function stopRecording(
       }
     } catch (error) {
       finalErrorCode = "capture-finalize-failed";
-      reportMeetingError((error as Error).message, {
+      reportMeetingError(error instanceof Error ? error.message : String(error), {
         capturePhase: "incomplete",
         captureErrorCode: finalErrorCode,
       });
       logger.error(
         "Meeting capture stop failed",
         {
-          error: (error as Error).message,
+          error: error instanceof Error ? error.message : String(error),
           recordingId: useMeetingRecordingStore.getState().recordingId,
         },
         "meeting"
@@ -2126,7 +2201,8 @@ export function lockSpeaker(speakerId: string, displayName: string): void {
 }
 
 export function cancelPreparedTranscription(): void {
-  window.electronAPI?.meetingTranscriptionCancel?.();
+  // Cancel is best-effort: a missed cancel is cleaned up by the Stop path.
+  window.electronAPI?.meetingTranscriptionCancel?.().catch(() => undefined);
 }
 
 // Persists delayed diarization results to the note that owns the recording
@@ -2178,7 +2254,7 @@ if (typeof window !== "undefined") {
       } catch (error) {
         logger.error(
           "Diarization completion could not read its note",
-          { noteId: targetNoteId, error: (error as Error).message },
+          { noteId: targetNoteId, error: error instanceof Error ? error.message : String(error) },
           "meeting"
         );
       }
@@ -2212,9 +2288,16 @@ if (typeof window !== "undefined") {
         // Awaited so the next queued completion's getNote is guaranteed to
         // read this write — without it the ordering depends on db-update-note
         // staying synchronous ahead of its first await.
-        await window.electronAPI?.updateNote?.(targetNoteId, {
+        const writeResult = await window.electronAPI?.updateNote?.(targetNoteId, {
           transcript: serializeTranscriptSegments(enriched),
         });
+
+        if (writeResult && !writeResult.success)
+          logger.error(
+            "Failed to persist enriched transcript",
+            { targetNoteId, error: writeResult.error },
+            "meeting"
+          );
       } catch (error) {
         publish([]);
         throw error;
@@ -2228,7 +2311,7 @@ if (typeof window !== "undefined") {
     }).catch((error) => {
       logger.error(
         "Diarization completion handling failed",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "meeting"
       );
     });

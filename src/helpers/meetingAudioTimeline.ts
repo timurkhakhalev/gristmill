@@ -45,6 +45,8 @@ export const createMeetingAudioTimeline = ({
   };
 };
 
+// CommonJS contract kept for legacy require sites; the named export mirrors
+// the default so destructuring requires stay typed.
 module.exports = createMeetingAudioTimeline;
 
-module.exports.createMeetingAudioTimeline = createMeetingAudioTimeline;
+Object.assign(module.exports, { createMeetingAudioTimeline });

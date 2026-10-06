@@ -1,24 +1,29 @@
-const { execFileSync, spawn }: typeof import("node:child_process") = require("node:child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { execFileSync, spawn } =
+  require("node:child_process") as typeof import("node:child_process");
 
-const { randomUUID }: typeof import("node:crypto") = require("node:crypto");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { randomUUID } = require("node:crypto") as typeof import("node:crypto");
 
-const fs: typeof import("node:fs") = require("node:fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("node:fs") as typeof import("node:fs");
 
-const os: typeof import("node:os") = require("node:os");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const os = require("node:os") as typeof import("node:os");
 
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
 
-const { performance }: typeof import("node:perf_hooks") = require("node:perf_hooks");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { performance } = require("node:perf_hooks") as typeof import("node:perf_hooks");
 
-const {
-  ensureSqliteRuntime,
-}: import("./ensure-sqlite-runtime.cts").API = require("./ensure-sqlite-runtime.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { ensureSqliteRuntime } =
+  require("./ensure-sqlite-runtime.cts") as import("./ensure-sqlite-runtime.cts").API;
 
-const {
-  createPlan,
-  DOMAINS,
-  KINDS,
-}: import("./test-selection.cts").API = require("./test-selection.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { createPlan, DOMAINS, KINDS } =
+  require("./test-selection.cts") as import("./test-selection.cts").API;
 
 const root = path.resolve(__dirname, "..");
 
@@ -42,6 +47,8 @@ function acquireFullRunLock(file?: string) {
   try {
     fs.writeFileSync(file, owner, { flag: "wx" });
   } catch (error) {
+    // SAFETY: fs writeFileSync rejects with a NodeJS.ErrnoException; only `code`
+    // is read, and EEXIST is the "another run holds the lock" case.
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     throw new Error(
       `Another full test run owns ${file}: ${fs.readFileSync(file, "utf8")}. Verify its owner before removing a stale lock.`
@@ -100,6 +107,8 @@ function runCommand(
         if (process.platform === "win32") child.kill(signal);
         else process.kill(-child.pid, signal);
       } catch (error) {
+        // SAFETY: process.kill raises a NodeJS.ErrnoException; only `code` is
+        // read. ESRCH/EPERM mean the owned group already exited.
         if (
           (error as NodeJS.ErrnoException).code !== "ESRCH" &&
           (error as NodeJS.ErrnoException).code !== "EPERM"
@@ -116,6 +125,8 @@ function runCommand(
 
         return true;
       } catch (error) {
+        // SAFETY: process.kill raises a NodeJS.ErrnoException; only `code` is
+        // read. ESRCH/EPERM mean the owned group already exited.
         if (
           (error as NodeJS.ErrnoException).code === "ESRCH" ||
           (error as NodeJS.ErrnoException).code === "EPERM"
@@ -142,7 +153,7 @@ function runCommand(
       clearTimeout(killTimer);
     };
 
-    child.once("error", async (error) => {
+    const onError = async (error: Error) => {
       cleanup();
 
       try {
@@ -150,8 +161,9 @@ function runCommand(
       } finally {
         reject(error);
       }
-    });
-    child.once("close", async (code, signal) => {
+    };
+
+    const onClose = async (code: number | null, signal: NodeJS.Signals | null) => {
       cleanup();
 
       try {
@@ -184,6 +196,15 @@ function runCommand(
       } catch (error) {
         reject(error);
       }
+    };
+
+    // The listener itself must return void; the async body always settles the
+    // outer promise, and its own rejection is forwarded to `reject`.
+    child.once("error", (error) => {
+      onError(error).catch(reject);
+    });
+    child.once("close", (code, signal) => {
+      onClose(code, signal).catch(reject);
     });
   });
 }
@@ -193,7 +214,9 @@ async function runTests(
   {
     platform = process.platform,
     nodeBinary = process.execPath,
-    electronBinary = () => require("electron"),
+    // SAFETY: outside the Electron runtime `require("electron")` returns the
+    // absolute binary path the runner launches; tests inject their own stub.
+    electronBinary = () => require("electron") as string,
     prepare = ensureSqliteRuntime,
     run = runCommand,
     lock = acquireFullRunLock,

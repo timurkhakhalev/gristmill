@@ -1,10 +1,15 @@
-const fs: typeof import("node:fs") = require("node:fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("node:fs") as typeof import("node:fs");
 
-const os: typeof import("node:os") = require("node:os");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const os = require("node:os") as typeof import("node:os");
 
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
 
-const { execFileSync, spawn }: typeof import("node:child_process") = require("node:child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { execFileSync, spawn } =
+  require("node:child_process") as typeof import("node:child_process");
 
 // LaunchServices makes Electron responsible for its TCC requests instead of
 // inheriting the terminal's permissions. Keep terminal logs and Ctrl-C working.
@@ -72,6 +77,8 @@ function launchMacElectron(
           try {
             process.kill(Number(match[1]), "SIGTERM");
           } catch (error) {
+            // SAFETY: process.kill raises a NodeJS.ErrnoException; only `code`
+            // is read, and ESRCH just means the target already exited.
             if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
           }
 

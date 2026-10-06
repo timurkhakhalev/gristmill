@@ -1,10 +1,14 @@
-const { spawnSync }: typeof import("child_process") = require("child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { spawnSync } = require("child_process") as typeof import("child_process");
 
-const crypto: typeof import("crypto") = require("crypto");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const crypto = require("crypto") as typeof import("crypto");
 
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("path") as typeof import("path");
 
 // Mach-O CPU type constants for architecture verification
 const ARCH_CPU_TYPE = {

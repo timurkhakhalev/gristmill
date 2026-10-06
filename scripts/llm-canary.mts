@@ -16,8 +16,25 @@
  */
 import { applyChatCompletionsParams } from "../src/services/ai/chatRequestBody.ts";
 import registryData from "../src/models/modelRegistryData.json" with { type: "json" };
+import { z } from "zod";
 
 const CONSTRAINED_FAMILY = /gpt-oss|qwen|magistral/i;
+
+// Live provider replies are external JSON; each shape is decoded at the fetch
+// boundary rather than read through unchecked property access.
+const chatCompletionSchema = z.looseObject({
+  choices: z
+    .array(z.looseObject({ message: z.looseObject({ content: z.string().optional() }).optional() }))
+    .optional(),
+});
+
+const modelCatalogSchema = z.looseObject({
+  data: z.array(z.looseObject({ id: z.string().optional() })).optional(),
+});
+
+function isError(error: unknown): error is Error {
+  return error instanceof Error;
+}
 
 interface Provider {
   id: string;
@@ -141,7 +158,8 @@ async function probe(entry: Provider, model: string, apiKey: string): Promise<Pr
     return { ok: false, detail: `HTTP ${res.status}: ${text.slice(0, 300)}` };
   }
 
-  const content = JSON.parse(text)?.choices?.[0]?.message?.content;
+  const content = chatCompletionSchema.safeParse(JSON.parse(text)).data?.choices?.[0]?.message
+    ?.content;
 
   if (!content || !content.trim()) {
     return { ok: false, detail: `2xx but empty content: ${text.slice(0, 300)}` };
@@ -159,9 +177,11 @@ async function catalogDiff(entry: Provider, apiKey: string): Promise<CatalogDiff
   if (!res.ok) return { error: `models list HTTP ${res.status}` };
   // Gemini's OpenAI-compat /models returns "models/"-prefixed ids; the
   // registry pins bare ids, so compare without the prefix.
-  const catalog: { data?: { id?: string }[] } = await res.json();
+  const parsed: unknown = await res.json();
+  const catalog = modelCatalogSchema.safeParse(parsed);
+  const entries = catalog.success ? (catalog.data.data ?? []) : [];
 
-  const live = (catalog.data ?? [])
+  const live = entries
     .map((m) => m.id?.replace(/^models\//, ""))
     .filter((id): id is string => Boolean(id));
 
@@ -191,7 +211,7 @@ for (const entry of PROVIDERS) {
   for (const model of entry.models) {
     const result = await probe(entry, model, apiKey).catch((err) => ({
       ok: false,
-      detail: err.message,
+      detail: isError(err) ? err.message : String(err),
     }));
 
     const line = `| ${label} | ${model} | ${result.ok ? "✅" : `❌ ${result.detail}`} |`;
@@ -201,7 +221,9 @@ for (const entry of PROVIDERS) {
   }
 
   if (!entry.skipCatalogDiff) {
-    const diff = await catalogDiff(entry, apiKey).catch((err) => ({ error: err.message }));
+    const diff = await catalogDiff(entry, apiKey).catch((err) => ({
+      error: isError(err) ? err.message : String(err),
+    }));
 
     if ("error" in diff) {
       report.push(`| ${label} | _catalog_ | ⚠️ ${diff.error} |`);

@@ -1,12 +1,15 @@
-const { spawnSync }: typeof import("node:child_process") = require("node:child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
 
-const fs: typeof import("node:fs") = require("node:fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const fs = require("node:fs") as typeof import("node:fs");
 
-const path: typeof import("node:path") = require("node:path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const path = require("node:path") as typeof import("node:path");
 
-const {
-  buildMacosSwiftBinary,
-}: import("./lib/build-macos-swift-binary.cts").API = require("./lib/build-macos-swift-binary.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { buildMacosSwiftBinary } =
+  require("./lib/build-macos-swift-binary.cts") as import("./lib/build-macos-swift-binary.cts").API;
 
 const root = path.resolve(__dirname, "..");
 

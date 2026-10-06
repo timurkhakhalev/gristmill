@@ -191,16 +191,21 @@ export async function copyMeetingAudioExport(
     throwIfAborted(signal);
     fs.renameSync(tempPath, destination);
   } catch (error) {
+    // Handles are closed best-effort; the original export error rethrows.
     if (source) {
       try {
         await source.close();
-      } catch {}
+      } catch {
+        /* best-effort */
+      }
     }
 
     if (output) {
       try {
         await output.close();
-      } catch {}
+      } catch {
+        /* best-effort */
+      }
     }
 
     await fs.promises.rm(tempPath, { force: true }).catch(() => {});

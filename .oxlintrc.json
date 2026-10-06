@@ -122,6 +122,18 @@
       }
     },
     {
+      "files": [
+        "src/helpers/audioTapManager.ts",
+        "src/helpers/meetingRecordingStorage.ts",
+        "src/stores/meetingRecordingStore.ts"
+      ],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unsafe-dictionary-type": "off",
+        "quality/no-unknown-returns": "off"
+      }
+    },
+    {
       "files": ["src/helpers/ipcHandlers.ts"],
       "rules": {
         "quality/no-chained-type-assertions": "off",

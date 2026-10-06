@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type { MeetingAudioLayout } from "./meetingAudioMixer.js";
 import fs from "fs";
 import path from "path";
@@ -14,9 +16,19 @@ import {
   type MeetingRecordingEpochDto,
   type MeetingRunArtifact,
   type MeetingSource,
+  type MeetingTranscriptArtifact,
+  type MeetingSummaryArtifact,
 } from "../contracts/meetingRecording.js";
 
 import { MeetingOpusWriter, inspectMeetingOpus } from "./meetingOpus.js";
+
+// fs errors carry their errno-style kind on `code`; the schema is the parse
+// for this catch-site contract.
+// fs/rejection boundaries hand handlers `unknown`; the zod schemas inside are
+// the parse (no-unknown-parameters override documented in .oxlintrc.json).
+function errnoCode(error: unknown): string | undefined {
+  return z.object({ code: z.string() }).partial().nullish().catch(null).parse(error)?.code;
+}
 
 const BYTES_PER_FRAME = 2;
 
@@ -54,15 +66,26 @@ export interface MeetingRecordingPersistence {
     input: {
       captureState: "ready" | "incomplete";
       endedAt: string;
-      sourceMetadata?: Record<string, unknown>;
+      // Mirrors DatabaseManager.finalizeMeetingRecording: free-form JSON
+      // metadata read back via parseJsonObject (captureEndFrame, mic/system
+      // intent, generations). The owner contract is the manager's, hence the
+      // open dictionary (no-unsafe-dictionary-type override in .oxlintrc.json).
+      sourceMetadata?: Record<string, unknown> | null;
       errorCode?: string | null;
     }
-  ): unknown;
+  ): { recording: MeetingRecordingDto; initialRun: { id: string } };
 }
 
 export interface MeetingRecordingStorageOptions {
   userDataPath?: string;
   writeSync?: WriteSync;
+}
+
+export interface RecoveryScanResult {
+  recovered: RecoveredEpoch[];
+  finalized: string[];
+  deleted: string[];
+  errors: Array<{ id: string; code: string }>;
 }
 
 export interface RecoveredEpoch {
@@ -152,7 +175,7 @@ export class MeetingRecordingStorage {
         fs.constants.O_WRONLY | fs.constants.O_APPEND | this.noFollowFlag()
       );
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (errnoCode(error) !== "ENOENT") throw error;
 
       const flags =
         fs.constants.O_CREAT |
@@ -255,7 +278,7 @@ export class MeetingRecordingStorage {
 
       return inspectMeetingOpus(filePath);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (errnoCode(error) === "ENOENT") {
         return { frameCount: 0, ignoredTrailingBytes: 0, errorCode: "missing-epoch" };
       }
 
@@ -319,7 +342,10 @@ export class MeetingRecordingStorage {
     return destination;
   }
 
-  readRunArtifact(runId: string, artifact: StoredMeetingArtifact): unknown | null {
+  readRunArtifact(
+    runId: string,
+    artifact: StoredMeetingArtifact
+  ): MeetingTranscriptArtifact | MeetingSummaryArtifact | Record<string, unknown> | null {
     meetingRecordingIdSchema.parse(runId);
 
     if (artifact !== "provider-response-mic" && artifact !== "provider-response-system")
@@ -334,9 +360,11 @@ export class MeetingRecordingStorage {
 
       if (artifact === "summary") return meetingSummaryArtifactSchema.parse(value);
 
-      return value;
+      // Provider responses are opaque owner JSON; only an object shape is
+      // guaranteed by the writer.
+      return z.object({}).loose().parse(value);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      if (errnoCode(error) === "ENOENT") return null;
       throw error;
     }
   }
@@ -354,7 +382,7 @@ export class MeetingRecordingStorage {
 
       return true;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      if (errnoCode(error) === "ENOENT") return false;
       throw error;
     }
   }
@@ -483,18 +511,12 @@ export class MeetingRecordingStorage {
     }
   }
 
-  recover(database: MeetingRecordingPersistence): {
-    recovered: RecoveredEpoch[];
-    finalized: string[];
-    deleted: string[];
-    errors: Array<{ id: string; code: string }>;
-  } {
-    const result = {
-      recovered: [] as RecoveredEpoch[],
-      finalized: [] as string[],
-      deleted: [] as string[],
-      errors: [] as Array<{ id: string; code: string }>,
-    };
+  recover(database: MeetingRecordingPersistence): RecoveryScanResult {
+    const recovered: RecoveredEpoch[] = [];
+    const finalized: string[] = [];
+    const deleted: string[] = [];
+    const errors: Array<{ id: string; code: string }> = [];
+    const result = { recovered, finalized, deleted, errors };
 
     result.errors.push(...this.clearDerivedAudio());
     this.processDeletionIntents(database, result.deleted, result.errors);
@@ -666,7 +688,7 @@ export class MeetingRecordingStorage {
       try {
         fs.mkdirSync(current);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        if (errnoCode(error) !== "EEXIST") throw error;
       }
 
       const info = fs.lstatSync(current);
@@ -686,7 +708,7 @@ export class MeetingRecordingStorage {
 
       if (!info.isFile() || info.isSymbolicLink()) throw new Error("Unsafe managed storage file");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (errnoCode(error) !== "ENOENT") throw error;
     }
   }
 
@@ -719,7 +741,7 @@ export class MeetingRecordingStorage {
         if (!info.isDirectory() || info.isSymbolicLink())
           throw new Error("Unsafe managed storage directory");
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        if (errnoCode(error) === "ENOENT") return;
         throw error;
       }
     }
@@ -737,7 +759,7 @@ export class MeetingRecordingStorage {
         throw new Error("Unsafe managed storage directory");
       fs.rmSync(directory, { recursive: true, force: true });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (errnoCode(error) !== "ENOENT") throw error;
     }
   }
 
@@ -771,13 +793,17 @@ function artifactFileName(artifact: StoredMeetingArtifact): string {
 }
 
 function safeErrorCode(error: unknown): string {
-  const code = (error as NodeJS.ErrnoException)?.code;
+  const code = z
+    .object({ code: z.string().regex(/^[A-Z0-9_]{1,64}$/) })
+    .partial()
+    .nullish()
+    .catch(null)
+    .parse(error)?.code;
 
-  return typeof code === "string" && /^[A-Z0-9_]{1,64}$/.test(code)
-    ? code
-    : "file-operation-failed";
+  return code ?? "file-operation-failed";
 }
 
 module.exports = MeetingRecordingStorage;
 
-module.exports.MeetingRecordingStorage = MeetingRecordingStorage;
+// CommonJS contract for legacy destructuring requires.
+Object.assign(module.exports, { MeetingRecordingStorage });

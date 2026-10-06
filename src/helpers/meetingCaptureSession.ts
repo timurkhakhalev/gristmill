@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type {
   MeetingRecordingDto,
+  MeetingRecordingEpochDto,
   MeetingIntentionalInterval,
   MeetingFrameAlignmentPoint,
   MeetingFrameAlignmentSegment,
@@ -12,10 +13,15 @@ const SAMPLE_RATE = 24_000;
 
 const MAX_PACKET_FRAMES = SAMPLE_RATE / 10;
 
+export interface MicIntent {
+  manualMuted: boolean;
+  platformMuted: boolean;
+}
+
 export interface MeetingCaptureDatabase {
   createMeetingRecording(
     noteId: number,
-    input: { config: unknown | null; configError?: unknown },
+    input: { config: unknown; configError?: unknown },
     startedAt?: string,
     id?: string,
     groupId?: string
@@ -28,13 +34,13 @@ export interface MeetingCaptureDatabase {
     sourceGeneration: number,
     sourceStartFrame: number,
     timelineStartFrame?: number | null
-  ): unknown;
+  ): MeetingRecordingEpochDto;
   addMeetingRecordingEpochAlignment(
     recordingId: string,
     source: MeetingSource,
     epochIndex: number,
     segment: MeetingFrameAlignmentSegment
-  ): unknown;
+  ): MeetingRecordingEpochDto;
   markMeetingRecordingEpochAlignmentUnknown(
     recordingId: string,
     source: MeetingSource,
@@ -46,15 +52,23 @@ export interface MeetingCaptureDatabase {
     source: MeetingSource,
     epochIndex: number,
     result: { frameCount: number; ignoredTrailingBytes: number; errorCode?: string | null }
-  ): unknown;
-  markMeetingRecordingFinalizing(recordingId: string): unknown;
+  ): MeetingRecordingEpochDto;
+  markMeetingRecordingFinalizing(recordingId: string): MeetingRecordingDto;
   finalizeMeetingRecording(
     recordingId: string,
     input: {
       captureState: "ready" | "incomplete";
       endedAt: string;
       processingNotBefore?: string;
-      sourceMetadata?: Record<string, unknown>;
+      // Free-form pipeline metadata (captureEndFrame, mic intent, per-source
+      // health); the manager parses it back via parseJsonObject.
+      sourceMetadata?: {
+        captureEndFrame?: number;
+        monotonicOriginNs?: string | null;
+        sourceGenerations?: Record<string, number>;
+        mic?: { intentionallyEmpty?: boolean; errorCode?: string | null };
+        system?: { intentionallyEmpty?: boolean; errorCode?: string | null };
+      };
       errorCode?: string | null;
     }
   ): { recording: MeetingRecordingDto; initialRun: { id: string } };
@@ -166,7 +180,7 @@ export class MeetingCaptureSession {
     private readonly database: MeetingCaptureDatabase,
     private readonly storage: MeetingCaptureEpochStorage,
     noteId: number,
-    config: { config: unknown | null; configError?: unknown } | null,
+    config: { config: unknown; configError?: unknown } | null,
     startedAt: Date,
     recordingId: string = randomUUID(),
     groupId: string = recordingId,
@@ -195,7 +209,7 @@ export class MeetingCaptureSession {
     database: MeetingCaptureDatabase,
     storage: MeetingCaptureEpochStorage,
     noteId: number,
-    config: { config: unknown | null; configError?: unknown } | null,
+    config: { config: unknown; configError?: unknown } | null,
     startedAt = new Date(),
     recordingId?: string,
     groupId?: string,
@@ -213,7 +227,7 @@ export class MeetingCaptureSession {
     );
   }
 
-  getMicIntent(): { manualMuted: boolean; platformMuted: boolean } {
+  getMicIntent(): MicIntent {
     return { manualMuted: this.micManualMuted, platformMuted: this.micPlatformMuted };
   }
 
@@ -300,18 +314,22 @@ export class MeetingCaptureSession {
     if (this.stopPromise) throw new Error("Meeting capture is stopping");
     const operation = this.micIntentQueue.then(() => this.applyMicIntent(input));
     this.micIntentQueue = operation.then(
-      () => undefined,
-      (error: unknown) => {
-        const message = error instanceof Error ? error.message : "";
+      async () => {
+        try {
+          await operation;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
 
-        if (
-          message !== "Stale microphone intent transition" &&
-          message !== "Microphone intent boundary precedes captured audio"
-        ) {
-          this.invalidateMicEmptyProof();
-          this.captureError ??= "mic-intent-transition-failed";
+          if (
+            message !== "Stale microphone intent transition" &&
+            message !== "Microphone intent boundary precedes captured audio"
+          ) {
+            this.invalidateMicEmptyProof();
+            this.captureError ??= "mic-intent-transition-failed";
+          }
         }
-      }
+      },
+      () => undefined
     );
 
     return operation;
@@ -489,7 +507,9 @@ export class MeetingCaptureSession {
     }
 
     if (current) {
-      void this.closeEpoch(source, current);
+      // Fire-and-forget close; closeEpoch already routes its own failures
+      // into captureError, so the outer rejection cannot occur.
+      this.closeEpoch(source, current).catch(() => undefined);
       this.setSourceError(source, "source-restarted");
     }
 
@@ -544,7 +564,7 @@ export class MeetingCaptureSession {
         if (packet.epochIndex !== expectedIndex)
           throw new Error("Unexpected meeting capture epoch");
 
-        if (epoch) this.closeEpoch(source, epoch);
+        if (epoch) this.closeEpoch(source, epoch).catch(() => undefined);
         const sameGeneration = epoch?.sourceGeneration === packet.sourceGeneration;
 
         const minimumStart =

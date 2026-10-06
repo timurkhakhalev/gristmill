@@ -79,4 +79,4 @@ export class LocalModelDownloadStatus {
 // while the TS graph imports the named export.
 module.exports = LocalModelDownloadStatus;
 
-module.exports.LocalModelDownloadStatus = LocalModelDownloadStatus;
+Object.assign(module.exports, { LocalModelDownloadStatus });

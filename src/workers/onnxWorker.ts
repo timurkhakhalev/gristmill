@@ -1,11 +1,10 @@
-const fs = require("fs");
-
-const os = require("os");
-
-const path = require("path");
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 import {
   parseOnnxWorkerRequest,
+  onnxWorkerRequestIdentity,
   type OnnxWorkerRequest,
   type PingResult,
   type ShutdownResult,
@@ -14,7 +13,7 @@ import {
 } from "../contracts/onnxWorker.js";
 
 interface LogExtra {
-  [key: string]: unknown;
+  [key: string]: string | number | boolean | undefined;
 }
 
 let logStream: import("fs").WriteStream | null = null;
@@ -52,14 +51,14 @@ const SPEAKER_MAX_SAMPLES = FBANK_SAMPLE_RATE * 8;
 
 const intraOpNumThreads = Math.min(4, Math.max(2, Math.floor((os.cpus()?.length || 4) / 2)));
 
-interface MessagePortLike {
-  on(event: "message", listener: (event: { data: unknown }) => void): unknown;
-  on(event: "close", listener: () => void): unknown;
+// The MessagePortMain handed over by the parent; only these three members are
+// used, and its inbound payload is genuinely unknown until the request guard parses it.
+interface WorkerPort {
+  on(event: "message", listener: (messageEvent: { data: unknown }) => void): void;
+  on(event: "close", listener: () => void): void;
   start(): void;
-  postMessage(message: unknown, transferList?: unknown[]): unknown;
+  postMessage(message: ReplyEnvelope["reply"], transferList?: unknown[]): void;
 }
-
-let port: MessagePortLike | null = null;
 
 // onnxruntime-node's surface is untyped in this graph; the narrow slice the
 // worker uses is declared here instead of pulling the package's types into a
@@ -78,6 +77,11 @@ type OrtTensorConstructor = new (
   dims: number[]
 ) => OrtTensor;
 
+interface OrtSessionOptions {
+  intraOpNumThreads: number;
+  executionMode: "sequential";
+}
+
 interface OrtSession {
   inputNames: readonly string[];
   run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensorData>>;
@@ -85,7 +89,7 @@ interface OrtSession {
 
 interface OrtModule {
   InferenceSession: {
-    create(modelPath: string, options: Record<string, unknown>): Promise<OrtSession>;
+    create(modelPath: string, options: OrtSessionOptions): Promise<OrtSession>;
   };
   Tensor: OrtTensorConstructor;
 }
@@ -114,13 +118,18 @@ function log(level: string, message: string, extra?: LogExtra): void {
   }
 }
 
-function loadOrt(): void {
-  if (ort) return;
-  ort = require("onnxruntime-node") as OrtModule;
-  log("info", "ort loaded");
+function loadOrt(): OrtModule {
+  if (!ort) {
+    // SAFETY: onnxruntime-node is untyped here; OrtModule is the narrow slice
+    // this worker consumes (InferenceSession.create and Tensor), declared above.
+    ort = require("onnxruntime-node") as OrtModule;
+    log("info", "ort loaded");
+  }
+
+  return ort;
 }
 
-const SESSION_OPTIONS: Record<string, unknown> = {
+const SESSION_OPTIONS: OrtSessionOptions = {
   intraOpNumThreads,
   executionMode: "sequential",
 };
@@ -279,8 +288,7 @@ function computeFbank(samples: Float32Array): Fbank | null {
 
 async function speakerLoad({ modelPath }: { modelPath: string }): Promise<SpeakerLoadResult> {
   if (speakerSession) return { ok: true };
-  loadOrt();
-  const module = ort as OrtModule;
+  const module = loadOrt();
   speakerSession = await module.InferenceSession.create(modelPath, SESSION_OPTIONS);
   speakerInputName = speakerSession.inputNames[0];
   log("info", "speaker session loaded", { modelPath });
@@ -293,9 +301,11 @@ async function speakerExtract({
 }: {
   samplesBuffer: ArrayBuffer;
 }): Promise<SpeakerExtractResult> {
-  if (!speakerSession || !ort || speakerInputName === null) {
+  if (!speakerSession || speakerInputName === null) {
     throw new Error("speaker session not loaded");
   }
+
+  const module = loadOrt();
 
   const allSamples = new Float32Array(samplesBuffer);
 
@@ -309,7 +319,7 @@ async function speakerExtract({
   if (!fbank) return { embeddingBuffer: null };
 
   const feeds = {
-    [speakerInputName]: new ort.Tensor("float32", fbank.features, [
+    [speakerInputName]: new module.Tensor("float32", fbank.features, [
       1,
       fbank.numFrames,
       FBANK_NUM_MELS,
@@ -325,12 +335,14 @@ async function speakerExtract({
 
 type HandlerResult = PingResult | SpeakerLoadResult | SpeakerExtractResult | ShutdownResult;
 
-const handlers: {
+type MethodHandlers = {
   ping(): HandlerResult;
   "speaker.load"(payload: { modelPath: string }): Promise<SpeakerLoadResult>;
   "speaker.extract"(payload: { samplesBuffer: ArrayBuffer }): Promise<SpeakerExtractResult>;
   shutdown(): ShutdownResult;
-} = {
+};
+
+const handlers: MethodHandlers = {
   ping: () => ({ ok: true, sessions: { speaker: !!speakerSession } }),
   "speaker.load": speakerLoad,
   "speaker.extract": speakerExtract,
@@ -349,43 +361,43 @@ interface ReplyEnvelope {
   transferList: unknown[];
 }
 
-async function dispatch(raw: unknown): Promise<ReplyEnvelope> {
-  const request: OnnxWorkerRequest | null = parseOnnxWorkerRequest(raw);
-
-  if (!request) {
-    const id = (raw as { id?: unknown } | null)?.id;
-    const method = (raw as { method?: unknown } | null)?.method;
-
-    return {
-      reply: {
-        id: typeof id === "number" ? id : 0,
-        error: { message: `unknown method: ${String(method)}` },
-      },
-      transferList: [],
-    };
-  }
-
-  const handler = handlers[request.method] as (
-    payload?: unknown
-  ) => HandlerResult | Promise<HandlerResult>;
-
+async function dispatch(request: OnnxWorkerRequest): Promise<ReplyEnvelope> {
   try {
-    const result = await handler(
-      request.method === "ping" || request.method === "shutdown" ? {} : request.payload
-    );
-
-    // MessagePortMain transfers only ports, not ArrayBuffers — clone the result buffers instead.
-    return { reply: { id: request.id, result }, transferList: [] };
+    switch (request.method) {
+      case "ping":
+        return { reply: { id: request.id, result: handlers.ping() }, transferList: [] };
+      case "speaker.load":
+        return {
+          reply: { id: request.id, result: await handlers["speaker.load"](request.payload) },
+          transferList: [],
+        };
+      case "speaker.extract":
+        return {
+          reply: { id: request.id, result: await handlers["speaker.extract"](request.payload) },
+          transferList: [],
+        };
+      case "shutdown":
+        return { reply: { id: request.id, result: handlers.shutdown() }, transferList: [] };
+    }
   } catch (err) {
-    const message = (err as Error | undefined)?.message || String(err);
+    const error = err instanceof Error ? err : new Error(String(err));
     log("error", "handler threw", {
       method: request.method,
-      error: message,
-      stack: (err as Error | undefined)?.stack,
+      error: error.message,
+      stack: error.stack,
     });
 
-    return { reply: { id: request.id, error: { message } }, transferList: [] };
+    return { reply: { id: request.id, error: { message: error.message } }, transferList: [] };
   }
+}
+
+// The wrong-method error reply both sides still agree on. The identity of the
+// rejected payload is read on the protocol boundary, which owns the parse.
+function unknownMethodReply(identity: { id: number; method: string }): ReplyEnvelope {
+  return {
+    reply: { id: identity.id, error: { message: `unknown method: ${identity.method}` } },
+    transferList: [],
+  };
 }
 
 process.on("uncaughtException", (err: Error) => {
@@ -400,6 +412,8 @@ process.on("unhandledRejection", (err: Error) => {
   process.exit(1);
 });
 
+// SAFETY: Electron's ParentPort type is not in this graph's lib set; the one
+// member used is `once('message')`, and its event payload is parsed downstream.
 const parentPort = process.parentPort as
   | {
       once(
@@ -416,16 +430,31 @@ if (!parentPort) {
 
 parentPort.once("message", ({ data, ports }) => {
   if (data === "init" && ports?.length) {
-    port = ports[0] as MessagePortLike;
-    port.on("message", async (event: { data: unknown }) => {
-      const { reply, transferList } = await dispatch(event.data);
-      port?.postMessage(reply, transferList);
+    // SAFETY: the parent sends a MessagePortMain as the first transferred port;
+    // the worker protocol only ever uses on/start/postMessage on it.
+    const workerPort = ports[0] as WorkerPort;
+
+    workerPort.on("message", (messageEvent: { data: unknown }) => {
+      const { data } = messageEvent;
+      const request = parseOnnxWorkerRequest(data);
+
+      const result = request
+        ? dispatch(request)
+        : Promise.resolve(unknownMethodReply(onnxWorkerRequestIdentity(data)));
+
+      result
+        .then(({ reply, transferList }) => {
+          workerPort.postMessage(reply, transferList);
+        })
+        .catch((error) => {
+          log("error", "reply failed", { error: String(error) });
+        });
     });
-    port.on("close", () => {
+    workerPort.on("close", () => {
       log("info", "port closed");
       process.exit(0);
     });
-    port.start();
+    workerPort.start();
     log("info", "worker initialized", { intraOpNumThreads });
   }
 });

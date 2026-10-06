@@ -12,6 +12,20 @@ test("offline sherpa message extracts JSON text", () => {
   assert.equal(parseOfflineMessage("2026"), "2026");
 });
 
+test("offline sherpa message keeps the raw frame when text is not a string", () => {
+  assert.equal(parseOfflineMessage(JSON.stringify({ text: 123 })), '{"text":123}');
+  assert.equal(parseOfflineMessage(JSON.stringify({ text: true })), '{"text":true}');
+  assert.equal(parseOfflineMessage(JSON.stringify({ text: 1.5 })), '{"text":1.5}');
+  assert.equal(
+    parseOfflineMessage(JSON.stringify({ text: { nested: 1 }, is_final: true, segment: 7 })),
+    '{"text":{"nested":1},"is_final":true,"segment":7}'
+  );
+  assert.equal(
+    parseOfflineMessage(JSON.stringify({ text: ["arr"], is_final: true, segment: 8 })),
+    '{"text":["arr"],"is_final":true,"segment":8}'
+  );
+});
+
 test("online sherpa messages keep finalized segments and latest partial", () => {
   assert.equal(
     parseOnlineMessages([

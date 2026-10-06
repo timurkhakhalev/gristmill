@@ -2,7 +2,7 @@ import vadConstants from "../constants/whisperVad.json";
 
 const { DEFAULTS, LIMITS } = vadConstants;
 
-type VadConfig = {
+export type VadConfig = {
   threshold: number;
   minSpeechDurationMs: number;
   minSilenceDurationMs: number;

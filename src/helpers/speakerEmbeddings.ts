@@ -1,16 +1,9 @@
-const fs = require("fs");
-
-const path = require("path");
-
-const debugLogger = require("./debugLogger.js");
-
-const { getModelsDirForService } = require("./modelDirUtils.js");
-
-import type { OnnxWorkerClient } from "./onnxWorkerClient.js";
+import fs from "fs";
+import path from "path";
+import debugLogger from "./debugLogger.js";
+import { getModelsDirForService } from "./modelDirUtils.js";
+import onnxWorkerClient from "./onnxWorkerClient.js";
 import type { SpeakerExtractResult } from "../contracts/onnxWorker.js";
-
-// The dual-export singleton: require("./onnxWorkerClient") is the instance.
-const onnxWorkerClient = require("./onnxWorkerClient.js") as OnnxWorkerClient;
 
 export const SAMPLE_RATE = 16000;
 
@@ -26,8 +19,13 @@ export const MAX_EMBEDDING_SAMPLES = SAMPLE_RATE * MAX_EMBEDDING_SECONDS;
 
 const MODEL_FILE = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
 
+export interface WavHeaderInfo {
+  sampleRate: number;
+  dataOffset: number;
+}
+
 export class SpeakerEmbeddings {
-  loadPromise: Promise<unknown> | null;
+  loadPromise: Promise<void> | null;
 
   constructor() {
     this.loadPromise = null;
@@ -49,7 +47,7 @@ export class SpeakerEmbeddings {
     return fs.existsSync(this.getModelPath());
   }
 
-  _ensureLoaded(): Promise<unknown> {
+  _ensureLoaded(): Promise<void> {
     if (this.loadPromise) return this.loadPromise;
 
     if (!this.isAvailable()) {
@@ -62,7 +60,9 @@ export class SpeakerEmbeddings {
     debugLogger.debug("speaker-embeddings loading model", { modelPath });
     this.loadPromise = onnxWorkerClient
       .request("speaker.load", { modelPath })
-      .then(() => debugLogger.debug("speaker-embeddings model loaded"))
+      .then(() => {
+        debugLogger.debug("speaker-embeddings model loaded");
+      })
       .catch((err: Error) => {
         this.loadPromise = null;
         throw err;
@@ -74,12 +74,16 @@ export class SpeakerEmbeddings {
   async _extractEmbeddingFromSamples(samples: Float32Array): Promise<Float32Array | null> {
     await this._ensureLoaded();
 
+    // SAFETY: slice() copies the typed array's region into a fresh
+    // ArrayBuffer, so the result is a real ArrayBuffer, not a SharedArrayBuffer.
     const samplesBuffer = samples.buffer.slice(
       samples.byteOffset,
       samples.byteOffset + samples.byteLength
     ) as ArrayBuffer;
 
     // No transfer-list: MessagePortMain can't transfer ArrayBuffers, so the samples are cloned.
+    // SAFETY: speaker.extract is the only request this client issues for that
+    // method, and the worker replies with the matching SpeakerExtractResult.
     const { embeddingBuffer } = (await onnxWorkerClient.request("speaker.extract", {
       samplesBuffer,
     })) as SpeakerExtractResult;
@@ -131,7 +135,7 @@ export class SpeakerEmbeddings {
     return this._extractEmbeddingFromSamples(samples);
   }
 
-  _parseWavHeader(buf: Buffer): { sampleRate: number; dataOffset: number } {
+  _parseWavHeader(buf: Buffer): WavHeaderInfo {
     let offset = 12;
     let sampleRate = 16000;
     let dataOffset = 44;
@@ -190,8 +194,11 @@ export class SpeakerEmbeddings {
 
 const instance = new SpeakerEmbeddings();
 
+export default instance;
+
 module.exports = instance;
 
-module.exports.SpeakerEmbeddings = SpeakerEmbeddings;
-
-module.exports.MAX_EMBEDDING_SECONDS = MAX_EMBEDDING_SECONDS;
+Object.assign(module.exports, {
+  SpeakerEmbeddings,
+  MAX_EMBEDDING_SECONDS,
+});

@@ -1,57 +1,47 @@
-const fs = require("fs");
-
-const fsPromises = require("fs").promises;
-
-const path = require("path");
-
+import fs from "fs";
+import fsPromises from "fs/promises";
+import path from "path";
+import { pipeline } from "stream/promises";
 import { spawn, type ChildProcessByStdio } from "child_process";
 import type { Readable } from "stream";
 import { ensureLocalEngine } from "./localEngineInstaller.js";
-
-const debugLogger = require("./debugLogger.js");
-
-const { runSystemTar } = require("./systemTar.js");
-
-const { downloadFile, createDownloadSignal, checkDiskSpace } = require("./downloadUtils.js") as {
-  downloadFile: (
-    url: string,
-    target: string,
-    options: {
-      timeout?: number;
-      signal?: { aborted: boolean; addEventListener?: unknown; removeEventListener?: unknown };
-      onProgress?: (downloadedBytes: number, totalBytes: number) => void;
-    }
-  ) => Promise<unknown>;
-  createDownloadSignal: () => { signal: { aborted: boolean }; abort: () => void };
-  checkDiskSpace: (dir: string, bytes: number) => Promise<{ ok: boolean; availableBytes: number }>;
-};
-
-const { resolveBinaryPath, gracefulStopProcess } = require("../utils/serverUtils.js") as {
-  resolveBinaryPath: (name: string) => string | null;
-  gracefulStopProcess: (
-    proc: ChildProcessByStdio<null, Readable, Readable>
-  ) => Promise<void> | void;
-};
-
-const { getModelsDirForService } = require("./modelDirUtils.js");
-
-const { convertToWav } = require("./ffmpegUtils.js");
-
-const { getSafeTempDir } = require("./safeTempDir.js");
-
-import { applyConfirmedSpeaker } from "./speakerAssignmentPolicy.js";
+import debugLogger from "./debugLogger.js";
+import { runSystemTar } from "./systemTar.js";
+import {
+  downloadFile,
+  createDownloadSignal,
+  checkDiskSpace,
+  type DownloadError,
+} from "./downloadUtils.js";
+import { resolveBinaryPath, gracefulStopProcess } from "../utils/serverUtils.js";
+import { getModelsDirForService } from "./modelDirUtils.js";
+import { convertToWav } from "./ffmpegUtils.js";
+import { getSafeTempDir } from "./safeTempDir.js";
+import { applyConfirmedSpeaker, type SpeakerSegment } from "./speakerAssignmentPolicy.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
-
-const {
+import {
   transcriptsOverlap,
   transcriptsLooselyOverlap,
   buildMergedCandidates,
-} = require("./transcriptText.js");
-
-const {
+} from "./transcriptText.js";
+import {
   computeTranscriptionTimeoutMs,
   PCM16_MONO_16K_BYTES_PER_SECOND,
-} = require("./transcriptionTimeout.js");
+} from "./transcriptionTimeout.js";
+
+type DiarizeChild = ChildProcessByStdio<null, Readable, Readable>;
+
+function isDownloadAbort(error: unknown): error is DownloadError {
+  return (
+    typeof error === "object" && error !== null && "isAbort" in error && error.isAbort === true
+  );
+}
+
+type SystemSegmentWithText = TranscriptSegment & { source: "system"; text: string };
+
+function isSystemSegmentWithText(seg: TranscriptSegment): seg is SystemSegmentWithText {
+  return seg.source === "system" && typeof seg.text === "string";
+}
 
 export interface DiarizationSegment {
   start: number;
@@ -59,22 +49,13 @@ export interface DiarizationSegment {
   speaker: string;
 }
 
-export interface TranscriptSegment {
+export interface TranscriptSegment extends SpeakerSegment {
   source: string;
   text?: string | null;
   timestamp?: number | null;
   likelyRenderBleed?: boolean;
   hasBleedEvidence?: boolean;
   suppressionReason?: string | null;
-  speaker?: string | null;
-  speakerName?: string | null;
-  speakerIsPlaceholder?: boolean;
-  speakerStatus?: string;
-  speakerLocked?: boolean;
-  speakerLockSource?: string | null;
-  suggestedName?: string | null;
-  suggestedProfileId?: number | null;
-  [key: string]: unknown;
 }
 
 export interface DownloadProgressData {
@@ -101,9 +82,14 @@ const POST_MERGE_CONTEXT_WINDOW_MS = 6000;
 const POST_MERGE_CONTEXT_MERGE_LIMIT = 3;
 
 const dedupeMicAgainstSystem = (segments: TranscriptSegment[]): TranscriptSegment[] => {
-  const systemSegments = segments.filter((seg) => seg.source === "system" && seg.text);
+  const systemSegments = segments.filter(isSystemSegmentWithText);
 
   if (!systemSegments.length) return segments;
+
+  const systemCandidates = systemSegments.map((seg) => ({
+    text: seg.text,
+    timestamp: seg.timestamp ?? null,
+  }));
 
   return segments.filter((seg) => {
     if (seg.source !== "mic" || !seg.text) return true;
@@ -120,8 +106,8 @@ const dedupeMicAgainstSystem = (segments: TranscriptSegment[]): TranscriptSegmen
       seg.suppressionReason === "double_talk" ? transcriptsLooselyOverlap : transcriptsOverlap;
 
     const candidates = buildMergedCandidates({
-      segments: systemSegments,
-      timestamp: seg.timestamp,
+      segments: systemCandidates,
+      timestamp: seg.timestamp ?? null,
       windowMs: POST_MERGE_CONTEXT_WINDOW_MS,
       mergeLimit: POST_MERGE_CONTEXT_MERGE_LIMIT,
     });
@@ -146,10 +132,6 @@ const SEGMENTATION_ONNX = path.join(SEGMENTATION_DIR, "model.onnx");
 const EMBEDDING_ONNX = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
 
 const SILERO_VAD_ONNX = "silero_vad.onnx";
-
-type DiarizeChild = ChildProcessByStdio<null, Readable, Readable>;
-
-type DownloadSignalHandle = { abort: () => void };
 
 export class DiarizationManager {
   _processes: Set<DiarizeChild>;
@@ -250,8 +232,9 @@ export class DiarizationManager {
       );
     }
 
-    const { signal, abort } = createDownloadSignal();
-    this.currentDownloadProcess = { abort };
+    const downloadHandle = createDownloadSignal();
+    const signal = downloadHandle.signal;
+    this.currentDownloadProcess = { abort: () => downloadHandle.abort() };
 
     try {
       // Download segmentation model (tar.bz2)
@@ -260,7 +243,6 @@ export class DiarizationManager {
 
       if (!fs.existsSync(segModelPath)) {
         await downloadFile(SEGMENTATION_MODEL_URL, segArchivePath, {
-          timeout: 600000,
           signal,
           onProgress: (downloadedBytes, totalBytes) => {
             if (progressCallback) {
@@ -293,7 +275,6 @@ export class DiarizationManager {
 
       if (!fs.existsSync(embModelPath)) {
         await downloadFile(EMBEDDING_MODEL_URL, embModelPath, {
-          timeout: 600000,
           signal,
           onProgress: (downloadedBytes, totalBytes) => {
             if (progressCallback) {
@@ -312,7 +293,6 @@ export class DiarizationManager {
       if (!this.isVadModelDownloaded()) {
         try {
           await downloadFile(SILERO_VAD_MODEL_URL, this.getVadModelPath(), {
-            timeout: 600000,
             signal,
             onProgress: (downloadedBytes, totalBytes) => {
               if (progressCallback) {
@@ -327,12 +307,12 @@ export class DiarizationManager {
             },
           });
         } catch (error) {
-          if ((error as { isAbort?: boolean }).isAbort) {
+          if (isDownloadAbort(error)) {
             throw new Error("Download interrupted by user");
           }
 
           debugLogger.warn("Silero VAD model download failed", {
-            error: (error as Error).message,
+            error: error instanceof Error ? error.message : String(error),
             modelsDir,
           });
         }
@@ -346,12 +326,15 @@ export class DiarizationManager {
 
       return { success: true, path: modelsDir };
     } catch (error) {
-      if ((error as { isAbort?: boolean }).isAbort) {
+      if (isDownloadAbort(error)) {
         throw new Error("Download interrupted by user");
       }
 
       if (progressCallback) {
-        progressCallback({ type: "error", error: (error as Error).message });
+        progressCallback({
+          type: "error",
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
 
       throw error;
@@ -367,13 +350,19 @@ export class DiarizationManager {
       return;
     } catch (err) {
       debugLogger.debug("System tar failed, falling back to JS extraction", {
-        error: (err as Error).message,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
 
-    const unbzip2 = require("unbzip2-stream");
-    const tar = require("tar");
-    const { pipeline } = require("stream/promises");
+    // SAFETY: these lazy CommonJS deps are only loaded on the JS-extraction
+    // fallback path; the assertions declare the narrow call shapes used below.
+    const unbzip2 = require("unbzip2-stream") as () => NodeJS.ReadWriteStream;
+
+    // SAFETY: same lazy CommonJS seam; only x({ cwd }) is called on tar.
+    const tar = require("tar") as {
+      x(options: { cwd: string }): NodeJS.ReadWriteStream;
+    };
+
     await pipeline(fs.createReadStream(archivePath), unbzip2(), tar.x({ cwd: destDir }));
   }
 
@@ -473,7 +462,7 @@ export class DiarizationManager {
 
       const timeout = setTimeout(() => {
         debugLogger.warn("Diarization timed out", { timeoutMs });
-        gracefulStopProcess(proc);
+        gracefulStopProcess(proc).catch(() => {});
         resolve([]);
       }, timeoutMs);
 
@@ -481,7 +470,7 @@ export class DiarizationManager {
       // path uses); the close handler below still fires and cleans up.
       const onAbort = () => {
         debugLogger.info("Diarization cancelled, stopping process");
-        gracefulStopProcess(proc);
+        gracefulStopProcess(proc).catch(() => {});
         resolve([]);
       };
 
@@ -552,7 +541,7 @@ export class DiarizationManager {
     cap: number | null | undefined
   ): DiarizationSegment[] {
     if (!cap || !segments?.length) return segments;
-    const totals = new Map();
+    const totals = new Map<string, number>();
 
     for (const s of segments) {
       totals.set(s.speaker, (totals.get(s.speaker) || 0) + (s.end - s.start));
@@ -581,7 +570,7 @@ export class DiarizationManager {
 
     // Build speaker renumbering map (e.g., speaker_00 → speaker_0)
     const speakerSet = new Set(diarizationSegments.map((d) => d.speaker));
-    const speakerMap = new Map();
+    const speakerMap = new Map<string, string>();
     let idx = 0;
 
     for (const sp of speakerSet) {
@@ -622,8 +611,8 @@ export class DiarizationManager {
         const segStart = seg.timestamp;
         const segEnd = nextTimestampAt(index, diarizedSource) ?? segStart + 2.5;
         const midpoint = segStart + (segEnd - segStart) / 2;
-        let overlapSpeaker = null;
-        let nearestSpeaker = null;
+        let overlapSpeaker: string | null = null;
+        let nearestSpeaker: string | null = null;
         let bestOverlap = 0;
         let bestDistance = Number.POSITIVE_INFINITY;
 
@@ -760,4 +749,4 @@ export class DiarizationManager {
 // graph imports the named export.
 module.exports = DiarizationManager;
 
-module.exports.DiarizationManager = DiarizationManager;
+Object.assign(module.exports, { DiarizationManager });

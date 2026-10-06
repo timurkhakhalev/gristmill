@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const path = require("path") as typeof import("path");
 
-const {
-  downloadFile,
-  parseArgs,
-}: import("./lib/download-utils.cts").API = require("./lib/download-utils.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const { downloadFile, parseArgs } =
+  require("./lib/download-utils.cts") as import("./lib/download-utils.cts").API;
 
 const VAD_MODEL_URL =
   "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin";

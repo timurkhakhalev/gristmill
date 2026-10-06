@@ -1,3 +1,6 @@
+// `quality/no-unknown-parameters` / `no-unknown-returns` are off for this file
+// (exact-file override): it registers ipcMain.handle listeners, whose event and
+// variadic arguments are untrusted and parsed per channel below.
 // Local LLM (llama.cpp) model IPC: catalog with download status, downloads
 // with sequence-stamped progress, deletion, runtime availability, the
 // llama.cpp installer checks and llama-server lifecycle — moved out of
@@ -15,8 +18,14 @@ import {
   type LocalLlmModelStatus,
   type LocalModelDownloadStatusRow,
 } from "../contracts/localLlmModels.js";
+import type { LlamaServerOptions } from "./llamaServer.js";
 
 type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
+
+// The status row plus the optional error a failed probe reports.
+export interface LlamaServerStatusResult extends LlamaServerStatusRow {
+  error?: string;
+}
 
 export interface ModelLifecycleProgressSender {
   sendToControlPanel(channel: string, payload: unknown): void;
@@ -24,7 +33,7 @@ export interface ModelLifecycleProgressSender {
 
 export interface LlmDownloadStatusTracker {
   has(modelType: string, modelId: string): boolean;
-  start(modelType: string, modelId: string): unknown;
+  start(modelType: string, modelId: string): void;
   update(
     modelType: string,
     modelId: string,
@@ -52,10 +61,10 @@ export interface LlmModelManagerLike {
   modelsDir: string | null;
   serverStartOptions(
     modelInfo: unknown,
-    overrides?: Record<string, unknown>
-  ): Promise<Record<string, unknown>>;
+    overrides?: LlamaServerOptions
+  ): Promise<LlamaServerOptions>;
   serverManager: {
-    start(modelPath: string, options?: Record<string, unknown>): Promise<void>;
+    start(modelPath: string, options?: LlamaServerOptions): Promise<void>;
     port: number | null;
   };
   currentServerModelId: string | null;
@@ -79,16 +88,64 @@ export interface LocalLlmModelDeps {
   logError(message: string, data?: unknown): void;
 }
 
-function failure(error: unknown): LlmActionResult {
-  const err = error as { message?: string; code?: string; details?: unknown };
+// An error from the model manager may carry a machine-readable code and an
+// opaque details payload; classify before reading.
+interface CodedManagerError {
+  message?: string;
+  code?: string;
+  details?: string;
+}
 
+function isManagerError(value: unknown): value is CodedManagerError {
+  return typeof value === "object" && value !== null;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function errorField(error: unknown, field: keyof CodedManagerError): unknown {
+  return isManagerError(error) ? error[field] : undefined;
+}
+
+function errorMessage(error: unknown): string | undefined {
+  const message = errorField(error, "message");
+
+  return isString(message) ? message : undefined;
+}
+
+function errorCode(error: unknown): string | undefined {
+  const code = errorField(error, "code");
+
+  return isString(code) ? code : undefined;
+}
+
+function errorDetails(error: unknown): string | undefined {
+  const details = errorField(error, "details");
+
+  if (details === undefined) return undefined;
+
+  // The renderer reads neither details nor absolute paths; only a readable
+  // summary crosses the wire.
+  return isString(details) ? details : JSON.stringify(details);
+}
+
+// The untrusted IPC argument that names a model; the manager rejects unknown
+// ids through its typed MODEL_NOT_FOUND error.
+function isStringLike(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function modelIdArg(value: unknown): string {
+  return isStringLike(value) ? value : "";
+}
+
+function failure(error: unknown): LlmActionResult {
   return {
     success: false,
-    error: err?.message,
-    code: err?.code,
-    // The renderer reads neither details nor absolute paths; only a readable
-    // summary crosses the wire.
-    details: err?.details === undefined ? undefined : String(err.details),
+    error: errorMessage(error),
+    code: errorCode(error),
+    details: errorDetails(error),
   };
 }
 
@@ -98,7 +155,7 @@ export function registerLocalLlmModelHandlers(
 ): void {
   const c = localLlmChannels;
 
-  ipcMain.handle(c.modelGetAll, async (): Promise<unknown> => {
+  ipcMain.handle(c.modelGetAll, async (): Promise<LocalLlmModelStatus[]> => {
     try {
       const models = await deps.modelManager.getModelsWithStatus();
 
@@ -114,11 +171,11 @@ export function registerLocalLlmModelHandlers(
   // Pre-cutover contract kept 1:1: raw model ids pass straight through to the
   // manager, whose typed errors (MODEL_NOT_FOUND & co) drive the renderer.
   ipcMain.handle(c.modelCheck, async (_event, ...args: unknown[]) => {
-    return deps.modelManager.isModelDownloaded(args[0] as string);
+    return deps.modelManager.isModelDownloaded(modelIdArg(args[0]));
   });
 
   ipcMain.handle(c.modelDownload, async (_event, ...args: unknown[]) => {
-    const modelId = args[0] as string;
+    const modelId = modelIdArg(args[0]);
 
     if (deps.downloadStatus.has("llm", modelId)) {
       return {
@@ -167,31 +224,31 @@ export function registerLocalLlmModelHandlers(
       return { success: true, path: result };
     } catch (error) {
       const status = deps.downloadStatus.finish("llm", modelId);
-      const err = error as { message?: string; code?: string; details?: unknown };
+      const code = errorCode(error);
 
-      if (err.code !== "DOWNLOAD_IN_PROGRESS") {
+      if (code !== "DOWNLOAD_IN_PROGRESS") {
         deps.progressSender.sendToControlPanel(c.modelDownloadProgress, {
           modelId,
           type: "error",
-          error: err.message,
-          code: err.code,
-          details: err.details,
+          error: errorMessage(error),
+          code,
+          details: errorDetails(error),
           sequence: status?.sequence,
         });
       }
 
       return {
         success: false,
-        error: err.message,
-        code: err.code,
-        details: err.details,
+        error: errorMessage(error),
+        code,
+        details: errorDetails(error),
       };
     }
   });
 
   ipcMain.handle(c.modelDelete, async (_event, ...args: unknown[]): Promise<LlmActionResult> => {
     try {
-      await deps.modelManager.deleteModel(args[0] as string);
+      await deps.modelManager.deleteModel(modelIdArg(args[0]));
 
       return { success: true };
     } catch (error) {
@@ -213,11 +270,11 @@ export function registerLocalLlmModelHandlers(
     c.modelCancelDownload,
     async (_event, ...args: unknown[]): Promise<{ success: boolean; error?: string }> => {
       try {
-        const cancelled = deps.modelManager.cancelDownload(args[0] as string);
+        const cancelled = deps.modelManager.cancelDownload(modelIdArg(args[0]));
 
         return { success: cancelled };
       } catch (error) {
-        return { success: false, error: (error as Error).message };
+        return { success: false, error: errorMessage(error) };
       }
     }
   );
@@ -228,15 +285,11 @@ export function registerLocalLlmModelHandlers(
 
       return { available: true };
     } catch (error) {
-      const err = error as { message?: string; code?: string; details?: unknown };
-
       return {
         available: false,
-        error: err?.message,
-        code: err?.code,
-        // The renderer reads neither details nor absolute paths; only a
-        // readable summary crosses the wire.
-        details: err?.details === undefined ? undefined : String(err.details),
+        error: errorMessage(error),
+        code: errorCode(error),
+        details: errorDetails(error),
       };
     }
   });
@@ -247,7 +300,7 @@ export function registerLocalLlmModelHandlers(
 
       return { isInstalled, version: null };
     } catch (error) {
-      return { isInstalled: false, error: (error as Error).message };
+      return { isInstalled: false, error: errorMessage(error) };
     }
   });
 
@@ -255,7 +308,7 @@ export function registerLocalLlmModelHandlers(
     try {
       return await deps.llamaCppInstaller.install();
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
@@ -263,14 +316,14 @@ export function registerLocalLlmModelHandlers(
     try {
       return await deps.llamaCppInstaller.uninstall();
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
   ipcMain.handle(
     c.llamaServerStart,
     async (_event, ...args: unknown[]): Promise<LlamaServerStartResult> => {
-      const modelId = args[0] as string;
+      const modelId = modelIdArg(args[0]);
 
       try {
         const modelManager = deps.modelManager;
@@ -281,7 +334,7 @@ export function registerLocalLlmModelHandlers(
           return { success: false, error: `Model "${modelId}" not found` };
         }
 
-        const modelPath = deps.joinPath(modelManager.modelsDir as string, modelInfo.model.fileName);
+        const modelPath = deps.joinPath(modelManager.modelsDir ?? "", modelInfo.model.fileName);
 
         await modelManager.serverManager.start(
           modelPath,
@@ -293,7 +346,7 @@ export function registerLocalLlmModelHandlers(
 
         return { success: true, port: modelManager.serverManager.port ?? undefined };
       } catch (error) {
-        return { success: false, error: (error as Error).message };
+        return { success: false, error: errorMessage(error) };
       }
     }
   );
@@ -304,15 +357,23 @@ export function registerLocalLlmModelHandlers(
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
-  ipcMain.handle(c.llamaServerStatus, async (): Promise<unknown> => {
+  ipcMain.handle(c.llamaServerStatus, async (): Promise<LlamaServerStatusResult> => {
     try {
       return deps.modelManager.getServerStatus();
     } catch (error) {
-      return { available: false, running: false, error: (error as Error).message };
+      return {
+        available: false,
+        running: false,
+        port: null,
+        modelPath: null,
+        modelName: null,
+        backend: null,
+        error: errorMessage(error),
+      };
     }
   });
 }

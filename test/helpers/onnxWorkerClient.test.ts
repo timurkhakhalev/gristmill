@@ -100,7 +100,12 @@ function loadClient(
     }
 
     if (request === "./debugLogger" || request === "./debugLogger.js") {
-      return new Proxy({}, { get: () => () => {} });
+      // The typed client imports the singleton as a default export; the stub
+      // mirrors the module's own shape (a no-op logger on `.default`).
+      const noop = () => {};
+      const logger = { info: noop, warn: noop, debug: noop, error: noop };
+
+      return { __esModule: true, default: logger, ...logger };
     }
 
     return originalLoad.call(this, request, parent, isMain);

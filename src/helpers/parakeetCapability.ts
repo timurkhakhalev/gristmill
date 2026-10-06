@@ -34,11 +34,9 @@ export function getParakeetCapability({
 }: ParakeetCapabilityOptions = {}): ParakeetCapability {
   if (platform !== "darwin") return { supported: true };
 
-  const detectedVersion =
-    systemVersion ??
-    (typeof (process as { getSystemVersion?: () => string }).getSystemVersion === "function"
-      ? (process as { getSystemVersion: () => string }).getSystemVersion()
-      : null);
+  // Electron exposes process.getSystemVersion; plain Node does not. The
+  // property is optional in this graph, so probe it before calling.
+  const detectedVersion = systemVersion ?? process.getSystemVersion?.() ?? null;
 
   // Plain Node does not expose Electron's system-version API. Production main-process
   // calls always provide it; allowing Node keeps build tooling and unit tests portable.
@@ -59,7 +57,7 @@ export function assertParakeetSupported(options?: ParakeetCapabilityOptions): vo
 
   if (capability.supported) return;
 
-  throw Object.assign(new Error(capability.message as string), {
+  throw Object.assign(new Error(capability.message ?? "Parakeet is not supported"), {
     code: capability.code,
     minimumMacOSVersion: capability.minimumMacOSVersion,
   });

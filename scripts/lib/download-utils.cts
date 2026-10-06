@@ -1,3 +1,9 @@
+// The GitHub request headers; a named dictionary so the composed literal keeps
+// its known entries instead of widening to an open Record.
+interface RequestHeaders {
+  [name: string]: string;
+}
+
 export interface Release {
   tag: string;
   url: string;
@@ -12,13 +18,17 @@ interface GitHubRelease {
   assets?: { name: string; browser_download_url: string }[];
 }
 
-const https: typeof import("https") = require("https");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const https = require("https") as typeof import("https");
 
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const path = require("path") as typeof import("path");
 
-const { execFileSync }: typeof import("child_process") = require("child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const { execFileSync } = require("child_process") as typeof import("child_process");
 
 const REQUEST_TIMEOUT = 30000;
 
@@ -42,17 +52,14 @@ function fetchJson<T>(url: string, redirectCount = 0): Promise<T> {
       return;
     }
 
-    const headers: Record<string, string> = {
-      "User-Agent": "Gristmill-Downloader",
-      Accept: "application/vnd.github+json",
-    };
-
     // Use GitHub token if available (increases rate limit from 60 to 5000/hour)
     const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
 
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
+    const headers: RequestHeaders = {
+      "User-Agent": "Gristmill-Downloader",
+      Accept: "application/vnd.github+json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
 
     const options = {
       headers,
@@ -85,10 +92,12 @@ function fetchJson<T>(url: string, redirectCount = 0): Promise<T> {
         }
 
         let data = "";
-        res.on("data", (chunk) => (data += chunk));
+        res.on("data", (chunk: Buffer | string) => (data += chunk));
         res.on("end", () => {
           try {
-            resolve(JSON.parse(data));
+            // SAFETY: this is the JSON parse boundary; callers pass the expected
+            // response shape as T and validate the fields they read.
+            resolve(JSON.parse(data) as T);
           } catch (e) {
             reject(
               new Error(`Failed to parse JSON: ${e instanceof Error ? e.message : String(e)}`)
@@ -235,7 +244,7 @@ function downloadFile(url: string, dest: string, retryCount = 0): Promise<void> 
         const total = parseInt(response.headers["content-length"] ?? "", 10);
         let downloaded = 0;
 
-        response.on("data", (chunk) => {
+        response.on("data", (chunk: Buffer) => {
           downloaded += chunk.length;
           const pct = total ? Math.round((downloaded / total) * 100) : 0;
           process.stdout.write(`\r  Downloading: ${pct}%`);
@@ -272,10 +281,14 @@ function downloadFile(url: string, dest: string, retryCount = 0): Promise<void> 
 
     request(url);
   }).catch(async (error) => {
+    // SAFETY: Node fs/net rejections carry an errno code; the two reads below
+    // compare that code against the transient set.
+    const errnoError = error as NodeJS.ErrnoException;
+
     const isTransient =
       (error instanceof Error ? error.message : String(error)).includes("timed out") ||
-      (error as NodeJS.ErrnoException).code === "ECONNRESET" ||
-      (error as NodeJS.ErrnoException).code === "ETIMEDOUT";
+      errnoError.code === "ECONNRESET" ||
+      errnoError.code === "ETIMEDOUT";
 
     if (isTransient && retryCount < MAX_RETRIES) {
       console.log(

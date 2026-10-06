@@ -1,3 +1,7 @@
+// Download/HTTP boundary. `quality/no-unknown-parameters` is off for this file
+// (exact-file override): asDownloadError, isTlsError, isRetryable and fail()
+// classify a value that arrives as a rejected promise (genuinely unknown) into
+// the DownloadError shape before any field is read.
 import fs from "fs";
 import { promises as fsPromises } from "fs";
 import path from "path";
@@ -40,6 +44,13 @@ const TLS_ERROR_CODES: ReadonlySet<string> = new Set([
   "CERT_UNTRUSTED",
 ]);
 
+// Details attached to a coded download error; a small named shape rather than
+// an open dictionary.
+export interface DownloadErrorDetails {
+  model?: string;
+  activeModel?: string;
+}
+
 // Coded download error: `code` drives the retry policy, `isAbort`/`isHttpError`
 // mark the non-retryable cancel/HTTP classes, TLS failures carry their own tag.
 export interface DownloadError extends Error {
@@ -48,11 +59,14 @@ export interface DownloadError extends Error {
   isHttpError?: boolean;
   isTlsError?: boolean;
   statusCode?: number;
-  details?: Record<string, unknown>;
+  details?: DownloadErrorDetails;
 }
 
+// SAFETY: callers only reach this after an operation that rejects with a plain
+// Error carrying the optional DownloadError fields; the reads below guard each
+// field before use.
 function asDownloadError(error: unknown): DownloadError {
-  return error as DownloadError;
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function isTlsError(error: unknown): boolean {
@@ -60,7 +74,7 @@ function isTlsError(error: unknown): boolean {
 
   return (
     (err.code !== undefined && TLS_ERROR_CODES.has(err.code)) ||
-    (err.message !== undefined && err.message.includes("unable to get local issuer certificate"))
+    err.message.includes("unable to get local issuer certificate")
   );
 }
 
@@ -73,6 +87,11 @@ function isRetryable(error: unknown): boolean {
 }
 
 type ResponseHeaders = Record<string, string | string[] | undefined>;
+
+interface DownloadHeaders {
+  "User-Agent": string;
+  Range?: string;
+}
 
 function headerValue(headers: ResponseHeaders, name: string): string | undefined {
   const raw = headers[name];
@@ -108,9 +127,7 @@ export function createDownloadSignal(): DownloadSignalHandle {
     abort() {
       signal.aborted = true;
 
-      if (typeof signal.onAbort === "function") {
-        signal.onAbort();
-      }
+      signal.onAbort?.();
     },
   };
 }
@@ -150,7 +167,7 @@ function downloadAttempt(
       return;
     }
 
-    const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+    const headers: DownloadHeaders = { "User-Agent": USER_AGENT };
 
     if (startOffset > 0) {
       headers["Range"] = `bytes=${startOffset}-`;
@@ -195,7 +212,9 @@ function downloadAttempt(
       settled = true;
 
       if (signal) signal.onAbort = null;
-      void cleanup().then(() => reject(error));
+      cleanup()
+        .then(() => reject(error))
+        .catch(() => reject(error));
     };
 
     const onAbort = (): void => {
@@ -207,15 +226,17 @@ function downloadAttempt(
     }
 
     request = net.request({ url, method: "GET" });
+    request.setHeader("User-Agent", headers["User-Agent"]);
 
-    for (const [name, value] of Object.entries(headers)) {
-      request.setHeader(name, value);
-    }
+    if (headers.Range) request.setHeader("Range", headers.Range);
 
     request.on("response", (response) => {
-      // Electron's response extends the Node readable; the declared type is
-      // narrower than the runtime object, so widen it at this one boundary.
+      // SAFETY: Electron's response extends the Node readable; the declared
+      // type is narrower than the runtime object, so widen it at this boundary.
       const responseBody = response as Electron.IncomingMessage & Readable;
+
+      // SAFETY: Electron's header map is a superset of the string|string[]|undefined
+      // shape read below.
       const responseHeaders = response.headers as ResponseHeaders;
 
       if (signal?.aborted) {
@@ -254,12 +275,12 @@ function downloadAttempt(
       } else {
         responseBody.resume();
 
-        const err = Object.assign(new Error(`HTTP ${statusCode}`), {
-          isHttpError: true,
-          statusCode,
-        }) as DownloadError;
-
-        fail(err);
+        fail(
+          Object.assign(new Error(`HTTP ${statusCode}`), {
+            isHttpError: true,
+            statusCode,
+          })
+        );
 
         return;
       }
@@ -378,6 +399,8 @@ export async function fetchJson<T = unknown>(
 ): Promise<T> {
   const { headers, ...init } = options;
 
+  // SAFETY: useSessionCookies is an Electron net.fetch option outside the DOM
+  // RequestInit type; the rest of the object is a valid RequestInit.
   const response = await net.fetch(url, {
     method: "GET",
     useSessionCookies: false,
@@ -386,14 +409,14 @@ export async function fetchJson<T = unknown>(
   } as RequestInit);
 
   if (!response.ok) {
-    const err = Object.assign(new Error(`HTTP ${response.status} fetching ${url}`), {
+    throw Object.assign(new Error(`HTTP ${response.status} fetching ${url}`), {
       isHttpError: true,
       statusCode: response.status,
-    }) as DownloadError;
-
-    throw err;
+    });
   }
 
+  // SAFETY: this is the JSON parse boundary; each caller passes the expected
+  // response shape and validates the fields it reads.
   return (await response.json()) as T;
 }
 
@@ -421,7 +444,7 @@ export async function downloadFile(
     // No existing temp file
   }
 
-  let lastError: unknown = null;
+  let lastError: DownloadError = new Error("Download failed");
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (signal?.aborted) {
@@ -455,6 +478,8 @@ export async function downloadFile(
       try {
         await fsPromises.rename(tempPath, destPath);
       } catch (renameError) {
+        // SAFETY: fs rename rejects with a NodeJS.ErrnoException whose code is
+        // the only field read here.
         if ((renameError as NodeJS.ErrnoException).code === "EXDEV") {
           await fsPromises.copyFile(tempPath, destPath);
           await fsPromises.unlink(tempPath).catch(() => {});
@@ -467,15 +492,16 @@ export async function downloadFile(
 
       return destPath;
     } catch (error) {
-      lastError = error;
       const err = asDownloadError(error);
+
+      lastError = err;
 
       if (err.isAbort) {
         await fsPromises.unlink(tempPath).catch(() => {});
         throw error;
       }
 
-      if (!isRetryable(error) || attempt >= maxRetries) {
+      if (!isRetryable(err) || attempt >= maxRetries) {
         debugLogger.error("Download failed", {
           url,
           error: err.message,
@@ -495,8 +521,8 @@ export async function downloadFile(
 
   debugLogger.error("Download failed after all retries", {
     url,
-    error: asDownloadError(lastError)?.message,
-    code: asDownloadError(lastError)?.code,
+    error: lastError.message,
+    code: lastError.code,
   });
   await fsPromises.unlink(tempPath).catch(() => {});
   throw lastError;
@@ -588,7 +614,7 @@ async function extractZipWindows(zipPath: string, destDir: string): Promise<void
     return;
   } catch (error) {
     debugLogger.info("tar extraction failed, trying PowerShell", {
-      error: (error as Error).message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 
@@ -614,9 +640,13 @@ async function extractTarGz(archivePath: string, destDir: string): Promise<void>
 
     return;
   } catch (error) {
-    debugLogger.info("system tar failed, using JS extraction", { error: (error as Error).message });
+    debugLogger.info("system tar failed, using JS extraction", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
+  // SAFETY: tar is a lazy CommonJS dep on the JS-extraction fallback; only the
+  // x({ file, cwd }) call is used.
   const tar = require("tar") as { x(options: { file: string; cwd: string }): Promise<void> };
   await tar.x({ file: archivePath, cwd: destDir });
 }
@@ -637,6 +667,8 @@ export function extractArchive(archivePath: string, destDir: string): Promise<vo
       if (!err) return resolve();
       debugLogger.info("system unzip failed, using JS extraction", { error: err.message });
 
+      // SAFETY: unzipper is a lazy CommonJS dep on the JS-extraction fallback;
+      // only Extract({ path }) is used.
       const unzipper = require("unzipper") as {
         Extract: (options: { path: string }) => NodeJS.ReadWriteStream;
       };

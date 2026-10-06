@@ -15,7 +15,7 @@
  * Every failure returns null. Callers must read null as "fall back to the
  * historical context size", never as "assume this model is cheap".
  */
-const fs = require("fs");
+import fs from "fs";
 
 const GGUF_MAGIC = 0x46554747; // "GGUF" little-endian
 
@@ -212,7 +212,7 @@ async function readArray(cursor: HeaderCursor, capture: boolean): Promise<GgufVa
     return null;
   }
 
-  const values = [];
+  const values: Array<number | boolean> = [];
 
   for (let index = 0; index < length; index += 1) values.push(await cursor.readScalar(elementType));
 
@@ -256,6 +256,8 @@ function pick(
   architecture: string,
   suffix: string
 ): number | number[] | boolean | undefined {
+  // SAFETY: the GGUF spec types the wanted suffixes numerically; this key was
+  // only captured (not skipped) when isWantedKey matched it.
   return entries.get(`${architecture}${suffix}`) as number | number[] | boolean | undefined;
 }
 
@@ -271,6 +273,10 @@ export interface GgufMetadata {
   keyLength: number | number[] | boolean | undefined;
   valueLength: number | number[] | boolean | undefined;
   hasRecurrentState: boolean;
+}
+
+function isNonEmptyString(value: GgufValue | undefined): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 export async function readGgufMetadata(source: GgufSource): Promise<GgufMetadata | null> {
@@ -303,7 +309,7 @@ export async function readGgufMetadata(source: GgufSource): Promise<GgufMetadata
 
     const architecture = entries.get("general.architecture");
 
-    if (typeof architecture !== "string" || architecture.length === 0) return null;
+    if (!isNonEmptyString(architecture)) return null;
 
     return {
       architecture,

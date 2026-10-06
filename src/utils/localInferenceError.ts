@@ -9,10 +9,19 @@
  * Before #2142 the raw llama.cpp 400 body was shown to the user verbatim.
  */
 
+// The detail fields this renderer reads. The main process may attach more; the
+// renderer only ever shows the model name and the two token counts.
+export interface LocalInferenceFailureDetails {
+  modelName?: string;
+  neededTokens?: number;
+  maxContextTokens?: number;
+  error?: string;
+}
+
 export interface LocalInferenceFailure {
   error?: string;
   code?: string;
-  details?: Record<string, unknown> | null;
+  details?: LocalInferenceFailureDetails | null;
 }
 
 export interface LocalInferenceError extends Error {
@@ -21,13 +30,18 @@ export interface LocalInferenceError extends Error {
   messageParams?: Record<string, string | number>;
 }
 
-const asPositiveInteger = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+function asPositiveInteger(value: number | undefined): number | null {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+}
+
+function detailString(value: string | undefined): string {
+  return value ?? "";
+}
 
 function contextTooLarge(
-  details: Record<string, unknown>
+  details: LocalInferenceFailureDetails
 ): Pick<LocalInferenceError, "messageKey" | "messageParams"> {
-  const model = typeof details.modelName === "string" ? details.modelName : "";
+  const model = detailString(details.modelName);
   const needed = asPositiveInteger(details.neededTokens);
   const max = asPositiveInteger(details.maxContextTokens);
 
@@ -57,7 +71,7 @@ export function buildLocalInferenceError(result: LocalInferenceFailure): LocalIn
     // The llama.cpp startup dump stays in the main-process log; only the model
     // name crosses, so there is nothing here that could reach the user raw.
     error.messageKey = "models.errors.localServerUnavailable";
-    error.messageParams = { model: typeof details.modelName === "string" ? details.modelName : "" };
+    error.messageParams = { model: detailString(details.modelName) };
   }
 
   return error;

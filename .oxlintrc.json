@@ -141,14 +141,11 @@
     },
     {
       "files": [
-        "src/helpers/localFileTranscription.ts",
-        "src/helpers/localFileTranscriptionIpcHandler.ts",
         "src/helpers/deepgramFileTranscription.ts",
         "src/helpers/elevenLabsFileTranscription.ts"
       ],
       "rules": {
         "quality/no-unknown-parameters": "off",
-        "quality/no-unknown-returns": "off",
         "quality/no-known-value-widening": "off"
       }
     },

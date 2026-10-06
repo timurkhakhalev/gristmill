@@ -1,12 +1,11 @@
-import {
-  noteMutationResultSchema,
-  type NoteItem,
-  type NoteMutationResult,
-  type NoteUpdate,
-} from "../contracts/notes.js";
+import type { NoteItem, NoteMutationResult, NoteUpdate } from "../contracts/notes.js";
+import type { NoteRow } from "./database.js";
 import debugLogger from "./debugLogger.js";
 import { sendNoteAdded, sendNoteUpdated } from "./notesEvents.js";
 
+// Row/result shapes mirror DatabaseManager.saveNote/updateNote: the service
+// consumes the manager's typed results directly, so a wrong-shaped response
+// is a TypeScript error instead of a runtime zod throw.
 export interface NoteWriteDeps {
   database: {
     saveNote(
@@ -17,8 +16,11 @@ export interface NoteWriteDeps {
       audioDuration?: number | null,
       folderId?: number | null,
       spaceId?: number | null
-    ): unknown;
-    updateNote(id: number, updates: NoteUpdate): unknown;
+    ): { success: boolean; note: NoteRow | null };
+    updateNote(
+      id: number,
+      updates: NoteUpdate
+    ): { success: boolean; error?: string; note?: NoteRow | null };
   };
   mirrorWrite(note: NoteItem): void;
   refreshMeetingSpeakerConfigFromNote(noteId: number, note: NoteItem): void;
@@ -38,51 +40,55 @@ export class NoteWriteService {
     folderId: number | null = null,
     spaceId: number | null = null
   ): NoteMutationResult {
-    const result = this.parseResult(
-      this.deps.database.saveNote(
-        title,
-        content,
-        noteType,
-        sourceFile,
-        audioDuration,
-        folderId,
-        spaceId
-      )
+    const result = this.deps.database.saveNote(
+      title,
+      content,
+      noteType,
+      sourceFile,
+      audioDuration,
+      folderId,
+      spaceId
     );
 
-    if (result.success) this.publish(result.note, sendNoteAdded);
+    if (!result.success || !result.note) return { success: false, error: "Note not found" };
 
-    return result;
+    this.publish(result.note, sendNoteAdded);
+
+    return { success: true, note: result.note };
   }
 
   updateNote(id: number, updates: NoteUpdate): NoteMutationResult {
-    const result = this.parseResult(this.deps.database.updateNote(id, updates));
+    const result = this.deps.database.updateNote(id, updates);
 
-    if (!result.success) return result;
-    this.publish(result.note, sendNoteUpdated);
+    // A false result keeps the manager's own error verbatim (contract tests
+    // pin these shapes); success without a row cannot address a note.
+    // A false result keeps the manager's own error verbatim (contract tests
+    // pin these shapes); success without a row cannot address a note.
+    if (!result.success)
+      return result.error === undefined
+        ? { success: false }
+        : { success: false, error: result.error };
+
+    if (!result.note) return { success: false, error: "Note not found" };
+
+    const note = result.note;
+
+    this.publish(note, sendNoteUpdated);
 
     // Participant edits refresh capture configuration. Speaker names belong
     // to processing-run corrections, not generic Note edits.
     if (updates.participants) {
       this.afterCommit("speaker configuration", id, () =>
-        this.deps.refreshMeetingSpeakerConfigFromNote(id, result.note)
+        this.deps.refreshMeetingSpeakerConfigFromNote(id, note)
       );
     }
 
-    return result;
+    return { success: true, note };
   }
 
-  private parseResult(raw: unknown): NoteMutationResult {
-    const result = noteMutationResultSchema.safeParse(raw);
-
-    if (!result.success) {
-      throw new Error("DatabaseManager returned an unexpected note mutation result");
-    }
-
-    return result.data;
-  }
-
-  private publish(note: NoteItem, send: (note: unknown) => void): void {
+  // SAFETY: notesEvents' send functions schema-parse their payload
+  // (parseOrDrop) and drop invalid shapes, so NoteItem is the contract.
+  private publish(note: NoteItem, send: (note: NoteItem) => void): void {
     setImmediate(() => this.afterCommit("event", note.id, () => send(note)));
     this.afterCommit("Markdown mirror", note.id, () => this.deps.mirrorWrite(note));
   }

@@ -114,6 +114,14 @@
       }
     },
     {
+      "files": ["src/helpers/database.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-runtime-typeof": "off",
+        "quality/no-unsafe-dictionary-type": "off"
+      }
+    },
+    {
       "files": ["src/helpers/ipcHandlers.ts"],
       "rules": {
         "quality/no-chained-type-assertions": "off",

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { execFile, spawn, type ChildProcessByStdio } from "child_process";
 import { app } from "electron";
 import fs from "fs";
@@ -9,14 +11,14 @@ import {
 import path from "path";
 import type { Readable, Writable } from "stream";
 
-const debugLogger = require("./debugLogger");
+import debugLogger from "./debugLogger.js";
 
 import { compareVersions } from "./parakeetCapability.js";
 
-const ARCH_CPU_TYPE: Readonly<Record<string, number>> = {
+const ARCH_CPU_TYPE = {
   arm64: 0x0100000c,
   x64: 0x01000007,
-};
+} as const;
 
 const DEFAULT_SAMPLE_RATE = 24000;
 
@@ -104,130 +106,71 @@ export interface AudioTapStartOptions {
   onWarning?: (warning: AudioTapWarningMessage) => void;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+// Wire schemas for the native helper's stdio messages. `undefined` optional
+// fields and null-return keep the original tolerate-or-drop contract.
+const startMessageSchema = z.object({
+  type: z.literal("start"),
+  generation: meetingRecordingIdSchema.optional(),
+  sampleRate: z.number().optional(),
+  channels: z.number().optional(),
+  bitsPerChannel: z.number().optional(),
+  monotonicOriginNs: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .optional(),
+  originFrame: z.number().int().nonnegative().optional(),
+});
 
+const pcmMessageSchema = z.object({
+  type: z.literal("pcm"),
+  frameStart: z.number().int().nonnegative(),
+  frameCount: z.number().int().min(1),
+});
+
+const probeMessageSchema = z.object({
+  type: z.literal("probe"),
+  nonce: z.string().max(64),
+  helperReceiveNs: z.string().regex(/^\d{1,20}$/),
+  helperSendNs: z.string().regex(/^\d{1,20}$/),
+  helperGeneration: meetingRecordingIdSchema,
+  helperFrame: z.number().int().nonnegative(),
+});
+
+const warningMessageSchema = z.object({
+  type: z.literal("warning"),
+  code: z.string().optional(),
+  reason: z.string().optional(),
+  message: z.string().optional(),
+});
+
+const errorMessageSchema = z.object({
+  type: z.literal("error"),
+  code: z.string().optional(),
+  message: z.string().optional(),
+  status: z.number().optional(),
+  operation: z.string().optional(),
+});
+
+const audioTapMessageSchema = z.discriminatedUnion("type", [
+  meetingAudioClockMessageSchema,
+  startMessageSchema,
+  pcmMessageSchema,
+  probeMessageSchema,
+  warningMessageSchema,
+  errorMessageSchema,
+]);
+
+// The native helper's stdio line is the wire boundary: the only honest input
+// type is unknown, and the zod discriminated union inside is the parse
+// (exact-file no-unknown-parameters override documented at .oxlintrc.json).
 export function parseAudioTapMessage(value: unknown): AudioTapMessage | null {
-  if (!isRecord(value)) return null;
+  const parsed = audioTapMessageSchema.safeParse(value);
 
-  if (value.type === "clock") {
-    const parsed = meetingAudioClockMessageSchema.safeParse(value);
+  if (!parsed.success) return null;
 
-    return parsed.success ? parsed.data : null;
-  }
-
-  if (value.type === "start") {
-    if (
-      ("generation" in value && !meetingRecordingIdSchema.safeParse(value.generation).success) ||
-      ("sampleRate" in value && typeof value.sampleRate !== "number") ||
-      ("channels" in value && typeof value.channels !== "number") ||
-      ("bitsPerChannel" in value && typeof value.bitsPerChannel !== "number") ||
-      ("monotonicOriginNs" in value &&
-        (typeof value.monotonicOriginNs !== "string" ||
-          !/^\d{1,20}$/.test(value.monotonicOriginNs))) ||
-      ("originFrame" in value &&
-        (!Number.isSafeInteger(value.originFrame) || (value.originFrame as number) < 0))
-    ) {
-      return null;
-    }
-
-    return {
-      type: "start",
-      generation: typeof value.generation === "string" ? value.generation : undefined,
-      sampleRate: typeof value.sampleRate === "number" ? value.sampleRate : undefined,
-      channels: typeof value.channels === "number" ? value.channels : undefined,
-      bitsPerChannel: typeof value.bitsPerChannel === "number" ? value.bitsPerChannel : undefined,
-      monotonicOriginNs:
-        typeof value.monotonicOriginNs === "string" && /^\d{1,20}$/.test(value.monotonicOriginNs)
-          ? value.monotonicOriginNs
-          : undefined,
-      originFrame:
-        typeof value.originFrame === "number" &&
-        Number.isSafeInteger(value.originFrame) &&
-        value.originFrame >= 0
-          ? value.originFrame
-          : undefined,
-    };
-  }
-
-  if (value.type === "pcm") {
-    if (
-      !Number.isSafeInteger(value.frameStart) ||
-      (value.frameStart as number) < 0 ||
-      !Number.isSafeInteger(value.frameCount) ||
-      (value.frameCount as number) < 1
-    )
-      return null;
-
-    return {
-      type: "pcm",
-      frameStart: value.frameStart as number,
-      frameCount: value.frameCount as number,
-    };
-  }
-
-  if (value.type === "probe") {
-    if (
-      typeof value.nonce !== "string" ||
-      value.nonce.length > 64 ||
-      typeof value.helperReceiveNs !== "string" ||
-      !/^\d{1,20}$/.test(value.helperReceiveNs) ||
-      typeof value.helperSendNs !== "string" ||
-      !/^\d{1,20}$/.test(value.helperSendNs) ||
-      typeof value.helperGeneration !== "string" ||
-      !meetingRecordingIdSchema.safeParse(value.helperGeneration).success ||
-      !Number.isSafeInteger(value.helperFrame) ||
-      (value.helperFrame as number) < 0
-    )
-      return null;
-
-    return {
-      type: "probe",
-      nonce: value.nonce,
-      helperReceiveNs: value.helperReceiveNs,
-      helperSendNs: value.helperSendNs,
-      helperGeneration: value.helperGeneration,
-      helperFrame: value.helperFrame as number,
-    };
-  }
-
-  if (value.type === "warning") {
-    if (
-      ("code" in value && typeof value.code !== "string") ||
-      ("reason" in value && typeof value.reason !== "string") ||
-      ("message" in value && typeof value.message !== "string")
-    ) {
-      return null;
-    }
-
-    return {
-      type: "warning",
-      code: typeof value.code === "string" ? value.code : undefined,
-      reason: typeof value.reason === "string" ? value.reason : undefined,
-      message: typeof value.message === "string" ? value.message : undefined,
-    };
-  }
-
-  if (value.type === "error") {
-    if (
-      ("code" in value && typeof value.code !== "string") ||
-      ("message" in value && typeof value.message !== "string") ||
-      ("status" in value && typeof value.status !== "number") ||
-      ("operation" in value && typeof value.operation !== "string")
-    ) {
-      return null;
-    }
-
-    return {
-      type: "error",
-      code: typeof value.code === "string" ? value.code : undefined,
-      message: typeof value.message === "string" ? value.message : undefined,
-      status: typeof value.status === "number" ? value.status : undefined,
-      operation: typeof value.operation === "string" ? value.operation : undefined,
-    };
-  }
-
-  return null;
+  // SAFETY: the discriminated union output is exactly the AudioTapMessage
+  // family declared above.
+  return parsed.data;
 }
 
 export class AudioTapManager {
@@ -360,6 +303,8 @@ export class AudioTapManager {
         (_error, _stdout, stderr) => {
           for (const line of String(stderr).split("\n")) {
             try {
+              // SAFETY: the helper's permission line is a JSON object whose
+              // two fields are probed defensively right below.
               const message = JSON.parse(line) as { type?: unknown; status?: unknown };
 
               if (
@@ -401,8 +346,8 @@ export class AudioTapManager {
     }
 
     const requestPromise = this._probeForAccess()
-      .catch((error: unknown) => {
-        const processError = error instanceof Error ? error : new Error(String(error));
+      .catch((error: Error) => {
+        const processError = error;
 
         const status: "denied" | "unknown" =
           "code" in processError && processError.code === "permission_denied"
@@ -471,7 +416,8 @@ export class AudioTapManager {
 
       const timeout = setTimeout(() => {
         if (!settle()) return;
-        void this.stop();
+        // stop() failures are already routed through the manager's error path.
+        this.stop().catch(() => undefined);
         reject(new Error("Timed out starting macOS audio tap. Check System Audio permissions."));
       }, START_TIMEOUT_MS);
 
@@ -483,7 +429,7 @@ export class AudioTapManager {
         return true;
       };
 
-      child.stdout.on("data", (chunk) => {
+      child.stdout.on("data", (chunk: Buffer) => {
         if (this.process !== child) {
           return;
         }
@@ -494,7 +440,8 @@ export class AudioTapManager {
         if (bytes > (DEFAULT_SAMPLE_RATE * 2 * START_TIMEOUT_MS) / 1000) {
           if (settle())
             reject(new Error("Audio tap did not provide its start contract before PCM"));
-          void this.stop();
+          // stop() failures are already routed through the manager's error path.
+          this.stop().catch(() => undefined);
 
           return;
         }
@@ -506,7 +453,7 @@ export class AudioTapManager {
         }
       });
 
-      child.stderr.on("data", (chunk) => {
+      child.stderr.on("data", (chunk: Buffer) => {
         if (this.process !== child) {
           return;
         }
@@ -534,7 +481,8 @@ export class AudioTapManager {
           if (message.type === "pcm") {
             if (this.pendingPcmMetadata.length >= 64) {
               this.onError?.(new Error("Native audio frame metadata queue overflowed"));
-              void this.stop();
+              // stop() failures are already routed through the manager's error path.
+              this.stop().catch(() => undefined);
 
               return;
             }
@@ -558,7 +506,8 @@ export class AudioTapManager {
               this.flushPcmQueue();
             } catch (error) {
               if (settle()) reject(error);
-              void this.stop();
+              // stop() failures are already routed through the manager's error path.
+              this.stop().catch(() => undefined);
 
               return;
             }
@@ -583,7 +532,8 @@ export class AudioTapManager {
 
             if (!settled) {
               if (!settle()) return;
-              void this.stop();
+              // stop() failures are already routed through the manager's error path.
+              this.stop().catch(() => undefined);
               reject(error);
             } else {
               this.onError?.(error);
@@ -699,7 +649,8 @@ export class AudioTapManager {
   private flushPcmQueue(): void {
     if (this.stdoutPCM.length > 2 * 1024 * 1024) {
       this.onError?.(new Error("Native audio PCM queue overflowed"));
-      void this.stop();
+      // stop() failures are already routed through the manager's error path.
+      this.stop().catch(() => undefined);
 
       return;
     }
@@ -717,7 +668,8 @@ export class AudioTapManager {
         this.onChunk?.(chunk, metadata.frameStart);
       } catch (error) {
         this.onError?.(error instanceof Error ? error : new Error(String(error)));
-        void this.stop();
+        // stop() failures are already routed through the manager's error path.
+        this.stop().catch(() => undefined);
 
         return;
       }
@@ -753,12 +705,15 @@ export class AudioTapManager {
       };
 
       const stopChild = (): void => {
+        // kill on an already-exited child throws ESRCH; stopping is done.
         try {
           child.kill("SIGTERM");
-        } catch {}
+        } catch {
+          /* child already exited */
+        }
       };
 
-      child.stderr.on("data", (chunk) => {
+      child.stderr.on("data", (chunk: Buffer) => {
         stderrBuffer += chunk.toString();
         let newlineIndex = stderrBuffer.indexOf("\n");
 
@@ -905,7 +860,14 @@ export class AudioTapManager {
           const message = parseAudioTapMessage(value);
 
           if (message) onMessage(message);
-          else if (isRecord(value) && value.type === "clock")
+          // A dropped clock message warns so clock-loss stays observable.
+          else if (
+            z
+              .looseObject({ type: z.literal("clock") })
+              .nullish()
+              .catch(null)
+              .parse(value) !== null
+          )
             onMessage({ type: "warning", code: "clock_invalid_message" });
           else debugLogger.warn("[AudioTapManager] Invalid stderr message", { line }, "meeting");
         } catch {
@@ -937,7 +899,13 @@ export class AudioTapManager {
       }
 
       const cpuType = header.readInt32LE(4);
-      const expectedCpu = ARCH_CPU_TYPE[process.arch];
+
+      const expectedCpu =
+        process.arch === "arm64"
+          ? ARCH_CPU_TYPE.arm64
+          : process.arch === "x64"
+            ? ARCH_CPU_TYPE.x64
+            : undefined;
 
       if (expectedCpu && cpuType !== expectedCpu) {
         return (
@@ -961,6 +929,5 @@ export class AudioTapManager {
 
 module.exports = AudioTapManager;
 
-module.exports.AudioTapManager = AudioTapManager;
-
-module.exports.parseAudioTapMessage = parseAudioTapMessage;
+// CommonJS contract for legacy destructuring requires.
+Object.assign(module.exports, { AudioTapManager, parseAudioTapMessage });

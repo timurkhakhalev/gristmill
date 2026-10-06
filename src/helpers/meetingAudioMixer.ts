@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { spawn as spawnChild, type ChildProcess } from "child_process";
 import fs from "fs";
 import { inspectMeetingOpus } from "./meetingOpus.js";
@@ -66,6 +68,7 @@ export function meetingTimelineFrameCount(
         try {
           return alignedAudioRanges(epoch);
         } catch (error) {
+          // SAFETY: alignment failures carry their errno-style kind on `code`.
           if ((error as { code?: string }).code === "audio-alignment-unavailable") return [];
           throw error;
         }
@@ -78,10 +81,18 @@ export function meetingTimelineFrameCount(
     0
   );
 
-  const anchoredEnd = recording.sourceMetadata.captureEndFrame;
+  // SAFETY: captureEndFrame is this pipeline's integer frame count; the
+  // schema is the parse for this free-form metadata field.
+  const anchoredEnd = z
+    .number()
+    .int()
+    .nonnegative()
+    .nullish()
+    .catch(null)
+    .parse(recording.sourceMetadata.captureEndFrame);
 
-  if (Number.isSafeInteger(anchoredEnd) && (anchoredEnd as number) >= 0) {
-    return Math.max(latestEpochEnd, anchoredEnd as number);
+  if (anchoredEnd !== null && anchoredEnd !== undefined) {
+    return Math.max(latestEpochEnd, anchoredEnd);
   }
 
   // Historical recordings retain the duration saved in their UTC timestamps.
@@ -102,16 +113,18 @@ export function meetingSourceIntentionallyEmpty(
   source: MeetingSource
 ): boolean {
   if (epochs.some((epoch) => epoch.source === source && epoch.frameCount > 0)) return false;
+
   // An intent held for the entire capture proves silence without a clock mapping.
   // Partial mute intervals still require aligned coverage below.
-  const metadata = recording.sourceMetadata[source];
+  // sourceMetadata is this pipeline's free-form JSON; the schema is its parse.
+  const metadata = z
+    .object({ intentionallyEmpty: z.boolean() })
+    .partial()
+    .nullish()
+    .catch(null)
+    .parse(recording.sourceMetadata[source]);
 
-  if (
-    metadata &&
-    typeof metadata === "object" &&
-    "intentionallyEmpty" in metadata &&
-    typeof metadata.intentionallyEmpty === "boolean"
-  )
+  if (metadata && "intentionallyEmpty" in metadata && metadata.intentionallyEmpty !== undefined)
     return metadata.intentionallyEmpty;
   const frameCount = meetingTimelineFrameCount(recording, epochs);
 
@@ -136,14 +149,16 @@ export function meetingSourceIntentionallyEmpty(
 }
 
 /** Concatenate saved parts for one ASR pass. Gaps inside each part stay in its timeline; intentional pauses do not become silence. */
-export function composeMeetingAudioParts(
-  parts: MeetingRecordingDto[],
-  listEpochs: (recordingId: string) => MeetingRecordingEpochDto[]
-): {
+export interface ComposedMeetingAudioParts {
   recording: MeetingRecordingDto;
   epochs: MeetingRecordingEpochDto[];
   partOffsets: Array<{ recordingId: string; startFrame: number; frameCount: number }>;
-} {
+}
+
+export function composeMeetingAudioParts(
+  parts: MeetingRecordingDto[],
+  listEpochs: (recordingId: string) => MeetingRecordingEpochDto[]
+): ComposedMeetingAudioParts {
   if (!parts.length) throw new Error("Meeting has no audio parts");
   let offset = 0;
 
@@ -186,12 +201,8 @@ export function composeMeetingAudioParts(
           intentionallyEmpty: ordered.every((part) => {
             const mic = part.sourceMetadata.mic;
 
-            return (
-              mic &&
-              typeof mic === "object" &&
-              "intentionallyEmpty" in mic &&
-              mic.intentionallyEmpty === true
-            );
+            // sourceMetadata.mic is free-form JSON; safeParse is its contract.
+            return z.object({ intentionallyEmpty: z.literal(true) }).safeParse(mic).success;
           }),
         },
       },
@@ -501,12 +512,16 @@ function runMixer(
   });
 }
 
+interface PcmWavInspection {
+  sizeBytes: number;
+}
+
 function inspectPcmWav(
   filePath: string,
   expectedFrames: number,
   deps: MeetingAudioMixerDeps,
   channels = 1
-): { sizeBytes: number } {
+): PcmWavInspection {
   const stats = (deps.stat ?? fs.statSync)(filePath);
 
   if (!stats.isFile() || stats.size < 44)

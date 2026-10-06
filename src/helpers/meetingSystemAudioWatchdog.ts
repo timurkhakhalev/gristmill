@@ -354,14 +354,13 @@ export const createMeetingSystemAudioWatchdog = ({
 
 module.exports = createMeetingSystemAudioWatchdog;
 
-module.exports.createMeetingSystemAudioWatchdog = createMeetingSystemAudioWatchdog;
-
-module.exports.STALL_MS = STALL_MS;
-
-module.exports.GONE_QUIET_MS = GONE_QUIET_MS;
-
-module.exports.MAX_RESTARTS = MAX_RESTARTS;
-
-module.exports.RECOVERY_RETRY_MS = RECOVERY_RETRY_MS;
-
-module.exports.TICK_GAP_MS = TICK_GAP_MS;
+// CommonJS contract for legacy require sites; each named export mirrors the
+// local constant so destructuring requires stay typed.
+Object.assign(module.exports, {
+  createMeetingSystemAudioWatchdog,
+  STALL_MS,
+  GONE_QUIET_MS,
+  MAX_RESTARTS,
+  RECOVERY_RETRY_MS,
+  TICK_GAP_MS,
+});

@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const path = require("path") as typeof import("path");
 
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
 const {
   copyLibraries,
   downloadFile,
@@ -13,7 +16,7 @@ const {
   parseArgs,
   setExecutable,
   cleanupFiles,
-}: import("./lib/download-utils.cts").API = require("./lib/download-utils.cts");
+} = require("./lib/download-utils.cts") as import("./lib/download-utils.cts").API;
 
 const LLAMA_CPP_REPO = "ggml-org/llama.cpp";
 
@@ -29,7 +32,13 @@ type BinaryConfig = {
   libPattern: string;
 };
 
-const BINARIES: Record<string, BinaryConfig> = {
+// Every platform/arch entry is a BinaryConfig; the named table keeps element
+// reads typed without widening to an open Record.
+interface BinaryTable {
+  [platformArch: string]: BinaryConfig;
+}
+
+const BINARIES: BinaryTable = {
   "darwin-arm64": {
     platformArch: "darwin-arm64",
     assetPattern: /^llama-.*-bin-macos-arm64\.tar\.gz$/,
@@ -37,7 +46,7 @@ const BINARIES: Record<string, BinaryConfig> = {
     outputName: "llama-server-darwin-arm64",
     libPattern: "*.dylib",
   },
-};
+} satisfies Record<string, BinaryConfig>;
 
 const BIN_DIR =
   process.env.GRISTMILL_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");

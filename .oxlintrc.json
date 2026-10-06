@@ -123,6 +123,18 @@
       }
     },
     {
+      "files": ["src/helpers/downloadUtils.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
+      "files": ["src/utils/retry.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": [
         "src/helpers/audioTapManager.ts",
         "src/helpers/meetingRecordingStorage.ts",
@@ -161,7 +173,9 @@
     {
       "files": [
         "src/helpers/localFileTranscription.ts",
-        "src/helpers/localFileTranscriptionIpcHandler.ts"
+        "src/helpers/localFileTranscriptionIpcHandler.ts",
+        "src/helpers/localModelLifecycleIpcHandlers.ts",
+        "src/helpers/localLlmModelIpcHandlers.ts"
       ],
       "rules": {
         "quality/no-unknown-parameters": "off",

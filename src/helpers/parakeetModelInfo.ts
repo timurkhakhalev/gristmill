@@ -1,4 +1,4 @@
-const modelRegistryData = require("../models/modelRegistryData.json");
+import modelRegistryData from "../models/modelRegistryData.json";
 
 export interface ParakeetModelRegistryEntry {
   runtime?: string;
@@ -26,9 +26,11 @@ export type ParakeetRuntime = "offline" | "online";
 export type ParakeetModelKind = "transducer" | "cohere-transcribe";
 
 function getModelInfo(modelName: string): ParakeetModelRegistryEntry | undefined {
-  return (
-    modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry> | undefined
-  )?.[modelName];
+  // SAFETY: modelRegistryData.json is this repo's own packaged catalog; the
+  // assertion pins its per-model entry shape declared above.
+  return (modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry>)[
+    modelName
+  ];
 }
 
 export function getModelRuntime(modelName: string): ParakeetRuntime {
@@ -58,20 +60,23 @@ export function getRequiredModelFiles(modelName: string): readonly string[] {
 }
 
 // Both providers route to the parakeet/sherpa-onnx stack; only whisper differs.
-export function isSherpaLocalProvider(provider: unknown): boolean {
+export function isSherpaLocalProvider(provider: unknown): provider is "nvidia" | "cohere" {
   return provider === "nvidia" || provider === "cohere";
 }
 
 // Cohere Transcribe has no auto language detection — the WS server is started
 // for exactly one language. Maps the app language (e.g. "auto", "zh-CN") to a
 // supported code, falling back to English. Self-detecting models get null.
-export function resolveModelLanguage(modelName: string, language: unknown): string | null {
+export function resolveModelLanguage(
+  modelName: string,
+  language: string | null | undefined
+): string | null {
   if (getModelType(modelName) !== "cohere-transcribe") return null;
 
   const base =
-    typeof language === "string"
-      ? language.trim().replace(/_/g, "-").split("-")[0].toLowerCase()
-      : "";
+    language === null || language === undefined
+      ? ""
+      : language.trim().replace(/_/g, "-").split("-")[0].toLowerCase();
 
   const supported = getModelInfo(modelName)?.supportedLanguages || [];
 

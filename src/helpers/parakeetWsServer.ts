@@ -1,31 +1,17 @@
-const { spawn } = require("child_process");
-
-const fs = require("fs");
-
-const path = require("path");
-
-const WebSocket = require("ws");
-
-const debugLogger = require("./debugLogger.js");
-
-const { ensureLocalEngine } = require("./localEngineInstaller.js");
-
-const os = require("os");
-
-const {
-  findAvailablePort,
-  resolveBinaryPath,
-  gracefulStopProcess,
-} = require("../utils/serverUtils.js");
-
+import { spawn } from "child_process";
+import fs from "fs";
+import path from "path";
+import WebSocket from "ws";
+import os from "os";
+import debugLogger from "./debugLogger.js";
+import { ensureLocalEngine } from "./localEngineInstaller.js";
+import { findAvailablePort, resolveBinaryPath, gracefulStopProcess } from "../utils/serverUtils.js";
 import { getSafeTempDir } from "./safeTempDir.js";
 import { createAbortError } from "./abortError.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
 import { parseOfflineMessage, createOnlineAccumulator } from "./parakeetWsResult.js";
 import { getModelType, getSherpaModelType } from "./parakeetModelInfo.js";
-
-const { pcm16ToFloat32 } = require("../utils/audioUtils.js");
-
+import { pcm16ToFloat32 } from "../utils/audioUtils.js";
 import {
   computeTranscriptionTimeoutMs,
   TRANSCRIPTION_TIMEOUT_FLOOR_MS,
@@ -53,6 +39,30 @@ const ONLINE_FINISH_IDLE_TIMEOUT_MS = 10000;
 
 // Must cover the model's 560ms chunk so the flush decodes the final words.
 const ONLINE_END_TAIL_PADDING_S = 0.6;
+
+export interface ParakeetOnlineStream {
+  sendFloat32(b: Buffer): void;
+  sendPcm16(b: Buffer): void;
+  finish(o?: { idleTimeoutMs?: number }): Promise<{ text: string; truncated: boolean }>;
+  abort(): void;
+}
+
+export interface ParakeetOnlineStreamOptions {
+  onUpdate?: (text: string) => void;
+  onError?: (error: Error) => void;
+}
+
+interface StreamErrorHolder {
+  error: Error | null;
+}
+
+export interface ParakeetWsStatus {
+  available: boolean;
+  running: boolean;
+  starting: boolean;
+  port: number | null;
+  modelName: string | null;
+}
 
 export class ParakeetWsServer {
   process: import("child_process").ChildProcess | null = null;
@@ -198,7 +208,8 @@ export class ParakeetWsServer {
     });
 
     this.process = child;
-    sidecarPidFile.write("parakeet", child.pid);
+
+    if (child.pid !== undefined) sidecarPidFile.write("parakeet", child.pid);
 
     let stderrBuffer = "";
     let exitCode: number | null = null;
@@ -264,7 +275,7 @@ export class ParakeetWsServer {
       debugLogger.debug("parakeet-ws warm-up inference complete");
     } catch (err) {
       debugLogger.warn("parakeet-ws warm-up failed (non-fatal)", {
-        error: (err as Error).message,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
   }
@@ -296,10 +307,12 @@ export class ParakeetWsServer {
   }
 
   _isProcessAlive(): boolean {
-    if (!this.process || this.process.killed) return false;
+    const pid = this.process?.pid;
+
+    if (!this.process || this.process.killed || pid === undefined) return false;
 
     try {
-      process.kill(this.process.pid as number, 0);
+      process.kill(pid, 0);
 
       return true;
     } catch {
@@ -370,7 +383,9 @@ export class ParakeetWsServer {
       const timeout = setTimeout(() => {
         try {
           ws.close();
-        } catch {}
+        } catch {
+          /* socket already closing */
+        }
 
         reject(new Error("parakeet-ws transcription timed out"));
       }, timeoutMs);
@@ -384,7 +399,9 @@ export class ParakeetWsServer {
 
         try {
           ws.close();
-        } catch {}
+        } catch {
+          /* socket already closing */
+        }
 
         reject(createAbortError("parakeet-ws transcription cancelled"));
       };
@@ -455,12 +472,14 @@ export class ParakeetWsServer {
     if (signal?.aborted) throw createAbortError("parakeet-ws transcription cancelled");
 
     const startTime = Date.now();
-    let streamError: Error | null = null;
+    // Held in a mutable holder: the error arrives asynchronously from the
+    // stream callback, which control-flow analysis cannot follow.
+    const streamState: StreamErrorHolder = { error: null };
     let timedOut = false;
 
     const stream = this.createOnlineStream({
       onError: (error: Error) => {
-        streamError = error;
+        streamState.error = error;
       },
     });
 
@@ -495,8 +514,8 @@ export class ParakeetWsServer {
 
       if (timedOut) throw new Error("parakeet-ws transcription timed out");
 
-      if (streamError) {
-        throw new Error(`parakeet-ws transcription failed: ${(streamError as Error).message}`);
+      if (streamState.error) {
+        throw new Error(`parakeet-ws transcription failed: ${streamState.error.message}`);
       }
 
       const elapsed = Date.now() - startTime;
@@ -517,12 +536,7 @@ export class ParakeetWsServer {
   createOnlineStream({
     onUpdate,
     onError,
-  }: { onUpdate?: (text: string) => void; onError?: (error: Error) => void } = {}): {
-    sendFloat32(b: Buffer): void;
-    sendPcm16(b: Buffer): void;
-    finish(o?: { idleTimeoutMs?: number }): Promise<{ text: string; truncated: boolean }>;
-    abort(): void;
-  } {
+  }: ParakeetOnlineStreamOptions = {}): ParakeetOnlineStream {
     if (!this.ready || !this.process) {
       throw new Error("parakeet-ws server is not running");
     }
@@ -571,7 +585,9 @@ export class ParakeetWsServer {
 
         try {
           ws.close();
-        } catch {}
+        } catch {
+          /* socket already closing */
+        }
 
         settle();
       }, idleTimeoutMs);
@@ -594,7 +610,7 @@ export class ParakeetWsServer {
           if (err) {
             truncated = true;
             debugLogger.error("parakeet-ws online stream send error", {
-              error: (err as Error).message,
+              error: err.message,
             });
           }
         });
@@ -609,7 +625,7 @@ export class ParakeetWsServer {
           if (err) {
             truncated = true;
             debugLogger.error("parakeet-ws online stream send error", {
-              error: (err as Error).message,
+              error: err.message,
             });
           }
         });
@@ -659,7 +675,10 @@ export class ParakeetWsServer {
 
     return {
       sendFloat32,
-      sendPcm16: (pcmBuffer: Buffer) => sendFloat32(pcm16ToFloat32(pcmBuffer)),
+      sendPcm16: (pcmBuffer: Buffer) => {
+        const float32 = pcm16ToFloat32(pcmBuffer);
+        sendFloat32(Buffer.from(float32.buffer, float32.byteOffset, float32.byteLength));
+      },
       finish: (options: { idleTimeoutMs?: number } = {}) => {
         if (finishPromise) return finishPromise;
 
@@ -684,7 +703,9 @@ export class ParakeetWsServer {
 
         try {
           ws.close();
-        } catch {}
+        } catch {
+          /* socket already closing */
+        }
 
         settle();
       },
@@ -705,7 +726,9 @@ export class ParakeetWsServer {
     try {
       await gracefulStopProcess(this.process);
     } catch (error) {
-      debugLogger.error("Error stopping parakeet-ws server", { error: (error as Error).message });
+      debugLogger.error("Error stopping parakeet-ws server", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     this.process = null;
@@ -717,13 +740,7 @@ export class ParakeetWsServer {
     this.language = null;
   }
 
-  getStatus(): {
-    available: boolean;
-    running: boolean;
-    starting: boolean;
-    port: number | null;
-    modelName: string | null;
-  } {
+  getStatus(): ParakeetWsStatus {
     return {
       available: this.hasAnyWsBinary(),
       running: this.ready && this.process !== null,
@@ -738,4 +755,4 @@ export class ParakeetWsServer {
 // the TS graph imports the named export.
 module.exports = ParakeetWsServer;
 
-module.exports.ParakeetWsServer = ParakeetWsServer;
+Object.assign(module.exports, { ParakeetWsServer });

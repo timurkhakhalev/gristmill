@@ -64,6 +64,22 @@ export type OnnxWorkerResult =
   | SpeakerExtractResult
   | ShutdownResult;
 
+// The client builds a request from a method and its matching payload; this map
+// ties the two together so the transport never takes an untyped payload.
+export interface OnnxWorkerPayloadByMethod {
+  ping: Record<string, never>;
+  "speaker.load": { modelPath: string };
+  "speaker.extract": { samplesBuffer: ArrayBuffer };
+  shutdown: Record<string, never>;
+}
+
+export interface OnnxWorkerResultByMethod {
+  ping: PingResult;
+  "speaker.load": SpeakerLoadResult;
+  "speaker.extract": SpeakerExtractResult;
+  shutdown: ShutdownResult;
+}
+
 export interface OnnxWorkerError {
   message: string;
 }
@@ -147,4 +163,21 @@ export function isOnnxWorkerMethod(value: unknown): value is OnnxWorkerMethod {
   // SAFETY: the membership test against the frozen method list is the check;
   // the assertion only re-voiced the already-narrowed value.
   return typeof value === "string" && (ONNX_WORKER_METHODS as readonly string[]).includes(value);
+}
+
+// Identity of a rejected request, used only to build the "unknown method" error
+// reply both sides agree on. Lives on this boundary so the worker does not
+// re-probe an untrusted port payload itself.
+export interface OnnxWorkerRequestIdentity {
+  id: number;
+  method: string;
+}
+
+export function onnxWorkerRequestIdentity(raw: unknown): OnnxWorkerRequestIdentity {
+  if (typeof raw !== "object" || raw === null) return { id: 0, method: "" };
+
+  const id = "id" in raw && typeof raw.id === "number" && Number.isInteger(raw.id) ? raw.id : 0;
+  const method = "method" in raw ? String(raw.method) : "";
+
+  return { id, method };
 }

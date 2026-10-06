@@ -78,8 +78,11 @@ export const whisperVadResultSchema = z.object({
 export type WhisperVadResult = z.infer<typeof whisperVadResultSchema>;
 
 // The renderer sends sanitized numeric fields plus the Silero toggles; the
-// settings owner filters unknown keys before the write.
+// settings owner filters unknown keys before the write. The partial schema is
+// the wire parse for an update payload.
 export type WhisperVadConfigUpdate = Partial<WhisperVadWireConfig>;
+
+export const whisperVadConfigUpdateSchema = whisperVadWireConfigSchema.partial();
 
 // Loose native/manager rows as they cross the wire. The renderer only reads
 // the fields below; managers return plain objects with exactly these names

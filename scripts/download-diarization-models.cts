@@ -1,16 +1,19 @@
 #!/usr/bin/env node
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const os: typeof import("os") = require("os");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const os = require("os") as typeof import("os");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const path = require("path") as typeof import("path");
 
-const { execFileSync }: typeof import("child_process") = require("child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const { execFileSync } = require("child_process") as typeof import("child_process");
 
-const {
-  downloadFile,
-  parseArgs,
-}: import("./lib/download-utils.cts").API = require("./lib/download-utils.cts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const { downloadFile, parseArgs } =
+  require("./lib/download-utils.cts") as import("./lib/download-utils.cts").API;
 
 const SEGMENTATION_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";

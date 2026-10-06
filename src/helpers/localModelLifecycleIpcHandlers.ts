@@ -1,3 +1,6 @@
+// `quality/no-unknown-parameters` / `no-unknown-returns` are off for this file
+// (exact-file override): it registers ipcMain.handle listeners, whose event and
+// variadic arguments are untrusted and parsed per channel below.
 // The local Whisper/Parakeet model lifecycle handlers, moved out of
 // ipcHandlers.js. Downloads flow through the shared status tracker
 // (sequence-stamped progress to the control panel), failures keep their
@@ -8,6 +11,9 @@ import {
   localModelChannels,
   modelNameSchema,
   type DiagnosticsResult,
+  type WhisperVadConfigUpdate,
+  type WhisperVadWireConfig,
+  whisperVadConfigUpdateSchema,
   type DownloadProgressEvent,
   type FfmpegAvailabilityResult,
   type InstallCheckResult,
@@ -18,15 +24,17 @@ import {
   type ServerStatusResult,
 } from "../contracts/localModelLifecycle.js";
 
+// The ipcMain.handle listener surface: an untrusted invocation event and
+// variable arguments, both parsed per channel below.
 type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
 
 export interface ModelLifecycleProgressSender {
-  sendToControlPanel(channel: string, payload: unknown): void;
+  sendToControlPanel(channel: string, payload: DownloadProgressEvent & { sequence?: number }): void;
 }
 
 export interface DownloadStatusTracker {
   has(modelType: string, modelId: string): boolean;
-  start(modelType: string, modelId: string): unknown;
+  start(modelType: string, modelId: string): void;
   finish(modelType: string, modelId: string): { sequence: number } | null;
 }
 
@@ -40,8 +48,8 @@ export interface LocalModelLifecycleDeps {
     modelId: string,
     progressData: DownloadProgressEvent
   ): { sequence: number } | null;
-  getWhisperVadSettings(): Record<string, unknown>;
-  setWhisperVadSettings(payload: Record<string, unknown>): Record<string, unknown>;
+  getWhisperVadSettings(): WhisperVadWireConfig;
+  setWhisperVadSettings(payload: WhisperVadConfigUpdate): WhisperVadWireConfig;
   persistParakeetProviderSelection(modelName: string): Promise<void>;
   clearParakeetProviderSelection(): Promise<void>;
   resolveParakeetProviderName(modelName: string): "cohere" | "nvidia";
@@ -81,7 +89,7 @@ export interface ParakeetManagerLike {
   cancelDownload(): Promise<ServerLifecycleResult>;
   getDiagnostics(): Promise<DiagnosticsResult>;
   startServer(modelName: string): Promise<ServerLifecycleResult>;
-  stopServer(): Promise<unknown>;
+  stopServer(): Promise<void>;
   getServerStatus(): ServerStatusResult;
 }
 
@@ -212,7 +220,10 @@ export function registerLocalModelLifecycleHandlers(
     try {
       return { success: true, config: deps.getWhisperVadSettings() };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   });
 
@@ -221,13 +232,17 @@ export function registerLocalModelLifecycleHandlers(
   // returned config is always a valid merged view.
   ipcMain.handle(c.whisperVadSetConfig, async (_event, ...args: unknown[]) => {
     try {
-      const config = deps.setWhisperVadSettings(
-        (args[0] as Record<string, unknown> | null | undefined) ?? {}
-      );
+      // The settings owner filters allowed keys on write and sanitizes/clamps
+      // on read, so a partially-shaped update is safe to forward.
+      const parsed = whisperVadConfigUpdateSchema.safeParse(args[0] ?? {});
+      const config = deps.setWhisperVadSettings(parsed.success ? parsed.data : {});
 
       return { success: true, config };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   });
 

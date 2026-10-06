@@ -1,12 +1,17 @@
 #!/usr/bin/env node
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const path = require("path") as typeof import("path");
 
-const { execFileSync }: typeof import("child_process") = require("child_process");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const { execFileSync } = require("child_process") as typeof import("child_process");
 
-const crypto: typeof import("crypto") = require("crypto");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const crypto = require("crypto") as typeof import("crypto");
 
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
 const {
   cleanupFiles,
   downloadFile,
@@ -14,14 +19,13 @@ const {
   findLibrariesInDir,
   parseArgs,
   setExecutable,
-}: import("./lib/download-utils.cts").API = require("./lib/download-utils.cts");
+} = require("./lib/download-utils.cts") as import("./lib/download-utils.cts").API;
 
 // Plain Node (this script runs from the pack hook, not under tsx) still
 // loads the pure-ESM helper via Node type-stripping.
-const {
-  PARAKEET_MINIMUM_MACOS_VERSION,
-  compareVersions,
-}: typeof import("../src/helpers/parakeetCapability.ts") = require("../src/helpers/parakeetCapability.ts");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const { PARAKEET_MINIMUM_MACOS_VERSION, compareVersions } =
+  require("../src/helpers/parakeetCapability.ts") as typeof import("../src/helpers/parakeetCapability.ts");
 
 const SHERPA_ONNX_VERSION = "1.13.4";
 
@@ -51,7 +55,13 @@ type BinaryConfig = {
   libPattern: string;
 };
 
-const BINARIES: Record<string, BinaryConfig> = {
+// Every platform/arch entry is a BinaryConfig; the named table keeps element
+// reads typed without widening to an open Record.
+interface BinaryTable {
+  [platformArch: string]: BinaryConfig;
+}
+
+const BINARIES: BinaryTable = {
   "darwin-arm64": {
     archiveName: `sherpa-onnx-v${SHERPA_ONNX_VERSION}-osx-universal2-shared.tar.bz2`,
     binaryPath: "sherpa-onnx-offline-websocket-server",
@@ -62,7 +72,7 @@ const BINARIES: Record<string, BinaryConfig> = {
     diarizeOutputName: "sherpa-onnx-diarize-darwin-arm64",
     libPattern: "*.dylib",
   },
-};
+} satisfies Record<string, BinaryConfig>;
 
 const BIN_DIR =
   process.env.GRISTMILL_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");
@@ -234,6 +244,26 @@ function copyBinary(
   return true;
 }
 
+interface InstallMarker {
+  version?: string;
+  libraries?: string[];
+  onnxRuntime?: string;
+}
+
+function isInstallMarker(value: unknown): value is InstallMarker {
+  return typeof value === "object" && value !== null;
+}
+
+function parseInstallMarker(raw: string): InstallMarker | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    return isInstallMarker(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function isCompleteInstall(
   markerPath: string,
   binaryPaths: string[],
@@ -242,9 +272,9 @@ function isCompleteInstall(
   if (binaryPaths.some((binaryPath) => !fs.existsSync(binaryPath))) return false;
 
   try {
-    const marker: { version?: string; libraries?: string[]; onnxRuntime?: string } = JSON.parse(
-      fs.readFileSync(markerPath, "utf8")
-    );
+    const marker = parseInstallMarker(fs.readFileSync(markerPath, "utf8"));
+
+    if (!marker) return false;
 
     if (marker.version !== SHERPA_ONNX_VERSION || !Array.isArray(marker.libraries)) return false;
 
@@ -312,7 +342,7 @@ async function downloadBinary(platformArch: string, config: BinaryConfig, isForc
 
       // Separate versioned and unversioned libraries to create symlinks where possible
       // e.g. libonnxruntime.dylib -> libonnxruntime.1.23.2.dylib (saves ~71MB)
-      const versionedLibs = new Map(); // base name -> versioned file name
+      const versionedLibs = new Map<string, string>(); // base name -> versioned file name
 
       for (const libPath of libraries) {
         const libName = path.basename(libPath);

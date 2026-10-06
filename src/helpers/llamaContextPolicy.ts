@@ -59,8 +59,15 @@ function isCjkCodePoint(codePoint: number): boolean {
  * running, POST /tokenize returns the exact count in ~13 ms and supersedes
  * this; the estimate just avoids paying a restart in the common case.
  */
-export function estimateTokens(text: string): number {
-  if (typeof text !== "string" || text.length === 0) return 0;
+type EstimateInput = string | null | undefined | number;
+
+// Accepts the loose input a plain-JS caller may pass; only a string estimates.
+function isText(value: EstimateInput): value is string {
+  return typeof value === "string";
+}
+
+export function estimateTokens(text: EstimateInput): number {
+  if (!isText(text) || text.length === 0) return 0;
 
   let cjkCount = 0;
   let otherCount = 0;
@@ -79,8 +86,12 @@ export const KV_ELEMENT_BYTES = 2;
 // GGUF arrays carry per-layer values; only scalars are usable here. A scalar
 // read out of an array-declared field would price garbage, so arrays surface
 // as unknown (null) exactly like absent metadata.
+function isCount(value: number | number[] | boolean | undefined): value is number {
+  return typeof value === "number";
+}
+
 function scalarValue(raw: number | number[] | boolean | undefined): number | null {
-  return typeof raw === "number" && raw > 0 ? raw : null;
+  return isCount(raw) && raw > 0 ? raw : null;
 }
 
 function resolveHeadCountKv(metadata: GgufArchitectureMetadata): number | null {
@@ -130,7 +141,7 @@ function resolveHeadWidths(metadata: GgufArchitectureMetadata): HeadWidths | nul
  * as "fall back to the historical 16384", never as "assume it is cheap".
  */
 export function kvBytesPerToken(metadata: GgufArchitectureMetadata | null): number | null {
-  if (!metadata || typeof metadata !== "object") return null;
+  if (metadata === null) return null;
 
   const blockCount = scalarValue(metadata.blockCount);
 

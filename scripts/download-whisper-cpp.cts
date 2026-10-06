@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-const fs: typeof import("fs") = require("fs");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const fs = require("fs") as typeof import("fs");
 
-const path: typeof import("path") = require("path");
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
+const path = require("path") as typeof import("path");
 
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run these scripts as ESM.
 const {
   copyLibraries,
   downloadFile,
@@ -12,7 +15,7 @@ const {
   parseArgs,
   setExecutable,
   cleanupFiles,
-}: import("./lib/download-utils.cts").API = require("./lib/download-utils.cts");
+} = require("./lib/download-utils.cts") as import("./lib/download-utils.cts").API;
 
 const WHISPER_CPP_TAG = process.env.WHISPER_CPP_VERSION || "0.0.10";
 
@@ -28,13 +31,19 @@ type BinaryConfig = {
   requiredLibraries?: string[];
 };
 
-const BINARIES: Record<string, BinaryConfig> = {
+// Every platform/arch entry is a BinaryConfig; the named table keeps element
+// reads typed without widening to an open Record.
+interface BinaryTable {
+  [platformArch: string]: BinaryConfig;
+}
+
+const BINARIES: BinaryTable = {
   "darwin-arm64": {
     zipName: "whisper-server-darwin-arm64.zip",
     binaryName: "whisper-server-darwin-arm64",
     outputName: "whisper-server-darwin-arm64",
   },
-};
+} satisfies Record<string, BinaryConfig>;
 
 const BIN_DIR =
   process.env.GRISTMILL_LOCAL_BIN_DIR || path.join(__dirname, "..", "resources", "bin");
@@ -59,13 +68,33 @@ function getDownloadUrl(
   return asset?.url || null;
 }
 
+interface InstallMarker {
+  version?: string;
+  libraries?: string[];
+  onnxRuntime?: string;
+}
+
+function isInstallMarker(value: unknown): value is InstallMarker {
+  return typeof value === "object" && value !== null;
+}
+
+function parseInstallMarker(raw: string): InstallMarker | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    return isInstallMarker(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function isCompleteInstall(markerPath: string, binaryPath: string, config: BinaryConfig) {
   if (!fs.existsSync(binaryPath)) return false;
 
   try {
-    const marker: { version?: string; libraries?: string[]; onnxRuntime?: string } = JSON.parse(
-      fs.readFileSync(markerPath, "utf8")
-    );
+    const marker = parseInstallMarker(fs.readFileSync(markerPath, "utf8"));
+
+    if (!marker) return false;
 
     if (marker.version !== WHISPER_CPP_TAG || !Array.isArray(marker.libraries)) return false;
 

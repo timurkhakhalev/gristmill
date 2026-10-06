@@ -1,34 +1,28 @@
-const { spawn } = require("child_process");
-
-const EventEmitter = require("events");
-
-const fs = require("fs");
-
-const path = require("path");
-
+import { z } from "zod";
+import { spawn, type ChildProcess } from "child_process";
+import EventEmitter from "events";
+import fs from "fs";
+import path from "path";
 import http from "http";
-
-const os = require("os");
-
-const debugLogger = require("./debugLogger.js");
-
-const { ensureLocalEngine } = require("./localEngineInstaller.js");
-
-const { killProcess } = require("../utils/process.js");
-
-const { isPortAvailable, resolveBinaryPath } = require("../utils/serverUtils.js");
-
+import os from "os";
+import debugLogger from "./debugLogger.js";
+import { ensureLocalEngine } from "./localEngineInstaller.js";
+import { killProcess } from "../utils/process.js";
+import { isPortAvailable, resolveBinaryPath } from "../utils/serverUtils.js";
 import { getSafeTempDir } from "./safeTempDir.js";
-
-const { convertToWav } = require("./ffmpegUtils.js");
-
+import { convertToWav } from "./ffmpegUtils.js";
 import { createAbortError } from "./abortError.js";
 import * as sidecarPidFile from "./sidecarPidFile.js";
-import { sanitizeWhisperVadConfig, DEFAULT_WHISPER_VAD_CONFIG } from "./whisperVadConfig.js";
+import {
+  sanitizeWhisperVadConfig,
+  DEFAULT_WHISPER_VAD_CONFIG,
+  type VadConfig,
+} from "./whisperVadConfig.js";
 import {
   computeTranscriptionTimeoutMs,
   PCM16_MONO_16K_BYTES_PER_SECOND,
 } from "./transcriptionTimeout.js";
+import type { ServerStatusResult } from "../contracts/localModelLifecycle.js";
 
 const PORT_RANGE_START = 8178;
 
@@ -66,7 +60,7 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function parsePositiveInteger(value: unknown): number | null {
+export function parsePositiveInteger(value: string | number | null | undefined): number | null {
   const normalized = String(value ?? "").trim();
 
   if (!/^\d+$/.test(normalized)) return null;
@@ -77,10 +71,10 @@ export function parsePositiveInteger(value: unknown): number | null {
 
 export function getAvailableParallelism(): number {
   try {
-    if (typeof os.availableParallelism === "function") {
-      return os.availableParallelism();
-    }
-  } catch {}
+    return os.availableParallelism();
+  } catch {
+    /* fall through to the cpus() fallback */
+  }
 
   const cpus = os.cpus();
 
@@ -101,9 +95,14 @@ export function createThreadResolution(
   return { threads, source, availableParallelism };
 }
 
+export interface ResolveWhisperThreadsRuntime {
+  availableParallelism?: string | number | null;
+  env?: Record<string, string | undefined>;
+}
+
 export function resolveWhisperThreads(
-  options: Record<string, unknown> = {},
-  runtime: { availableParallelism?: unknown; env?: Record<string, string | undefined> } = {}
+  options: { threads?: string | number | null } = {},
+  runtime: ResolveWhisperThreadsRuntime = {}
 ): ThreadResolution {
   const availableParallelism =
     parsePositiveInteger(runtime.availableParallelism) || getAvailableParallelism();
@@ -166,18 +165,37 @@ export function getThreadSignature(resolution: ThreadResolution): string {
   return `threads:${resolution.threads || "default"}`;
 }
 
-function isVadActive(options: { vadEnabled?: unknown; vadModelPath?: unknown } = {}): boolean {
+// Inputs that may carry a caller-provided VAD config; sanitized before use.
+interface VadOptionsInput {
+  vadEnabled?: unknown;
+  vadModelPath?: unknown;
+  vadConfig?: unknown;
+}
+
+function isStoppedError(err: unknown): err is Error & { isStopped: boolean } {
+  return typeof err === "object" && err !== null && "isStopped" in err && err.isStopped === true;
+}
+
+function isStringPart(value: string | Buffer): value is string {
+  return typeof value === "string";
+}
+
+function sanitizeVadConfig(vadConfig: VadOptionsInput["vadConfig"]): VadConfig {
+  // SAFETY: sanitizeWhisperVadConfig reads every known key defensively and
+  // clamps it, so a loosely-typed wire config is safe to pass through.
+  const input = (vadConfig as Partial<VadConfig> | null | undefined) || DEFAULT_WHISPER_VAD_CONFIG;
+
+  return sanitizeWhisperVadConfig(input);
+}
+
+function isVadActive(options: VadOptionsInput = {}): boolean {
   return options.vadEnabled === true && !!options.vadModelPath;
 }
 
-export function getVadSignature(
-  options: { vadEnabled?: unknown; vadModelPath?: unknown; vadConfig?: unknown } = {}
-): string {
+export function getVadSignature(options: VadOptionsInput = {}): string {
   if (!isVadActive(options)) return "vad:off";
 
-  const vadConfig = sanitizeWhisperVadConfig(
-    (options.vadConfig as Record<string, unknown> | null) || DEFAULT_WHISPER_VAD_CONFIG
-  );
+  const vadConfig = sanitizeVadConfig(options.vadConfig);
 
   return `vad:on:${String(options.vadModelPath)}:${JSON.stringify(vadConfig)}`;
 }
@@ -190,6 +208,40 @@ export interface WhisperServerArgsInput {
   vadEnabled?: boolean;
   vadModelPath?: string | null;
   vadConfig?: unknown;
+}
+
+// The options the manager accepts for a start/restart. Only these fields are
+// read; the VAD config is sanitized before it is signed.
+export interface WhisperServerStartOptions {
+  language?: string | null;
+  threads?: number | null;
+  vadEnabled?: boolean;
+  vadModelPath?: string | null;
+  vadConfig?: unknown;
+  threadResolution?: ThreadResolution;
+}
+
+// The request options transcribe() reads; the caller pairs them with a Buffer.
+export interface WhisperTranscribeRequestOptions {
+  language?: string | null;
+  initialPrompt?: string | null;
+  signal?: AbortSignal;
+  skipDecoderThresholds?: boolean;
+}
+
+// whisper-server's /inference JSON body crosses the HTTP boundary here. The
+// schema mirrors the tolerant reader in whisper.ts: text and error are opaque,
+// transcription is an array of segments whose text is stringified downstream.
+export const whisperServerResponseSchema = z.looseObject({
+  text: z.unknown().optional(),
+  error: z.unknown().optional(),
+  transcription: z.array(z.looseObject({ text: z.string().optional() }).catch({})).optional(),
+});
+
+export type WhisperTranscriptionResult = z.infer<typeof whisperServerResponseSchema>;
+
+function parseWhisperServerBody(data: string): WhisperTranscriptionResult {
+  return whisperServerResponseSchema.parse(JSON.parse(data));
 }
 
 export function buildWhisperServerArgs({
@@ -223,14 +275,14 @@ export function buildWhisperServerArgs({
   args.push("--max-len", "4096");
 
   if (isVadActive({ vadEnabled, vadModelPath })) {
-    const cfg = sanitizeWhisperVadConfig(
-      (vadConfig as Record<string, unknown> | null) || DEFAULT_WHISPER_VAD_CONFIG
-    );
+    const cfg = sanitizeVadConfig(vadConfig);
+    // SAFETY: isVadActive only returns true when vadModelPath is truthy.
+    const resolvedVadModelPath = vadModelPath as string;
 
     args.push(
       "--vad",
       "--vad-model",
-      vadModelPath as string,
+      resolvedVadModelPath,
       "--vad-threshold",
       String(cfg.threshold),
       "--vad-min-speech-duration-ms",
@@ -254,31 +306,34 @@ export class WhisperServerManager extends EventEmitter {
   private activeStartIdentity: string | null = null;
   private stopGeneration = 0;
 
+  process: ChildProcess | null = null;
+  hostname = "127.0.0.1";
+  port: number | null = null;
+  ready = false;
+  isRemote = false;
+  modelPath: string | null = null;
+  startupPromise: Promise<void> | null = null;
+  healthCheckInterval: NodeJS.Timeout | null = null;
+  cachedServerBinaryPath: string | null = null;
+  cachedFFmpegPath: string | null = null;
+  canConvert = false;
+  startGeneration = 0;
+  private _stopRequested = false;
+  vadSignature = "vad:off";
+  threadSignature = "threads:default";
+  lastStartOptions: WhisperServerStartOptions = {};
+
   constructor() {
     super();
-    this.process = null;
-    this.hostname = "127.0.0.1";
-    this.port = null;
-    this.ready = false;
-    this.isRemote = false;
-    this.modelPath = null;
-    this.startupPromise = null;
-    this.healthCheckInterval = null;
-    this.cachedServerBinaryPath = null;
-    this.cachedFFmpegPath = null;
-    this.canConvert = false;
-    this.startGeneration = 0;
-    this._stopRequested = false;
-    this.vadSignature = "vad:off";
-    this.threadSignature = "threads:default";
-    this.lastStartOptions = {};
   }
 
   getFFmpegPath() {
     if (this.cachedFFmpegPath) return this.cachedFFmpegPath;
 
     try {
-      let ffmpegPath: string = require("ffmpeg-static");
+      // SAFETY: ffmpeg-static exports the absolute binary path as a string;
+      // the package ships no types, so the require result is declared here.
+      let ffmpegPath: string = require("ffmpeg-static") as string;
       ffmpegPath = path.normalize(ffmpegPath);
 
       // Try unpacked ASAR path first (production builds unpack ffmpeg-static)
@@ -293,7 +348,9 @@ export class WhisperServerManager extends EventEmitter {
           try {
             fs.chmodSync(unpackedPath, 0o755);
           } catch (chmodErr) {
-            debugLogger.warn("Failed to chmod FFmpeg", { error: (chmodErr as Error).message });
+            debugLogger.warn("Failed to chmod FFmpeg", {
+              error: chmodErr instanceof Error ? chmodErr.message : String(chmodErr),
+            });
           }
         }
 
@@ -316,7 +373,9 @@ export class WhisperServerManager extends EventEmitter {
         return ffmpegPath;
       }
     } catch (err) {
-      debugLogger.debug("Bundled FFmpeg not available", { error: (err as Error).message });
+      debugLogger.debug("Bundled FFmpeg not available", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     // Try system FFmpeg locations
@@ -421,12 +480,10 @@ export class WhisperServerManager extends EventEmitter {
     throw new Error(`No available ports in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
   }
 
-  async start(modelPath: string, options: Record<string, unknown> = {}): Promise<void> {
-    const requestedOptions: Record<string, unknown> = {
+  async start(modelPath: string, options: WhisperServerStartOptions = {}): Promise<void> {
+    const requestedOptions: WhisperServerStartOptions = {
       ...options,
-      ...(options.vadConfig
-        ? { vadConfig: sanitizeWhisperVadConfig(options.vadConfig as Record<string, unknown>) }
-        : {}),
+      ...(options.vadConfig ? { vadConfig: sanitizeVadConfig(options.vadConfig) } : {}),
     };
 
     const threadResolution = resolveWhisperThreads(requestedOptions);
@@ -443,7 +500,7 @@ export class WhisperServerManager extends EventEmitter {
 
     if (this.startupPromise && this.startupIdentity === identity) return this.startupPromise;
     const generation = this.stopGeneration;
-    const previous = this.startupPromise as Promise<void> | null;
+    const previous = this.startupPromise;
 
     const operation = (previous ?? Promise.resolve())
       .catch(() => {})
@@ -484,7 +541,7 @@ export class WhisperServerManager extends EventEmitter {
 
   async _doStart(
     modelPath: string,
-    options: Record<string, unknown> & { threadResolution?: ThreadResolution } = {},
+    options: WhisperServerStartOptions = {},
     generation = this.stopGeneration
   ): Promise<void> {
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
@@ -523,10 +580,10 @@ export class WhisperServerManager extends EventEmitter {
     const args = buildWhisperServerArgs({
       modelPath,
       port: this.port,
-      language: options.language as string | null | undefined,
+      language: options.language ?? undefined,
       threads: threadResolution.threads,
       vadEnabled: options.vadEnabled === true,
-      vadModelPath: (options.vadModelPath as string | null) || null,
+      vadModelPath: options.vadModelPath || null,
       vadConfig: options.vadConfig,
     });
 
@@ -554,7 +611,10 @@ export class WhisperServerManager extends EventEmitter {
       cwd: serverBinaryDir,
       detached: true,
     });
-    sidecarPidFile.write("whisper", this.process.pid);
+
+    if (this.process.pid !== undefined) {
+      sidecarPidFile.write("whisper", this.process.pid);
+    }
 
     let stderrBuffer = "";
     let exitCode: number | null = null;
@@ -584,8 +644,8 @@ export class WhisperServerManager extends EventEmitter {
 
     try {
       await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }), STARTUP_TIMEOUT_MS);
-    } catch (err: unknown) {
-      if ((err as { isStopped?: boolean }).isStopped) throw err;
+    } catch (err) {
+      if (isStoppedError(err)) throw err;
 
       if (shouldFallbackToDefaultThreads(threadResolution)) {
         const defaultThreadResolution = createThreadResolution(
@@ -701,17 +761,21 @@ export class WhisperServerManager extends EventEmitter {
 
   startHealthCheck(): void {
     this.stopHealthCheck();
-    this.healthCheckInterval = setInterval(async () => {
+    this.healthCheckInterval = setInterval(() => {
       if (!this.isRemote && !this.process) {
         this.stopHealthCheck();
 
         return;
       }
 
-      if (!(await this.checkHealth())) {
-        debugLogger.warn("whisper-server health check failed");
-        this.ready = false;
-      }
+      this.checkHealth()
+        .then((healthy) => {
+          if (!healthy) {
+            debugLogger.warn("whisper-server health check failed");
+            this.ready = false;
+          }
+        })
+        .catch(() => {});
     }, HEALTH_CHECK_INTERVAL_MS);
   }
 
@@ -724,13 +788,8 @@ export class WhisperServerManager extends EventEmitter {
 
   async transcribe(
     audioBuffer: Buffer,
-    options: {
-      language?: string | null;
-      initialPrompt?: string | null;
-      signal?: AbortSignal;
-      skipDecoderThresholds?: boolean;
-    } = {}
-  ): Promise<Record<string, unknown>> {
+    options: WhisperTranscribeRequestOptions = {}
+  ): Promise<WhisperTranscriptionResult> {
     if (!this.ready || (!this.process && !this.isRemote)) {
       throw new Error("whisper-server is not running");
     }
@@ -762,7 +821,7 @@ export class WhisperServerManager extends EventEmitter {
     finalBuffer = await this._convertToWav(audioBuffer, signal);
 
     const boundary = `----WhisperBoundary${Date.now()}`;
-    const parts = [];
+    const parts: Array<string | Buffer> = [];
     const fileName = "audio.wav";
     const contentType = "audio/wav";
 
@@ -807,7 +866,7 @@ export class WhisperServerManager extends EventEmitter {
     );
     parts.push(`--${boundary}--\r\n`);
 
-    const bodyParts = parts.map((part) => (typeof part === "string" ? Buffer.from(part) : part));
+    const bodyParts = parts.map((part) => (isStringPart(part) ? Buffer.from(part) : part));
     const body = Buffer.concat(bodyParts);
 
     return await this._postInference(body, boundary, signal);
@@ -817,7 +876,7 @@ export class WhisperServerManager extends EventEmitter {
     body: Buffer,
     boundary: string,
     signal?: AbortSignal
-  ): Promise<Record<string, unknown>> {
+  ): Promise<WhisperTranscriptionResult> {
     // Multipart boilerplate adds under a kilobyte, so body length tracks audio length.
     const timeoutMs = computeTranscriptionTimeoutMs(body.length / PCM16_MONO_16K_BYTES_PER_SECOND);
 
@@ -863,9 +922,13 @@ export class WhisperServerManager extends EventEmitter {
             }
 
             try {
-              resolve(JSON.parse(data));
+              resolve(parseWhisperServerBody(data));
             } catch (e) {
-              reject(new Error(`Failed to parse whisper-server response: ${(e as Error).message}`));
+              reject(
+                new Error(
+                  `Failed to parse whisper-server response: ${e instanceof Error ? e.message : String(e)}`
+                )
+              );
             }
           });
         }
@@ -885,12 +948,12 @@ export class WhisperServerManager extends EventEmitter {
       req.on("error", (error: NodeJS.ErrnoException) => {
         removeAbortListener();
 
-        const err = Object.assign(new Error(`whisper-server request failed: ${error.message}`), {
-          isConnectionError: true,
-          code: error.code,
-        }) as Error & { isConnectionError: boolean; code?: string };
-
-        reject(err);
+        reject(
+          Object.assign(new Error(`whisper-server request failed: ${error.message}`), {
+            isConnectionError: true,
+            code: error.code,
+          })
+        );
       });
       req.on("timeout", () => {
         removeAbortListener();
@@ -927,7 +990,7 @@ export class WhisperServerManager extends EventEmitter {
 
   async stop(): Promise<void> {
     this.stopGeneration += 1;
-    const pending = this.startupPromise as Promise<void> | null;
+    const pending = this.startupPromise;
 
     const operation = Promise.all([this.stopProcess(), pending?.catch(() => {})]).then(() => {
       this.stopHealthCheck();
@@ -990,7 +1053,9 @@ export class WhisperServerManager extends EventEmitter {
         }
       });
     } catch (error) {
-      debugLogger.error("Error stopping whisper-server", { error: (error as Error).message });
+      debugLogger.error("Error stopping whisper-server", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     this.process = null;
@@ -999,7 +1064,7 @@ export class WhisperServerManager extends EventEmitter {
     this.modelPath = null;
   }
 
-  getStatus(): Record<string, unknown> {
+  getStatus(): ServerStatusResult {
     const running = this.ready && (this.process !== null || this.isRemote);
 
     return {
@@ -1019,12 +1084,10 @@ export class WhisperServerManager extends EventEmitter {
 // named exports.
 module.exports = WhisperServerManager;
 
-module.exports.WhisperServerManager = WhisperServerManager;
-
-module.exports.buildWhisperServerArgs = buildWhisperServerArgs;
-
-module.exports.INFERENCE_DECODER_FIELDS = INFERENCE_DECODER_FIELDS;
-
-module.exports.getVadSignature = getVadSignature;
-
-module.exports.resolveWhisperThreads = resolveWhisperThreads;
+Object.assign(module.exports, {
+  WhisperServerManager,
+  buildWhisperServerArgs,
+  INFERENCE_DECODER_FIELDS,
+  getVadSignature,
+  resolveWhisperThreads,
+});

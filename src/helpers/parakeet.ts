@@ -1,32 +1,35 @@
-const fs = require("fs");
-
-const fsPromises = require("fs").promises;
-
-const path = require("path");
-
-const { pipeline } = require("stream/promises");
-
-const debugLogger = require("./debugLogger.js");
-
-const { runSystemTar } = require("./systemTar.js");
-
-const {
+import fs from "fs";
+import path from "path";
+import { pipeline } from "stream/promises";
+import debugLogger from "./debugLogger.js";
+import { runSystemTar } from "./systemTar.js";
+import {
   downloadFile,
   createDownloadSignal,
   createDownloadInProgressError,
   cleanupStaleDownloads,
   checkDiskSpace,
-} = require("./downloadUtils.js");
-
+  type DownloadError,
+} from "./downloadUtils.js";
 import { fetchJson } from "./downloadUtils.js";
 import { ParakeetServerManager } from "./parakeetServer.js";
-
-const { getModelsDirForService } = require("./modelDirUtils.js");
-
+import type {
+  ParakeetWsStatus,
+  ParakeetOnlineStream,
+  ParakeetOnlineStreamOptions,
+} from "./parakeetWsServer.js";
+import { getModelsDirForService } from "./modelDirUtils.js";
 import { assertParakeetSupported, getParakeetCapability } from "./parakeetCapability.js";
-
-const modelRegistryData = require("../models/modelRegistryData.json");
-
+import modelRegistryData from "../models/modelRegistryData.json";
+import type {
+  DiagnosticsResult,
+  InstallCheckResult,
+  LocalModelActionResult,
+  LocalModelListResult,
+  LocalModelStatusRow,
+  ServerLifecycleResult,
+} from "../contracts/localModelLifecycle.js";
+import type { TranscriptionResponse } from "../contracts/localFileTranscription.js";
 import {
   getModelRuntime,
   getRequiredModelFiles,
@@ -53,17 +56,21 @@ interface ParakeetModelConfig {
   extractDir: string;
 }
 
-function getParakeetModelConfig(modelName: string): ParakeetModelConfig | null {
-  const modelInfo = (
-    modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry>
-  )[modelName];
+function getParakeetModelConfig(modelName: string): ParakeetModelConfig {
+  // SAFETY: modelRegistryData.json is this repo's own packaged catalog; the
+  // assertion pins its per-model entry shape declared above. Callers validate
+  // the name first, so a missing entry is a programming error.
+  const registry = modelRegistryData.parakeetModels as Record<string, ParakeetModelRegistryEntry>;
+  const modelInfo = registry[modelName];
 
-  if (!modelInfo) return null;
+  if (!modelInfo) {
+    throw new Error(`Unknown parakeet model: ${modelName}`);
+  }
 
   return {
     url: modelInfo.downloadUrl,
     manifestUrl: modelInfo.manifestUrl,
-    size: modelInfo.expectedSizeBytes || (modelInfo.sizeMb as number) * 1_000_000,
+    size: modelInfo.expectedSizeBytes || (modelInfo.sizeMb ?? 0) * 1_000_000,
     expectedSizeBytes: modelInfo.expectedSizeBytes,
     language: modelInfo.language,
     supportedLanguages: modelInfo.supportedLanguages || [],
@@ -98,6 +105,101 @@ type AudioInput =
   | ArrayBufferView
   | string
   | { buffer: ArrayBuffer | ArrayBufferView; byteLength: number; byteOffset?: number };
+
+// The settings slice this manager reads at startup; the caller (main.ts)
+// builds it from environment variables.
+export interface ParakeetStartupSettings {
+  localTranscriptionProvider?: string;
+  parakeetModel?: string;
+  language?: string;
+}
+
+// The optional bag transcribeLocalParakeet accepts; only model/language/signal
+// are read, and the typed IPC options carry the rest.
+export interface ParakeetTranscribeOptions {
+  model?: string;
+  language?: string;
+  signal?: AbortSignal;
+}
+
+// The raw decode result the sherpa transport hands over; text is untrusted
+// until parseParakeetResult narrows it.
+export interface ParakeetEngineOutput {
+  text?: unknown;
+  truncated?: unknown;
+  elapsed?: unknown;
+}
+
+function requireManifestUrl(config: ParakeetModelConfig): string {
+  if (!config.manifestUrl) {
+    throw new Error("Manifest URL requested for a model without one");
+  }
+
+  return config.manifestUrl;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isAbortSignal(value: unknown): value is AbortSignal {
+  return typeof value === "object" && value !== null && "aborted" in value;
+}
+
+function isStringAudio(input: AudioInput): input is string {
+  return typeof input === "string";
+}
+
+function audioInputByteLength(input: AudioInput | null | undefined): number {
+  if (input === null || input === undefined) return 0;
+
+  if (isStringAudio(input)) return input.length;
+
+  return input.byteLength;
+}
+
+function isDownloadAbort(error: unknown): error is DownloadError {
+  return (
+    typeof error === "object" && error !== null && "isAbort" in error && error.isAbort === true
+  );
+}
+
+// The several audio shapes the IPC bridge hands over; all collapse to the one
+// Buffer the sherpa request needs.
+function toAudioBuffer(input: AudioInput): Buffer {
+  if (Buffer.isBuffer(input)) return input;
+
+  if (ArrayBuffer.isView(input)) {
+    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  }
+
+  if (input instanceof ArrayBuffer) return Buffer.from(input);
+
+  if (isStringAudio(input)) return Buffer.from(input, "base64");
+
+  // SAFETY: the IPC audio path sends { buffer: ArrayBuffer, ... }; the
+  // ArrayBufferView arm of the type is not produced by that path.
+  const nested = input.buffer as ArrayBuffer;
+
+  return Buffer.from(nested, input.byteOffset || 0, input.byteLength);
+}
+
+interface DependencyStatus {
+  sherpaOnnx: { available: boolean; path: string | null };
+  models: Array<{ name: string; size: string }>;
+}
+
+// The download result additionally reports whether the file is now on disk,
+// which the renderer's model inventory reads.
+interface ParakeetDownloadResult extends LocalModelActionResult {
+  downloaded?: boolean;
+}
+
+// The cancel result carries a human message on success; the manager-like wire
+// contract accepts it as a ServerLifecycleResult.
+export interface ParakeetCancelResult extends ServerLifecycleResult {
+  message?: string;
+}
 
 export class ParakeetManager {
   currentDownloadProcess: ParakeetDownloadProcess | null = null;
@@ -136,13 +238,15 @@ export class ParakeetManager {
     for (const file of ["encoder.int8.onnx.data", "encoder.int8.onnx"]) {
       try {
         return fs.statSync(path.join(modelDir, file)).size;
-      } catch {}
+      } catch {
+        /* try the next candidate weights file */
+      }
     }
 
     return 0;
   }
 
-  async initializeAtStartup(settings: Record<string, unknown> = {}): Promise<void> {
+  async initializeAtStartup(settings: ParakeetStartupSettings = {}): Promise<void> {
     const startTime = Date.now();
 
     try {
@@ -152,9 +256,9 @@ export class ParakeetManager {
 
       await this.logDependencyStatus();
 
-      const localTranscriptionProvider = settings.localTranscriptionProvider as string | undefined;
-      const parakeetModel = settings.parakeetModel as string | undefined;
-      const language = settings.language as string | undefined;
+      const localTranscriptionProvider = settings.localTranscriptionProvider;
+      const parakeetModel = settings.parakeetModel;
+      const language = settings.language;
       const capability = getParakeetCapability();
 
       if (
@@ -175,7 +279,7 @@ export class ParakeetManager {
             });
           } catch (err) {
             debugLogger.warn("Parakeet server pre-warm failed (will start on first use)", {
-              error: (err as Error).message,
+              error: err instanceof Error ? err.message : String(err),
               model: parakeetModel,
             });
           }
@@ -196,7 +300,9 @@ export class ParakeetManager {
         });
       }
     } catch (error) {
-      debugLogger.warn("Parakeet initialization error", { error: (error as Error).message });
+      debugLogger.warn("Parakeet initialization error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       this.isInitialized = true;
     }
 
@@ -207,10 +313,7 @@ export class ParakeetManager {
   }
 
   async logDependencyStatus(): Promise<void> {
-    const status: {
-      sherpaOnnx: { available: boolean; path: string | null };
-      models: Array<{ name: string; size: string }>;
-    } = {
+    const status: DependencyStatus = {
       sherpaOnnx: {
         available: this.serverManager.hasAnyWsBinary(),
         path:
@@ -245,7 +348,7 @@ export class ParakeetManager {
     debugLogger.info(`[Parakeet] Models: ${modelsStatus}`);
   }
 
-  async checkInstallation(): Promise<Record<string, unknown>> {
+  async checkInstallation(): Promise<InstallCheckResult> {
     const binaryPath =
       this.serverManager.getBinaryPath("offline") || this.serverManager.getBinaryPath("online");
 
@@ -266,7 +369,7 @@ export class ParakeetManager {
     return { installed: true, working: true, supported: true, path: binaryPath };
   }
 
-  async startServer(modelName: string, language?: string | null): Promise<Record<string, unknown>> {
+  async startServer(modelName: string, language?: string | null): Promise<ServerLifecycleResult> {
     this.validateModelName(modelName);
     const capability = getParakeetCapability();
 
@@ -281,7 +384,7 @@ export class ParakeetManager {
     await this.serverManager.stopServer();
   }
 
-  getServerStatus(): Record<string, unknown> {
+  getServerStatus(): ParakeetWsStatus {
     return this.serverManager.getServerStatus();
   }
 
@@ -291,8 +394,8 @@ export class ParakeetManager {
 
   async createOnlineStream(
     modelName: string,
-    options: Record<string, unknown> = {}
-  ): Promise<unknown> {
+    options: ParakeetOnlineStreamOptions = {}
+  ): Promise<ParakeetOnlineStream> {
     this.validateModelName(modelName);
     assertParakeetSupported();
     const started = await this.serverManager.startServer(modelName);
@@ -306,19 +409,16 @@ export class ParakeetManager {
 
   async transcribeLocalParakeet(
     audioBlob: AudioInput,
-    options: Record<string, unknown> = {}
-  ): Promise<unknown> {
-    const model = (options.model as string) || "parakeet-tdt-0.6b-v3";
+    options: ParakeetTranscribeOptions = {}
+  ): Promise<TranscriptionResponse> {
+    const model = isString(options.model) ? options.model : "parakeet-tdt-0.6b-v3";
     assertParakeetSupported();
     const serverAvailable = this.serverManager.isAvailable(getModelRuntime(model));
 
     debugLogger.logSTTPipeline("transcribeLocalParakeet - start", {
       options,
       audioBlobType: audioBlob?.constructor?.name,
-      audioBlobSize:
-        (audioBlob as { byteLength?: number })?.byteLength ||
-        (audioBlob as { size?: number })?.size ||
-        0,
+      audioBlobSize: audioInputByteLength(audioBlob),
       serverAvailable,
     });
 
@@ -328,27 +428,9 @@ export class ParakeetManager {
       );
     }
 
-    let audioBuffer: Buffer;
+    const audioBuffer = toAudioBuffer(audioBlob);
 
-    if (Buffer.isBuffer(audioBlob)) {
-      audioBuffer = audioBlob;
-    } else if (ArrayBuffer.isView(audioBlob)) {
-      audioBuffer = Buffer.from(audioBlob.buffer, audioBlob.byteOffset, audioBlob.byteLength);
-    } else if (audioBlob instanceof ArrayBuffer) {
-      audioBuffer = Buffer.from(audioBlob);
-    } else if (typeof audioBlob === "string") {
-      audioBuffer = Buffer.from(audioBlob, "base64");
-    } else if (audioBlob && audioBlob.buffer && typeof audioBlob.byteLength === "number") {
-      audioBuffer = Buffer.from(
-        audioBlob.buffer as ArrayBuffer,
-        audioBlob.byteOffset || 0,
-        audioBlob.byteLength
-      );
-    } else {
-      throw new Error(`Unsupported audio data type: ${typeof audioBlob}`);
-    }
-
-    if (!audioBuffer || audioBuffer.length === 0) {
+    if (audioBuffer.length === 0) {
       throw new Error("Audio buffer is empty - no audio data received");
     }
 
@@ -359,11 +441,11 @@ export class ParakeetManager {
 
     const startTime = Date.now();
 
-    const result = (await this.serverManager.transcribe(audioBuffer, {
+    const result = await this.serverManager.transcribe(audioBuffer, {
       modelName: model,
-      language: options.language as string | undefined,
-      signal: options.signal as AbortSignal | undefined,
-    })) as { text?: string; truncated?: boolean; elapsed?: number };
+      language: isString(options.language) ? options.language : undefined,
+      signal: isAbortSignal(options.signal) ? options.signal : undefined,
+    });
 
     const elapsed = Date.now() - startTime;
 
@@ -375,28 +457,18 @@ export class ParakeetManager {
     return this.parseParakeetResult(result);
   }
 
-  parseParakeetResult(output: unknown): {
-    success: boolean;
-    text?: string;
-    error?: string;
-    code?: string;
-    message?: string;
-    warning?: string;
-  } {
-    const record = output as { text?: unknown; truncated?: unknown } | null | undefined;
+  // `output` is the parsed decode result from the sherpa server: the transport
+  // hands over a plain object whose text is untrusted until checked here.
+  parseParakeetResult(output: ParakeetEngineOutput | null | undefined): TranscriptionResponse {
     debugLogger.debug("parseParakeetResult", {
       hasOutput: !!output,
-      hasText: !!record?.text,
-      textLength: (record?.text as string | undefined)?.length || 0,
+      hasText: !!output?.text,
+      textLength: isString(output?.text) ? output.text.length : 0,
     });
 
     // Missing or entirely truncated output is a broken decode. Only a completed
     // empty transcript is a no-speech outcome.
-    if (
-      !output ||
-      typeof record?.text !== "string" ||
-      (record?.truncated && !(record.text as string).trim())
-    ) {
+    if (!output || !isString(output.text) || (output.truncated && !output.text.trim())) {
       return {
         success: false,
         error: "invalid_response",
@@ -404,14 +476,14 @@ export class ParakeetManager {
       };
     }
 
-    const text = (record?.text as string).trim();
+    const text = output.text.trim();
 
     if (!text) {
       return { success: false, code: "NO_SPEECH_DETECTED", message: "No audio detected" };
     }
 
     // Surfaced by the renderer as a partial-transcription warning toast.
-    return record?.truncated
+    return output.truncated
       ? { success: true, text, warning: "truncated" }
       : { success: true, text };
   }
@@ -419,10 +491,10 @@ export class ParakeetManager {
   async downloadParakeetModel(
     modelName: string,
     progressCallback: ((event: DownloadProgressEvent) => void) | null = null
-  ): Promise<Record<string, unknown>> {
+  ): Promise<ParakeetDownloadResult> {
     this.validateModelName(modelName);
     assertParakeetSupported();
-    const modelConfig = getParakeetModelConfig(modelName) as ParakeetModelConfig;
+    const modelConfig = getParakeetModelConfig(modelName);
 
     const modelPath = this.getModelPath(modelName);
     const modelsDir = this.getModelsDir();
@@ -436,10 +508,11 @@ export class ParakeetManager {
     }
 
     const archivePath = path.join(modelsDir, `${modelName}.tar.bz2`);
-    const { signal, abort } = createDownloadSignal();
+    const downloadHandle = createDownloadSignal();
+    const signal = downloadHandle.signal;
 
     const downloadProcess: ParakeetDownloadProcess = {
-      abort,
+      abort: () => downloadHandle.abort(),
       model: modelName,
       phase: "progress",
       percentage: 0,
@@ -450,7 +523,7 @@ export class ParakeetManager {
     this.currentDownloadProcess = downloadProcess;
 
     try {
-      await fsPromises.mkdir(modelsDir, { recursive: true });
+      await fs.promises.mkdir(modelsDir, { recursive: true });
 
       const spaceCheck = await checkDiskSpace(modelsDir, modelConfig.size * 2.5);
 
@@ -464,7 +537,7 @@ export class ParakeetManager {
       let archiveReady = false;
 
       try {
-        const stats = await fsPromises.stat(archivePath);
+        const stats = await fs.promises.stat(archivePath);
 
         // A visibly truncated leftover would just fail extraction forever.
         if (stats.size >= modelConfig.size * 0.9) {
@@ -474,13 +547,14 @@ export class ParakeetManager {
             size: stats.size,
           });
         } else if (stats.size > 0) {
-          await fsPromises.unlink(archivePath).catch(() => {});
+          await fs.promises.unlink(archivePath).catch(() => {});
         }
-      } catch {}
+      } catch {
+        /* no usable leftover archive */
+      }
 
       if (!archiveReady) {
         await downloadFile(modelConfig.url, archivePath, {
-          timeout: 600000,
           signal,
           onProgress: (downloadedBytes: number, totalBytes: number) => {
             downloadProcess.percentage =
@@ -515,23 +589,26 @@ export class ParakeetManager {
           await this._extractModel(archivePath, modelName);
           break;
         } catch (extractError) {
+          const extractMessage =
+            extractError instanceof Error ? extractError.message : String(extractError);
+
           debugLogger.warn("Model extraction failed", {
             attempt,
             maxAttempts: MAX_EXTRACT_RETRIES,
-            error: (extractError as Error).message,
+            error: extractMessage,
           });
 
           if (attempt >= MAX_EXTRACT_RETRIES) {
             // The archive is the prime suspect; drop it so the next attempt re-downloads.
-            await fsPromises.unlink(archivePath).catch(() => {});
-            const err = new Error(`Model installation failed: ${(extractError as Error).message}`);
+            await fs.promises.unlink(archivePath).catch(() => {});
+            const err = new Error(`Model installation failed: ${extractMessage}`);
 
             throw err;
           }
         }
       }
 
-      await fsPromises.unlink(archivePath).catch(() => {});
+      await fs.promises.unlink(archivePath).catch(() => {});
 
       if (progressCallback) {
         progressCallback({ type: "complete", model: modelName, percentage: 100 });
@@ -560,15 +637,15 @@ export class ParakeetManager {
         this._saveModelManifest(modelConfig, modelPath).catch((error) => {
           debugLogger.debug("Optional model manifest unavailable", {
             modelName,
-            error: error.message,
+            error: error instanceof Error ? error.message : String(error),
           });
         });
       }
 
       return { model: modelName, downloaded: true, path: modelPath, success: true };
     } catch (error) {
-      if ((error as { isAbort?: boolean }).isAbort) {
-        await fsPromises.unlink(archivePath).catch(() => {});
+      if (isDownloadAbort(error)) {
+        await fs.promises.unlink(archivePath).catch(() => {});
         throw Object.assign(new Error("Download interrupted by user"), {
           code: "DOWNLOAD_CANCELLED",
         });
@@ -588,7 +665,7 @@ export class ParakeetManager {
       extract_dir?: unknown;
       archive_bytes?: unknown;
       archive_sha256?: unknown;
-    }>(modelConfig.manifestUrl as string, {
+    }>(requireManifestUrl(modelConfig), {
       // Keep the default session's cookies off a third-party host, and make sure
       // the request reaches the network — a cache hit would not be counted.
       credentials: "omit",
@@ -608,7 +685,7 @@ export class ParakeetManager {
     }
 
     // Never recreate a deleted model directory or overwrite an existing sidecar.
-    await fsPromises.writeFile(
+    await fs.promises.writeFile(
       path.join(modelPath, "download-manifest.json"),
       JSON.stringify(manifest, null, 2) + "\n",
       { flag: "wx" }
@@ -617,11 +694,11 @@ export class ParakeetManager {
 
   async _extractModel(archivePath: string, modelName: string): Promise<void> {
     const modelsDir = this.getModelsDir();
-    const modelConfig = getParakeetModelConfig(modelName) as ParakeetModelConfig;
+    const modelConfig = getParakeetModelConfig(modelName);
     const extractDir = path.join(modelsDir, `temp-extract-${modelName}`);
 
     try {
-      await fsPromises.mkdir(extractDir, { recursive: true });
+      await fs.promises.mkdir(extractDir, { recursive: true });
       debugLogger.info("Extracting parakeet archive", { archivePath, extractDir });
       await this._runTarExtract(archivePath, extractDir);
       debugLogger.info("Tar extraction completed", { extractDir });
@@ -631,12 +708,12 @@ export class ParakeetManager {
 
       if (fs.existsSync(extractedDir)) {
         if (fs.existsSync(targetDir)) {
-          await fsPromises.rm(targetDir, { recursive: true, force: true });
+          await fs.promises.rm(targetDir, { recursive: true, force: true });
         }
 
-        await fsPromises.rename(extractedDir, targetDir);
+        await fs.promises.rename(extractedDir, targetDir);
       } else {
-        const entries = await fsPromises.readdir(extractDir);
+        const entries = await fs.promises.readdir(extractDir);
         debugLogger.warn("Expected extract directory not found, searching alternatives", {
           expected: modelConfig.extractDir,
           found: entries,
@@ -645,7 +722,7 @@ export class ParakeetManager {
 
         for (const entry of entries) {
           const entryPath = path.join(extractDir, entry);
-          const stat = await fsPromises.stat(entryPath);
+          const stat = await fs.promises.stat(entryPath);
 
           if (
             stat.isDirectory() &&
@@ -660,10 +737,10 @@ export class ParakeetManager {
 
         if (modelDir) {
           if (fs.existsSync(targetDir)) {
-            await fsPromises.rm(targetDir, { recursive: true, force: true });
+            await fs.promises.rm(targetDir, { recursive: true, force: true });
           }
 
-          await fsPromises.rename(path.join(extractDir, modelDir), targetDir);
+          await fs.promises.rename(path.join(extractDir, modelDir), targetDir);
         } else {
           throw new Error(
             `Could not find model directory in extracted archive. ` +
@@ -680,13 +757,15 @@ export class ParakeetManager {
         throw new Error(`Extracted model is missing required files: ${missing.join(", ")}`);
       }
 
-      await fsPromises.rm(extractDir, { recursive: true, force: true });
+      await fs.promises.rm(extractDir, { recursive: true, force: true });
 
       debugLogger.info("Parakeet model extracted", { modelName, targetDir });
     } catch (error) {
       try {
-        await fsPromises.rm(extractDir, { recursive: true, force: true });
-      } catch {}
+        await fs.promises.rm(extractDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort staging cleanup */
+      }
 
       throw error;
     }
@@ -699,20 +778,27 @@ export class ParakeetManager {
       return;
     } catch (err) {
       debugLogger.debug("System tar failed, falling back to JS extraction", {
-        error: (err as Error).message,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
 
-    const unbzip2 = require("unbzip2-stream");
-    const tar = require("tar");
+    // SAFETY: these lazy CommonJS deps are only loaded on the JS-extraction
+    // fallback path; the assertions declare the narrow call shapes used below.
+    const unbzip2 = require("unbzip2-stream") as () => NodeJS.ReadWriteStream;
+
+    // SAFETY: the same lazy CommonJS seam; only x({ cwd }) is called on tar.
+    const tar = require("tar") as {
+      x(options: { cwd: string }): NodeJS.ReadWriteStream;
+    };
+
     await pipeline(fs.createReadStream(archivePath), unbzip2(), tar.x({ cwd: extractDir }));
   }
 
-  _runSystemTar(archivePath: string, extractDir: string): Promise<unknown> {
+  _runSystemTar(archivePath: string, extractDir: string): Promise<void> {
     return runSystemTar(archivePath, extractDir);
   }
 
-  async cancelDownload(): Promise<Record<string, unknown>> {
+  async cancelDownload(): Promise<ParakeetCancelResult> {
     if (this.currentDownloadProcess) {
       if (this.currentDownloadProcess.phase === "installing") {
         return {
@@ -730,24 +816,17 @@ export class ParakeetManager {
     return { success: false, error: "No active download to cancel" };
   }
 
-  async checkModelStatus(modelName: string): Promise<Record<string, unknown>> {
+  async checkModelStatus(modelName: string): Promise<LocalModelStatusRow> {
     const modelPath = this.getModelPath(modelName);
-    const activeDownload = this.currentDownloadProcess?.model === modelName;
+    const download = this.currentDownloadProcess;
+    const activeDownload = download?.model === modelName;
 
     const downloadStatus = {
       isDownloading: activeDownload,
-      isInstalling:
-        activeDownload &&
-        (this.currentDownloadProcess as ParakeetDownloadProcess).phase === "installing",
-      downloadProgress: activeDownload
-        ? (this.currentDownloadProcess as ParakeetDownloadProcess).percentage
-        : 0,
-      downloadedBytes: activeDownload
-        ? (this.currentDownloadProcess as ParakeetDownloadProcess).downloadedBytes
-        : 0,
-      totalBytes: activeDownload
-        ? (this.currentDownloadProcess as ParakeetDownloadProcess).totalBytes
-        : 0,
+      isInstalling: activeDownload && download ? download.phase === "installing" : false,
+      downloadProgress: activeDownload && download ? download.percentage : 0,
+      downloadedBytes: activeDownload && download ? download.downloadedBytes : 0,
+      totalBytes: activeDownload && download ? download.totalBytes : 0,
     };
 
     if (this.serverManager.isModelDownloaded(modelName)) {
@@ -767,9 +846,9 @@ export class ParakeetManager {
     return { model: modelName, downloaded: false, success: true, ...downloadStatus };
   }
 
-  async listParakeetModels(): Promise<{ models: unknown[]; cache_dir: string; success: boolean }> {
+  async listParakeetModels(): Promise<LocalModelListResult> {
     const models = getValidModelNames();
-    const modelInfo = [];
+    const modelInfo: LocalModelStatusRow[] = [];
 
     for (const model of models) {
       const status = await this.checkModelStatus(model);
@@ -783,7 +862,7 @@ export class ParakeetManager {
     };
   }
 
-  async deleteParakeetModel(modelName: string): Promise<Record<string, unknown>> {
+  async deleteParakeetModel(modelName: string): Promise<LocalModelActionResult> {
     const modelPath = this.getModelPath(modelName);
 
     if (fs.existsSync(modelPath)) {
@@ -803,7 +882,7 @@ export class ParakeetManager {
         return {
           model: modelName,
           deleted: false,
-          error: (error as Error).message,
+          error: error instanceof Error ? error.message : String(error),
           success: false,
         };
       }
@@ -812,7 +891,7 @@ export class ParakeetManager {
     return { model: modelName, deleted: false, error: "Model not found", success: false };
   }
 
-  async deleteAllParakeetModels(): Promise<Record<string, unknown>> {
+  async deleteAllParakeetModels(): Promise<LocalModelActionResult> {
     const modelsDir = this.getModelsDir();
     let totalFreed = 0;
     let deletedCount = 0;
@@ -833,7 +912,9 @@ export class ParakeetManager {
 
             fs.rmSync(dirPath, { recursive: true, force: true });
             deletedCount++;
-          } catch {}
+          } catch {
+            /* skip a model dir that cannot be removed */
+          }
         }
       }
 
@@ -844,14 +925,16 @@ export class ParakeetManager {
         freed_mb: Math.round(totalFreed / (1024 * 1024)),
       };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  async getDiagnostics(): Promise<Record<string, unknown>> {
-    const diagnostics: Record<string, unknown> & {
-      sherpaOnnx: { available: boolean; path: string | null };
-      models: string[];
+  async getDiagnostics(): Promise<DiagnosticsResult> {
+    // The manager reports a few extra environment fields alongside the wire
+    // DiagnosticsResult the renderer reads.
+    const diagnostics: DiagnosticsResult & {
+      resourcesPath: string | null;
+      isPackaged: boolean;
     } = {
       platform: process.platform,
       arch: process.arch,
@@ -875,13 +958,12 @@ export class ParakeetManager {
       if (fs.existsSync(modelsDir)) {
         const entries = fs.readdirSync(modelsDir, { withFileTypes: true });
         diagnostics.models = entries
-          .filter(
-            (e: { isDirectory(): boolean; name: string }) =>
-              e.isDirectory() && this.serverManager.isModelDownloaded(e.name)
-          )
-          .map((e: { name: string }) => e.name);
+          .filter((e) => e.isDirectory() && this.serverManager.isModelDownloaded(e.name))
+          .map((e) => e.name);
       }
-    } catch {}
+    } catch {
+      /* ignore errors reading the models dir */
+    }
 
     return diagnostics;
   }
@@ -891,4 +973,4 @@ export class ParakeetManager {
 // itself, while the TS graph imports the named export.
 module.exports = ParakeetManager;
 
-module.exports.ParakeetManager = ParakeetManager;
+Object.assign(module.exports, { ParakeetManager });

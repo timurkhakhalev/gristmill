@@ -1,12 +1,11 @@
-const path = require("path");
-
-const { app, utilityProcess, MessageChannelMain } = require("electron");
-
-const debugLogger = require("./debugLogger.js");
-
+import path from "path";
+import { app, utilityProcess, MessageChannelMain } from "electron";
+import type { MessagePortMain, UtilityProcess } from "electron";
+import debugLogger from "./debugLogger.js";
 import {
   parseOnnxWorkerReply,
   type OnnxWorkerMethod,
+  type OnnxWorkerPayloadByMethod,
   type OnnxWorkerReply,
   type OnnxWorkerResult,
 } from "../contracts/onnxWorker.js";
@@ -24,26 +23,6 @@ const SHUTDOWN_TIMEOUT_MS = 5000;
 // Forked via the asar-virtual path: Electron redirects the unpacked file read
 // while module resolution stays inside app.asar (onnxruntime-common is asar-only).
 const WORKER_SCRIPT = path.join(__dirname, "..", "workers", "onnxWorker.js");
-
-interface UtilityProcessChild {
-  pid?: number | undefined;
-  stderr: { on(event: string, listener: (chunk: Buffer) => void): unknown } | null;
-  stdout: { on(event: string, listener: (chunk: Buffer) => void): unknown } | null;
-  once(event: "spawn", listener: () => void): unknown;
-  once(event: "error", listener: (err: Error) => void): unknown;
-  once(event: "exit", listener: (code: number) => void): unknown;
-  removeListener(event: string, listener: (...args: never[]) => void): unknown;
-  on(event: "exit", listener: (code: number) => void): unknown;
-  postMessage(message: unknown, transferList?: unknown[]): unknown;
-  kill(): unknown;
-}
-
-interface MessagePort {
-  on(event: "message", listener: (event: { data: unknown }) => void): unknown;
-  start(): void;
-  close(): void;
-  postMessage(message: unknown, transferList?: unknown[]): unknown;
-}
 
 interface PendingEntry {
   resolve: (result: OnnxWorkerResult) => void;
@@ -66,8 +45,8 @@ export class WorkerOverloadedError extends Error {
 }
 
 export class OnnxWorkerClient {
-  child: UtilityProcessChild | null;
-  port: MessagePort | null;
+  child: UtilityProcess | null;
+  port: MessagePortMain | null;
   pending: Map<number, PendingEntry>;
   nextRequestId: number;
   crashCount: number;
@@ -112,7 +91,7 @@ export class OnnxWorkerClient {
         stdio: "pipe",
         env,
         execArgv: ["--max-old-space-size=512"],
-      }) as UtilityProcessChild;
+      });
 
       const forwardStderr = (chunk: Buffer) => {
         const text = chunk.toString();
@@ -131,9 +110,11 @@ export class OnnxWorkerClient {
           resolve();
         };
 
-        const onError = (err: Error) => {
+        // UtilityProcess's error event reports a fatal V8 error, not a Node
+        // Error; surface the diagnostic report as the rejection reason.
+        const onError = (type: string, location: string, report: string) => {
           child.removeListener("spawn", onSpawn);
-          reject(err);
+          reject(new Error(`onnx worker ${type} at ${location}: ${report}`));
         };
 
         child.once("spawn", onSpawn);
@@ -141,7 +122,7 @@ export class OnnxWorkerClient {
       });
 
       const { port1, port2 } = new MessageChannelMain();
-      port1.on("message", (event: { data: unknown }) => this._onMessage(event.data));
+      port1.on("message", (event) => this._onReply(parseOnnxWorkerReply(event.data)));
       port1.start();
 
       child.postMessage("init", [port2]);
@@ -149,7 +130,7 @@ export class OnnxWorkerClient {
       child.on("exit", (code: number) => this._onExit(code));
 
       this.child = child;
-      this.port = port1 as unknown as MessagePort;
+      this.port = port1;
       debugLogger.info("onnx worker spawned", { pid: child.pid });
     })();
 
@@ -160,11 +141,9 @@ export class OnnxWorkerClient {
     }
   }
 
-  _onMessage(raw: unknown): void {
+  _onReply(reply: OnnxWorkerReply | null): void {
     // Unknown or malformed replies are dropped before any pending entry is
     // touched; a late or forged reply must never settle someone's request.
-    const reply: OnnxWorkerReply | null = parseOnnxWorkerReply(raw);
-
     if (!reply) return;
 
     const entry = this.pending.get(reply.id);
@@ -237,10 +216,10 @@ export class OnnxWorkerClient {
     }
   }
 
-  async request(
-    method: OnnxWorkerMethod,
-    payload?: unknown,
-    transferList?: unknown[]
+  async request<M extends OnnxWorkerMethod>(
+    method: M,
+    payload: OnnxWorkerPayloadByMethod[M],
+    transferList?: MessagePortMain[]
   ): Promise<OnnxWorkerResult> {
     if (this.shuttingDown) {
       throw new WorkerCrashedError("worker shutting down");
@@ -255,13 +234,16 @@ export class OnnxWorkerClient {
     }
 
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
-      const oldestId = this.pending.keys().next().value as number | undefined;
-      const oldest = oldestId === undefined ? undefined : this.pending.get(oldestId);
+      const oldestId = this.pending.keys().next().value;
 
-      if (oldest) {
-        this.pending.delete(oldestId as number);
-        clearTimeout(oldest.timeout);
-        oldest.reject(new WorkerOverloadedError());
+      if (oldestId !== undefined) {
+        const oldest = this.pending.get(oldestId);
+
+        if (oldest) {
+          this.pending.delete(oldestId);
+          clearTimeout(oldest.timeout);
+          oldest.reject(new WorkerOverloadedError());
+        }
       }
     }
 
@@ -283,7 +265,7 @@ export class OnnxWorkerClient {
       } catch (err) {
         clearTimeout(timeout);
         this.pending.delete(id);
-        reject(err as Error);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
   }
@@ -327,10 +309,17 @@ export class OnnxWorkerClient {
 
 const instance = new OnnxWorkerClient();
 
+// Dual export: the shared singleton is the default/named export for the TS
+// graph, while module.exports stays the instance for legacy require callers.
+export default instance;
+
+export { instance as onnxWorkerClient };
+
 module.exports = instance;
 
-module.exports.OnnxWorkerClient = OnnxWorkerClient;
-
-module.exports.WorkerCrashedError = WorkerCrashedError;
-
-module.exports.WorkerOverloadedError = WorkerOverloadedError;
+Object.assign(module.exports, {
+  OnnxWorkerClient,
+  WorkerCrashedError,
+  WorkerOverloadedError,
+  onnxWorkerClient: instance,
+});

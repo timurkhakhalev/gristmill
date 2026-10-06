@@ -1,11 +1,53 @@
+// Retry boundary. `quality/no-unknown-parameters` is off for this file
+// (exact-file override): the retry strategies classify a value rejected from an
+// awaited call (genuinely unknown) into an HTTP-status or errno-code decision
+// before any field is read.
 import { RETRY_CONFIG } from "../config/constants.mts";
+
+// An error that carries an HTTP status; network faults arrive without one and
+// are treated as retryable. Providers may attach the status directly or on a
+// nested `.response` (SDK-style) object.
+export interface HttpStatusError {
+  status?: number;
+  response?: { status?: number };
+}
+
+// A file-system error's `code` (e.g. "EBUSY") is what the file retry strategy
+// matches. Errors and other values arrive here as unknown.
+interface CodedError {
+  code?: string;
+}
 
 export interface RetryOptions {
   maxRetries?: number;
   initialDelay?: number;
   maxDelay?: number;
   backoffMultiplier?: number;
-  shouldRetry?: (error: any) => boolean;
+  shouldRetry?: (error: unknown) => boolean;
+}
+
+// A retry decision function plus the delays it uses. `unknown` is the honest
+// input: these classify a value rejected from an awaited call.
+export interface RetryStrategy {
+  shouldRetry: (error: unknown) => boolean;
+  maxRetries?: number;
+  initialDelay?: number;
+}
+
+function hasStatus(error: unknown): error is HttpStatusError {
+  return typeof error === "object" && error !== null;
+}
+
+function hasCode(error: unknown): error is CodedError {
+  return typeof error === "object" && error !== null;
+}
+
+function isNumber(value: number | undefined): value is number {
+  return typeof value === "number";
+}
+
+function isString(value: string | undefined): value is string {
+  return typeof value === "string";
 }
 
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
@@ -17,7 +59,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
     shouldRetry = () => true,
   } = options;
 
-  let lastError: any;
+  let lastError: unknown;
   let delay = initialDelay;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -45,13 +87,13 @@ export function httpError(message: string, status: number): Error & { status: nu
 }
 
 // Specific retry strategy for API calls
-export function createApiRetryStrategy() {
+export function createApiRetryStrategy(): RetryStrategy {
   return {
-    shouldRetry: (error: any) => {
+    shouldRetry: (error: unknown) => {
       // No HTTP status means the request never got an answer (network drop, timeout).
-      const status = error?.status ?? error?.response?.status;
+      const status = hasStatus(error) ? (error.status ?? error.response?.status) : undefined;
 
-      if (typeof status !== "number") return true;
+      if (!isNumber(status)) return true;
 
       // Most 4xx are deterministic rejections. 408 is a request timeout and 429 is
       // a rate limit; both can clear on retry, as can 5xx server faults.
@@ -61,13 +103,14 @@ export function createApiRetryStrategy() {
 }
 
 // Specific retry strategy for file operations
-export function createFileRetryStrategy() {
+export function createFileRetryStrategy(): RetryStrategy {
   return {
-    shouldRetry: (error: any) => {
+    shouldRetry: (error: unknown) => {
       // Retry on temporary file system errors
       const retriableErrors = ["EBUSY", "ENOENT", "EPERM", "EAGAIN"];
+      const code = hasCode(error) ? error.code : undefined;
 
-      return retriableErrors.includes(error.code);
+      return isString(code) && retriableErrors.includes(code);
     },
     maxRetries: 2,
     initialDelay: 500,

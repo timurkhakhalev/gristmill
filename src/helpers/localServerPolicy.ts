@@ -10,11 +10,16 @@ export interface LocalServerNeedsInput {
   cleanupModel?: string | null;
 }
 
+export interface LocalServerNeeds {
+  cleanup: string;
+  stopServer: boolean;
+}
+
 export function resolveLocalServerNeeds({
   useCleanupModel,
   cleanupMode,
   cleanupModel,
-}: LocalServerNeedsInput): { cleanup: string; stopServer: boolean } {
+}: LocalServerNeedsInput): LocalServerNeeds {
   const cleanup = useCleanupModel && cleanupMode === "local" ? cleanupModel?.trim() || "" : "";
 
   return { cleanup, stopServer: !cleanup };

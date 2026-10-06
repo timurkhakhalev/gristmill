@@ -1,12 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
-
-const { app } = require("electron");
-
-const path = require("path");
-
-const fs = require("fs");
-
-const fsPromises = require("fs").promises;
+import { app } from "electron";
+import path from "path";
+import fs from "fs";
 
 /**
  * LlamaCppInstaller - Manages llama-server binary availability
@@ -50,7 +45,8 @@ export class LlamaCppInstaller {
 
   async ensureInstallDir(): Promise<void> {
     this.ensureInitialized();
-    await fsPromises.mkdir(this.installDir, { recursive: true });
+
+    if (this.installDir) await fs.promises.mkdir(this.installDir, { recursive: true });
   }
 
   getBinaryName(): string {
@@ -61,7 +57,11 @@ export class LlamaCppInstaller {
   getInstalledBinaryPath(): string {
     this.ensureInitialized();
 
-    return path.join(this.installDir as string, this.getBinaryName());
+    if (!this.installDir) {
+      throw new Error("LlamaCppInstaller install directory is not initialized");
+    }
+
+    return path.join(this.installDir, this.getBinaryName());
   }
 
   async isInstalled(): Promise<boolean> {
@@ -77,7 +77,7 @@ export class LlamaCppInstaller {
 
       // Then check for local installation
       const binaryPath = this.getInstalledBinaryPath();
-      await fsPromises.access(binaryPath, fs.constants.X_OK);
+      await fs.promises.access(binaryPath, fs.constants.X_OK);
       this.binPath = binaryPath;
 
       return true;
@@ -101,7 +101,8 @@ export class LlamaCppInstaller {
         });
 
         let output = "";
-        proc.stdout?.on("data", (data) => {
+
+        proc.stdout?.on("data", (data: Buffer) => {
           output += data.toString();
         });
 
@@ -150,7 +151,7 @@ export class LlamaCppInstaller {
     } catch (error) {
       return {
         success: false,
-        message: `Installation failed: ${(error as Error).message}`,
+        message: `Installation failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
@@ -158,14 +159,14 @@ export class LlamaCppInstaller {
   async uninstall(): Promise<{ success: boolean; message?: string }> {
     try {
       const binaryPath = this.getInstalledBinaryPath();
-      await fsPromises.unlink(binaryPath);
+      await fs.promises.unlink(binaryPath);
       this.binPath = null;
 
       return { success: true };
     } catch (error) {
       return {
         success: false,
-        message: `Uninstall failed: ${(error as Error).message}`,
+        message: `Uninstall failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }

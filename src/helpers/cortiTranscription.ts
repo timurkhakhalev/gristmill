@@ -1,13 +1,16 @@
-const { net } = require("electron");
+import { net } from "electron";
 
 import crypto from "crypto";
 
-const debugLogger = require("./debugLogger");
+import debugLogger from "./debugLogger.js";
 
 import { getCortiToken } from "./cortiAuth.js";
 
-interface CortiRequestOptions extends Record<string, unknown> {
+interface CortiRequestOptions {
   headers?: Record<string, string>;
+  method?: string;
+  body?: string | Buffer | Uint8Array;
+  signal?: AbortSignal;
 }
 
 async function request(
@@ -15,15 +18,19 @@ async function request(
   tenant: string,
   url: string,
   options: CortiRequestOptions = {}
-): Promise<{ ok: boolean; status: number; json<T = unknown>(): Promise<T> }> {
+): Promise<Response> {
+  // SAFETY: our option bag widens body beyond the DOM RequestInit union;
+  // net.fetch accepts ArrayBufferView bodies at runtime.
   const response = await net.fetch(url, {
     ...options,
+    body:
+      options.body === undefined ? undefined : (options.body as NonNullable<RequestInit["body"]>),
     headers: {
       Authorization: `Bearer ${token}`,
       "Tenant-Name": tenant,
       ...(options.headers || {}),
     },
-  } as RequestInit);
+  });
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
@@ -33,13 +40,15 @@ async function request(
   return response;
 }
 
-async function requestJson<T = unknown>(
+async function requestJson<T>(
   token: string,
   tenant: string,
   url: string,
   options?: CortiRequestOptions
 ): Promise<T> {
-  return (await request(token, tenant, url, options)).json<T>();
+  // SAFETY: this parses the JSON body into the caller-specified schema at the
+  // HTTP boundary; each call site passes the expected response shape.
+  return (await request(token, tenant, url, options)).json() as Promise<T>;
 }
 
 // The interaction cleanup in transcribeAudio's finally runs on its own
@@ -128,7 +137,7 @@ export async function transcribeAudio({
     }).catch((error) =>
       debugLogger.error(
         "Failed to delete Corti interaction",
-        { interactionId, error: error.message },
+        { interactionId, error: error instanceof Error ? error.message : String(error) },
         "transcription"
       )
     );

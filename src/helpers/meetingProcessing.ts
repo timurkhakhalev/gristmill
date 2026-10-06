@@ -41,7 +41,7 @@ import type {
 } from "../contracts/uploadTranscription.js";
 import { parseDeepgramFileResponse } from "./deepgramFileTranscription.js";
 import { parseElevenLabsFileResponse } from "./elevenLabsFileTranscription.js";
-import { parseGeminiFileResponse } from "./geminiFileTranscription.js";
+import { geminiInteractionSchema, parseGeminiFileResponse } from "./geminiFileTranscription.js";
 import { parseOpenAIFileResponse } from "./remoteTranscriptionIpcHandler.js";
 import {
   meetingTranscriptArtifactSchema,
@@ -73,6 +73,10 @@ import {
   type MeetingRecap,
 } from "./meetingSummarySections.js";
 
+// Worker facade: every public method here is an IPC/database entry point that
+// receives unknown JSON and immediately zod-parses it with its request schema
+// (override: no-unknown-parameters / no-unknown-returns). Catch handlers keep
+// `unknown` errors by language design.
 const AUTO_RETRY_LIMIT = 3;
 
 const RETRY_BASE_SECONDS = 5;
@@ -270,6 +274,12 @@ export interface MeetingProcessingWorkerDeps {
   ) => Promise<import("./meetingSummary.js").MeetingTextConversation>;
   getActionPrompt?: (translationKey: string) => string | null;
   mixerDeps?: MeetingAudioMixerDeps;
+}
+
+interface SourceTimeline {
+  timeline: MeetingRecordingDto;
+  epochs: MeetingRecordingEpochDto[];
+  intentionalIntervals: MeetingIntentionalInterval[];
 }
 
 interface MeetingLlmSourceSnapshot {
@@ -689,7 +699,8 @@ export class MeetingProcessingWorker {
     if (
       activeGate &&
       sameSources(activeGate) &&
-      (gateAfterStop || Date.parse(activeGate.retryAt as string) > this.now().getTime())
+      (gateAfterStop ||
+        (activeGate.retryAt !== null && Date.parse(activeGate.retryAt) > this.now().getTime()))
     ) {
       const result = this.getResult(activeGate);
       this.notify(activeGate);
@@ -699,7 +710,8 @@ export class MeetingProcessingWorker {
 
     if (
       activeGate &&
-      Date.parse(activeGate.retryAt as string) > this.now().getTime() &&
+      activeGate.retryAt !== null &&
+      Date.parse(activeGate.retryAt) > this.now().getTime() &&
       !gateAfterStop
     ) {
       throw new Error("Transcription starts after the end-of-meeting wait");
@@ -1053,6 +1065,7 @@ export class MeetingProcessingWorker {
     try {
       if ((this.deps.fileSize ?? ((p) => fs.statSync(p).size))(filePath) > 0) return;
     } catch (error) {
+      // SAFETY: fs.statSync rejects with Node errno errors; other causes rethrow.
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
 
@@ -1358,7 +1371,7 @@ export class MeetingProcessingWorker {
         for (const source of [mic, system]) {
           if (
             !source.success ||
-            typeof source.text !== "string" ||
+            source.text === undefined ||
             (source.text.trim() && !source.segments?.length)
           ) {
             throw new MeetingProcessingFailure(
@@ -1385,7 +1398,7 @@ export class MeetingProcessingWorker {
       }
     }
 
-    if (!result.success || typeof result.text !== "string") {
+    if (!result.success || result.text === undefined) {
       throw new MeetingProcessingFailure(
         result.code || "provider-response-invalid",
         "failed",
@@ -1792,7 +1805,9 @@ export class MeetingProcessingWorker {
       if (!parsed.success || parsed.data.taskStatus !== "pending") continue;
       const work = this.runSummaryAction({ runId: run.id, action: "tasks" });
       this.backgroundSummaryActions.set(run.id, work);
-      void work.finally(() => this.backgroundSummaryActions.delete(run.id));
+      // runSummaryAction attaches its own catch, so `work` never rejects; the
+      // extra handler keeps the background chain observed.
+      void work.finally(() => this.backgroundSummaryActions.delete(run.id)).catch(() => undefined);
     }
   }
 
@@ -1819,7 +1834,7 @@ export class MeetingProcessingWorker {
         throw new MeetingProcessingFailure("llm-source-snapshot-invalid", "failed");
       }
 
-      return parsed.data as MeetingLlmSourceSnapshot;
+      return parsed.data;
     }
 
     const note = this.deps.database.getNote(recording.noteId);
@@ -1925,12 +1940,11 @@ export class MeetingProcessingWorker {
 
     const unknownIds = [
       ...new Set(
-        snapshot.transcriptSegments
-          .filter(
-            (segment) =>
-              segment.speakerId && (!segment.speakerName || segment.speakerNameSource === "model")
-          )
-          .map((segment) => segment.speakerId as string)
+        snapshot.transcriptSegments.flatMap((segment) =>
+          segment.speakerId && (!segment.speakerName || segment.speakerNameSource === "model")
+            ? [segment.speakerId]
+            : []
+        )
       ),
     ];
 
@@ -2020,14 +2034,13 @@ export class MeetingProcessingWorker {
 
       const rejectedModelIds = [
         ...new Set(
-          snapshot.transcriptSegments
-            .filter(
-              (segment) =>
-                segment.speakerId &&
-                segment.speakerNameSource === "model" &&
-                !suggestedIds.has(segment.speakerId)
-            )
-            .map((segment) => segment.speakerId!)
+          snapshot.transcriptSegments.flatMap((segment) =>
+            segment.speakerId &&
+            segment.speakerNameSource === "model" &&
+            !suggestedIds.has(segment.speakerId)
+              ? [segment.speakerId]
+              : []
+          )
         ),
       ];
 
@@ -2056,7 +2069,9 @@ export class MeetingProcessingWorker {
                 suggestion.name.trim().normalize("NFC").toLowerCase()
           );
 
-          const emails = [...new Set(matches.map((person) => person.email!))];
+          const emails = [
+            ...new Set(matches.flatMap((person) => (person.email ? [person.email] : []))),
+          ];
 
           if (
             emails.length === 1 &&
@@ -2164,7 +2179,7 @@ export class MeetingProcessingWorker {
 
     if (
       failure.status === "cancelled" ||
-      ((error as Error)?.name === "AbortError" && this.isCapturing())
+      (error instanceof Error && error.name === "AbortError" && this.isCapturing())
     ) {
       this.pause(run, stage);
 
@@ -2234,11 +2249,7 @@ export class MeetingProcessingWorker {
     run: MeetingProcessingRunDto,
     recording: MeetingRecordingDto,
     requireAudio = false
-  ): {
-    timeline: MeetingRecordingDto;
-    epochs: MeetingRecordingEpochDto[];
-    intentionalIntervals: MeetingIntentionalInterval[];
-  } {
+  ): SourceTimeline {
     const sources = run.sourceRecordingIds.map((id) => this.deps.database.getMeetingRecording(id));
 
     if (
@@ -2252,6 +2263,7 @@ export class MeetingProcessingWorker {
       throw new MeetingProcessingFailure("audio-part-unavailable", "blocked");
     }
 
+    // SAFETY: the guard above rejected every null/false entry before this point.
     const parts = sources as MeetingRecordingDto[];
 
     if (requireAudio) {
@@ -2271,7 +2283,12 @@ export class MeetingProcessingWorker {
     for (const source of ["mic", "system"] as const) {
       const metadata = combined.recording.sourceMetadata[source];
       combined.recording.sourceMetadata[source] = {
-        ...(metadata && typeof metadata === "object" ? metadata : {}),
+        ...(z
+          .object({})
+          .loose()
+          .nullish()
+          .catch({})
+          .parse(metadata ?? null) ?? {}),
         intentionallyEmpty: parts.every((part) =>
           meetingSourceIntentionallyEmpty(
             part,
@@ -2287,7 +2304,7 @@ export class MeetingProcessingWorker {
       combined.partOffsets.map((part) => [part.recordingId, part.startFrame])
     );
 
-    const intentionalIntervals = (sources as MeetingRecordingDto[]).flatMap((part) => {
+    const intentionalIntervals = parts.flatMap((part) => {
       const offset = offsets.get(part.id) ?? 0;
 
       return this.deps.database.listMeetingIntentionalIntervals(part.id).map((interval) => ({
@@ -2356,6 +2373,7 @@ export class MeetingProcessingWorker {
     try {
       return readMeetingRunOutput(this.deps.database, this.deps.storage, run).result;
     } catch (error) {
+      // SAFETY: readMeetingRunOutput codes its own failures with a `code` field.
       if ((error as { code?: string }).code === "transcript-artifact-invalid") {
         throw new MeetingProcessingFailure("transcript-artifact-invalid", "failed");
       }
@@ -2547,7 +2565,7 @@ export class MeetingProcessingWorker {
       throw new MeetingProcessingFailure("meeting-summary-source-invalid", "failed");
     }
 
-    const snapshot = parsedSnapshot.data as MeetingLlmSourceSnapshot;
+    const snapshot = parsedSnapshot.data;
     const note = this.deps.database.getNote(recording.noteId);
     const transcript = this.readTranscript(sourceRunId);
     const artifactValue = this.deps.storage.readRunArtifact(run.id, "summary");
@@ -2842,11 +2860,11 @@ export class MeetingProcessingWorker {
 
     const future = this.deps.database
       .listAllMeetingProcessingRuns()
-      .filter(
-        (run) =>
-          run.status === "pending" && run.retryAt && Date.parse(run.retryAt) > this.now().getTime()
-      )
-      .map((run) => Date.parse(run.retryAt as string));
+      .flatMap((run) =>
+        run.status === "pending" && run.retryAt && Date.parse(run.retryAt) > this.now().getTime()
+          ? [Date.parse(run.retryAt)]
+          : []
+      );
 
     if (!future.length) return;
     const delay = Math.max(0, Math.min(...future) - this.now().getTime());
@@ -2988,7 +3006,7 @@ export function normalizeProviderResponse(
 
   if (provider === "openai") return parseOpenAIFileResponse(raw, diarize, !diarize);
 
-  return parseGeminiFileResponse(raw, diarize);
+  return parseGeminiFileResponse(geminiInteractionSchema.parse(raw), diarize);
 }
 
 class MeetingProcessingFailure extends Error {
@@ -3095,25 +3113,26 @@ function providerFailure(result: RemoteTranscriptionResult): MeetingProcessingFa
   return new MeetingProcessingFailure(code, "failed", result.error);
 }
 
-function normalizeLocalResponse(raw: unknown): RemoteTranscriptionResult {
-  if (!raw || typeof raw !== "object")
-    return {
-      success: false,
-      error: "Local transcription response is invalid",
-      code: "LOCAL_INVALID_RESPONSE",
-    };
-  const value = raw as Record<string, unknown>;
+const localResponseSchema = z
+  .looseObject({
+    success: z.boolean().optional(),
+    text: z.string().optional(),
+    error: z.string().optional(),
+    message: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .nullish()
+  .catch(null);
 
-  if (value.success !== true || typeof value.text !== "string") {
+// `raw: unknown` is the local-engine stdout boundary (override: no-unknown-parameters).
+function normalizeLocalResponse(raw: unknown): RemoteTranscriptionResult {
+  const value = localResponseSchema.parse(raw);
+
+  if (value?.success !== true || value.text === undefined) {
     return {
       success: false,
-      error:
-        typeof value.error === "string"
-          ? value.error
-          : typeof value.message === "string"
-            ? value.message
-            : "Local transcription failed",
-      code: typeof value.code === "string" ? value.code : "LOCAL_TRANSCRIPTION_FAILED",
+      error: value?.error ?? value?.message ?? "Local transcription failed",
+      code: value?.code ?? "LOCAL_TRANSCRIPTION_FAILED",
     };
   }
 
@@ -3176,6 +3195,8 @@ function isTransientFailure(error: MeetingProcessingFailure): boolean {
 
 function failureFromUnknown(value: unknown): MeetingProcessingFailure {
   const error = value instanceof Error ? value : new Error(String(value));
+  // SAFETY: providers attach optional code/status fields to plain Error
+  // objects; every access below tolerates their absence.
   const detail = error as Error & { code?: string; status?: number; statusCode?: number };
 
   if (error.name === "AbortError") {
@@ -3187,7 +3208,7 @@ function failureFromUnknown(value: unknown): MeetingProcessingFailure {
   if (status === 429)
     return new MeetingProcessingFailure("PROVIDER_RATE_LIMITED", "failed", error.message);
 
-  if ((typeof status === "number" && status >= 500) || error instanceof TypeError) {
+  if ((status !== undefined && status >= 500) || error instanceof TypeError) {
     return new MeetingProcessingFailure("TRANSIENT_NETWORK_ERROR", "failed", error.message);
   }
 
@@ -3265,18 +3286,23 @@ function validateSpeakerSuggestions(
   suggestions: Array<{ speakerId: string; name: string }>,
   unknownIds: string[]
 ): void {
-  if (!Array.isArray(suggestions))
-    throw new MeetingProcessingFailure("speaker-name-json-invalid", "failed");
+  // Model output reaches this list through a parse at the caller; the schema
+  // re-check keeps junk entries out of the correction path.
+  const checked = z
+    .array(z.object({ speakerId: z.string(), name: z.string() }).loose())
+    .catch([])
+    .parse(suggestions);
+
   const allowed = new Set(unknownIds);
   const seen = new Set<string>();
 
-  for (const suggestion of suggestions) {
+  if (checked.length !== suggestions.length)
+    throw new MeetingProcessingFailure("speaker-name-json-invalid", "failed");
+
+  for (const suggestion of checked) {
     if (
-      !suggestion ||
-      typeof suggestion.speakerId !== "string" ||
       !allowed.has(suggestion.speakerId) ||
       seen.has(suggestion.speakerId) ||
-      typeof suggestion.name !== "string" ||
       !suggestion.name.trim()
     )
       throw new MeetingProcessingFailure("speaker-name-json-invalid", "failed");
@@ -3288,11 +3314,10 @@ function hashText(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+const codedShape = z.looseObject({ code: z.string().optional() }).nullish().catch(null);
+
 function errorCodeOf(value: unknown): string {
-  const code =
-    value && typeof value === "object" && "code" in value && typeof value.code === "string"
-      ? value.code
-      : "speaker-name-failed";
+  const code = codedShape.parse(value)?.code ?? "speaker-name-failed";
 
   return code
     .toLowerCase()
@@ -3304,10 +3329,7 @@ function actionErrorCode(value: unknown): string {
   if (value instanceof Error && value.name === "AbortError")
     return "meeting-summary-task-interrupted";
 
-  const code =
-    value && typeof value === "object" && "code" in value && typeof value.code === "string"
-      ? value.code
-      : "meeting-summary-action-failed";
+  const code = codedShape.parse(value)?.code ?? "meeting-summary-action-failed";
 
   return code
     .toLowerCase()

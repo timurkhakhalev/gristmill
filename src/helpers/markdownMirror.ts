@@ -1,10 +1,8 @@
-const fs = require("fs");
-
-const path = require("path");
-
-const crypto = require("crypto");
-
-const debugLogger = require("./debugLogger");
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import debugLogger from "./debugLogger.js";
+import { formatMd, type TranscriptExportSegment } from "./transcriptFormatter.js";
 
 const ENCODED_FOLDER_PREFIX = "__ow-";
 
@@ -44,7 +42,7 @@ export class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to init markdown mirror",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "note-files"
       );
       throw err;
@@ -55,7 +53,7 @@ export class MarkdownMirror {
     return this._basePath;
   }
 
-  _safeFolderName(folderName: unknown): string {
+  _safeFolderName(folderName: string | null | undefined): string {
     const raw = String(folderName || "Personal");
 
     const requiresEncoding =
@@ -86,16 +84,18 @@ export class MarkdownMirror {
     );
   }
 
-  _folderCandidatePath(folderName: unknown): string | null {
+  _folderCandidatePath(folderName: string | null | undefined): string | null {
     if (!this._baseRealPath) return null;
 
     return path.join(this._baseRealPath, this._safeFolderName(folderName));
   }
 
   _displayPath(canonicalPath: string): string {
-    const relative = path.relative(this._baseRealPath, canonicalPath);
+    // Callers only reach here after init(); empty strings keep types honest
+    // for the uninitialized case that can't occur on these paths.
+    const relative = path.relative(this._baseRealPath ?? "", canonicalPath);
 
-    return path.join(this._basePath, relative);
+    return path.join(this._basePath ?? "", relative);
   }
 
   _resolveExistingFolderPath(candidatePath: string): string {
@@ -115,7 +115,7 @@ export class MarkdownMirror {
   }
 
   _resolveFolderPath(
-    folderName: unknown,
+    folderName: string | null | undefined,
     { create = false }: { create?: boolean } = {}
   ): string | null {
     const candidatePath = this._folderCandidatePath(folderName);
@@ -208,15 +208,19 @@ export class MarkdownMirror {
 
       for (const existing of glob) {
         if (existing !== newFilePath) {
+          // Stale-file cleanup is best-effort: a locked file must not fail
+          // the write that just succeeded.
           try {
             fs.unlinkSync(existing);
-          } catch {}
+          } catch {
+            /* best-effort */
+          }
         }
       }
     } catch (err) {
       debugLogger.error(
         "Failed to write note file",
-        { noteId: note.id, error: (err as Error).message },
+        { noteId: note.id, error: err instanceof Error ? err.message : String(err) },
         "note-files"
       );
       throw err;
@@ -231,7 +235,10 @@ export class MarkdownMirror {
     if (!this._baseRealPath) throw new Error("Markdown mirror is not initialized");
 
     try {
-      const segments = JSON.parse(note.transcript || "[]");
+      // SAFETY: segments are the transcription pipeline's JSON array; the
+      // formatter treats missing optional fields as absent, so this cast is
+      // the contract.
+      const segments = JSON.parse(note.transcript || "[]") as TranscriptExportSegment[];
 
       if (!segments.length) {
         for (const existing of this._globTranscriptFiles(note.id)) fs.unlinkSync(existing);
@@ -250,20 +257,22 @@ export class MarkdownMirror {
 
       const stale = this._globTranscriptFiles(note.id);
 
-      const { formatMd } = require("./transcriptFormatter");
       fs.writeFileSync(newFilePath, formatMd(note, segments, speakerMappings || {}), "utf-8");
 
       for (const existing of stale) {
         if (existing !== newFilePath) {
+          // Same best-effort isolation as writeNote.
           try {
             fs.unlinkSync(existing);
-          } catch {}
+          } catch {
+            /* best-effort */
+          }
         }
       }
     } catch (err) {
       debugLogger.error(
         "Failed to write transcript file",
-        { noteId: note.id, error: (err as Error).message },
+        { noteId: note.id, error: err instanceof Error ? err.message : String(err) },
         "note-files"
       );
       throw err;
@@ -285,7 +294,7 @@ export class MarkdownMirror {
         } catch (err) {
           debugLogger.error(
             "Failed to delete note file",
-            { noteId, file: f, error: (err as Error).message },
+            { noteId, file: f, error: err instanceof Error ? err.message : String(err) },
             "note-files"
           );
         }
@@ -293,7 +302,7 @@ export class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to delete note file",
-        { noteId, error: (err as Error).message },
+        { noteId, error: err instanceof Error ? err.message : String(err) },
         "note-files"
       );
     }
@@ -307,7 +316,7 @@ export class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to ensure folder",
-        { folderName, error: (err as Error).message },
+        { folderName, error: err instanceof Error ? err.message : String(err) },
         "note-files"
       );
     }
@@ -323,7 +332,7 @@ export class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to delete folder",
-        { folderName, error: (err as Error).message },
+        { folderName, error: err instanceof Error ? err.message : String(err) },
         "note-files"
       );
     }
@@ -349,7 +358,7 @@ export class MarkdownMirror {
     } catch (err) {
       debugLogger.error(
         "Failed to rebuild all note files",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "note-files"
       );
       throw err;
@@ -409,6 +418,8 @@ export class MarkdownMirror {
         if (!dir.isDirectory() || dir.isSymbolicLink()) continue;
         let dirPath;
 
+        // A folder that fails re-validation (raced delete, symlink swap) just
+        // drops out of the glob.
         try {
           dirPath = this._resolveExistingFolderPath(path.join(this._baseRealPath, dir.name));
         } catch {
@@ -429,7 +440,9 @@ export class MarkdownMirror {
           }
         }
       }
-    } catch {}
+    } catch {
+      /* unreadable base directory globs to no files */
+    }
 
     return results;
   }
@@ -446,6 +459,8 @@ export class MarkdownMirror {
         if (!dir.isDirectory() || dir.isSymbolicLink()) continue;
         let dirPath;
 
+        // A folder that fails re-validation (raced delete, symlink swap) just
+        // drops out of the glob.
         try {
           dirPath = this._resolveExistingFolderPath(path.join(this._baseRealPath, dir.name));
         } catch {
@@ -461,7 +476,9 @@ export class MarkdownMirror {
           try {
             const stats = fs.lstatSync(filePath);
             isRegularFile = stats.isFile() && !stats.isSymbolicLink();
-          } catch {}
+          } catch {
+            /* vanished mid-scan; skip */
+          }
 
           if (
             isRegularFile &&
@@ -473,7 +490,9 @@ export class MarkdownMirror {
           }
         }
       }
-    } catch {}
+    } catch {
+      /* unreadable base directory globs to no files */
+    }
 
     return results;
   }

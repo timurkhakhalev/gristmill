@@ -78,6 +78,21 @@ test('copied consumer enforces policy and supports narrow exceptions', () => {
     }
 
     assert.equal(run('oxlint', ['sample.ts']).status, 0)
+
+    // The bundle config carries its own ignore patterns. An excluded path is
+    // skipped, which oxfmt reports as a failed run: "all matched files may have
+    // been excluded". The paired in-scope file is formatted. Comparing the two
+    // proves the skip is a scope decision and not an already-formatted file.
+    mkdirSync(join(consumer, 'coverage'), { recursive: true })
+    const unformatted = 'export const value = {a:1,   b:2}\n'
+    writeFileSync(join(consumer, 'coverage/excluded.ts'), unformatted)
+    writeFileSync(join(consumer, 'formatted.ts'), unformatted)
+    assert.equal(run('oxfmt', ['coverage/excluded.ts', '--write']).status, 2)
+    assert.equal(readFileSync(join(consumer, 'coverage/excluded.ts'), 'utf8'), unformatted)
+    assert.equal(run('oxfmt', ['formatted.ts', '--write']).status, 0)
+    assert.notEqual(readFileSync(join(consumer, 'formatted.ts'), 'utf8'), unformatted)
+    assert.equal(run('oxfmt', ['coverage/excluded.ts', '--check']).status, 2)
+
     mkdirSync(join(consumer, 'tools/quality'), { recursive: true })
     cpSync(join(root, 'plugin'), join(consumer, 'tools/quality/plugin'), { recursive: true })
     cpSync(join(root, '.oxlintrc.json'), join(consumer, 'tools/quality/.oxlintrc.json'))

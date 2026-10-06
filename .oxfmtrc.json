@@ -19,6 +19,8 @@
     "src/dist/**",
     "build/**",
     "**/*.min.js",
-    "package-lock.json"
+    "package-lock.json",
+    "test/scripts/type-probes/*-0?.ts",
+    "test/**"
   ]
 }

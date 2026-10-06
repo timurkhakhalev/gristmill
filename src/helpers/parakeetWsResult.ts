@@ -4,18 +4,21 @@ import { z } from "zod";
 // offline mode sends one JSON or plain-text result, online mode streams
 // per-segment JSON frames that the accumulator folds latest-wins per segment.
 // The frames are untrusted external input, so each is validated through a
-// tolerant schema before any field is read. A text or segment of a non-scalar
-// type degrades to absent, matching the previous String() coercion for the
-// scalar cases the server actually sends.
-const scalarText = z.union([z.string(), z.number(), z.boolean()]);
-
+// tolerant schema before any field is read.
+//
+// Offline `text` is consumed only when it is a JSON string; a non-string text
+// leaves the whole raw frame as the result (the pre-existing fallback). Online
+// `text`/`segment` accept any JSON scalar and are stringified, so numeric and
+// boolean fields still yield text while non-scalar fields degrade to absent.
 const onlineFrameSchema = z.looseObject({
-  text: scalarText.optional(),
+  text: z.union([z.string(), z.number(), z.boolean()]).optional(),
   is_final: z.unknown().optional(),
   segment: z.union([z.string(), z.number()]).optional(),
 });
 
 type OnlineFrame = z.infer<typeof onlineFrameSchema>;
+
+const offlineResultSchema = z.looseObject({ text: z.string() });
 
 // SAFETY: JSON.parse returns unknown; the schema above is the parse that
 // narrows it to the frame shape, and the caller branches on success.
@@ -39,13 +42,17 @@ function frameText(frame: OnlineFrame): string {
 
 export function parseOfflineMessage(message: string | null | undefined): string {
   const text = (message ?? "").trim();
-  const parsed = parseJson(text);
+  let parsed: unknown;
 
-  if (!("frame" in parsed)) return text;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return text;
+  }
 
-  const parsedText = parsed.frame.text;
+  const result = offlineResultSchema.safeParse(parsed);
 
-  return parsedText === undefined ? text : String(parsedText).trim();
+  return result.success ? result.data.text.trim() : text;
 }
 
 // Latest-wins per finalized segment id (the server refines a segment before its

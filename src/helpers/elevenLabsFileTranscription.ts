@@ -1,12 +1,31 @@
+import { z } from "zod";
 import { formatTimestamp } from "./speakerMerge.js";
 import type { RemoteTranscriptionResult } from "../contracts/uploadTranscription.js";
 
 export const ELEVENLABS_TRANSCRIPTION_URL = new URL("https://api.elevenlabs.io/v1/speech-to-text");
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-}
+const elevenLabsWordSchema = z
+  .looseObject({
+    text: z.string().optional(),
+    type: z.string().optional(),
+    start: z.number().optional(),
+    end: z.number().optional(),
+    speaker_id: z.string().optional(),
+  })
+  .catch({});
 
+const elevenLabsResponseSchema = z
+  .looseObject({
+    text: z.string().optional(),
+    // A non-array words payload is handled below via the same
+    // "no speaker data" branch the previous Array.isArray check produced.
+    words: z.array(elevenLabsWordSchema).catch([]).optional(),
+  })
+  .catch({});
+
+// ponytail: the field bag stays Record<string, string> because the package-3
+// transport appends it to a form body verbatim; the open-dictionary lint rule
+// is overridden for this exact seam (override: no-known-value-widening).
 export function elevenLabsFields(
   model: string,
   language: string | undefined,
@@ -25,12 +44,15 @@ export function elevenLabsFields(
 }
 
 export function parseElevenLabsFileResponse(
+  // `raw: unknown` is kept because the IPC caller (package-3 transport) hands
+  // over JSON.parse output typed unknown; this function IS the parse boundary
+  // (override: no-unknown-parameters).
   raw: unknown,
   diarize: boolean
 ): RemoteTranscriptionResult {
-  const response = record(raw);
+  const response = elevenLabsResponseSchema.parse(raw);
 
-  if (typeof response?.text !== "string") {
+  if (response.text === undefined) {
     return {
       success: false,
       error: "ElevenLabs returned no transcript",
@@ -40,7 +62,7 @@ export function parseElevenLabsFileResponse(
 
   if (!response.text.trim()) return { success: true, text: response.text };
 
-  if (!Array.isArray(response.words)) {
+  if (response.words === undefined) {
     return diarize
       ? {
           success: false,
@@ -52,10 +74,8 @@ export function parseElevenLabsFileResponse(
 
   const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
 
-  for (const value of response.words) {
-    const word = record(value);
-
-    if (!word || typeof word.text !== "string" || typeof word.type !== "string") {
+  for (const word of response.words) {
+    if (word.text === undefined || word.type === undefined) {
       return {
         success: false,
         error: "ElevenLabs returned invalid word data",
@@ -79,10 +99,10 @@ export function parseElevenLabsFileResponse(
     }
 
     if (
-      typeof word.start !== "number" ||
+      word.start === undefined ||
       !Number.isFinite(word.start) ||
       word.start < 0 ||
-      typeof word.end !== "number" ||
+      word.end === undefined ||
       !Number.isFinite(word.end) ||
       word.end < word.start
     ) {
@@ -93,15 +113,20 @@ export function parseElevenLabsFileResponse(
       };
     }
 
-    if (diarize && (typeof word.speaker_id !== "string" || !word.speaker_id)) {
-      return {
-        success: false,
-        error: "ElevenLabs returned no speaker data",
-        code: "ELEVENLABS_DIARIZATION_MISSING",
-      };
+    let speakerId = "";
+
+    if (diarize) {
+      if (!word.speaker_id) {
+        return {
+          success: false,
+          error: "ElevenLabs returned no speaker data",
+          code: "ELEVENLABS_DIARIZATION_MISSING",
+        };
+      }
+
+      speakerId = word.speaker_id;
     }
 
-    const speakerId = diarize ? (word.speaker_id as string) : "";
     const speakerNumber = /^speaker_(\d+)$/.exec(speakerId);
 
     const speaker = diarize

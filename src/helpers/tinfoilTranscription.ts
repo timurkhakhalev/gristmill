@@ -1,9 +1,15 @@
-const debugLogger = require("./debugLogger");
+import debugLogger from "./debugLogger.js";
 
 import modelRegistryData from "../models/modelRegistryData.json";
+import { z } from "zod";
 import { tinfoilSecureFetch } from "./tinfoilSecureClient.js";
 
 const TINFOIL_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
+
+const tinfoilTranscriptionResponseSchema = z
+  .object({ text: z.string().optional() })
+  .nullish()
+  .catch(null);
 
 // "Voxtral" is one picker choice but two Tinfoil models: the realtime one streams
 // over /v1/realtime; this batch model handles every non-streaming path.
@@ -45,6 +51,7 @@ export async function transcribeWithTinfoil({
   signal,
 }: TinfoilTranscriptionRequest): Promise<{ text: string; model: string }> {
   if (!apiKey?.trim()) {
+    // SAFETY: the assigned literal satisfies CodedTranscriptionError's fields.
     const error = Object.assign(
       new Error("Tinfoil API key not configured. Add your key in Settings."),
       { code: "API_KEY_MISSING" }
@@ -76,6 +83,7 @@ export async function transcribeWithTinfoil({
   });
 
   if (response.status === 401) {
+    // SAFETY: the assigned literal satisfies CodedTranscriptionError's fields.
     throw Object.assign(new Error("Invalid Tinfoil API key. Check your key in Settings."), {
       code: "INVALID_KEY",
     }) as CodedTranscriptionError;
@@ -84,9 +92,13 @@ export async function transcribeWithTinfoil({
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
 
+    // SAFETY: fields are assigned immediately below; no extra properties needed.
     const error = Object.assign(
       new Error(`Tinfoil API Error: ${response.status} ${errorText}`.trim()),
-      {} as Record<string, unknown>
+      {
+        code: undefined,
+        messageKey: undefined,
+      }
     ) as CodedTranscriptionError;
 
     if (response.status === 429) {
@@ -99,7 +111,11 @@ export async function transcribeWithTinfoil({
     throw error;
   }
 
-  const data = (await response.json()) as { text?: string } | null;
+  // SAFETY: the provider payload is untyped; parse the one field this path uses.
+  const data = await response
+    .json()
+    .catch(() => null)
+    .then(tinfoilTranscriptionResponseSchema.parse);
 
-  return { text: data?.text || "", model };
+  return { text: data?.text ?? "", model };
 }

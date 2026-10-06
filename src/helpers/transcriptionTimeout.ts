@@ -17,7 +17,8 @@ export function computeTranscriptionTimeoutMs(
   estimatedDurationSeconds: number | null | undefined
 ): number {
   if (
-    typeof estimatedDurationSeconds !== "number" ||
+    estimatedDurationSeconds === null ||
+    estimatedDurationSeconds === undefined ||
     !Number.isFinite(estimatedDurationSeconds) ||
     estimatedDurationSeconds <= 0
   ) {

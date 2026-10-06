@@ -152,10 +152,16 @@ function getHeadings(markdown: string): MarkdownHeading[] {
   const raw: Array<{ name: string; start: number; contentStart: number }> = [];
 
   for (const match of markdown.matchAll(/^## ([^\r\n]+)[ \t]*$/gm)) {
+    // SAFETY: the regex has a capture group and is unanchored at the start,
+    // so every matchAll result carries the group and a match index.
+    const name = match[1]?.trim();
+    const start = match.index;
+
+    if (name === undefined || start === undefined) continue;
     raw.push({
-      name: match[1].trim(),
-      start: match.index!,
-      contentStart: match.index! + match[0].length,
+      name,
+      start,
+      contentStart: start + match[0].length,
     });
   }
 

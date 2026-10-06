@@ -1,5 +1,52 @@
+import { z } from "zod";
 import { formatTimestamp } from "./speakerMerge.js";
 import type { RemoteTranscriptionResult } from "../contracts/uploadTranscription.js";
+
+const deepgramAlternativeSchema = z.looseObject({ transcript: z.string().optional() }).catch({});
+
+const deepgramChannelSchema = z
+  .looseObject({ alternatives: z.array(deepgramAlternativeSchema).optional() })
+  .catch({});
+
+const deepgramWordSchema = z
+  .looseObject({
+    word: z.string().optional(),
+    punctuated_word: z.string().optional(),
+    speaker: z.number().optional(),
+    start: z.number().optional(),
+    end: z.number().optional(),
+  })
+  .catch({});
+
+const deepgramUtteranceSchema = z
+  .looseObject({
+    transcript: z.string().optional(),
+    start: z.number().optional(),
+    end: z.number().optional(),
+    channel: z.number().optional(),
+    speaker: z.number().optional(),
+    // A junk words payload degrades to "no words", exactly like the previous
+    // record()-based reader treated a non-array words field.
+    words: z.array(deepgramWordSchema).catch([]).optional(),
+  })
+  .catch({});
+
+export const deepgramProviderResponseSchema = z
+  .looseObject({
+    results: z
+      .looseObject({
+        channels: z.array(deepgramChannelSchema).optional(),
+        utterances: z.array(deepgramUtteranceSchema).optional(),
+      })
+      .optional(),
+  })
+  .catch({});
+
+// Tolerant by construction: the schema's catch fallbacks mirror the previous
+// record()-based reader, so any junk payload still parses. `raw: unknown` is
+// kept because both IPC callers (package-3 transport) hand over JSON.parse
+// output typed unknown; this function IS the parse boundary
+// (override: no-unknown-parameters).
 
 export function deepgramFileUrl(
   model: string,
@@ -22,20 +69,16 @@ export function deepgramFileUrl(
   return url;
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-}
-
 export function parseDeepgramFileResponse(
   raw: unknown,
   diarize: boolean,
   multichannel = false,
   audioDurationSeconds?: number
 ): RemoteTranscriptionResult {
-  const results = record(raw)?.results;
-  const channels = record(results)?.channels;
+  const results = deepgramProviderResponseSchema.parse(raw).results;
+  const channels = results?.channels;
 
-  if (multichannel && (!Array.isArray(channels) || channels.length !== 2)) {
+  if (multichannel && channels?.length !== 2) {
     return {
       success: false,
       code: "DEEPGRAM_CHANNELS_MISSING",
@@ -43,13 +86,11 @@ export function parseDeepgramFileResponse(
     };
   }
 
-  const channelTranscripts = (Array.isArray(channels) ? channels : []).map((channel) => {
-    const alternatives = record(channel)?.alternatives;
+  const channelTranscripts = (channels ?? []).map(
+    (channel) => channel.alternatives?.[0]?.transcript
+  );
 
-    return Array.isArray(alternatives) ? record(alternatives[0])?.transcript : undefined;
-  });
-
-  if (multichannel && channelTranscripts.some((text) => typeof text !== "string")) {
+  if (multichannel && channelTranscripts.some((text) => text === undefined)) {
     return {
       success: false,
       code: "DEEPGRAM_INVALID_RESPONSE",
@@ -59,7 +100,7 @@ export function parseDeepgramFileResponse(
 
   const transcript = multichannel ? channelTranscripts.join("\n") : channelTranscripts[0];
 
-  if (typeof transcript !== "string") {
+  if (transcript === undefined) {
     return {
       success: false,
       error: "Deepgram returned no transcript",
@@ -67,9 +108,9 @@ export function parseDeepgramFileResponse(
     };
   }
 
-  const utterances = record(results)?.utterances;
+  const utterances = results?.utterances;
 
-  if (!Array.isArray(utterances)) {
+  if (utterances === undefined) {
     return diarize && transcript.trim()
       ? {
           success: false,
@@ -81,22 +122,35 @@ export function parseDeepgramFileResponse(
 
   const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
 
-  for (const value of utterances) {
-    const item = record(value);
-    const words = diarize && Array.isArray(item?.words) && item.words.length ? item.words : null;
+  for (const item of utterances) {
+    const words = diarize && item.words?.length ? item.words : null;
+
+    let itemSpeaker: number | undefined;
+
+    if (diarize && !words) {
+      const speaker = item.speaker;
+
+      if (speaker === undefined || !Number.isInteger(speaker) || speaker < 0) {
+        return {
+          success: false,
+          error: "Deepgram returned invalid speaker or timing data",
+          code: "DEEPGRAM_INVALID_RESPONSE",
+        };
+      }
+
+      itemSpeaker = speaker;
+    }
 
     if (
-      !item ||
       (multichannel && item.channel !== 0 && item.channel !== 1) ||
-      typeof item.transcript !== "string" ||
-      typeof item.start !== "number" ||
+      item.transcript === undefined ||
+      item.start === undefined ||
       !Number.isFinite(item.start) ||
-      typeof item.end !== "number" ||
+      item.end === undefined ||
       !Number.isFinite(item.end) ||
       item.start < 0 ||
       item.end < item.start ||
-      (audioDurationSeconds !== undefined && item.start > audioDurationSeconds) ||
-      (diarize && !words && (!Number.isInteger(item.speaker) || (item.speaker as number) < 0))
+      (audioDurationSeconds !== undefined && item.start > audioDurationSeconds)
     ) {
       return {
         success: false,
@@ -115,20 +169,19 @@ export function parseDeepgramFileResponse(
     if (words) {
       let turn: (typeof segments)[number] | undefined;
 
-      for (const value of words) {
-        const word = record(value);
-        const text = word?.punctuated_word ?? word?.word;
+      for (const word of words) {
+        const text = word.punctuated_word ?? word.word;
 
         if (
-          !word ||
-          typeof text !== "string" ||
+          text === undefined ||
           !text.trim() ||
+          word.speaker === undefined ||
           !Number.isInteger(word.speaker) ||
-          (word.speaker as number) < 0 ||
-          typeof word.start !== "number" ||
+          word.speaker < 0 ||
+          word.start === undefined ||
           !Number.isFinite(word.start) ||
           word.start < 0 ||
-          typeof word.end !== "number" ||
+          word.end === undefined ||
           !Number.isFinite(word.end) ||
           word.end < word.start ||
           (audioDurationSeconds !== undefined && word.start > audioDurationSeconds)
@@ -140,7 +193,7 @@ export function parseDeepgramFileResponse(
           };
         }
 
-        const speaker = speakerLabel(word.speaker as number);
+        const speaker = speakerLabel(word.speaker);
 
         const end =
           audioDurationSeconds === undefined ? word.end : Math.min(word.end, audioDurationSeconds);
@@ -159,7 +212,7 @@ export function parseDeepgramFileResponse(
     }
 
     segments.push({
-      ...(diarize ? { speaker: speakerLabel(item.speaker as number) } : {}),
+      ...(itemSpeaker !== undefined ? { speaker: speakerLabel(itemSpeaker) } : {}),
       text: item.transcript,
       start: item.start,
       end: audioDurationSeconds === undefined ? item.end : Math.min(item.end, audioDurationSeconds),
@@ -178,9 +231,7 @@ export function parseDeepgramFileResponse(
     multichannel &&
     channelTranscripts.some(
       (text, channel) =>
-        typeof text === "string" &&
-        text.trim() &&
-        !utterances.some((value) => record(value)?.channel === channel)
+        text !== undefined && text.trim() && !utterances.some((value) => value.channel === channel)
     )
   ) {
     return {

@@ -1,4 +1,4 @@
-const modelRegistryData = require("../models/modelRegistryData.json");
+import modelRegistryData from "../models/modelRegistryData.json";
 
 import { getModelType } from "./parakeetModelInfo.js";
 

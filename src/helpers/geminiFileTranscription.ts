@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import { createReadStream } from "fs";
 import { basename } from "path";
+import { z } from "zod";
 import { createAbortError } from "./abortError.js";
 import { getFFmpegPath, parseFfmpegDuration } from "./ffmpegUtils.js";
 import { formatTimestamp } from "./speakerMerge.js";
@@ -14,7 +15,26 @@ const INTERACTIONS_URL = `${API_ROOT}/v1beta/interactions`;
 
 export const GEMINI_TRANSCRIBE_MAX_SECONDS = 30 * 60;
 
-type FetchResponse = Pick<Response, "ok" | "status" | "headers" | "json" | "text">;
+// Tolerate-or-drop views of Gemini payloads: unknown fields survive, malformed
+// nodes collapse so every consumer keeps its previous accept/reject outcomes.
+const geminiRecordSchema = z.looseObject({}).nullish().catch(undefined);
+
+type GeminiRecord = z.infer<typeof geminiRecordSchema>;
+
+const geminiTextSchema = z.string().nullish().catch(undefined);
+
+const geminiFileSchema = z
+  .looseObject({
+    name: geminiTextSchema,
+    uri: geminiTextSchema,
+    state: geminiTextSchema,
+  })
+  .nullish()
+  .catch(undefined);
+
+type GeminiFileRecord = z.infer<typeof geminiFileSchema>;
+
+type FetchResponse = Pick<Response, "ok" | "status" | "headers" | "text" | "json">;
 
 export interface GeminiFileDeps {
   fetch: (url: string, init: RequestInit) => Promise<FetchResponse>;
@@ -32,12 +52,43 @@ interface GeminiFileRequest {
   apiKey: string;
   diarize: boolean;
   signal?: AbortSignal;
-  onRawResponse?: (response: unknown) => Promise<void>;
+  onRawResponse?: (response: GeminiRecord) => Promise<void>;
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-}
+// The word-annotation fields stay tolerant: a malformed node yields undefined
+// and the loop below rejects it exactly like the old hand-written guards did.
+const geminiWordSchema = z
+  .looseObject({
+    type: geminiTextSchema,
+    text: geminiTextSchema,
+    speaker: geminiTextSchema,
+    start_offset: geminiTextSchema,
+    end_offset: geminiTextSchema,
+  })
+  .nullish()
+  .catch(undefined);
+
+type GeminiWord = z.infer<typeof geminiWordSchema>;
+
+const geminiContentSchema = z
+  .looseObject({
+    type: geminiTextSchema,
+    text: geminiTextSchema,
+    annotations: z.array(z.unknown()).nullish().catch(null),
+  })
+  .nullish()
+  .catch(undefined);
+
+export const geminiInteractionSchema = z
+  .looseObject({
+    status: geminiTextSchema,
+    output_text: geminiTextSchema,
+    steps: z.array(z.unknown()).nullish().catch(null),
+  })
+  .nullish()
+  .catch(undefined);
+
+type GeminiInteraction = z.infer<typeof geminiInteractionSchema>;
 
 function mimeType(value: string): string {
   if (value === "audio/mp4") return "audio/m4a";
@@ -59,48 +110,70 @@ function apiError(status: number, body: string): Error {
   });
 }
 
-async function checkedJson(response: FetchResponse): Promise<unknown> {
+async function checkedJson(response: FetchResponse): Promise<GeminiInteraction> {
   if (!response.ok) throw apiError(response.status, await response.text());
 
-  return response.json();
+  const parsed: unknown = await response.json();
+
+  return geminiInteractionSchema.parse(parsed);
 }
 
-function parseOffset(value: unknown): number | null {
-  if (typeof value !== "string" || !/^\d+(?:\.\d+)?s$/.test(value)) return null;
-  const seconds = Number(value.slice(0, -1));
+// Gemini documents word offsets like "0.500s"; anything else drops the word.
+const geminiOffsetSchema = z
+  .string()
+  .nullish()
+  .catch(undefined)
+  .transform((value): number | null => {
+    if (value === undefined || value === null || !/^\d+(?:\.\d+)?s$/.test(value)) return null;
+    const seconds = Number(value.slice(0, -1));
 
-  return Number.isFinite(seconds) ? seconds : null;
+    return Number.isFinite(seconds) ? seconds : null;
+  });
+
+function parseOffset(value: NonNullable<GeminiWord>["start_offset"]): number | null {
+  return geminiOffsetSchema.parse(value);
 }
 
-export function parseGeminiFileResponse(raw: unknown, diarize: boolean): RemoteTranscriptionResult {
-  const response = record(raw);
+export function parseGeminiFileResponse(raw: GeminiInteraction, diarize: boolean) {
+  const response = geminiInteractionSchema.parse(raw);
 
   if (response?.status !== "completed") {
     return {
       success: false,
-      error: `Gemini transcription did not complete (status: ${String(response?.status ?? "unknown")})`,
+      error: `Gemini transcription did not complete (status: ${response?.status ?? "unknown"})`,
       code: "GEMINI_INCOMPLETE",
     };
   }
 
-  const steps = response.steps;
+  const contents: unknown[] = [];
 
-  const contents = Array.isArray(steps)
-    ? steps.flatMap((step) => {
-        const content = record(step)?.content;
+  for (const step of response?.steps ?? []) {
+    const content = geminiRecordSchema.parse(step)?.["content"];
 
-        return Array.isArray(content) ? content : [];
-      })
-    : [];
+    if (Array.isArray(content))
+      for (const part of content) {
+        const parsed = geminiContentSchema.parse(part);
 
-  const text =
-    typeof response.output_text === "string"
-      ? response.output_text
-      : contents
-          .map((content) => record(content))
-          .filter((content) => content?.type === "text" && typeof content.text === "string")
-          .map((content) => content!.text as string)
-          .join(" ");
+        if (parsed !== undefined) contents.push(parsed);
+      }
+  }
+
+  let text = response?.output_text ?? "";
+
+  if (!text) {
+    const texts: string[] = [];
+
+    for (const content of contents) {
+      const parsed = geminiContentSchema.parse(content);
+
+      if (parsed?.type !== "text" || parsed.text === null) continue;
+      const partText = parsed.text;
+
+      if (partText !== undefined) texts.push(partText);
+    }
+
+    text = texts.join(" ");
+  }
 
   if (!text.trim()) {
     return { success: true, text: "", diarized: false, segments: [] };
@@ -109,24 +182,19 @@ export function parseGeminiFileResponse(raw: unknown, diarize: boolean): RemoteT
   const segments: NonNullable<RemoteTranscriptionResult["segments"]> = [];
 
   for (const content of contents) {
-    const annotations = record(content)?.annotations;
+    const parsedContent = geminiContentSchema.parse(content);
+    const annotations = parsedContent?.annotations;
 
-    if (!Array.isArray(annotations)) continue;
+    if (!annotations) continue;
 
     for (const value of annotations) {
-      const word = record(value);
+      const word: GeminiWord = geminiWordSchema.parse(value);
 
       if (word?.type !== "word_info") continue;
       const start = parseOffset(word.start_offset);
       const end = parseOffset(word.end_offset);
 
-      if (
-        typeof word.text !== "string" ||
-        !word.text ||
-        start === null ||
-        end === null ||
-        end < start
-      ) {
+      if (!word.text || start === null || end === null || end < start) {
         return {
           success: false,
           error: "Gemini returned invalid word or timing data",
@@ -134,7 +202,9 @@ export function parseGeminiFileResponse(raw: unknown, diarize: boolean): RemoteT
         };
       }
 
-      if (diarize && (typeof word.speaker !== "string" || !word.speaker)) {
+      const speakerValue = diarize ? word.speaker : undefined;
+
+      if (diarize && (speakerValue === undefined || !speakerValue)) {
         return {
           success: false,
           error: "Gemini returned no speaker data",
@@ -142,7 +212,7 @@ export function parseGeminiFileResponse(raw: unknown, diarize: boolean): RemoteT
         };
       }
 
-      const speakerId = diarize ? (word.speaker as string) : "";
+      const speakerId = diarize ? (speakerValue ?? "") : "";
       const match = /^spk_(\d+)$/.exec(speakerId);
       const speaker = diarize ? (match ? `Speaker ${Number(match[1])}` : speakerId) : undefined;
       const previous = segments.at(-1);
@@ -318,13 +388,16 @@ export async function transcribeGeminiFile(
     let uploaded: unknown;
 
     for await (const chunk of createReadStream(filePath, { highWaterMark: UPLOAD_CHUNK_BYTES })) {
+      // SAFETY: no encoding option is set, so stream chunks arrive as Buffer.
+      const bytes = chunk as Buffer;
+
       if (signal?.aborted) throw createAbortError();
 
-      if (offset + chunk.length > fileSizeBytes) {
+      if (offset + bytes.length > fileSizeBytes) {
         throw new Error("Audio file changed during Gemini upload");
       }
 
-      const final = offset + chunk.length === fileSizeBytes;
+      const final = offset + bytes.length === fileSizeBytes;
 
       const response = await deps.fetch(target.toString(), {
         method: "POST",
@@ -332,21 +405,27 @@ export async function transcribeGeminiFile(
           "X-Goog-Upload-Offset": String(offset),
           "X-Goog-Upload-Command": final ? "upload, finalize" : "upload",
         },
-        body: chunk as unknown as NonNullable<RequestInit["body"]>,
+        // SAFETY: a Buffer is an ArrayBufferView, i.e. a valid fetch body; the
+        // DOM BodyInit union predates generic Buffer typing.
+        body: bytes as NonNullable<RequestInit["body"]>,
         signal,
       });
 
       if (!response.ok) throw apiError(response.status, await response.text());
 
       if (final) uploaded = await response.json();
-      offset += chunk.length;
+      offset += bytes.length;
     }
 
     if (offset !== fileSizeBytes) throw new Error("Audio file changed during Gemini upload");
-    let file = record(record(uploaded)?.file);
-    name = typeof file?.name === "string" ? file.name : undefined;
 
-    if (!name || !/^files\/[a-z0-9-]+$/.test(name)) {
+    let file: GeminiFileRecord = geminiFileSchema.parse(
+      geminiRecordSchema.parse(uploaded)?.["file"]
+    );
+
+    name = file?.name ?? undefined;
+
+    if (name === undefined || !/^files\/[a-z0-9-]+$/.test(name)) {
       throw new Error("Gemini returned invalid file metadata");
     }
 
@@ -355,14 +434,14 @@ export async function transcribeGeminiFile(
 
       if (attempt >= 300) throw new Error("Gemini file processing timed out");
       await (deps.wait || wait)(1000, signal);
-      file = record(
+      file = geminiFileSchema.parse(
         await checkedJson(await deps.fetch(`${API_ROOT}/v1beta/${name}`, { headers, signal }))
       );
     }
 
-    const uri = file.uri;
+    const uri = file?.uri;
 
-    if (typeof uri !== "string" || !uri) throw new Error("Gemini returned no file URI");
+    if (uri === undefined || !uri) throw new Error("Gemini returned no file URI");
 
     const interaction = await checkedJson(
       await deps.fetch(INTERACTIONS_URL, {

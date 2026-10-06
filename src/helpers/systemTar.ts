@@ -91,7 +91,7 @@ export function runSystemTar(
         }
       );
     } catch (err) {
-      reject(new Error(`Failed to start tar process: ${(err as Error).message}`));
+      reject(new Error(`Failed to start tar process: ${err instanceof Error ? err.message : String(err)}`));
 
       return;
     }
@@ -144,7 +144,9 @@ export function runSystemTar(
     });
 
     tarProcess.on("error", (err) => {
-      finish(() => reject(new Error(`Failed to start tar process: ${(err as Error).message}`)));
+      finish(() =>
+        reject(new Error(`Failed to start tar process: ${err instanceof Error ? err.message : String(err)}`))
+      );
     });
   });
 }

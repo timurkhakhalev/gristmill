@@ -133,6 +133,15 @@
       }
     },
     {
+      "files": ["src/utils/retry.ts"],
+      "rules": {
+        // The retry strategies classify a value rejected from an awaited call
+        // (genuinely unknown) into an HTTP-status or errno-code decision before
+        // any field is read. The strategy functions are that boundary.
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": [
         "src/helpers/audioTapManager.ts",
         "src/helpers/meetingRecordingStorage.ts",
@@ -171,9 +180,14 @@
     {
       "files": [
         "src/helpers/localFileTranscription.ts",
-        "src/helpers/localFileTranscriptionIpcHandler.ts"
+        "src/helpers/localFileTranscriptionIpcHandler.ts",
+        "src/helpers/localModelLifecycleIpcHandlers.ts",
+        "src/helpers/localLlmModelIpcHandlers.ts"
       ],
       "rules": {
+        // These register ipcMain.handle listeners: the event and its variadic
+        // arguments are untrusted, each channel parses them below. The
+        // IpcEventListener seam is that boundary.
         "quality/no-unknown-parameters": "off",
         "quality/no-unknown-returns": "off"
       }

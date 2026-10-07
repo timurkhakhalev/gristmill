@@ -40,11 +40,11 @@ export function ChatMessages({ messages, emptyState, onOpenNote, onRetrySave }: 
       ) : (
         <div className="flex flex-col gap-3">
           {messages
-            .filter((msg) => msg.role !== "tool")
+            .filter((msg): msg is Message & { role: "user" | "assistant" } => msg.role !== "tool")
             .map((msg) => (
               <div key={msg.id}>
                 <ChatMessage
-                  role={msg.role as "user" | "assistant"}
+                  role={msg.role}
                   content={msg.content}
                   isStreaming={msg.isStreaming}
                   toolCalls={msg.toolCalls}

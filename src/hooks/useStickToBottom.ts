@@ -2,6 +2,7 @@ import {
   useCallback,
   useLayoutEffect,
   useRef,
+  type DependencyList,
   type RefObject,
   type TouchEvent,
   type WheelEvent,
@@ -50,7 +51,7 @@ function isReaderGesture(node: HTMLElement, target: EventTarget | null): boolean
  * ref and event handlers to the scrolling element.
  */
 export function useStickToBottom<T extends HTMLElement>(
-  dep: unknown,
+  dep: DependencyList,
   { resetToTop = false }: StickToBottomOptions = {}
 ): StickToBottomResult<T> {
   const scrollRef = useRef<T>(null);

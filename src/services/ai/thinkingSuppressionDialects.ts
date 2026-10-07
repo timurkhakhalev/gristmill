@@ -14,6 +14,45 @@ export interface EndpointDialect {
   supportsTemperature: boolean;
 }
 
+// Nested JSON value inside a provider request param (e.g. `reasoning` or a
+// content-part array). The recursive object arm keeps arbitrary provider
+// extensions typed without falling back to `unknown`.
+interface ProviderRequestObject {
+  [key: string]: ProviderRequestValue;
+}
+
+type ProviderRequestValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ProviderRequestObject
+  | ProviderRequestValue[];
+
+/**
+ * Owner contract for an OpenAI-compatible chat/responses request body: the
+ * fixed keys this shaping layer reads or writes, plus each provider's native
+ * suppression params. Named-interface fields whose value the layer passes
+ * through unread stay `unknown`; the object-shaped suppression params carry the
+ * recursive JSON value type.
+ */
+export interface ProviderRequestBody {
+  model?: string;
+  messages?: unknown;
+  input?: unknown;
+  store?: boolean;
+  stream?: boolean;
+  max_output_tokens?: number;
+  max_tokens?: number;
+  max_completion_tokens?: number;
+  temperature?: number;
+  reasoning_effort?: string;
+  reasoning?: ProviderRequestValue;
+  thinking?: ProviderRequestValue;
+  think?: boolean;
+  chat_template_kwargs?: ProviderRequestValue;
+}
+
 /** Custom endpoints that need their own request shape, recognised by host. */
 export function detectEndpointDialect(baseUrl: string | null | undefined): EndpointDialect | null {
   if (matchesHost(baseUrl, "mistral.ai")) {
@@ -32,7 +71,7 @@ export function detectEndpointDialect(baseUrl: string | null | undefined): Endpo
 }
 
 export function suppressThinking(
-  requestBody: Record<string, unknown>,
+  requestBody: ProviderRequestBody,
   providerKey: string,
   model: string
 ): void {

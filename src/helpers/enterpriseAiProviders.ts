@@ -56,11 +56,31 @@ export async function getEnterpriseAIModel(
   }
 }
 
+function hasUsableCredentials(
+  source: string | null,
+  credentials: AwsCredentialChain | StaticAwsCredentials | null
+): boolean {
+  return !(
+    source &&
+    (!credentials ||
+      !isNonEmptyString(credentials.accessKeyId) ||
+      !isNonEmptyString(credentials.secretAccessKey))
+  );
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 async function createBedrockModel(
   model: string,
   enterprise: EnterpriseRuntimeConfig
 ): Promise<ProviderModel> {
-  const { createAmazonBedrock } = require("@ai-sdk/amazon-bedrock");
+  // SAFETY: lazy CommonJS seam fixed by build-main bundling; the assertion
+  // only names the SDK module's own static import type across the seam.
+  const { createAmazonBedrock } =
+    require("@ai-sdk/amazon-bedrock") as typeof import("@ai-sdk/amazon-bedrock");
+
   const region = enterprise?.bedrockRegion || "us-east-1";
 
   const explicitCredentialSource = enterprise?.bedrockProfile
@@ -70,25 +90,22 @@ async function createBedrockModel(
       : null;
 
   const credentials: AwsCredentialChain | StaticAwsCredentials | null = enterprise?.bedrockProfile
-    ? await require("@aws-sdk/credential-providers").fromNodeProviderChain({
+    ? // SAFETY: lazy CommonJS seam; the SDK's own static import type names the
+      // credential chain across it, no wire data crosses.
+      await (
+        require("@aws-sdk/credential-providers") as typeof import("@aws-sdk/credential-providers")
+      ).fromNodeProviderChain({
         profile: enterprise.bedrockProfile,
       })()
     : explicitCredentialSource
       ? {
-          accessKeyId: enterprise.bedrockAccessKeyId as string,
-          secretAccessKey: enterprise.bedrockSecretAccessKey as string,
+          accessKeyId: enterprise.bedrockAccessKeyId ?? "",
+          secretAccessKey: enterprise.bedrockSecretAccessKey ?? "",
           sessionToken: enterprise.bedrockSessionToken,
         }
       : null;
 
-  if (
-    explicitCredentialSource &&
-    (!credentials ||
-      typeof credentials.accessKeyId !== "string" ||
-      credentials.accessKeyId.length === 0 ||
-      typeof credentials.secretAccessKey !== "string" ||
-      credentials.secretAccessKey.length === 0)
-  ) {
+  if (!hasUsableCredentials(explicitCredentialSource, credentials)) {
     const error = new Error(
       `AWS ${explicitCredentialSource} returned invalid credentials. Expected accessKeyId and secretAccessKey.`
     );
@@ -103,7 +120,7 @@ async function createBedrockModel(
       ? {
           accessKeyId: credentials.accessKeyId,
           secretAccessKey: credentials.secretAccessKey,
-          sessionToken: credentials.sessionToken,
+          sessionToken: credentials.sessionToken ?? undefined,
         }
       : {}),
   })(model);
@@ -114,7 +131,9 @@ function createAzureModel(
   apiKey: string,
   enterprise: EnterpriseRuntimeConfig
 ): ProviderModel {
-  const { createAzure } = require("@ai-sdk/azure");
+  // SAFETY: lazy CommonJS seam fixed by build-main bundling; names the SDK's
+  // own static import type across it.
+  const { createAzure } = require("@ai-sdk/azure") as typeof import("@ai-sdk/azure");
 
   return createAzure({
     apiKey,
@@ -128,7 +147,10 @@ function createVertexModel(
   apiKey: string,
   enterprise: EnterpriseRuntimeConfig
 ): ProviderModel {
-  const { createVertex } = require("@ai-sdk/google-vertex");
+  // SAFETY: lazy CommonJS seam fixed by build-main bundling; names the SDK's
+  // own static import type across it.
+  const { createVertex } =
+    require("@ai-sdk/google-vertex") as typeof import("@ai-sdk/google-vertex");
 
   if (apiKey) {
     return createVertex({ apiKey })(model);

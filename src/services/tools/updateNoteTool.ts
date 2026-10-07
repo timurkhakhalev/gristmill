@@ -1,4 +1,10 @@
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import {
+  readNumber,
+  readString,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
 import type { NoteUpdate } from "../../contracts/notes";
 import { resolveFolderId } from "./utils";
 
@@ -31,11 +37,11 @@ export const updateNoteTool: ToolDefinition = {
   },
   readOnly: false,
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const id = args.id as number;
-    const title = args.title as string | undefined;
-    const content = args.content as string | undefined;
-    const folderName = args.folder as string | undefined;
+  async execute(args: ToolArguments): Promise<ToolResult> {
+    const id = readNumber(args, "id") ?? 0;
+    const title = readString(args, "title");
+    const content = readString(args, "content");
+    const folderName = readString(args, "folder");
 
     if (!title && !content && !folderName) {
       return {
@@ -94,7 +100,7 @@ export const updateNoteTool: ToolDefinition = {
       return {
         success: false,
         data: null,
-        displayText: `Failed to update note: ${(error as Error).message}`,
+        displayText: `Failed to update note: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   },

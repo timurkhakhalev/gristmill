@@ -1,6 +1,31 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { z } from "zod";
 import type { Message, ToolCallInfo } from "./types";
 import type { ContainerScope } from "../../types/chat";
+
+// The persisted metadata string is written by addAgentMessage and read back on
+// reload; it is external JSON, so it is parsed through a schema that mirrors
+// ToolCallInfo before it reaches the UI. Unknown keys are dropped, matching the
+// chat-persistence wire contract.
+const toolCallMetadataSchema = z.object({
+  id: z.unknown().optional(),
+  title: z.unknown().optional(),
+});
+
+const storedToolCallSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  arguments: z.string(),
+  status: z.enum(["executing", "completed", "error"]),
+  result: z.string().optional(),
+  metadata: z.union([toolCallMetadataSchema, z.array(toolCallMetadataSchema)]).optional(),
+});
+
+const storedMetadataSchema = z.object({
+  toolCalls: z.array(storedToolCallSchema).optional(),
+});
+
+type StoredMessageMetadata = z.infer<typeof storedMetadataSchema>;
 
 export interface ChatSession {
   generation: number;
@@ -126,10 +151,12 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
 
       const loaded: Message[] = conv.messages.map((m) => {
         const parsed = m.metadata ? tryParseMetadata(m.metadata) : undefined;
-        const toolCalls = parsed?.toolCalls as ToolCallInfo[] | undefined;
+        const toolCalls = parsed?.toolCalls;
 
         return {
           id: crypto.randomUUID(),
+          // SAFETY: the DB role is one of user/assistant/system; the UI message
+          // model has no system role and renders any non-user row as assistant.
           role: m.role as Message["role"],
           content: m.content,
           isStreaming: false,
@@ -260,11 +287,13 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
   };
 }
 
-function tryParseMetadata(raw: string | undefined): Record<string, unknown> | undefined {
+function tryParseMetadata(raw: string | undefined): StoredMessageMetadata | undefined {
   if (!raw) return undefined;
 
   try {
-    return JSON.parse(raw);
+    const result = storedMetadataSchema.safeParse(JSON.parse(raw));
+
+    return result.success ? result.data : undefined;
   } catch {
     return undefined;
   }

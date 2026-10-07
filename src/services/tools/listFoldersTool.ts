@@ -37,7 +37,7 @@ export const listFoldersTool: ToolDefinition = {
       return {
         success: false,
         data: null,
-        displayText: `Failed to list folders: ${(error as Error).message}`,
+        displayText: `Failed to list folders: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   },

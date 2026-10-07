@@ -1,6 +1,11 @@
-const debugLogger = require("./debugLogger");
+// SAFETY: lazy CommonJS seam; debugLogger's default export is the singleton.
+const debugLogger = require("./debugLogger") as typeof import("./debugLogger.js").default;
 
-const CODE_TO_KEY: Record<string, string> = {
+interface ErrorMessageMap {
+  [code: string]: string;
+}
+
+const CODE_TO_KEY: ErrorMessageMap = {
   ENOTFOUND: "streaming.errors.cloudUnreachable.dnsBlocked",
   EAI_AGAIN: "streaming.errors.cloudUnreachable.dnsBlocked",
   ECONNREFUSED: "streaming.errors.cloudUnreachable.refused",
@@ -14,10 +19,25 @@ const CODE_TO_KEY: Record<string, string> = {
   DEPTH_ZERO_SELF_SIGNED_CERT: "streaming.errors.cloudUnreachable.tls",
 };
 
-const NAME_TO_KEY: Record<string, string> = {
+const NAME_TO_KEY: ErrorMessageMap = {
   TimeoutError: "streaming.errors.cloudUnreachable.timeout",
   AbortError: "streaming.errors.cloudUnreachable.timeout",
 };
+
+// Error objects and functions can both carry these transport fields.
+interface ErrorShape {
+  code?: unknown;
+  cause?: unknown;
+  name?: unknown;
+}
+
+function isErrorShape<T>(value: T): value is T & ErrorShape {
+  return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
 
 export interface NetworkErrorClassification {
   code?: string;
@@ -25,23 +45,27 @@ export interface NetworkErrorClassification {
   isNetworkError: boolean;
 }
 
-export function classifyNetworkError(err: unknown): NetworkErrorClassification {
+export function classifyNetworkError<T>(err: T): NetworkErrorClassification {
   if (!err) return { isNetworkError: false };
-  const record = err as { code?: string; cause?: { code?: string }; name?: string };
-  const code = record.code || record.cause?.code;
 
-  if (code && CODE_TO_KEY[code]) {
+  const record = isErrorShape(err) ? err : null;
+  const cause = record && isErrorShape(record.cause) ? record.cause : null;
+  const code = (record && record.code) || (cause && cause.code);
+
+  if (isString(code) && CODE_TO_KEY[code]) {
     return { code, messageKey: CODE_TO_KEY[code], isNetworkError: true };
   }
 
-  if (record.name && NAME_TO_KEY[record.name]) {
-    return { code: record.name, messageKey: NAME_TO_KEY[record.name], isNetworkError: true };
+  const name = record && record.name;
+
+  if (isString(name) && NAME_TO_KEY[name]) {
+    return { code: name, messageKey: NAME_TO_KEY[name], isNetworkError: true };
   }
 
   return { isNetworkError: false };
 }
 
-export function classifyAndLog(err: unknown, url: string): NetworkErrorClassification {
+export function classifyAndLog<T>(err: T, url: string): NetworkErrorClassification {
   const classified = classifyNetworkError(err);
 
   if (!classified.isNetworkError) return classified;

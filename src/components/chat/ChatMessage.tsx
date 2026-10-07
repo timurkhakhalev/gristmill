@@ -6,7 +6,7 @@ import { MarkdownRenderer } from "../ui/MarkdownRenderer";
 import { MessageLoading } from "../ui/MessageLoading";
 import type { ToolCallInfo } from "./types";
 import { extractNoteCards } from "./noteCards";
-import { toolIcons } from "./toolIcons";
+import { isToolName, toolIcons } from "./toolIcons";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -19,7 +19,7 @@ interface ChatMessageProps {
 function ToolCallStep({ toolCall }: { toolCall: ToolCallInfo }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const Icon = toolIcons[toolCall.name] || Search;
+  const Icon = isToolName(toolCall.name) ? toolIcons[toolCall.name] : Search;
   const isExecuting = toolCall.status === "executing";
   const isError = toolCall.status === "error";
   const isCompleted = toolCall.status === "completed";
@@ -187,14 +187,16 @@ export function ChatMessage({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard unavailable
-    }
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {
+        // clipboard unavailable
+      }
+    );
   };
 
   if (role === "user") {

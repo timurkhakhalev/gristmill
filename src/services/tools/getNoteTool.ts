@@ -1,4 +1,9 @@
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import {
+  readNumber,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
 
 export const getNoteTool: ToolDefinition = {
   name: "get_note",
@@ -17,8 +22,8 @@ export const getNoteTool: ToolDefinition = {
   },
   readOnly: true,
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const id = args.id as number;
+  async execute(args: ToolArguments): Promise<ToolResult> {
+    const id = readNumber(args, "id") ?? 0;
 
     try {
       const note = await window.electronAPI.getNote(id);
@@ -53,7 +58,7 @@ export const getNoteTool: ToolDefinition = {
       return {
         success: false,
         data: null,
-        displayText: `Failed to get note: ${(error as Error).message}`,
+        displayText: `Failed to get note: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   },

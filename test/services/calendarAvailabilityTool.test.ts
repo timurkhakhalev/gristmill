@@ -432,7 +432,10 @@ test("rejects malformed and out-of-bounds requests before IPC", async () => {
   ];
 
   for (const args of invalidArguments) {
-    const result = await calendarAvailabilityTool.execute(args as Record<string, unknown>); // deliberately invalid input
+    // deliberately invalid input
+    const result = await calendarAvailabilityTool.execute(
+      args as import("../../src/services/tools/ToolRegistry").JsonObject
+    );
     assert.equal(result.success, false, JSON.stringify(args));
     assert.match(result.displayText, /^Invalid calendar availability request/);
   }

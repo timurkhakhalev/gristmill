@@ -65,7 +65,10 @@ export function useEmbeddedChat({
 
   // A conversation keeps the first message's opening as its title until bb names the thread.
   const untitledConversationRef = useRef<number | null>(null);
-  const fetchConversationsRef = useRef<() => Promise<unknown>>(async () => {});
+
+  const fetchConversationsRef = useRef<() => Promise<ConversationRow[] | undefined>>(
+    async () => undefined
+  );
 
   const streaming = useChatStreaming({
     disabled,
@@ -77,9 +80,10 @@ export function useEmbeddedChat({
       if (untitledConversationRef.current !== id || persistence.getSession().conversationId !== id)
         return;
       untitledConversationRef.current = null;
-      void window.electronAPI
+      window.electronAPI
         ?.updateAgentConversationTitle?.(id, title)
-        .then(() => fetchConversationsRef.current());
+        .then(() => fetchConversationsRef.current())
+        .catch(() => {});
     },
   });
 
@@ -103,14 +107,14 @@ export function useEmbeddedChat({
     if (!noteId) return;
     const session = persistence.getSession();
     let active = true;
-    void (async () => {
+    (async () => {
       const conversations = await window.electronAPI.getConversationsForNote(noteId);
 
       if (!active || !persistence.isCurrent(session)) return;
       setNoteConversations(conversations);
 
       if (conversations.length) await persistence.loadConversation(conversations[0].id);
-    })();
+    })().catch(() => {});
 
     return () => {
       active = false;

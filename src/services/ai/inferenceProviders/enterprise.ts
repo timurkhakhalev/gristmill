@@ -1,13 +1,26 @@
 import type { InferenceProvider } from "./types";
-import {
-  getOpenAiApiConfig,
-  isEnterpriseProvider,
-  type EnterpriseProvider as EnterpriseProviderId,
-} from "../../../models/ModelRegistry";
+import { getOpenAiApiConfig, isEnterpriseProvider } from "../../../models/ModelRegistry";
 import { getSettings } from "../../../stores/settingsStore";
 import { getEnterpriseCallSettings } from "../enterpriseSettings";
 import { wrapCleanupTranscript } from "../../../config/prompts";
 import logger from "../../../utils/logger";
+
+// The failure arm's structured fields are attached to the thrown Error so
+// upstream toast handling can read them; every field is optional.
+interface EnterpriseReasoningError extends Error {
+  messageKey?: string;
+  messageParams?: Record<string, string | number>;
+  action?: string;
+  actionKey?: string;
+  copyCommand?: string;
+  retryable?: boolean;
+  technicalDetails?: {
+    status?: number;
+    exceptionType?: string;
+    requestId?: string;
+    underlyingError?: string;
+  };
+}
 
 export const enterpriseProvider: InferenceProvider = {
   id: "enterprise",
@@ -22,7 +35,7 @@ export const enterpriseProvider: InferenceProvider = {
       throw new Error(`Unsupported enterprise provider: ${provider}`);
     }
 
-    const enterpriseId = provider as EnterpriseProviderId;
+    const enterpriseId = provider;
 
     logger.logReasoning("ENTERPRISE_START", { provider: enterpriseId, model, agentName });
 
@@ -55,20 +68,9 @@ export const enterpriseProvider: InferenceProvider = {
         error: result.error,
       });
 
-      const enhanced = new Error(result.error || `${enterpriseId} reasoning failed`) as Error & {
-        messageKey?: string;
-        messageParams?: Record<string, string | number>;
-        action?: string;
-        actionKey?: string;
-        copyCommand?: string;
-        retryable?: boolean;
-        technicalDetails?: {
-          status?: number;
-          exceptionType?: string;
-          requestId?: string;
-          underlyingError?: string;
-        };
-      };
+      const enhanced: EnterpriseReasoningError = new Error(
+        result.error || `${enterpriseId} reasoning failed`
+      );
 
       enhanced.messageKey = result.messageKey;
       enhanced.messageParams = result.messageParams;

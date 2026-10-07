@@ -28,42 +28,90 @@ import {
   updateConversationTitleArgsSchema,
 } from "../contracts/chatPersistence.js";
 
+// The database dependency accepts the parsed tuple element types and returns
+// an opaque row/result; parseResult validates every return before it crosses
+// back to the renderer, so the DB return stays a raw object.
+type RawDatabaseResult = object | null;
+
+type CreateConversationArgs = ReturnType<typeof createConversationArgsSchema.parse>;
+
+type GetConversationsForNoteArgs = ReturnType<typeof getConversationsForNoteArgsSchema.parse>;
+
+type GetConversationsForContainerArgs = ReturnType<
+  typeof getConversationsForContainerArgsSchema.parse
+>;
+
+type GetConversationsArgs = ReturnType<typeof getConversationsArgsSchema.parse>;
+
+type GetConversationArgs = ReturnType<typeof getConversationArgsSchema.parse>;
+
+type UpdateConversationTitleArgs = ReturnType<typeof updateConversationTitleArgsSchema.parse>;
+
+type AddMessageArgs = ReturnType<typeof addMessageArgsSchema.parse>;
+
+type GetMessagesArgs = ReturnType<typeof getMessagesArgsSchema.parse>;
+
+type GetConversationsWithPreviewArgs = ReturnType<
+  typeof getConversationsWithPreviewArgsSchema.parse
+>;
+
+type SearchConversationsArgs = ReturnType<typeof searchConversationsArgsSchema.parse>;
+
 export interface ChatPersistenceHandlerDeps {
   database: {
     createAgentConversation(
-      title: unknown,
-      noteId: unknown,
-      spaceId: unknown,
-      folderId: unknown
-    ): unknown;
-    getConversationsForNote(noteId: unknown, limit: unknown): unknown;
-    getConversationsForContainer(spaceId: unknown, folderId: unknown, limit: unknown): unknown;
-    getAgentConversations(limit: unknown): unknown;
-    getAgentConversation(id: unknown): unknown;
-    deleteAgentConversation(id: unknown): unknown;
-    updateAgentConversationTitle(id: unknown, title: unknown): unknown;
+      title: CreateConversationArgs[0],
+      noteId: CreateConversationArgs[1],
+      spaceId: CreateConversationArgs[2],
+      folderId: CreateConversationArgs[3]
+    ): RawDatabaseResult;
+    getConversationsForNote(
+      noteId: GetConversationsForNoteArgs[0],
+      limit: GetConversationsForNoteArgs[1]
+    ): RawDatabaseResult;
+    getConversationsForContainer(
+      spaceId: GetConversationsForContainerArgs[0],
+      folderId: GetConversationsForContainerArgs[1],
+      limit: GetConversationsForContainerArgs[2]
+    ): RawDatabaseResult;
+    getAgentConversations(limit: GetConversationsArgs[0]): RawDatabaseResult;
+    getAgentConversation(id: GetConversationArgs[0]): RawDatabaseResult;
+    deleteAgentConversation(id: GetConversationArgs[0]): RawDatabaseResult;
+    updateAgentConversationTitle(
+      id: UpdateConversationTitleArgs[0],
+      title: UpdateConversationTitleArgs[1]
+    ): RawDatabaseResult;
     addAgentMessage(
-      conversationId: unknown,
-      role: unknown,
-      content: unknown,
-      metadata: unknown
-    ): unknown;
-    getAgentMessages(conversationId: unknown): unknown;
+      conversationId: AddMessageArgs[0],
+      role: AddMessageArgs[1],
+      content: AddMessageArgs[2],
+      metadata: AddMessageArgs[3]
+    ): RawDatabaseResult;
+    getAgentMessages(conversationId: GetMessagesArgs[0]): RawDatabaseResult;
     getAgentConversationsWithPreview(
-      limit: unknown,
-      offset: unknown,
-      includeArchived: unknown
-    ): unknown;
-    searchAgentConversations(query: unknown, limit: unknown): unknown;
-    archiveAgentConversation(id: unknown): unknown;
-    unarchiveAgentConversation(id: unknown): unknown;
+      limit: GetConversationsWithPreviewArgs[0],
+      offset: GetConversationsWithPreviewArgs[1],
+      includeArchived: GetConversationsWithPreviewArgs[2]
+    ): RawDatabaseResult;
+    searchAgentConversations(
+      query: SearchConversationsArgs[0],
+      limit: SearchConversationsArgs[1]
+    ): RawDatabaseResult;
+    archiveAgentConversation(id: GetConversationArgs[0]): RawDatabaseResult;
+    unarchiveAgentConversation(id: GetConversationArgs[0]): RawDatabaseResult;
   };
 }
 
-type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
+// Method-syntax and a generic result: the test doubles and the type probes
+// declare `(event: unknown, ...args: unknown[]) => unknown` listeners, which a
+// narrower named `event` type would reject. The listener still receives the
+// Electron event as its first argument; the handlers do not read it.
+interface IpcMainLike {
+  handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
+}
 
 // Throw before the DB is touched when the renderer sent a wrong-shaped call.
-function parseArgs<T>(schema: ZodType<T>, args: unknown): T {
+function parseArgs<T>(schema: ZodType<T>, args: readonly unknown[]): T {
   const result = schema.safeParse(args);
 
   if (!result.success) {
@@ -73,7 +121,7 @@ function parseArgs<T>(schema: ZodType<T>, args: unknown): T {
   return result.data;
 }
 
-function parseResult<T>(schema: ZodType<T>, raw: unknown, what: string): T {
+function parseResult<T, Raw>(schema: ZodType<T>, raw: Raw, what: string): T {
   const result = schema.safeParse(raw);
 
   if (!result.success) {
@@ -84,7 +132,7 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, what: string): T {
 }
 
 export function registerChatPersistenceHandlers(
-  ipcMain: { handle(channel: string, listener: IpcEventListener): void },
+  ipcMain: IpcMainLike,
   deps: ChatPersistenceHandlerDeps
 ): void {
   const { database } = deps;

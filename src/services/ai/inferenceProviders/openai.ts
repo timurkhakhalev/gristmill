@@ -1,4 +1,5 @@
 import type { InferenceProvider } from "./types";
+import { z } from "zod";
 import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl } from "../../../config/constants.mts";
 import { getOpenAiApiConfig } from "../../../models/ModelRegistry";
 import { getSettings } from "../../../stores/settingsStore";
@@ -10,9 +11,9 @@ import {
   fetchWithParamFallback,
   isTruncatedFinishReason,
 } from "../chatRequestBody";
-import { detectEndpointDialect } from "../thinkingSuppressionDialects";
+import { detectEndpointDialect, type ProviderRequestBody } from "../thinkingSuppressionDialects";
 import { getLlmRequestTimeoutSeconds } from "../../../helpers/llmRequestTimeout.js";
-import { extractApiErrorMessage } from "../apiErrorMessage";
+import { extractApiErrorMessage, isApiErrorValue, type ApiErrorValue } from "../apiErrorMessage";
 import { wrapCleanupTranscript } from "../../../config/prompts";
 import { openCodeSessionHeaders } from "../openCodeSession";
 
@@ -23,6 +24,109 @@ const PROBE_TIMEOUT_MS = 2_000;
 const endpointPreferenceCache = new Map<string, "responses" | "chat">();
 
 const probedBases = new Set<string>();
+
+// The persisted endpoint preference is a JSON map; only the "responses"/"chat"
+// values are meaningful, everything else is ignored exactly as before.
+const preferenceStoreSchema = z.record(z.string(), z.unknown());
+
+// `/v1/models` probe reply: llama.cpp identifies itself with owned_by. Fields
+// are permissive so one mistyped entry cannot hide a llama.cpp signature.
+const modelsResponseSchema = z.looseObject({
+  data: z
+    .array(
+      z.looseObject({
+        id: z
+          .string()
+          .optional()
+          .catch(() => undefined),
+        owned_by: z
+          .string()
+          .optional()
+          .catch(() => undefined),
+      })
+    )
+    .optional()
+    .catch(() => undefined),
+});
+
+// A Responses/Chat-Completions message content: plain text or content parts.
+const contentPartSchema = z.looseObject({
+  type: z.string().optional(),
+  text: z.string().optional(),
+});
+
+const messageContentSchema = z
+  .union([z.string(), z.array(contentPartSchema.catch({}))])
+  .optional()
+  .catch(() => undefined);
+
+const outputItemSchema = z.looseObject({
+  type: z.string().optional(),
+  content: z.array(contentPartSchema.catch({})).optional(),
+});
+
+const choiceSchema = z.looseObject({
+  finish_reason: z
+    .string()
+    .nullish()
+    .catch(() => undefined),
+  text: z
+    .string()
+    .optional()
+    .catch(() => undefined),
+  message: z.looseObject({ content: messageContentSchema }).optional(),
+  delta: z.looseObject({ content: messageContentSchema }).optional(),
+});
+
+// Union of the two OpenAI wire formats this provider reads. Every field is
+// permissive on its own (`.catch`) so a mistyped field degrades to "missing"
+// exactly as the old untyped reads did, and a junk array entry degrades to
+// `{}`, which the optional-chained reads below already skip.
+const openAiResponseSchema = z.looseObject({
+  status: z
+    .string()
+    .optional()
+    .catch(() => undefined),
+  incomplete_details: z.unknown().optional(),
+  output_text: z
+    .string()
+    .optional()
+    .catch(() => undefined),
+  output: z
+    .array(outputItemSchema.catch({}))
+    .optional()
+    .catch(() => undefined),
+  choices: z
+    .array(choiceSchema.catch({}))
+    .optional()
+    .catch(() => undefined),
+  usage: z
+    .looseObject({ total_tokens: z.unknown().optional() })
+    .optional()
+    .catch(() => undefined),
+});
+
+type OpenAiResponse = z.infer<typeof openAiResponseSchema>;
+
+type MessageContent = z.infer<typeof messageContentSchema>;
+
+function isNonEmptyString(value: MessageContent): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isContentPartText(value: string | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isPresentString(value: string | undefined): value is string {
+  return typeof value === "string";
+}
+
+// Bare truthiness on a possibly-absent string, matching the original
+// `content.text` guard; empty strings are skipped, whitespace-only is not.
+function isTruthyString(value: string | undefined): value is string {
+  return typeof value === "string" && value.length > 0;
+}
 
 function readStoredPreference(base: string): "responses" | "chat" | undefined {
   if (endpointPreferenceCache.has(base)) {
@@ -37,10 +141,11 @@ function readStoredPreference(base: string): "responses" | "chat" | undefined {
     const raw = window.localStorage.getItem(OPENAI_ENDPOINT_PREF_STORAGE_KEY);
 
     if (!raw) return undefined;
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    const store = preferenceStoreSchema.safeParse(parsed);
 
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const value = parsed[base];
+    if (!store.success) return undefined;
+    const value = store.data[base];
 
     if (value === "responses" || value === "chat") {
       endpointPreferenceCache.set(base, value);
@@ -63,11 +168,14 @@ function rememberPreference(base: string, preference: "responses" | "chat"): voi
 
   try {
     const raw = window.localStorage.getItem(OPENAI_ENDPOINT_PREF_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    const data = typeof parsed === "object" && parsed !== null ? parsed : {};
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    const store = preferenceStoreSchema.safeParse(parsed);
+    const data = store.success ? store.data : {};
     data[base] = preference;
     window.localStorage.setItem(OPENAI_ENDPOINT_PREF_STORAGE_KEY, JSON.stringify(data));
-  } catch {}
+  } catch {
+    // Storage unavailable or malformed: the in-memory cache already updated.
+  }
 }
 
 function getEndpointCandidates(base: string): Array<{ url: string; type: "responses" | "chat" }> {
@@ -120,8 +228,9 @@ async function detectServerType(base: string): Promise<void> {
       return;
     }
 
-    const body = await res.json();
-    const first = body?.data?.[0];
+    const parsed = modelsResponseSchema.safeParse(await res.json());
+    const body = parsed.success ? parsed.data : {};
+    const first = body.data?.[0];
 
     if (first?.owned_by === "llamacpp") {
       rememberPreference(base, "chat");
@@ -256,7 +365,7 @@ export const openaiProvider: InferenceProvider = {
               )
             );
 
-          const requestBody: Record<string, unknown> = { model };
+          const requestBody: ProviderRequestBody = { model };
 
           if (type === "responses") {
             requestBody.input = buildMessages(type);
@@ -296,7 +405,11 @@ export const openaiProvider: InferenceProvider = {
           );
 
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({ error: res.statusText }));
+            const rawError: unknown = await res.json().catch(() => ({ error: res.statusText }));
+
+            const errorData: ApiErrorValue = isApiErrorValue(rawError)
+              ? rawError
+              : { error: res.statusText };
 
             const errorMessage = extractApiErrorMessage(
               errorData,
@@ -321,13 +434,21 @@ export const openaiProvider: InferenceProvider = {
 
           rememberPreference(openAiBase, type);
 
-          return res.json();
+          const parsed = openAiResponseSchema.safeParse(await res.json());
+
+          if (!parsed.success) {
+            const empty: OpenAiResponse = {};
+
+            return empty;
+          }
+
+          return parsed.data;
         } catch (error) {
-          if ((error as Error).name === "AbortError") {
+          if (error instanceof Error && error.name === "AbortError") {
             throw new Error(`Request timed out after ${timeoutSeconds}s`);
           }
 
-          lastError = error as Error;
+          lastError = error instanceof Error ? error : new Error(String(error));
 
           if (retryStrategy.shouldRetry(lastError)) {
             lastRetryableError = lastError;
@@ -336,7 +457,7 @@ export const openaiProvider: InferenceProvider = {
           if (type === "responses") {
             logger.logReasoning("OPENAI_ENDPOINT_FALLBACK", {
               attemptedEndpoint: endpoint,
-              error: (error as Error).message,
+              error: lastError.message,
             });
             continue;
           }
@@ -350,14 +471,16 @@ export const openaiProvider: InferenceProvider = {
       throw lastRetryableError || lastError || new Error("No OpenAI endpoint responded");
     }, retryStrategy);
 
-    const isResponsesApi = Array.isArray(response?.output);
-    const isChatCompletions = Array.isArray(response?.choices);
+    const isResponsesApi = Array.isArray(response.output);
+    const isChatCompletions = Array.isArray(response.choices);
 
     if (config.requireCompleteOutput) {
       const responseIncomplete =
-        response?.status === "incomplete" ||
-        !!response?.incomplete_details ||
-        response?.choices?.some((choice: any) => isTruncatedFinishReason(choice?.finish_reason));
+        response.status === "incomplete" ||
+        !!response.incomplete_details ||
+        response.choices?.some((choice) =>
+          isTruncatedFinishReason(choice.finish_reason ?? undefined)
+        );
 
       if (responseIncomplete) {
         throw new Error("Model output was truncated before the selection edit completed");
@@ -368,22 +491,20 @@ export const openaiProvider: InferenceProvider = {
       model,
       format: isResponsesApi ? "responses" : isChatCompletions ? "chat_completions" : "unknown",
       hasOutput: isResponsesApi,
-      outputLength: isResponsesApi ? response.output.length : 0,
-      outputTypes: isResponsesApi
-        ? response.output.map((item: { type: string }) => item.type)
-        : undefined,
+      outputLength: isResponsesApi ? response.output?.length : 0,
+      outputTypes: isResponsesApi ? response.output?.map((item) => item.type) : undefined,
       hasChoices: isChatCompletions,
-      choicesLength: isChatCompletions ? response.choices.length : 0,
+      choicesLength: isChatCompletions ? response.choices?.length : 0,
       usage: response.usage,
     });
 
     let responseText = "";
 
     if (isResponsesApi) {
-      for (const item of response.output) {
+      for (const item of response.output ?? []) {
         if (item.type === "message" && item.content) {
           for (const content of item.content) {
-            if (content.type === "output_text" && content.text) {
+            if (content.type === "output_text" && isTruthyString(content.text)) {
               responseText = content.text.trim();
               break;
             }
@@ -394,23 +515,23 @@ export const openaiProvider: InferenceProvider = {
       }
     }
 
-    if (!responseText && typeof response?.output_text === "string") {
+    if (!responseText && isPresentString(response.output_text)) {
       responseText = response.output_text.trim();
     }
 
     if (!responseText && isChatCompletions) {
-      for (const choice of response.choices) {
-        const message = choice?.message ?? choice?.delta;
-        const content = message?.content;
+      for (const choice of response.choices ?? []) {
+        const message = choice.message ?? choice.delta;
+        const content: MessageContent | undefined = message?.content;
 
-        if (typeof content === "string" && content.trim()) {
+        if (isNonEmptyString(content)) {
           responseText = content.trim();
           break;
         }
 
         if (Array.isArray(content)) {
           for (const part of content) {
-            if (typeof part?.text === "string" && part.text.trim()) {
+            if (isContentPartText(part.text)) {
               responseText = part.text.trim();
               break;
             }
@@ -419,7 +540,7 @@ export const openaiProvider: InferenceProvider = {
 
         if (responseText) break;
 
-        if (typeof choice?.text === "string" && choice.text.trim()) {
+        if (isNonEmptyString(choice.text)) {
           responseText = choice.text.trim();
           break;
         }

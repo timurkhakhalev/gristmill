@@ -1,6 +1,9 @@
 // Tinfoil's model list comes from the attested endpoint.
 // Fetching from the main process rather than the renderer lets every window share one request.
-const debugLogger = require("./debugLogger");
+// SAFETY: lazy CommonJS seam; debugLogger's default export is the singleton.
+const debugLogger = require("./debugLogger") as typeof import("./debugLogger.js").default;
+
+import { z } from "zod";
 
 import { tinfoilSecureFetch } from "./tinfoilSecureClient.js";
 
@@ -17,48 +20,62 @@ export interface TinfoilCatalogModel {
   supportsThinking: boolean;
 }
 
+const tinfoilModelSchema = z.looseObject({
+  id: z.string(),
+  name: z.unknown().optional(),
+  description: z.unknown().optional(),
+  reasoning: z.unknown().optional(),
+  type: z.unknown().optional(),
+  endpoints: z.unknown().optional(),
+});
+
+type TinfoilModelEntry = z.infer<typeof tinfoilModelSchema>;
+
+const tinfoilModelsPayloadSchema = z.looseObject({
+  data: z.array(z.unknown()).optional(),
+});
+
 let lastFailureAt = 0;
 
 let inFlight: Promise<TinfoilCatalogModel[]> | null = null;
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
 
 /**
  * The list mixes chat, audio, tts, embedding and tool models, so narrow it to
  * the ones we can send a chat completion to.
  */
-function isChatModel(model: { type?: unknown; endpoints?: unknown } | null): boolean {
-  if (!model || model.type !== "chat") return false;
-
+function isChatModel(model: TinfoilModelEntry): boolean {
   return (
-    Array.isArray(model.endpoints) && (model.endpoints as string[]).includes("/v1/chat/completions")
+    model.type === "chat" &&
+    Array.isArray(model.endpoints) &&
+    model.endpoints.includes("/v1/chat/completions")
   );
 }
 
-function toCatalogModel(model: {
-  id: string;
-  name?: unknown;
-  description?: unknown;
-  reasoning?: unknown;
-}): TinfoilCatalogModel {
+function toCatalogModel(model: TinfoilModelEntry): TinfoilCatalogModel {
   return {
     id: model.id,
-    name: typeof model.name === "string" && model.name ? model.name : model.id,
-    description: typeof model.description === "string" ? model.description : "",
+    name: isString(model.name) && model.name ? model.name : model.id,
+    description: isString(model.description) ? model.description : "",
     supportsThinking: model.reasoning === true,
   };
 }
 
-function parseModels(payload: unknown): TinfoilCatalogModel[] {
-  const data = (payload as { data?: unknown } | null | undefined)?.data;
+function parseModels<T>(payload: T): TinfoilCatalogModel[] {
+  const parsed = tinfoilModelsPayloadSchema.safeParse(payload);
 
-  if (!Array.isArray(data)) {
+  if (!parsed.success || !parsed.data.data) {
     throw new Error("Malformed models list");
   }
 
-  return data
-    .filter(
-      (model) => typeof (model as { id?: unknown })?.id === "string" && isChatModel(model as never)
-    )
-    .map((model) => toCatalogModel(model as Parameters<typeof toCatalogModel>[0]));
+  return parsed.data.data.flatMap((model) => {
+    const entry = tinfoilModelSchema.safeParse(model);
+
+    return entry.success && isChatModel(entry.data) ? [toCatalogModel(entry.data)] : [];
+  });
 }
 
 async function fetchModels(): Promise<TinfoilCatalogModel[]> {
@@ -72,7 +89,9 @@ async function fetchModels(): Promise<TinfoilCatalogModel[]> {
     throw new Error(`Tinfoil models request failed: ${response.status}`);
   }
 
-  return parseModels(await response.json());
+  const payload: unknown = await response.json();
+
+  return parseModels(payload);
 }
 
 /**

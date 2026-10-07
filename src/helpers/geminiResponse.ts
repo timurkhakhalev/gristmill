@@ -1,6 +1,16 @@
 // Text extraction for Gemini generateContent API responses. `content.parts`
 // is an array that may contain multiple text parts or lead with thought
 // blocks (Gemini thinking), so `parts[0].text` is not safe.
+import { z } from "zod";
+
+const geminiPartSchema = z.looseObject({
+  thought: z.unknown().optional(),
+  text: z.string().optional(),
+});
+
+const geminiCandidateSchema = z.looseObject({
+  content: z.looseObject({ parts: z.array(z.unknown()).optional() }).optional(),
+});
 
 /**
  * Extract user-facing text from a Gemini generateContent response candidate.
@@ -10,16 +20,19 @@
  * @param {object} [candidate]
  * @returns {string | null}
  */
-export function extractGeminiText(candidate: unknown): string | null {
-  const parts = (candidate as { content?: { parts?: unknown } } | null | undefined)?.content?.parts;
+export function extractGeminiText<T>(candidate: T): string | null {
+  const parsed = geminiCandidateSchema.safeParse(candidate);
 
-  if (!Array.isArray(parts)) return null;
+  if (!parsed.success) return null;
 
-  const textParts = (parts as Array<{ thought?: unknown; text?: unknown }>)
-    .filter(
-      (part) => !part?.thought && typeof part?.text === "string" && (part.text as string).length > 0
-    )
-    .map((part) => part.text as string);
+  const parts = parsed.data.content?.parts ?? [];
+
+  const textParts = parts.flatMap((part) => {
+    const parsedPart = geminiPartSchema.safeParse(part);
+    const text = parsedPart.success ? parsedPart.data.text : undefined;
+
+    return parsedPart.success && !parsedPart.data.thought && text && text.length > 0 ? [text] : [];
+  });
 
   if (textParts.length === 0) return null;
 

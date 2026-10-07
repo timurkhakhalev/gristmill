@@ -1,21 +1,24 @@
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import {
+  readArray,
+  type JsonValue,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
 
 export interface DictionaryActions {
   getDictionary(): string[];
   updateDictionary(changes: { add: string[]; remove: string[] }): void;
 }
 
-export const cleanWordList = (values: unknown): string[] =>
-  Array.isArray(values)
-    ? [
-        ...new Set(
-          values
-            .filter((value): value is string => typeof value === "string")
-            .map((value) => value.trim())
-            .filter(Boolean)
-        ),
-      ]
-    : [];
+export const cleanWordList = (values: readonly JsonValue[]): string[] => [
+  ...new Set(
+    values
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean)
+  ),
+];
 
 const quoteList = (words: string[]) => words.map((word) => `"${word}"`).join(", ");
 
@@ -42,11 +45,11 @@ export function createUpdateDictionaryTool(actions: DictionaryActions): ToolDefi
     },
     readOnly: false,
 
-    async execute(args: Record<string, unknown>): Promise<ToolResult> {
+    async execute(args: ToolArguments): Promise<ToolResult> {
       const existing = new Set(actions.getDictionary().map((word) => word.toLowerCase()));
       const has = (word: string) => existing.has(word.toLowerCase());
-      const requestedAdd = cleanWordList(args.add);
-      const requestedRemove = cleanWordList(args.remove);
+      const requestedAdd = cleanWordList(readArray(args, "add"));
+      const requestedRemove = cleanWordList(readArray(args, "remove"));
       // Corrections ({add:["OpenAI"], remove:["openai"]}) name the same word
       // twice: additions are judged against the dictionary state AFTER the
       // requested removals, so the corrected spelling is kept instead of the

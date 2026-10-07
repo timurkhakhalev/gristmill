@@ -97,7 +97,7 @@ export default function ChatModelPicker({
               agentProvider: selection.provider,
               agentModel: selection.model,
               agentReasoningLevel: selection.reasoningLevel,
-            });
+            })?.catch(() => {});
           }}
           leadingTabs={[
             {
@@ -106,7 +106,8 @@ export default function ChatModelPicker({
               icon: <Key size={14} />,
               active: !isBb,
               onSelect: () => {
-                if (isBb) setResolvedLLMConfig("chatIntelligence", { mode: apiMode });
+                if (isBb)
+                  setResolvedLLMConfig("chatIntelligence", { mode: apiMode })?.catch(() => {});
               },
             },
           ]}

@@ -119,7 +119,10 @@ function GeneralSettings() {
   const [autoStart, setAutoStart] = React.useState(false);
   const [error, setError] = React.useState("");
   React.useEffect(() => {
-    void window.electronAPI.getAutoStartEnabled?.().then((result) => setAutoStart(result.enabled));
+    window.electronAPI
+      .getAutoStartEnabled?.()
+      .then((result) => setAutoStart(result.enabled))
+      .catch(() => {});
   }, []);
 
   const updateAutoStart = async (enabled: boolean) => {
@@ -154,7 +157,10 @@ function GeneralSettings() {
         >
           <SelectField
             value={theme}
-            onChange={(value) => setTheme(value as "light" | "dark" | "auto")}
+            onChange={(value) => {
+              // SAFETY: SelectField only ever emits ids from the options below.
+              setTheme(value as "light" | "dark" | "auto");
+            }}
             options={[
               { id: "auto", label: t("settingsPage.general.theme.system") },
               { id: "light", label: t("settingsPage.general.theme.light") },
@@ -169,7 +175,10 @@ function GeneralSettings() {
         >
           <SelectField
             value={dateFormat}
-            onChange={(value) => setDateFormat(value as DateFormat)}
+            onChange={(value) => {
+              // SAFETY: SelectField only ever emits ids from the options below.
+              setDateFormat(value as DateFormat);
+            }}
             options={[
               { id: "locale", label: t("settingsPage.general.dateFormat.locale") },
               { id: "dmy", label: "28.09.2026" },
@@ -185,7 +194,10 @@ function GeneralSettings() {
         >
           <SelectField
             value={timeFormat}
-            onChange={(value) => setTimeFormat(value as TimeFormat)}
+            onChange={(value) => {
+              // SAFETY: SelectField only ever emits ids from the options below.
+              setTimeFormat(value as TimeFormat);
+            }}
             options={[
               { id: "locale", label: t("settingsPage.general.timeFormat.locale") },
               { id: "12h", label: "3:35 PM" },
@@ -213,7 +225,7 @@ function GeneralSettings() {
           <Toggle
             checked={autoStart}
             onChange={(value) => {
-              void updateAutoStart(value);
+              updateAutoStart(value).catch(() => {});
             }}
           />
         </Row>
@@ -272,7 +284,7 @@ function NotesSettings() {
             checked={noteFilesEnabled}
             disabled={noteFilesUpdating}
             onChange={(enabled) => {
-              void setNoteFilesEnabled(enabled);
+              setNoteFilesEnabled(enabled).catch(() => {});
             }}
           />
         </Row>
@@ -375,19 +387,21 @@ function PrivacySettings() {
                 description: t("settingsPage.privacy.deleteAllAudioConfirmDescription"),
                 confirmText: t("settingsPage.privacy.deleteAllAudioConfirm"),
                 variant: "destructive",
-                onConfirm: async () => {
+                onConfirm: () => {
                   setAudioDeleteMessage("");
 
-                  try {
-                    const result = await window.electronAPI.deleteAllAudio();
-                    setAudioDeleteMessage(
-                      result.failed > 0
-                        ? t("settingsPage.privacy.deleteAllAudioFailed", { count: result.failed })
-                        : t("settingsPage.privacy.deleteAllAudioDone", { count: result.deleted })
-                    );
-                  } catch (error) {
-                    setAudioDeleteMessage(error instanceof Error ? error.message : String(error));
-                  }
+                  window.electronAPI
+                    .deleteAllAudio()
+                    .then((result) => {
+                      setAudioDeleteMessage(
+                        result.failed > 0
+                          ? t("settingsPage.privacy.deleteAllAudioFailed", { count: result.failed })
+                          : t("settingsPage.privacy.deleteAllAudioDone", { count: result.deleted })
+                      );
+                    })
+                    .catch((cause: unknown) => {
+                      setAudioDeleteMessage(cause instanceof Error ? cause.message : String(cause));
+                    });
                 },
               })
             }
@@ -567,7 +581,10 @@ function RecordingSettings() {
         <Row label={t("settingsPage.general.meetingHotkey.layoutLabel")}>
           <SelectField
             value={meetingHotkeyLayoutMode}
-            onChange={(value) => setMeetingHotkeyLayoutMode(value as "full-width" | "side-panel")}
+            onChange={(value) => {
+              // SAFETY: SelectField only ever emits ids from the options below.
+              setMeetingHotkeyLayoutMode(value as "full-width" | "side-panel");
+            }}
             options={[
               { id: "full-width", label: t("settingsPage.general.meetingHotkey.layoutFullWidth") },
               { id: "side-panel", label: t("settingsPage.general.meetingHotkey.layoutSidePanel") },

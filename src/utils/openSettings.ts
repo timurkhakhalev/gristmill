@@ -7,6 +7,8 @@ export function openSettings(section?: string) {
 
 export function onOpenSettingsRequest(handler: (section?: string) => void) {
   const listener = (event: Event) =>
+    // SAFETY: every dispatch of this private event goes through openSettings,
+    // which always builds a CustomEvent with a `{ section?: string }` detail.
     handler((event as CustomEvent<{ section?: string }>).detail?.section);
 
   window.addEventListener(OPEN_SETTINGS_EVENT, listener);

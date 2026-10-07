@@ -172,6 +172,11 @@ export function formatHotkeyLabelForPlatform(hotkey: string, platform: Platform)
   return formatSideModifierPart(hotkey, platform) ?? formatModifierPart(hotkey, platform);
 }
 
+export interface ParsedHotkey {
+  modifiers: string[];
+  baseKey: string;
+}
+
 /**
  * Parses a hotkey string to extract modifiers and the base key.
  *
@@ -182,10 +187,7 @@ export function formatHotkeyLabelForPlatform(hotkey: string, platform: Platform)
  * parseHotkey("CommandOrControl+Shift+K")
  * // { modifiers: ["CommandOrControl", "Shift"], baseKey: "K" }
  */
-export function parseHotkey(hotkey: string): {
-  modifiers: string[];
-  baseKey: string;
-} {
+export function parseHotkey(hotkey: string): ParsedHotkey {
   if (!hotkey || !hotkey.includes("+")) {
     return { modifiers: [], baseKey: hotkey || "" };
   }

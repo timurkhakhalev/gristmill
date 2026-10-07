@@ -20,4 +20,6 @@ export const PROMPT_KINDS = {
 
 export type PromptKind = keyof typeof PROMPT_KINDS;
 
+// SAFETY: PROMPT_KINDS is a const object, so its enumerable own keys are exactly
+// PromptKind; the registry test pins the list against the locale bundles.
 export const PROMPT_KIND_LIST = Object.keys(PROMPT_KINDS) as readonly PromptKind[];

@@ -74,37 +74,54 @@ export function LocalModelInventoryProvider({ children }: { children: ReactNode 
   }, []);
 
   useEffect(() => {
-    void reload();
+    reload().catch(() => {});
     window.electronAPI
       ?.checkParakeetInstallation?.()
-      .then(setCapability)
-      .catch((error) =>
-        logger.error("Failed to check Parakeet compatibility", { error }, "models")
+      .then((value) => setCapability(value))
+      .catch((cause: unknown) =>
+        logger.error("Failed to check Parakeet compatibility", { error: cause }, "models")
       );
-    window.addEventListener(LOCAL_MODELS_CHANGED_EVENT, reload);
 
-    return () => window.removeEventListener(LOCAL_MODELS_CHANGED_EVENT, reload);
+    const onModelsChanged = () => {
+      reload().catch(() => {});
+    };
+
+    window.addEventListener(LOCAL_MODELS_CHANGED_EVENT, onModelsChanged);
+
+    return () => window.removeEventListener(LOCAL_MODELS_CHANGED_EVENT, onModelsChanged);
   }, [reload]);
 
   const whisper = useModelDownload({
     modelType: "whisper",
-    onDownloadComplete: reload,
-    onModelsCleared: reload,
+    onDownloadComplete: () => {
+      reload().catch(() => {});
+    },
+    onModelsCleared: () => {
+      reload().catch(() => {});
+    },
   });
 
   const parakeet = useModelDownload({
     modelType: "parakeet",
-    onDownloadComplete: reload,
-    onModelsCleared: reload,
+    onDownloadComplete: () => {
+      reload().catch(() => {});
+    },
+    onModelsCleared: () => {
+      reload().catch(() => {});
+    },
   });
 
   const llm = useModelDownload({
     modelType: "llm",
-    onDownloadComplete: reload,
-    onModelsCleared: reload,
+    onDownloadComplete: () => {
+      reload().catch(() => {});
+    },
+    onModelsCleared: () => {
+      reload().catch(() => {});
+    },
   });
 
-  const managers = { whisper, parakeet, llm };
+  const managers = useMemo(() => ({ whisper, parakeet, llm }), [whisper, parakeet, llm]);
 
   const sherpaSupported = capability?.supported !== false;
 
@@ -179,21 +196,26 @@ export function LocalModelInventoryProvider({ children }: { children: ReactNode 
         };
       },
       download: (entry) => {
-        void managers[entry.kind].downloadModel(entry.id);
+        managers[entry.kind].downloadModel(entry.id).catch(() => {});
       },
       cancel: (entry) => {
-        void managers[entry.kind].cancelDownload(entry.id);
+        managers[entry.kind].cancelDownload(entry.id).catch(() => {});
       },
       remove: (entry) =>
         showConfirmDialog({
           title: t("transcription.deleteModel.title"),
           description: t("transcription.deleteModel.description"),
           variant: "destructive",
-          onConfirm: () => managers[entry.kind].deleteModel(entry.id, reload),
+          onConfirm: () => {
+            managers[entry.kind]
+              .deleteModel(entry.id, () => {
+                reload().catch(() => {});
+              })
+              .catch(() => {});
+          },
         }),
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- managers are rebuilt each render from the three hooks below
     }),
-    [speech, language, sherpaSupported, whisper, parakeet, llm, showConfirmDialog, reload, t]
+    [speech, language, sherpaSupported, managers, showConfirmDialog, reload, t]
   );
 
   return (

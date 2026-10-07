@@ -119,7 +119,7 @@ export default function CompactPermissionsStep({
   const canRequestSystemAudio = canManageSystemAudioInApp(systemAudio);
   const requiredGranted = permissions.micPermissionGranted;
 
-  const request = async (id: PermissionRowId, action: () => Promise<unknown>) => {
+  const request = async (id: PermissionRowId, action: () => Promise<void | boolean>) => {
     setBusyPermission(id);
 
     try {

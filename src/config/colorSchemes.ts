@@ -48,8 +48,14 @@ export const COLOR_SCHEME_SWATCHES: Record<ColorSchemeId, { background: string; 
     tangerine: { background: "oklch(0.22 0.01 260)", accent: "oklch(0.7 0.19 45)" },
   };
 
-export function normalizeColorScheme(value: unknown): ColorSchemeId {
-  return COLOR_SCHEME_IDS.includes(value as ColorSchemeId)
-    ? (value as ColorSchemeId)
+const COLOR_SCHEME_ID_SET: ReadonlySet<string> = new Set(COLOR_SCHEME_IDS);
+
+function isColorSchemeId(value: string): value is ColorSchemeId {
+  return COLOR_SCHEME_ID_SET.has(value);
+}
+
+export function normalizeColorScheme(value: string | null | undefined): ColorSchemeId {
+  return value !== null && value !== undefined && isColorSchemeId(value)
+    ? value
     : DEFAULT_COLOR_SCHEME;
 }

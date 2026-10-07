@@ -37,14 +37,34 @@ const stopTracks = (stream?: MediaStream) => {
   }
 };
 
-const describeMicError = (error: unknown, t: TFunction): string => {
-  if (!error || typeof error !== "object") {
+interface MicErrorShape {
+  name?: unknown;
+  message?: unknown;
+}
+
+function isMicErrorShape<T>(value: T): value is T & MicErrorShape {
+  return typeof value === "object" && value !== null;
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function hasGetUserMedia<T>(value: T): value is T & Pick<MediaDevices, "getUserMedia"> {
+  if (typeof value !== "object" || value === null || !("getUserMedia" in value)) return false;
+
+  // SAFETY: the `in` check above only proves the key exists; read it as unknown
+  // to verify it is the callable getUserMedia the guard advertises.
+  return typeof (value as { getUserMedia?: unknown }).getUserMedia === "function";
+}
+
+const describeMicError = (error: MicErrorShape | null, t: TFunction): string => {
+  if (!error) {
     return t("hooks.permissions.micErrors.accessFailed");
   }
 
-  const err = error as { name?: string; message?: string };
-  const name = err.name || "";
-  const message = (err.message || "").toLowerCase();
+  const name = isString(error.name) ? error.name : "";
+  const message = (isString(error.message) ? error.message : "").toLowerCase();
   const settingsPath = t("hooks.permissions.paths.defaultSound");
   const privacyPath = t("hooks.permissions.paths.defaultPrivacy");
 
@@ -65,7 +85,9 @@ const describeMicError = (error: unknown, t: TFunction): string => {
   }
 
   return t("hooks.permissions.micErrors.unknown", {
-    error: err.message || t("hooks.permissions.micErrors.unknownFallback"),
+    error: isString(error.message)
+      ? error.message
+      : t("hooks.permissions.micErrors.unknownFallback"),
   });
 };
 
@@ -130,17 +152,17 @@ export const usePermissions = (
   );
 
   const openMicPrivacySettings = useCallback(
-    () => openSystemSettings("microphone", window.electronAPI?.openMicrophoneSettings),
+    () => openSystemSettings("microphone", () => window.electronAPI?.openMicrophoneSettings?.()),
     [openSystemSettings]
   );
 
   const openSoundInputSettings = useCallback(
-    () => openSystemSettings("sound", window.electronAPI?.openSoundInputSettings),
+    () => openSystemSettings("sound", () => window.electronAPI?.openSoundInputSettings?.()),
     [openSystemSettings]
   );
 
   const requestMicPermission = useCallback(async () => {
-    if (!navigator?.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+    if (!hasGetUserMedia(navigator?.mediaDevices)) {
       const message = t("hooks.permissions.micUnavailable");
       setMicPermissionError(message);
 
@@ -185,7 +207,7 @@ export const usePermissions = (
       setMicPermissionError(null);
     } catch (err) {
       logger.error("Microphone permission denied:", err);
-      const message = describeMicError(err, t);
+      const message = describeMicError(isMicErrorShape(err) ? err : null, t);
       setMicPermissionError(message);
 
       if (showAlertDialog) {
@@ -209,7 +231,9 @@ export const usePermissions = (
 
     if (accessibilityPromptRequested) {
       setAccessibilityTroubleshooting(true);
-      await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
+      await openSystemSettings("accessibility", () =>
+        window.electronAPI?.openAccessibilitySettings?.()
+      );
 
       return;
     }
@@ -226,21 +250,27 @@ export const usePermissions = (
     }
 
     setAccessibilityTroubleshooting(true);
-    await openSystemSettings("accessibility", window.electronAPI?.openAccessibilitySettings);
+    await openSystemSettings("accessibility", () =>
+      window.electronAPI?.openAccessibilitySettings?.()
+    );
   }, [accessibilityPromptRequested, openSystemSettings, setAccessibilityPermissionGranted]);
 
   // On macOS, re-validate microphone permission on mount to override stale
   // localStorage values (e.g. after TCC reset or app update).
   useEffect(() => {
-    const refresh = () =>
-      window.electronAPI?.checkMicrophoneAccess?.().then((result) => {
-        const capture = useMeetingRecordingStore.getState();
+    const refresh = () => {
+      window.electronAPI
+        ?.checkMicrophoneAccess?.()
+        .then((result) => {
+          const capture = useMeetingRecordingStore.getState();
 
-        if (result && !(capture.isRecording && capture.micCaptureStatus === "active"))
-          setMicPermissionGranted(result.granted);
-      });
+          if (result && !(capture.isRecording && capture.micCaptureStatus === "active"))
+            setMicPermissionGranted(result.granted);
+        })
+        .catch(() => {});
+    };
 
-    void refresh();
+    refresh();
     window.addEventListener("focus", refresh);
 
     return () => window.removeEventListener("focus", refresh);
@@ -253,9 +283,13 @@ export const usePermissions = (
   // to touch protected features, overriding stale localStorage values.
   useEffect(() => {
     if (!macAccessibilityChecksEnabled) return;
-    window.electronAPI?.checkAccessibilityPermission?.(true).then((granted) => {
-      setAccessibilityPermissionGranted(granted);
-    });
+
+    window.electronAPI
+      ?.checkAccessibilityPermission?.(true)
+      .then((granted) => {
+        setAccessibilityPermissionGranted(granted);
+      })
+      .catch(() => {});
   }, [macAccessibilityChecksEnabled, setAccessibilityPermissionGranted]);
 
   // A granted Accessibility grant can be revoked in System Settings while the
@@ -266,9 +300,13 @@ export const usePermissions = (
   useEffect(() => {
     const refresh = () => {
       if (!macAccessibilityChecksRef.current) return;
-      void window.electronAPI?.checkAccessibilityPermission?.(true).then((granted) => {
-        setAccessibilityPermissionGranted(granted);
-      });
+
+      window.electronAPI
+        ?.checkAccessibilityPermission?.(true)
+        .then((granted) => {
+          setAccessibilityPermissionGranted(granted);
+        })
+        .catch(() => {});
     };
 
     window.addEventListener("focus", refresh);
@@ -288,20 +326,23 @@ export const usePermissions = (
     }
 
     const interval = setInterval(() => {
-      window.electronAPI?.checkAccessibilityPermission?.(true).then((granted) => {
-        if (granted) {
-          setAccessibilityPermissionGranted(true);
-          setAccessibilityTroubleshooting(false);
-          accessibilityPollCount.current = 0;
-        } else {
-          accessibilityPollCount.current += 1;
+      window.electronAPI
+        ?.checkAccessibilityPermission?.(true)
+        .then((granted) => {
+          if (granted) {
+            setAccessibilityPermissionGranted(true);
+            setAccessibilityTroubleshooting(false);
+            accessibilityPollCount.current = 0;
+          } else {
+            accessibilityPollCount.current += 1;
 
-          // After ~10s of failed polls, show troubleshooting tips
-          if (accessibilityPollCount.current >= 5) {
-            setAccessibilityTroubleshooting(true);
+            // After ~10s of failed polls, show troubleshooting tips
+            if (accessibilityPollCount.current >= 5) {
+              setAccessibilityTroubleshooting(true);
+            }
           }
-        }
-      });
+        })
+        .catch(() => {});
     }, 2000);
 
     return () => clearInterval(interval);

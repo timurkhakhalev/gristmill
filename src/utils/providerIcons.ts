@@ -24,7 +24,11 @@ import tinfoilIcon from "@/assets/icons/providers/tinfoil.svg";
 import deepgramIcon from "@/assets/icons/providers/deepgram.svg";
 import assemblyaiIcon from "@/assets/icons/providers/assemblyai.svg";
 
-export const PROVIDER_ICONS: Record<string, string> = {
+export interface ProviderIconMap {
+  [provider: string]: string;
+}
+
+export const PROVIDER_ICONS: ProviderIconMap = {
   oruk: orukIcon,
   openai: openaiIcon,
   whisper: openaiIcon,
@@ -67,12 +71,18 @@ export const MONOCHROME_PROVIDERS = [
   "assemblyai",
 ] as const;
 
+const MONOCHROME_PROVIDER_SET: ReadonlySet<string> = new Set(MONOCHROME_PROVIDERS);
+
 export function isMonochromeProvider(provider: string): boolean {
-  return (MONOCHROME_PROVIDERS as readonly string[]).includes(provider);
+  return MONOCHROME_PROVIDER_SET.has(provider);
 }
 
 // OpenRouter-style provider prefixes (the slug before "/") → our internal icon keys.
-const REMOTE_PROVIDER_ALIASES: Record<string, string> = {
+interface RemoteProviderAliasMap {
+  [prefix: string]: string;
+}
+
+const REMOTE_PROVIDER_ALIASES: RemoteProviderAliasMap = {
   google: "gemini",
   "meta-llama": "llama",
   meta: "llama",
@@ -81,16 +91,15 @@ const REMOTE_PROVIDER_ALIASES: Record<string, string> = {
   amazon: "bedrock",
 };
 
+export interface RemoteProviderIcon {
+  icon: string | undefined;
+  invertInDark: boolean;
+}
+
 // Resolves the icon for a remote provider prefix (e.g. "openai" from "openai/gpt-4").
 // A model family with its own icon wins over the publisher prefix, so
 // "google/gemma-7b" gets the Gemma icon rather than Gemini's.
-export function getRemoteProviderIcon(
-  prefix: string,
-  modelName?: string
-): {
-  icon: string | undefined;
-  invertInDark: boolean;
-} {
+export function getRemoteProviderIcon(prefix: string, modelName?: string): RemoteProviderIcon {
   const base = prefix.startsWith("~") ? prefix.slice(1) : prefix;
   const family = modelName?.split(/[-.:@ ]/, 1)[0].toLowerCase();
   const key = family && PROVIDER_ICONS[family] ? family : (REMOTE_PROVIDER_ALIASES[base] ?? base);

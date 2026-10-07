@@ -575,11 +575,17 @@ function LanguageEndpointForm({
     <OpenAICompatiblePanel
       key="custom"
       baseUrl={config.cloudBaseUrl ?? ""}
-      setBaseUrl={(value) => setResolvedLLMConfig(task, { cloudBaseUrl: value })}
+      setBaseUrl={(value) => {
+        setResolvedLLMConfig(task, { cloudBaseUrl: value })?.catch(() => {});
+      }}
       apiKey={config.customApiKey ?? ""}
-      setApiKey={(value) =>
-        setResolvedLLMConfig(task, { customApiKey: value }) ?? { success: false }
-      }
+      setApiKey={(value) => {
+        const pending = setResolvedLLMConfig(task, { customApiKey: value });
+
+        pending?.catch(() => {});
+
+        return pending ?? { success: false };
+      }}
       model={isCurrent ? selection.modelId : ""}
       setModel={(model) => selectCloudModel(task, "custom", model)}
       defaultBaseUrl={API_ENDPOINTS.OPENAI_BASE}
@@ -780,11 +786,17 @@ function LanguageSelfHosted({ task, selection }: { task: LanguageTask; selection
   return (
     <OpenAICompatiblePanel
       baseUrl={config.remoteUrl ?? ""}
-      setBaseUrl={(value) => setResolvedLLMConfig(task, { remoteUrl: value })}
+      setBaseUrl={(value) => {
+        setResolvedLLMConfig(task, { remoteUrl: value })?.catch(() => {});
+      }}
       apiKey={config.customApiKey ?? ""}
-      setApiKey={(value) =>
-        setResolvedLLMConfig(task, { customApiKey: value }) ?? { success: false }
-      }
+      setApiKey={(value) => {
+        const pending = setResolvedLLMConfig(task, { customApiKey: value });
+
+        pending?.catch(() => {});
+
+        return pending ?? { success: false };
+      }}
       model={selection.source === "self-hosted" ? selection.modelId : ""}
       setModel={(model) => selectSelfHosted(task, model)}
       baseUrlPlaceholder="http://127.0.0.1:11434/v1"
@@ -870,7 +882,9 @@ function ThinkingToggle({ task }: { task: LanguageTask }) {
       </div>
       <Toggle
         checked={config.disableThinking}
-        onChange={(value) => setResolvedLLMConfig(task, { disableThinking: value })}
+        onChange={(value) => {
+          setResolvedLLMConfig(task, { disableThinking: value })?.catch(() => {});
+        }}
         ariaLabel={t("reasoning.disableThinking.label")}
       />
     </div>
@@ -891,6 +905,7 @@ function TaskModelPanel({ task, selection }: { task: ModelTask; selection: TaskS
         {source === "cloud" && <CloudTab task={task} selection={selection} />}
         {source === "local" && <LocalTab task={task} selection={selection} />}
         {source === "self-hosted" && !isSpeechTask(task) && (
+          // SAFETY: the isSpeechTask guard above leaves only language tasks.
           <LanguageSelfHosted task={task as LanguageTask} selection={selection} />
         )}
         {source === "bb" && !isSpeechTask(task) && <BbTab task={task} selection={selection} />}

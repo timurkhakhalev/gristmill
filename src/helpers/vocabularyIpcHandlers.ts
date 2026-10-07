@@ -22,25 +22,66 @@ import { sendDictionaryUpdated, sendSnippetsUpdated } from "./vocabularyEvents.j
 
 const snippetListSchema = z.array(snippetSchema);
 
+// The manager-side result shapes these handlers read before validating the
+// wire subset. `error` is optional: applyDictionaryChanges may report one.
+export interface SuccessDbResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface DictionaryChangeDbResult {
+  success: boolean;
+  added: number;
+  removed: number;
+  error?: string;
+}
+
+export interface VocabularySnippetInput {
+  trigger: string;
+  replacement: string;
+}
+
+export interface VocabularyDatabase {
+  getDictionary(): string[];
+  setDictionary(words: unknown[]): SuccessDbResult;
+  applyDictionaryChanges(changes: { add?: unknown; remove?: unknown }): DictionaryChangeDbResult;
+  hardDeleteDictionaryEntry(id: number | string | null): SuccessDbResult;
+  getSnippets(): Array<{ trigger: string; replacement: string }>;
+  setSnippets(snippets: unknown[]): SuccessDbResult;
+  hardDeleteSnippet(id: number | string | null): SuccessDbResult;
+}
+
 export interface VocabularyHandlerDeps {
-  database: {
-    getDictionary(): unknown;
-    setDictionary(words: unknown): unknown;
-    applyDictionaryChanges(changes: { add?: unknown; remove?: unknown }): unknown;
-    hardDeleteDictionaryEntry(id: unknown): unknown;
-    getSnippets(): unknown;
-    setSnippets(snippets: unknown): unknown;
-    hardDeleteSnippet(id: unknown): unknown;
-  };
-  debugLogger: { debug: (message: string, context?: Record<string, unknown>) => void };
+  database: VocabularyDatabase;
+  debugLogger: { debug: (message: string, context?: VocabularyLogContext) => void };
+}
+
+interface VocabularyLogContext {
+  error?: unknown;
+  words?: string[];
+}
+
+// The renderer's `applyDictionaryChanges` patch. Both fields are untrusted
+// until each is checked with Array.isArray below.
+interface DictionaryDeltaRecord {
+  add?: unknown;
+  remove?: unknown;
+}
+
+function isDeltaRecord<T>(value: T): value is T & DictionaryDeltaRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function isNonEmptyString<T>(value: T): value is T & string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 export interface IpcMainLike {
-  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): unknown;
+  handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
 }
 
 // Throw before the DB is touched when the renderer sent a wrong-shaped call.
-function parseArgs<T>(schema: ZodType<T>, args: unknown): T {
+function parseArgs<T, Args>(schema: ZodType<T>, args: Args): T {
   const result = schema.safeParse(args);
 
   if (!result.success) {
@@ -53,7 +94,7 @@ function parseArgs<T>(schema: ZodType<T>, args: unknown): T {
 }
 
 // A wrong-shaped database response must not flow into renderers.
-function parseResult<T>(schema: ZodType<T>, raw: unknown): T {
+function parseResult<T, Raw>(schema: ZodType<T>, raw: Raw): T {
   const result = schema.safeParse(raw);
 
   if (!result.success) {
@@ -86,7 +127,7 @@ export function registerVocabularyHandlers(
 
   ipcMain.handle(vocabularyChannels.applyDictionaryChanges, async (_event, ...rawArgs) => {
     const [changes] = parseArgs(applyDictionaryChangesArgsSchema, rawArgs);
-    const { add, remove } = (changes ?? {}) as { add?: unknown; remove?: unknown };
+    const { add, remove } = isDeltaRecord(changes) ? changes : {};
 
     if (add !== undefined && !Array.isArray(add)) {
       throw new Error("add must be an array");
@@ -152,7 +193,7 @@ export function registerVocabularyHandlers(
         return { success: false };
       }
 
-      const validWords = words.filter((w) => typeof w === "string" && w.trim().length > 0);
+      const validWords = words.filter(isNonEmptyString);
 
       if (validWords.length === 0) {
         return { success: false };
@@ -160,9 +201,9 @@ export function registerVocabularyHandlers(
 
       const saveResult = database.applyDictionaryChanges({ remove: validWords });
 
-      if ((saveResult as { success?: boolean } | undefined)?.success === false) {
+      if (saveResult.success === false) {
         debugLogger.debug("[AutoLearn] Undo failed to save dictionary", {
-          error: (saveResult as { error?: unknown }).error,
+          error: saveResult.error,
         });
 
         return { success: false };
@@ -173,11 +214,11 @@ export function registerVocabularyHandlers(
 
       return { success: true };
     } catch (err) {
-      debugLogger.debug("[AutoLearn] Undo failed", { error: (err as Error).message });
+      debugLogger.debug("[AutoLearn] Undo failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
 
       return { success: false };
     }
   });
 }
-
-import { dictionaryChangeResultSchema as _dictionaryChangeResultSchema } from "../contracts/vocabulary.js";

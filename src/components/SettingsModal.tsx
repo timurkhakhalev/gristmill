@@ -20,7 +20,11 @@ export type { SettingsSectionType };
 
 // Old AI-model sections (transcription, meetings, intelligence, agent mode) are
 // one Models page now. Legacy deep links land on the matching task row.
-const SECTION_ALIASES: Record<string, SettingsSectionType> = {
+interface SectionAliasTable {
+  [key: string]: SettingsSectionType;
+}
+
+const SECTION_ALIASES: SectionAliasTable = {
   aiModels: "models",
   agentConfig: "models",
   agentMode: "models",
@@ -35,7 +39,11 @@ const SECTION_ALIASES: Record<string, SettingsSectionType> = {
   developer: "advanced",
 };
 
-const LEGACY_FOCUS: Record<string, string> = {
+interface LegacyFocusTable {
+  [key: string]: string;
+}
+
+const LEGACY_FOCUS: LegacyFocusTable = {
   transcription: "meeting",
   uploadTranscription: "upload",
   meetings: "summary",
@@ -46,15 +54,19 @@ const LEGACY_FOCUS: Record<string, string> = {
   agentConfig: "chat",
 };
 
-/** "models#summary" opens a section focused on one of its anchors. */
-function parseSection(section: string | undefined): {
+interface ParsedSection {
   section: SettingsSectionType;
   focus?: string;
-} {
+}
+
+/** "models#summary" opens a section focused on one of its anchors. */
+function parseSection(section: string | undefined): ParsedSection {
   if (!section) return { section: "general" };
   const [id, anchor] = section.split("#");
 
   return {
+    // SAFETY: deep-link hashes are external input; unknown ids fall through to
+    // the raw string and SettingsPage treats an unrecognized section as absent.
     section: (SECTION_ALIASES[id] ?? id) as SettingsSectionType,
     focus: anchor || LEGACY_FOCUS[id],
   };

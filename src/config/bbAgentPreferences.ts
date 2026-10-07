@@ -1,4 +1,5 @@
 // Pure bb harness preference logic shared by the settings selectors and the UI.
+import { z } from "zod";
 import type { BbAgentPreferences } from "../contracts/inferenceSettings";
 
 export interface BbResolvedSelection {
@@ -19,43 +20,23 @@ export function seedBbAgentPreferences(host: {
   };
 }
 
-const isStringArray = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((item) => typeof item === "string");
+// Persisted preferences are JSON: decode the whole shape before any field is
+// read, so a malformed entry is treated as unseeded rather than half-applied.
+const bbAgentPreferencesSchema = z.object({
+  order: z.array(z.string()),
+  disabled: z.array(z.string()),
+  defaultProvider: z.string(),
+  defaults: z.record(z.string(), z.object({ model: z.string(), reasoningLevel: z.string() })),
+});
 
 /** Validates persisted preferences; anything malformed is treated as unseeded. */
 export function parseBbAgentPreferences(raw: string | null): BbAgentPreferences | null {
   if (!raw) return null;
 
   try {
-    const value: unknown = JSON.parse(raw);
+    const parsed = bbAgentPreferencesSchema.safeParse(JSON.parse(raw));
 
-    if (!value || typeof value !== "object") return null;
-    const { order, disabled, defaultProvider, defaults } = value as Record<string, unknown>;
-
-    if (!isStringArray(order) || !isStringArray(disabled) || typeof defaultProvider !== "string")
-      return null;
-
-    if (!defaults || typeof defaults !== "object") return null;
-
-    const entries = Object.entries(defaults).filter(
-      (entry): entry is [string, { model: string; reasoningLevel: string }] => {
-        const item = entry[1] as Record<string, unknown> | null;
-
-        return !!item && typeof item.model === "string" && typeof item.reasoningLevel === "string";
-      }
-    );
-
-    return {
-      order,
-      disabled,
-      defaultProvider,
-      defaults: Object.fromEntries(
-        entries.map(([id, item]) => [
-          id,
-          { model: item.model, reasoningLevel: item.reasoningLevel },
-        ])
-      ),
-    };
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }

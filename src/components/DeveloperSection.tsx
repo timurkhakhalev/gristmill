@@ -39,7 +39,9 @@ export default function DeveloperSection() {
   }, [t, toast]);
 
   useEffect(() => {
-    loadDebugState();
+    loadDebugState().catch((error) => {
+      logger.error("Debug state load rejected", { error: String(error) }, "developer");
+    });
   }, [loadDebugState]);
 
   useEffect(() => {
@@ -90,7 +92,7 @@ export default function DeveloperSection() {
           : t("developerSection.toasts.debugDisabled.description"),
         variant: "success",
       });
-    } catch (error) {
+    } catch {
       toast({
         title: t("developerSection.toasts.updateFailed.title"),
         description: t("developerSection.toasts.updateFailed.description"),
@@ -108,7 +110,7 @@ export default function DeveloperSection() {
       if (!result.success) {
         throw new Error(result.error || "Failed to open folder");
       }
-    } catch (error) {
+    } catch {
       toast({
         title: t("developerSection.toasts.openLogsFailed.title"),
         description: t("developerSection.toasts.openLogsFailed.description"),
@@ -130,7 +132,7 @@ export default function DeveloperSection() {
         duration: 2000,
       });
       setTimeout(() => setCopiedPath(false), 2000);
-    } catch (error) {
+    } catch {
       toast({
         title: t("developerSection.toasts.copyFailed.title"),
         description: t("developerSection.toasts.copyFailed.description"),
@@ -190,7 +192,11 @@ export default function DeveloperSection() {
       >
         <Toggle
           checked={debugEnabled}
-          onChange={handleToggleDebug}
+          onChange={() => {
+            handleToggleDebug().catch((error) => {
+              logger.error("Debug toggle failed", { error: String(error) }, "developer");
+            });
+          }}
           disabled={isLoading || isToggling}
         />
       </SettingsCardRow>
@@ -209,7 +215,11 @@ export default function DeveloperSection() {
             </code>
             <div className="flex shrink-0 items-center gap-1.5">
               <Button
-                onClick={handleCopyPath}
+                onClick={() => {
+                  handleCopyPath().catch((error) => {
+                    logger.error("Copy log path failed", { error: String(error) }, "developer");
+                  });
+                }}
                 variant="ghost"
                 size="icon"
                 aria-label={t("common.copy", { defaultValue: "Copy" })}
@@ -231,7 +241,15 @@ export default function DeveloperSection() {
         </SettingsPanelRow>
       )}
       <SettingsPanelRow>
-        <Button onClick={handleOpenLogsFolder} variant="outline" size="sm">
+        <Button
+          onClick={() => {
+            handleOpenLogsFolder().catch((error) => {
+              logger.error("Open logs folder failed", { error: String(error) }, "developer");
+            });
+          }}
+          variant="outline"
+          size="sm"
+        >
           <FolderOpen className="size-3.5" />
           {t("developerSection.openLogsFolder")}
         </Button>

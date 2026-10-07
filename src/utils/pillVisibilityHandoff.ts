@@ -7,6 +7,11 @@ interface PillVisibilityHandoffOptions {
   waitForFrames?: () => Promise<void>;
 }
 
+interface PillReleaseResult {
+  released: boolean;
+  superseded: boolean;
+}
+
 /**
  * Hide the persistent pill root across a risky native resize, independently of
  * React renders. Two callers own one each: the dictation-error return and the
@@ -36,7 +41,7 @@ export function createPillVisibilityHandoff({
       publish(true);
     },
 
-    async releaseAfter(settleBounds: () => Promise<unknown>) {
+    async releaseAfter(settleBounds: () => Promise<unknown>): Promise<PillReleaseResult> {
       const releaseGeneration = ++generation;
 
       try {

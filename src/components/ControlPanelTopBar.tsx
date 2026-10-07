@@ -15,6 +15,8 @@ const NotesDebugControls =
 const platform = getCachedPlatform();
 
 // Controls inside the drag region must opt out or the click starts a window drag.
+// SAFETY: WebkitAppRegion is Electron's window-drag CSS seam; React's
+// CSSProperties type does not declare it.
 const noDragStyle = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 const toggleIconClass =
@@ -67,6 +69,8 @@ export default function ControlPanelTopBar({
         "transition-[padding] duration-300 ease-out",
         clearTrafficLights && "ltr:ps-[76px]"
       )}
+      // SAFETY: WebkitAppRegion is Electron's window-drag CSS seam; React's
+      // CSSProperties type does not declare it.
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       <div className="flex min-w-0 items-center gap-2">

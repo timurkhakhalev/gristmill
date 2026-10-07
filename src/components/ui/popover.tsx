@@ -9,7 +9,19 @@ import { OVERLAY_CLASS } from "./surfaceStyles";
  * popovers, menus and modals nest without fighting over focus or outside clicks.
  */
 
-const AnchorContext = React.createContext<React.RefObject<HTMLElement | null> | null>(null);
+const AnchorContext = React.createContext<React.RefObject<Element | null> | null>(null);
+
+function isFunctionRef(
+  value: React.Ref<Element> | undefined
+): value is (node: Element | null) => void {
+  return typeof value === "function";
+}
+
+function isObjectRef(
+  value: React.Ref<Element> | undefined
+): value is React.RefObject<Element | null> {
+  return typeof value === "object" && value !== null;
+}
 
 function Popover({
   open,
@@ -22,7 +34,7 @@ function Popover({
   onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }) {
-  const anchorRef = React.useRef<HTMLElement | null>(null);
+  const anchorRef = React.useRef<Element | null>(null);
 
   return (
     <AnchorContext.Provider value={anchorRef}>
@@ -35,29 +47,31 @@ function Popover({
 
 /** Opens the popover on press. The child must be a single focusable element. */
 function PopoverTrigger({ children }: { asChild?: boolean; children: React.ReactElement }) {
-  return (
-    <Pressable>{children as React.ReactElement<React.DOMAttributes<Element>, string>}</Pressable>
-  );
+  // SAFETY: Pressable clones its single child and merges the press handlers onto
+  // it; the child is a focusable DOM element (documented caller contract).
+  const trigger = children as React.ReactElement<React.DOMAttributes<Element>, string>;
+
+  return <Pressable>{trigger}</Pressable>;
 }
 
 /** Positions the popover against an element without making it the trigger. */
-function PopoverAnchor({ children }: { asChild?: boolean; children: React.ReactElement }) {
+function PopoverAnchor({
+  children,
+}: {
+  asChild?: boolean;
+  children: React.ReactElement<{ ref?: React.Ref<Element> }>;
+}) {
   const anchorRef = React.useContext(AnchorContext);
 
-  const child = React.Children.only(children) as React.ReactElement<{
-    ref?: React.Ref<HTMLElement>;
-  }>;
-
-  const childRef = (child.props as { ref?: React.Ref<HTMLElement> }).ref;
+  const child = React.Children.only(children);
+  const childRef = child.props.ref;
 
   const setRef = React.useCallback(
-    (node: HTMLElement | null) => {
+    (node: Element | null) => {
       if (anchorRef) anchorRef.current = node;
 
-      if (typeof childRef === "function") childRef(node);
-      else if (childRef && typeof childRef === "object") {
-        (childRef as React.RefObject<HTMLElement | null>).current = node;
-      }
+      if (isFunctionRef(childRef)) childRef(node);
+      else if (isObjectRef(childRef)) childRef.current = node;
     },
     [anchorRef, childRef]
   );
@@ -68,6 +82,17 @@ function PopoverAnchor({ children }: { asChild?: boolean; children: React.ReactE
 type Side = "top" | "bottom" | "left" | "right";
 
 type Align = "start" | "center" | "end";
+
+type PopoverPlacement = React.ComponentProps<typeof HeroPopover.Content>["placement"];
+
+// React Aria cross-axis placements are top/bottom beside a left/right popover and
+// start/end above or below one; a center align has no cross-axis qualifier.
+const PLACEMENTS = {
+  top: { start: "top start", center: "top", end: "top end" },
+  bottom: { start: "bottom start", center: "bottom", end: "bottom end" },
+  left: { start: "left top", center: "left", end: "left bottom" },
+  right: { start: "right top", center: "right", end: "right bottom" },
+} satisfies Record<Side, Record<Align, PopoverPlacement>>;
 
 function PopoverContent({
   className,
@@ -88,13 +113,7 @@ function PopoverContent({
   shouldCloseOnInteractOutside?: (element: Element) => boolean;
 }) {
   const anchorRef = React.useContext(AnchorContext);
-  // React Aria cross-axis placements are top/bottom beside a left/right popover and start/end above or below one.
-  const beside = side === "left" || side === "right";
-  const crossAlign = beside ? (align === "start" ? "top" : "bottom") : align;
-
-  const placement = (align === "center" ? side : `${side} ${crossAlign}`) as React.ComponentProps<
-    typeof HeroPopover.Content
-  >["placement"];
+  const placement = PLACEMENTS[side][align];
 
   return (
     <HeroPopover.Content
@@ -102,8 +121,10 @@ function PopoverContent({
       offset={sideOffset}
       isNonModal={isNonModal}
       shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
-      triggerRef={anchorRef?.current ? (anchorRef as React.RefObject<HTMLElement>) : undefined}
+      triggerRef={anchorRef ?? undefined}
       // A popover opening under the frameless titlebar would otherwise be swallowed by its native drag region.
+      // SAFETY: WebkitAppRegion is Electron's window-drag CSS seam; React's
+      // CSSProperties type does not declare it.
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       className={cn("flex min-w-[220px] flex-col p-0", OVERLAY_CLASS)}
     >

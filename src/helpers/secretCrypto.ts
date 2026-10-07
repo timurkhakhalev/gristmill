@@ -27,7 +27,7 @@ let mode: BackendMode | null = null;
 
 let masterKey: Buffer | null = null;
 
-function errorMessage<T>(error: T): string {
+function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 

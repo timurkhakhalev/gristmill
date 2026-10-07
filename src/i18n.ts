@@ -112,8 +112,8 @@ const storageLanguage =
 const initialLanguage = normalizeUiLanguage(storageLanguage || browserLanguage || "en");
 
 // Fire-and-forget by contract: initializing with an inline resource bundle
-// resolves synchronously and the renderer has no recovery UI; the rejection is
-// observed here so it cannot float.
+// resolves synchronously and the renderer has no recovery UI, so the rejection
+// is recorded to the console instead of floating.
 i18n
   .use(initReactI18next)
   .init({
@@ -128,6 +128,8 @@ i18n
     returnEmptyString: true,
     returnNull: false,
   })
-  .catch(() => {});
+  .catch((error) => {
+    console.error("[i18n] init failed", error);
+  });
 
 export default i18n;

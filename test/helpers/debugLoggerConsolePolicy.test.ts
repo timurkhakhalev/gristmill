@@ -266,6 +266,24 @@ test("packaged Windows retains debug logs in the file sink while suppressing the
   }
 });
 
+test("inherited Object.prototype keys never resolve as log levels", async () => {
+  for (const env of [
+    { GRISTMILL_LOG_LEVEL: "constructor" },
+    { GRISTMILL_LOG_LEVEL: "__proto__" },
+    { GRISTMILL_LOG_LEVEL: "CONSTRUCTOR" },
+  ]) {
+    const logger = loadLogger({ platform: "linux", isPackaged: false, env }) as LoggerUnderTest;
+
+    assert.equal(logger.getLevel(), "info", JSON.stringify(env));
+
+    const calls = await captureConsole(() =>
+      logger.logEntry({ level: "constructor", message: "must survive" })
+    );
+
+    assert.deepEqual(calls, [["log", "[INFO][renderer] must survive"]], JSON.stringify(env));
+  }
+});
+
 test("production persists capture errors with a bounded rotated file while debug logging stays off", () => {
   const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-error-log-"));
 

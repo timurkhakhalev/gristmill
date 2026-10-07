@@ -28,7 +28,7 @@ const ENV_STRIP_KEYS = new Set(
   )
 );
 
-function errorMessage<T>(error: T): string {
+function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -36,7 +36,7 @@ function isString<T>(value: T): value is T & string {
   return typeof value === "string";
 }
 
-function errorCode<T>(error: T): string | undefined {
+function errorCode(error: unknown): string | undefined {
   if (!(error instanceof Error) || !("code" in error)) return undefined;
   const code: unknown = error.code;
 

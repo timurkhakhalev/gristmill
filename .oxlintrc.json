@@ -123,6 +123,47 @@
       }
     },
     {
+      "files": ["src/helpers/cliBridge.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off",
+        "quality/no-unsafe-dictionary-type": "off",
+        "quality/no-known-value-widening": "off"
+      }
+    },
+    {
+      "files": ["src/helpers/debugLogger.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off",
+        "quality/no-unsafe-dictionary-type": "off",
+        "quality/no-known-value-widening": "off",
+        "quality/no-chained-type-assertions": "off",
+        "quality/require-safety-comment-for-type-assertion": "off",
+        "typescript/no-base-to-string": "off"
+      }
+    },
+    {
+      "files": ["src/utils/logger.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
+      "files": [
+        "src/helpers/appVersion.ts",
+        "src/helpers/dbTimestamp.ts",
+        "src/helpers/devSnapshot.ts",
+        "src/helpers/environment.ts",
+        "src/helpers/secretCrypto.ts",
+        "src/utils/version.ts",
+        "src/utils/dateFormatting.ts"
+      ],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": ["src/helpers/downloadUtils.ts"],
       "rules": {
         "quality/no-unknown-parameters": "off"

@@ -1,5 +1,7 @@
 import i18next from "i18next";
 
+import debugLogger from "./debugLogger.js";
+
 import enTranslation from "../locales/en/translation.json";
 import arTranslation from "../locales/ar/translation.json";
 import esTranslation from "../locales/es/translation.json";
@@ -144,7 +146,9 @@ i18nMain
     returnEmptyString: false,
     returnNull: false,
   })
-  .catch(() => {});
+  .catch((error) => {
+    debugLogger.error("i18nMain init failed", { error: String(error) }, "i18n");
+  });
 
 export function changeLanguage(language: string | null | undefined): string {
   const normalized = normalizeUiLanguage(language);
@@ -153,7 +157,9 @@ export function changeLanguage(language: string | null | undefined): string {
     // Fire-and-forget by contract: the bundled resources are already in memory,
     // the synchronous language switch is observable via i18nMain.language, and
     // callers only read the returned normalized code.
-    i18nMain.changeLanguage(normalized).catch(() => {});
+    i18nMain.changeLanguage(normalized).catch((error) => {
+      debugLogger.error("i18nMain changeLanguage failed", { error: String(error) }, "i18n");
+    });
   }
 
   return normalized;

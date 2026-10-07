@@ -60,11 +60,7 @@ const shouldLog = (level: LogLevel, current: LogLevel) => {
   return LOG_LEVELS[level] >= LOG_LEVELS[current];
 };
 
-function errorMessage<T>(cause: T): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
-const logToConsole = <T>(level: LogLevel, message: string, meta?: T, scope?: string) => {
+const logToConsole = (level: LogLevel, message: string, meta?: unknown, scope?: string) => {
   const levelTag = `[${level.toUpperCase()}]`;
   const scopeTag = scope ? `[${scope}]` : "";
 
@@ -82,10 +78,10 @@ const logToConsole = <T>(level: LogLevel, message: string, meta?: T, scope?: str
   }
 };
 
-const log = async <T>(
+const log = async (
   level: LogLevel,
   message: string,
-  meta?: T,
+  meta?: unknown,
   scope?: string
 ): Promise<void> => {
   const currentLevel = await resolveLogLevel();
@@ -114,24 +110,31 @@ const log = async <T>(
 // Fire-and-forget by contract: log() handles every failure internally
 // (bridge errors fall back to console) and no caller awaits logging, so the
 // public API returns void and the promise is observed here.
-const logFireAndForget = <T>(level: LogLevel, message: string, meta?: T, scope?: string): void => {
-  log(level, message, meta, scope).catch((error) => logToConsole("error", errorMessage(error)));
+const logFireAndForget = (
+  level: LogLevel,
+  message: string,
+  meta?: unknown,
+  scope?: string
+): void => {
+  log(level, message, meta, scope).catch((error: unknown) =>
+    logToConsole("error", error instanceof Error ? error.message : String(error))
+  );
 };
 
 const logger = {
-  trace: <T>(message: string, meta?: T, scope?: string) =>
+  trace: (message: string, meta?: unknown, scope?: string) =>
     logFireAndForget("trace", message, meta, scope),
-  debug: <T>(message: string, meta?: T, scope?: string) =>
+  debug: (message: string, meta?: unknown, scope?: string) =>
     logFireAndForget("debug", message, meta, scope),
-  info: <T>(message: string, meta?: T, scope?: string) =>
+  info: (message: string, meta?: unknown, scope?: string) =>
     logFireAndForget("info", message, meta, scope),
-  warn: <T>(message: string, meta?: T, scope?: string) =>
+  warn: (message: string, meta?: unknown, scope?: string) =>
     logFireAndForget("warn", message, meta, scope),
-  error: <T>(message: string, meta?: T, scope?: string) =>
+  error: (message: string, meta?: unknown, scope?: string) =>
     logFireAndForget("error", message, meta, scope),
-  fatal: <T>(message: string, meta?: T, scope?: string) =>
+  fatal: (message: string, meta?: unknown, scope?: string) =>
     logFireAndForget("fatal", message, meta, scope),
-  logReasoning: <T>(stage: string, details?: T) =>
+  logReasoning: (stage: string, details?: unknown) =>
     logFireAndForget("debug", stage, details, "reasoning"),
   refreshLogLevel: () => {
     cachedLevel = null;

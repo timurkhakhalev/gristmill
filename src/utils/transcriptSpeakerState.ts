@@ -115,15 +115,33 @@ export const lockTranscriptSpeaker = (
     speakerPlatform: undefined,
   });
 
+// Copies a single speaker-state field across segments without widening the
+// whole segment to an unknown-valued dictionary.
+function copySpeakerField<Field extends SpeakerStateField>(
+  target: TranscriptSegment,
+  source: TranscriptSegment,
+  field: Field
+): void {
+  if (target[field] === undefined && source[field] !== undefined) {
+    target[field] = source[field];
+  }
+}
+
+function overwriteSpeakerField<Field extends SpeakerStateField>(
+  target: TranscriptSegment,
+  source: TranscriptSegment,
+  field: Field
+): void {
+  if (source[field] !== undefined) {
+    target[field] = source[field];
+  }
+}
+
 const mergeSpeakerFields = (existing: TranscriptSegment, incoming: TranscriptSegment) => {
-  const merged = { ...incoming } as TranscriptSegment;
-  const existingFields = existing as Record<SpeakerStateField, unknown>;
-  const mergedFields = merged as Record<SpeakerStateField, unknown>;
+  const merged: TranscriptSegment = { ...incoming };
 
   for (const field of SPEAKER_STATE_FIELDS) {
-    if (mergedFields[field] === undefined && existingFields[field] !== undefined) {
-      mergedFields[field] = existingFields[field];
-    }
+    copySpeakerField(merged, existing, field);
   }
 
   if (isTranscriptSpeakerLocked(existing)) {
@@ -132,9 +150,7 @@ const mergeSpeakerFields = (existing: TranscriptSegment, incoming: TranscriptSeg
     for (const field of SPEAKER_STATE_FIELDS) {
       if (field === "speaker" || field === "speakerIsPlaceholder") continue;
 
-      if (existingFields[field] !== undefined) {
-        mergedFields[field] = existingFields[field];
-      }
+      overwriteSpeakerField(merged, existing, field);
     }
   }
 

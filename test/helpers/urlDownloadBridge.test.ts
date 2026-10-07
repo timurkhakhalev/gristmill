@@ -18,6 +18,9 @@ import type {
   UrlDownloadSuccess,
 } from "../../src/contracts/urlDownload.js";
 
+// Mirrors the downloader contract the handler consumes.
+type UrlAudioDownloadResult = Omit<UrlDownloadSuccess, "success">;
+
 const root = path.resolve(__dirname, "../..");
 
 const bundledPreload = path.join(root, "dist-main", "preload.js");
@@ -28,7 +31,7 @@ type DownloadPayload = Omit<UrlDownloadSuccess, "success">;
 
 type DownloadCall = {
   url: string;
-  onProgress: (progress: unknown) => void;
+  onProgress: (progress: UrlDownloadProgress) => void;
   signal: AbortSignal;
   deferred: import("./harness/deferred.js").Deferred<DownloadPayload>;
 };
@@ -39,7 +42,7 @@ type Handler = (event: unknown, ...args: unknown[]) => unknown;
 
 const downloadCalls: DownloadCall[] = [];
 
-let downloadBehavior: (call: DownloadCall) => Promise<unknown> = () => {
+let downloadBehavior: (call: DownloadCall) => Promise<UrlAudioDownloadResult> = () => {
   throw new Error("fake download has no behavior set");
 };
 

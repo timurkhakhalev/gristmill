@@ -80,12 +80,14 @@ export function computePcm16Rms(pcmBuffer: Buffer | null | undefined): number {
   return Math.sqrt(sumSquares / sampleCount);
 }
 
-// RMS and peak for the system capture level and interruption watchdog.
-export function computeChunkStats(buffer: Buffer | null | undefined): {
+export interface ChunkStats {
   rms: number;
   peak: number;
   sampleCount: number;
-} {
+}
+
+// RMS and peak for the system capture level and interruption watchdog.
+export function computeChunkStats(buffer: Buffer | null | undefined): ChunkStats {
   if (!buffer || buffer.length < 2) {
     return { rms: 0, peak: 0, sampleCount: 0 };
   }

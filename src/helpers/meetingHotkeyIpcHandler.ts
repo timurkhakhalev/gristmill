@@ -11,11 +11,11 @@ interface MeetingHotkeyManagerLike {
     callback: () => void,
     options?: { atomic?: boolean }
   ): Promise<{ success: boolean; error?: string }>;
-  unregisterSlot(slot: string): unknown;
+  unregisterSlot(slot: string): void;
 }
 
 interface MeetingHotkeyEnvironmentLike {
-  saveMeetingKey(hotkey: string): unknown;
+  saveMeetingKey(hotkey: string): void;
 }
 
 export interface MeetingHotkeyHandlerDeps {

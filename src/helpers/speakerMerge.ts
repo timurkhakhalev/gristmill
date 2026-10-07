@@ -14,6 +14,8 @@ export interface MergedSpeakerSegment {
 }
 
 export function splitIntoSentences(text: string): string[] {
+  // SAFETY: Intl.Segmenter is an optional runtime capability; probing the
+  // global before use keeps older runtimes on the regex fallback below.
   if (typeof Intl !== "undefined" && (Intl as { Segmenter?: unknown }).Segmenter) {
     try {
       const segmenter = new Intl.Segmenter(undefined, { granularity: "sentence" });
@@ -91,6 +93,8 @@ export function mergeSpeakersWithText(
       if (distance === 0) break;
     }
 
+    // SAFETY: segments is non-empty (checked above), so the loop always
+    // selects a best segment before reaching here.
     const chosen = bestSegment as SpeakerMergeSegment;
     assigned.push({
       speaker: chosen.speaker,

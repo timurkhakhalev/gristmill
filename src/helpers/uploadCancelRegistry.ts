@@ -9,8 +9,12 @@ export interface UploadCancelRegistration {
 }
 
 export interface UploadCancelRegistry {
-  register(requestId: unknown): UploadCancelRegistration;
-  cancel(requestId: unknown): number;
+  register<T>(requestId: T): UploadCancelRegistration;
+  cancel<T>(requestId: T): number;
+}
+
+function isNonEmptyString<T>(value: T): value is T & string {
+  return typeof value === "string" && value !== "";
 }
 
 export function createUploadCancelRegistry(): UploadCancelRegistry {
@@ -21,8 +25,8 @@ export function createUploadCancelRegistry(): UploadCancelRegistry {
     // Registers one operation. Missing/invalid ids are inert — flows without a
     // requestId (dictation, voice drafts, warm-ups) get no signal and a no-op
     // release, so their behavior is untouched.
-    register(requestId: unknown): UploadCancelRegistration {
-      if (typeof requestId !== "string" || !requestId) {
+    register<T>(requestId: T): UploadCancelRegistration {
+      if (!isNonEmptyString(requestId)) {
         return { signal: undefined, release: () => {} };
       }
 
@@ -52,11 +56,13 @@ export function createUploadCancelRegistry(): UploadCancelRegistry {
     // Aborts every operation registered under the id and returns how many were
     // aborted. Unknown or already-finished ids are a safe no-op — the renderer
     // fires a cancel for every provider, including ones that never register.
-    cancel(requestId: unknown): number {
-      const set = controllers.get(requestId as string);
+    cancel<T>(requestId: T): number {
+      if (!isNonEmptyString(requestId)) return 0;
+
+      const set = controllers.get(requestId);
 
       if (!set) return 0;
-      controllers.delete(requestId as string);
+      controllers.delete(requestId);
 
       for (const controller of set) controller.abort();
 

@@ -1,4 +1,5 @@
 import { meetingPlatformLabel, type MeetingPlatform } from "../contracts/meetingRecording.js";
+import { z } from "zod";
 import { formatTimestamp } from "./speakerMerge.js";
 
 export interface PromptTranscriptSegment {
@@ -106,27 +107,40 @@ export function formatMeetingMaterial(material: {
   ].join("\n\n");
 }
 
+// The saved calendar roster is prompt context, not proof of attendance. It is
+// this app's own serialized attendee list; malformed rows are rejected so the
+// caller records the calendar-participants-invalid error, exactly as before.
+const attendeeSchema = z.looseObject({
+  email: z.unknown().optional(),
+  displayName: z.unknown().optional(),
+});
+
+const calendarRosterSchema = z.array(z.unknown());
+
+function isNonEmptyTrimmedString<T>(value: T): value is T & string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 /** The saved calendar roster is prompt context, not proof of attendance. */
 export function parseMeetingParticipants(
   value: string | null
 ): Array<{ name: string | null; email: string | null }> {
   if (!value) return [];
   const decoded: unknown = JSON.parse(value);
+  const roster = calendarRosterSchema.safeParse(decoded);
 
-  if (!Array.isArray(decoded)) throw new Error("calendar-participants-invalid");
+  if (!roster.success) throw new Error("calendar-participants-invalid");
 
-  return decoded.map((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item))
-      throw new Error("calendar-participants-invalid");
-    const attendee = item as Record<string, unknown>;
+  return roster.data.map((item) => {
+    const attendee = attendeeSchema.safeParse(item);
 
-    const email =
-      typeof attendee.email === "string" && attendee.email.trim() ? attendee.email.trim() : null;
+    if (!attendee.success) throw new Error("calendar-participants-invalid");
 
-    const displayName =
-      typeof attendee.displayName === "string" && attendee.displayName.trim()
-        ? attendee.displayName.trim()
-        : null;
+    const email = isNonEmptyTrimmedString(attendee.data.email) ? attendee.data.email.trim() : null;
+
+    const displayName = isNonEmptyTrimmedString(attendee.data.displayName)
+      ? attendee.data.displayName.trim()
+      : null;
 
     return {
       name:

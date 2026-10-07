@@ -51,6 +51,8 @@ function parseNonSelfParticipants(
     deps.databaseManager.getGoogleAccounts().map((a) => (a.email || "").toLowerCase())
   );
 
+  // SAFETY: participants is the calendar sync's JSON array of attendee objects;
+  // only optional email/self fields are read, guarded below.
   return (participants as MeetingParticipant[]).filter(
     (p) => p && p.self !== true && !googleEmails.has((p.email || "").toLowerCase())
   );

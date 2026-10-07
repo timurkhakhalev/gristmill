@@ -115,7 +115,7 @@ export async function transcribeWithTinfoil({
   const data = await response
     .json()
     .catch(() => null)
-    .then(tinfoilTranscriptionResponseSchema.parse);
+    .then((raw) => tinfoilTranscriptionResponseSchema.parse(raw));
 
   return { text: data?.text ?? "", model };
 }

@@ -4,7 +4,11 @@ import type { CalendarAttendee } from "../contracts/calendar";
 import { resolveSegmentSpeakerName } from "./transcriptSpeakerState";
 import type { MentionPerson } from "./mentionMarkdown";
 
-type Translate = (key: string, options?: Record<string, unknown>) => string;
+interface TranslateOptions {
+  n?: number;
+}
+
+type Translate = (key: string, options?: TranslateOptions) => string;
 
 export interface MeetingIdentity {
   selfName: string | null;

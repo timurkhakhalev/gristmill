@@ -26,8 +26,12 @@ function getCanonicalAllowedAudioDirs(): string[] {
 // static dirs (external volumes, /mnt, D:\) and are approved individually.
 const approvedAudioPaths = new Set<string>();
 
-export function approveAudioPath(filePath: unknown): void {
-  if (typeof filePath !== "string" || !filePath) return;
+function isNonEmptyPath<T>(value: T): value is T & string {
+  return typeof value === "string" && value !== "";
+}
+
+export function approveAudioPath<T>(filePath: T): void {
+  if (!isNonEmptyPath(filePath)) return;
 
   try {
     approvedAudioPaths.add(fs.realpathSync(path.resolve(filePath)));

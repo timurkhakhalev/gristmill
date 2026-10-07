@@ -33,7 +33,9 @@ import {
 import { buildMultipartBody } from "./remoteTranscriptionIpcHandler.js";
 import type { RemoteTranscriptionResult } from "../contracts/uploadTranscription.js";
 import { normalizeBedrockCatalog } from "./bedrockCatalog.js";
-import { resolveEnterpriseRuntime } from "./reasoningIpcHandlers.js";
+import { resolveEnterpriseRuntime, type EnterpriseRuntime } from "./reasoningIpcHandlers.js";
+import type { WhisperLocalTranscribeOptions } from "./whisper.js";
+import type { ParakeetTranscribeOptions } from "./parakeet.js";
 import {
   mapEnterpriseError,
   runAbortableOperation,
@@ -61,29 +63,211 @@ import {
   type RetryTranscriptionResult,
   type TranscriptionResponse,
 } from "../contracts/transcriptionExecution.js";
-import type { TranscriptionRow } from "./database.js";
+import type { SuccessResult, TranscriptionRow } from "./database.js";
 
-type IpcEventListener = (event: unknown, ...args: unknown[]) => void;
+type IpcMainLike = {
+  handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
+};
 
 // Azure Responses rejects probes with fewer than 16 output tokens. The probe
 // only needs one word, but this is the provider's minimum accepted value.
 const CONNECTION_TEST_MAX_OUTPUT_TOKENS = 16;
 
+// The primitive tags `typeof` can report, in the order the helper probes them.
+const RUNTIME_TYPES = [
+  "undefined",
+  "boolean",
+  "number",
+  "bigint",
+  "string",
+  "symbol",
+  "function",
+] as const;
+
+function isRuntimeType<T, Name extends string>(
+  value: T,
+  name: Name
+): value is T & Record<Name, true> {
+  return typeof value === name;
+}
+
+// Reproduce the historical `typeof` log value while keeping the probe inside a
+// declared type guard (null and containers collapse to "object").
+function runtimeTypeOf<T>(value: T): string {
+  for (const name of RUNTIME_TYPES) {
+    if (isRuntimeType(value, name)) return name;
+  }
+
+  return "object";
+}
+
+// The audio payloads the local managers accept carry a byte/length readout.
+function hasAudioSize<T>(value: T): value is T & { byteLength?: number; length?: number } {
+  return (typeof value === "object" && value !== null) || typeof value === "string";
+}
+
+// The error envelope proxy handlers resolve with when the transport throws.
+interface SerializedIpcError {
+  error?: string;
+  code?: string;
+  messageKey?: string;
+}
+
+// The retry failure shape, including the provider extras the historical spread
+// carried (messageKey and any coded fields). A type alias (not an interface) so
+// it keeps the implicit index signature the passthrough result schema expects.
+type RetryFailure = {
+  success: false;
+  error?: string;
+  code?: string;
+  messageKey?: string;
+};
+
+// The conventional `message`/`code` reads on a thrown value; each is guarded so
+// junk rejections degrade the same way the previous unchecked reads did.
+function messageOf<T>(error: T): string | undefined {
+  return error instanceof Error ? error.message : undefined;
+}
+
+function errorNameOf<T>(error: T): string | undefined {
+  return error instanceof Error ? error.name : undefined;
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+// A provider JSON body is an object until its fields are checked; junk bodies
+// (arrays, null) degrade to "no text" exactly as the loose read did.
+function isProviderTextBody<T>(value: T): value is T & { text?: unknown } {
+  return typeof value === "object" && value !== null;
+}
+
+function codeOf<T>(error: T): string | undefined {
+  if (!(error instanceof Error) || !("code" in error)) return undefined;
+
+  const code: unknown = error.code;
+
+  return isString(code) ? code : undefined;
+}
+
+function messageKeyOf<T>(error: T): string | undefined {
+  if (!(error instanceof Error) || !("messageKey" in error)) return undefined;
+
+  const messageKey: unknown = error.messageKey;
+
+  return isString(messageKey) ? messageKey : undefined;
+}
+
 export interface Logger {
-  log: (message: string, data?: unknown) => void;
-  debug: (message: string, data?: unknown) => void;
-  warn: (message: string, data?: unknown) => void;
-  error: (message: string, data?: unknown, tag?: string) => void;
+  log: <T>(message: string, data?: T) => void;
+  debug: <T>(message: string, data?: T) => void;
+  warn: <T>(message: string, data?: T) => void;
+  error: <T>(message: string, data?: T, tag?: string) => void;
+}
+
+// The whisper-server VAD resolver reads vadEnabled plus its sanitized numeric
+// config keys off this record; every value is a scalar.
+export interface WhisperVadOptions {
+  vadEnabled: boolean;
+  vadConfig?: Record<string, number>;
+}
+
+// The narrow slice this module drives on an enterprise model: it is only
+// forwarded to generateText's `model` option, so the read surface stays weak
+// enough for both the real SDK model and the connection-test fixtures.
+export interface EnterpriseModelLike {
+  doStream?: (...args: never[]) => object;
+}
+
+// The `ai` generateText options this module builds for its connection probes.
+export interface GenerateTextOptions extends Record<string, unknown> {
+  model?: EnterpriseModelLike;
+  system?: string;
+  prompt?: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  abortSignal?: AbortSignal;
+  maxRetries?: number;
+}
+
+export interface GenerateTextResult {
+  text?: string;
+  finishReason?: string;
+}
+
+export interface StoredCortiToken {
+  token: string;
+  environment?: string;
+  tenant?: string;
+}
+
+// The Bedrock SDK list payloads this module projects through
+// normalizeBedrockCatalog. Provider-boundary shapes, read field-by-field by the
+// catalog normalizer.
+export interface BedrockModelSummary {
+  modelId?: string;
+  outputModalities?: string[];
+  modelLifecycle?: { status?: string };
+  inferenceTypesSupported?: string[];
+  modelName?: string;
+  providerName?: string;
+}
+
+export interface BedrockInferenceProfileSummary {
+  inferenceProfileId?: string;
+  models?: Array<{ modelArn?: string }>;
+}
+
+export interface BedrockCommand {
+  readonly __command?: unknown;
+}
+
+export interface BedrockClientLike {
+  send(command: BedrockCommand): Promise<{ modelSummaries?: BedrockModelSummary[] }>;
+}
+
+export interface BedrockCredentialProvider {
+  provider: (options?: { forceRefresh?: boolean }) => Promise<{
+    accessKeyId: string;
+    secretAccessKey: string;
+  }>;
+}
+
+// A Bedrock client accepts either a lazy credential provider (a named profile)
+// or static credentials; the listing builder passes the profile chain or the
+// access-key triple.
+export type BedrockCredentials =
+  | BedrockCredentialProvider
+  | {
+      accessKeyId?: string;
+      secretAccessKey?: string;
+      sessionToken?: string;
+    };
+
+// The Electron-session fetch response slice this module reads; the body is a
+// caller-named generic (parsed by the provider schemas before any use).
+export interface ProxyFetchResponse<Body = unknown> {
+  ok: boolean;
+  status: number;
+  text: () => Promise<string>;
+  json: () => Promise<Body>;
 }
 
 export interface TranscriptionExecutionDeps {
   whisperManager: {
-    transcribeLocalWhisper: (audioBlob: unknown, options: unknown) => Promise<unknown>;
+    transcribeLocalWhisper: <Audio>(
+      audioBlob: Audio,
+      options: WhisperLocalTranscribeOptions
+    ) => Promise<TranscriptionResponse>;
   };
   parakeetManager: {
-    transcribeLocalParakeet: (audioBlob: unknown, options: unknown) => Promise<unknown>;
+    transcribeLocalParakeet: <Audio>(
+      audioBlob: Audio,
+      options: ParakeetTranscribeOptions
+    ) => Promise<TranscriptionResponse>;
   };
-  resolveWhisperVadOptions: (context: string) => Record<string, unknown>;
+  resolveWhisperVadOptions: (context: string) => WhisperVadOptions;
   environmentManager: {
     getXaiKey: () => string;
     getMistralKey: () => string;
@@ -98,7 +282,8 @@ export interface TranscriptionExecutionDeps {
     getOpenAIKey: () => string;
   };
   // The Electron-session fetch used by the direct transports and retry —
-  // owned by the composition root like the postMultipart transport.
+  // owned by the composition root like the postMultipart transport. The body
+  // stays a generic so the real Electron Response and test fakes both fit.
   proxyFetch: (
     url: string | URL,
     init?: {
@@ -106,12 +291,7 @@ export interface TranscriptionExecutionDeps {
       headers?: Record<string, string>;
       body?: unknown;
     }
-  ) => Promise<{
-    ok: boolean;
-    status: number;
-    text: () => Promise<string>;
-    json: () => Promise<unknown>;
-  }>;
+  ) => Promise<ProxyFetchResponse>;
   transcribeGeminiFile: (args: {
     filePath: string;
     fileSizeBytes: number;
@@ -131,35 +311,47 @@ export interface TranscriptionExecutionDeps {
   }) => Promise<{ text: string }>;
   // Mints a Corti access token from stored BYOK credentials (shared with the
   // dictation streaming handlers, which own the real implementation).
-  mintStoredCortiToken: (options: { environment?: string; tenant?: string }) => Promise<unknown>;
-  // Lazy `ai` SDK entry point — keeps startup free of the SDK.
-  generateText: (options: Record<string, unknown>) => Promise<unknown>;
-  // Lazy enterprise model factory from enterpriseAiProviders.
+  mintStoredCortiToken: (options: {
+    environment?: string;
+    tenant?: string;
+  }) => Promise<StoredCortiToken>;
+  // Lazy `ai` SDK entry point — keeps startup free of the SDK; the wrapped
+  // generateText still returns text/finishReason on a settled generation.
+  generateText: (options: GenerateTextOptions) => Promise<GenerateTextResult>;
+  // Lazy enterprise model factory from enterpriseAiProviders; the model is
+  // only forwarded to generateText here, so the narrow read surface suffices.
+  // A sync object is accepted alongside the promise so the composition root and
+  // the connection-test fixtures share this contract.
   getEnterpriseAIModel: (
     provider: string,
     model: string,
     apiKey: string,
-    enterprise: Record<string, unknown>
-  ) => unknown;
+    enterprise: EnterpriseRuntime["enterprise"]
+  ) => EnterpriseModelLike | Promise<EnterpriseModelLike>;
   // Lazy AWS SDK surfaces — heavy dependencies, loaded on first use only.
   bedrockSdk: () => Promise<{
-    BedrockClient: new (config: { region: string; credentials?: unknown }) => {
-      send: (command: unknown) => Promise<{ modelSummaries?: unknown }>;
-    };
-    ListFoundationModelsCommand: new (args: { byOutputModality: string }) => unknown;
+    BedrockClient: new (config: {
+      region: string;
+      credentials?: BedrockCredentials;
+    }) => BedrockClientLike;
+    ListFoundationModelsCommand: new (args: { byOutputModality: string }) => BedrockCommand;
     paginateListInferenceProfiles: (
-      config: { client: unknown },
+      config: { client: BedrockClientLike },
       args: { typeEquals: string }
-    ) => AsyncIterable<{ inferenceProfileSummaries?: unknown[] }>;
+    ) => AsyncIterable<{ inferenceProfileSummaries?: BedrockInferenceProfileSummary[] }>;
   }>;
-  bedrockProfileCredentials: (profile: string) => unknown;
+  bedrockProfileCredentials: (profile: string) => BedrockCredentialProvider | null;
   providerBaseUrls: () => readonly TranscriptionProviderBaseUrl[];
   audioStorage: {
     getAudioBuffer: (id: number) => Buffer | null;
   };
   database: {
-    updateTranscriptionText: (id: number, text: string, rawText: string | null) => unknown;
-    updateTranscriptionStatus: (id: number, status: string) => unknown;
+    updateTranscriptionText: (
+      id: number,
+      text: string,
+      rawText: string | null
+    ) => SuccessResult | void;
+    updateTranscriptionStatus: (id: number, status: string) => SuccessResult | void;
     updateTranscriptionAudio: (
       id: number,
       update: {
@@ -168,24 +360,24 @@ export interface TranscriptionExecutionDeps {
         provider: string | null;
         model: string | null;
       }
-    ) => unknown;
-    getTranscriptionById: (id: number) => (TranscriptionRow & Record<string, unknown>) | null;
+    ) => SuccessResult | void;
+    getTranscriptionById: (id: number) => TranscriptionRow | null;
   };
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: <Payload>(channel: string, payload: Payload) => void;
   logger: Logger;
 }
 
 // ipcMain.handle keeps only the message when a promise rejects, dropping custom
 // props — proxy handlers return {error, code, messageKey} so the renderer can
 // rebuild the error.
-function serializeIpcError(fn: (event: unknown, payload: unknown) => Promise<unknown>) {
-  return async (event: unknown, payload: unknown): Promise<unknown> => {
+function serializeIpcError<Args extends unknown[], Result extends object>(
+  fn: (...args: Args) => Promise<Result>
+): (...args: Args) => Promise<Result | SerializedIpcError> {
+  return async (...args: Args): Promise<Result | SerializedIpcError> => {
     try {
-      return await fn(event, payload);
+      return await fn(...args);
     } catch (error) {
-      const err = error as { message?: string; code?: string; messageKey?: string };
-
-      return { error: err?.message, code: err?.code, messageKey: err?.messageKey };
+      return { error: messageOf(error), code: codeOf(error), messageKey: messageKeyOf(error) };
     }
   };
 }
@@ -195,6 +387,9 @@ function toBuffer(value: BufferLike): Buffer {
     return Buffer.from(new Uint8Array(value));
   }
 
+  // SAFETY: BufferLike's other arm is an ArrayBufferView; its `buffer` is the
+  // backing store the view was constructed over. The 3-arg Buffer.from form
+  // needs a non-shared ArrayBuffer, which is what binary IPC supplies.
   return Buffer.from(value.buffer as ArrayBuffer, value.byteOffset, value.byteLength);
 }
 
@@ -205,10 +400,12 @@ function toBlobPart(value: BufferLike): Uint8Array<ArrayBuffer> {
     return new Uint8Array(value);
   }
 
+  // SAFETY: same ArrayBufferView arm as toBuffer; the view's backing store is
+  // the ArrayBuffer the binary IPC payload was cloned over.
   return new Uint8Array(value.buffer as ArrayBuffer, value.byteOffset, value.byteLength);
 }
 
-function parseProxyResult(raw: unknown): ProxyTranscriptionResult {
+function parseProxyResult<T>(raw: T): ProxyTranscriptionResult {
   const result = proxyTranscriptionResultSchema.safeParse(raw);
 
   if (!result.success) {
@@ -219,7 +416,7 @@ function parseProxyResult(raw: unknown): ProxyTranscriptionResult {
 }
 
 export function registerTranscriptionExecutionHandlers(
-  ipcMain: { handle(channel: string, listener: IpcEventListener): void },
+  ipcMain: IpcMainLike,
   deps: TranscriptionExecutionDeps
 ): void {
   const { logger } = deps;
@@ -228,13 +425,13 @@ export function registerTranscriptionExecutionHandlers(
 
   ipcMain.handle(
     transcriptionExecutionChannels.transcribeLocalWhisper,
-    async (_event, audioBlob: unknown, rawOptions: unknown): Promise<TranscriptionResponse> => {
+    async (_event, ...args: unknown[]): Promise<TranscriptionResponse> => {
+      const audioBlob = args[0];
+      const rawOptions = args[1];
+
       logger.log("transcribe-local-whisper called", {
-        audioBlobType: typeof audioBlob,
-        audioBlobSize:
-          (audioBlob as { byteLength?: number })?.byteLength ||
-          (audioBlob as { length?: number })?.length ||
-          0,
+        audioBlobType: runtimeTypeOf(audioBlob),
+        audioBlobSize: hasAudioSize(audioBlob) ? audioBlob.byteLength || audioBlob.length || 0 : 0,
         options: rawOptions,
       });
 
@@ -261,10 +458,10 @@ export function registerTranscriptionExecutionHandlers(
         });
 
         logger.log("Whisper result", {
-          success: (result as { success?: boolean })?.success,
-          hasText: !!(result as { text?: string })?.text,
-          message: (result as { message?: string })?.message,
-          error: (result as { error?: string })?.error,
+          success: result.success,
+          hasText: !!result.text,
+          message: result.message,
+          error: result.error,
         });
 
         const parsed = transcriptionResponseSchema.safeParse(result);
@@ -276,7 +473,7 @@ export function registerTranscriptionExecutionHandlers(
         return parsed.data;
       } catch (error) {
         logger.error("Local Whisper transcription error", error);
-        const errorMessage = (error as Error)?.message || "Unknown error";
+        const errorMessage = messageOf(error) || "Unknown error";
 
         // Return specific error types for better user feedback
         if (errorMessage.includes("FFmpeg not found")) {
@@ -335,13 +532,13 @@ export function registerTranscriptionExecutionHandlers(
 
   ipcMain.handle(
     transcriptionExecutionChannels.transcribeLocalParakeet,
-    async (_event, audioBlob: unknown, rawOptions: unknown): Promise<TranscriptionResponse> => {
+    async (_event, ...args: unknown[]): Promise<TranscriptionResponse> => {
+      const audioBlob = args[0];
+      const rawOptions = args[1];
+
       logger.log("transcribe-local-parakeet called", {
-        audioBlobType: typeof audioBlob,
-        audioBlobSize:
-          (audioBlob as { byteLength?: number })?.byteLength ||
-          (audioBlob as { length?: number })?.length ||
-          0,
+        audioBlobType: runtimeTypeOf(audioBlob),
+        audioBlobSize: hasAudioSize(audioBlob) ? audioBlob.byteLength || audioBlob.length || 0 : 0,
         options: rawOptions,
       });
 
@@ -360,10 +557,10 @@ export function registerTranscriptionExecutionHandlers(
         );
 
         logger.log("Parakeet result", {
-          success: (result as { success?: boolean })?.success,
-          hasText: !!(result as { text?: string })?.text,
-          message: (result as { message?: string })?.message,
-          error: (result as { error?: string })?.error,
+          success: result.success,
+          hasText: !!result.text,
+          message: result.message,
+          error: result.error,
         });
 
         const parsed = transcriptionResponseSchema.safeParse(result);
@@ -375,7 +572,7 @@ export function registerTranscriptionExecutionHandlers(
         return parsed.data;
       } catch (error) {
         logger.error("Local Parakeet transcription error", error);
-        const errorMessage = (error as Error)?.message || "Unknown error";
+        const errorMessage = messageOf(error) || "Unknown error";
 
         if (errorMessage.includes("sherpa-onnx") && errorMessage.includes("not found")) {
           return {
@@ -393,10 +590,12 @@ export function registerTranscriptionExecutionHandlers(
           };
         }
 
-        if ((error as { code?: string })?.code === PARAKEET_UNSUPPORTED_OS_CODE) {
+        const parakeetCode = codeOf(error);
+
+        if (parakeetCode === PARAKEET_UNSUPPORTED_OS_CODE) {
           return {
             success: false,
-            error: (error as { code?: string }).code,
+            error: parakeetCode,
             message: errorMessage,
           };
         }
@@ -585,27 +784,32 @@ export function registerTranscriptionExecutionHandlers(
 
   // ---- voice draft temp audio ----------------------------------------------------
 
-  ipcMain.handle(transcriptionExecutionChannels.saveTempAudio, async (_event, buffer: unknown) => {
-    const parsed = binaryLikeSchema.safeParse(buffer);
+  ipcMain.handle(
+    transcriptionExecutionChannels.saveTempAudio,
+    async (_event, ...args: unknown[]) => {
+      const parsed = binaryLikeSchema.safeParse(args[0]);
 
-    if (!parsed.success) {
-      return { success: false as const, error: "Invalid audio data" };
+      if (!parsed.success) {
+        return { success: false as const, error: "Invalid audio data" };
+      }
+
+      const tempPath = path.join(
+        os.tmpdir(),
+        `ow-voice-draft-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.webm`
+      );
+
+      fs.writeFileSync(tempPath, toBuffer(parsed.data));
+
+      return { success: true as const, path: tempPath };
     }
-
-    const tempPath = path.join(
-      os.tmpdir(),
-      `ow-voice-draft-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.webm`
-    );
-
-    fs.writeFileSync(tempPath, toBuffer(parsed.data));
-
-    return { success: true as const, path: tempPath };
-  });
+  );
 
   ipcMain.handle(
     transcriptionExecutionChannels.deleteTempAudio,
-    async (_event, tempPath: unknown) => {
-      if (typeof tempPath !== "string") {
+    async (_event, ...args: unknown[]) => {
+      const tempPath = args[0];
+
+      if (!isString(tempPath)) {
         return { success: false, error: "Invalid temp path" };
       }
 
@@ -631,8 +835,11 @@ export function registerTranscriptionExecutionHandlers(
 
   ipcMain.handle(
     transcriptionExecutionChannels.retryTranscription,
-    async (_event, id: unknown, settings: unknown): Promise<RetryTranscriptionResult> => {
-      const parsedArgs = retryTranscriptionArgsSchema.safeParse({ id, settings });
+    async (_event, ...args: unknown[]): Promise<RetryTranscriptionResult> => {
+      const parsedArgs = retryTranscriptionArgsSchema.safeParse({
+        id: args[0],
+        settings: args[1],
+      });
 
       if (!parsedArgs.success) {
         return { success: false, error: "Invalid retry request" };
@@ -803,35 +1010,38 @@ export function registerTranscriptionExecutionHandlers(
             result = { text: parsed.text, source: "elevenlabs", model: route.model ?? undefined };
         } else {
           // mistral/xai have no OpenAI-compatible endpoint — main talks to them
-          // directly; everything else consumes the route endpoint as-is. The
-          // loose shape keeps the historical behavior for transports that do
-          // not carry these fields (a stale local-mode retry fails the same
-          // fetch/key way it did before the typed boundary).
-          const loose = route as {
-            provider?: "mistral" | "xai" | "self-hosted" | "custom" | "openai" | "groq";
-            endpoint?: string;
-            model?: string | null;
-            language?: string;
-            auth?: { scheme?: string; keyRef?: string | null };
-          };
+          // directly; everything else consumes the route endpoint as-is. Only
+          // the proxied mistral/xai and http-batch arms carry these fields; a
+          // stale local-mode retry resolves none and fails the same fetch/key
+          // way it did before the typed boundary.
+          const isDirectProxy =
+            route.transport === "proxied" &&
+            (route.provider === "mistral" || route.provider === "xai");
 
-          const provider = loose.provider;
+          const isHttpBatch = route.transport === "http-batch";
+          const provider = isDirectProxy || isHttpBatch ? route.provider : undefined;
 
-          const endpoint =
-            provider === "mistral"
+          const endpoint = isHttpBatch
+            ? route.endpoint
+            : provider === "mistral"
               ? MISTRAL_TRANSCRIPTION_URL
               : provider === "xai"
                 ? XAI_STT_URL
-                : loose.endpoint;
+                : undefined;
+
+          const model = isDirectProxy || isHttpBatch ? route.model : undefined;
+          const language = isDirectProxy || isHttpBatch ? route.language : undefined;
+          const keyRef = isHttpBatch ? route.auth.keyRef : undefined;
+          const scheme = isHttpBatch ? route.auth.scheme : undefined;
 
           const apiKey =
             provider === "mistral"
               ? deps.environmentManager.getMistralKey()
               : provider === "xai"
                 ? deps.environmentManager.getXaiKey()
-                : loose.auth?.keyRef === "custom"
+                : keyRef === "custom"
                   ? deps.environmentManager.getCustomTranscriptionKey()
-                  : loose.auth?.keyRef === "groq"
+                  : keyRef === "groq"
                     ? deps.environmentManager.getGroqKey()
                     : deps.environmentManager.getOpenAIKey();
 
@@ -848,14 +1058,16 @@ export function registerTranscriptionExecutionHandlers(
 
           if (provider === "xai") {
             // xAI STT does not accept a model field; the route pre-filters language
-            if (loose.language) {
-              formData.append("language", loose.language);
+            if (language) {
+              formData.append("language", language);
               formData.append("format", "true");
             }
           } else {
-            formData.append("model", (loose.model ?? undefined) as string);
+            // Preserve the historical runtime value: a null/absent model was
+            // passed as undefined and FormData stringified it to "undefined".
+            formData.append("model", String(model ?? undefined));
 
-            if (loose.language) formData.append("language", loose.language);
+            if (language) formData.append("language", language);
           }
 
           const headers: Record<string, string> = {};
@@ -863,14 +1075,14 @@ export function registerTranscriptionExecutionHandlers(
           if (provider === "mistral") {
             headers["x-api-key"] = apiKey;
           } else if (apiKey) {
-            if (loose.auth?.scheme === "azure-api-key") {
+            if (scheme === "azure-api-key") {
               headers["api-key"] = apiKey;
             } else {
               headers.Authorization = `Bearer ${apiKey}`;
             }
           }
 
-          const response = await deps.proxyFetch(endpoint ?? ("" as string), {
+          const response = await deps.proxyFetch(endpoint ?? "", {
             method: "POST",
             headers,
             body: formData,
@@ -881,10 +1093,10 @@ export function registerTranscriptionExecutionHandlers(
             throw new Error(`${provider} API Error: ${response.status} ${errorText}`);
           }
 
-          const data = (await response.json()) as { text?: string };
+          const data = await response.json();
 
-          if (data?.text) {
-            result = { text: data.text, source: provider, model: loose.model ?? undefined };
+          if (isProviderTextBody(data) && isString(data.text)) {
+            result = { text: data.text, source: provider, model: model ?? undefined };
           }
         }
 
@@ -914,18 +1126,28 @@ export function registerTranscriptionExecutionHandlers(
 
         return { success: true, transcription: updated };
       } catch (error) {
-        const err = error as Error & { code?: string; messageKey?: string };
+        const errorMessage = messageOf(error);
+        const code = codeOf(error);
+
         logger.error(
           "Retry transcription failed",
-          { id: retryId, error: err?.message, code: err?.code },
+          { id: retryId, error: errorMessage, code },
           "audio-storage"
         );
 
-        if (err?.code) {
-          return { success: false, error: err?.message, code: err.code, ...err };
+        const failure: RetryFailure = { success: false, error: errorMessage };
+
+        if (code) {
+          failure.code = code;
+
+          // The historical branch spread the Error's own enumerable fields
+          // (messageKey and any provider extras) onto the failure.
+          Object.assign(failure, error);
+
+          return failure;
         }
 
-        return { success: false, error: err?.message };
+        return failure;
       }
     }
   );
@@ -934,8 +1156,8 @@ export function registerTranscriptionExecutionHandlers(
 
   ipcMain.handle(
     transcriptionExecutionChannels.testProviderConnection,
-    async (_event, config: unknown) => {
-      const parsed = providerConnectionConfigSchema.safeParse(config);
+    async (_event, ...args: unknown[]) => {
+      const parsed = providerConnectionConfigSchema.safeParse(args[0]);
 
       if (!parsed.success) {
         return { success: false, error: "Invalid connection test request" };
@@ -970,7 +1192,7 @@ export function registerTranscriptionExecutionHandlers(
           // those); a fetch that never reached it is a network problem, and
           // reporting it as "credentials rejected" sends the user to re-type a
           // key that was never the issue.
-          if ((error as Error)?.name === "AbortError") {
+          if (errorNameOf(error) === "AbortError") {
             return {
               success: false,
               errorCode: "timeout",
@@ -978,9 +1200,7 @@ export function registerTranscriptionExecutionHandlers(
             };
           }
 
-          if (
-            !/^(Corti authentication failed|Invalid Corti)/.test((error as Error)?.message || "")
-          ) {
+          if (!/^(Corti authentication failed|Invalid Corti)/.test(messageOf(error) || "")) {
             return {
               success: false,
               errorCode: "network",
@@ -1002,8 +1222,11 @@ export function registerTranscriptionExecutionHandlers(
 
   ipcMain.handle(
     transcriptionExecutionChannels.testEnterpriseConnection,
-    async (_event, provider: unknown, config: unknown): Promise<EnterpriseConnectionResult> => {
-      const parsed = enterpriseConnectionArgsSchema.safeParse({ provider, config });
+    async (_event, ...args: unknown[]): Promise<EnterpriseConnectionResult> => {
+      const parsed = enterpriseConnectionArgsSchema.safeParse({
+        provider: args[0],
+        config: args[1],
+      });
 
       if (!parsed.success) {
         return { success: false, error: "Invalid connection test request" };
@@ -1081,74 +1304,74 @@ export function registerTranscriptionExecutionHandlers(
 
   // Lists the text models the account serves in the selected region,
   // resolved to invocable IDs (bare on-demand or geo-scoped profile IDs).
-  ipcMain.handle(transcriptionExecutionChannels.listBedrockModels, async (_event, config) => {
-    const parsed = enterpriseConnectionArgsSchema.safeParse({
-      provider: "bedrock",
-      config: config ?? {},
-    });
+  ipcMain.handle(
+    transcriptionExecutionChannels.listBedrockModels,
+    async (_event, ...args: unknown[]) => {
+      const parsed = enterpriseConnectionArgsSchema.safeParse({
+        provider: "bedrock",
+        config: args[0] ?? {},
+      });
 
-    const bedrockConfig = parsed.success ? (parsed.data.config ?? {}) : {};
+      const bedrockConfig = parsed.success ? (parsed.data.config ?? {}) : {};
 
-    try {
-      const runtime = resolveEnterpriseRuntime(
-        "bedrock",
-        bedrockConfig.model || "test",
-        bedrockConfig
-      );
+      try {
+        const runtime = resolveEnterpriseRuntime(
+          "bedrock",
+          bedrockConfig.model || "test",
+          bedrockConfig
+        );
 
-      const { BedrockClient, ListFoundationModelsCommand, paginateListInferenceProfiles } =
-        await deps.bedrockSdk();
+        const { BedrockClient, ListFoundationModelsCommand, paginateListInferenceProfiles } =
+          await deps.bedrockSdk();
 
-      const region = runtime.enterprise.bedrockRegion || "us-east-1";
-      let credentials: unknown;
+        const region = runtime.enterprise.bedrockRegion || "us-east-1";
+        let credentials: BedrockCredentials | null | undefined;
 
-      if (runtime.enterprise.bedrockProfile) {
-        credentials = deps.bedrockProfileCredentials(runtime.enterprise.bedrockProfile);
-      } else if (
-        runtime.enterprise.bedrockAccessKeyId &&
-        runtime.enterprise.bedrockSecretAccessKey
-      ) {
-        credentials = {
-          accessKeyId: runtime.enterprise.bedrockAccessKeyId,
-          secretAccessKey: runtime.enterprise.bedrockSecretAccessKey,
-          sessionToken: runtime.enterprise.bedrockSessionToken || undefined,
+        if (runtime.enterprise.bedrockProfile) {
+          credentials = deps.bedrockProfileCredentials(runtime.enterprise.bedrockProfile);
+        } else if (
+          runtime.enterprise.bedrockAccessKeyId &&
+          runtime.enterprise.bedrockSecretAccessKey
+        ) {
+          credentials = {
+            accessKeyId: runtime.enterprise.bedrockAccessKeyId,
+            secretAccessKey: runtime.enterprise.bedrockSecretAccessKey,
+            sessionToken: runtime.enterprise.bedrockSessionToken || undefined,
+          };
+        }
+
+        const client = new BedrockClient({ region, ...(credentials ? { credentials } : {}) });
+
+        const [foundationModels, profileSummaries] = await Promise.all([
+          client.send(new ListFoundationModelsCommand({ byOutputModality: "TEXT" })),
+          (async () => {
+            const summaries: BedrockInferenceProfileSummary[] = [];
+
+            const paginator = paginateListInferenceProfiles(
+              { client },
+              { typeEquals: "SYSTEM_DEFINED" }
+            );
+
+            for await (const page of paginator) {
+              summaries.push(...(page.inferenceProfileSummaries || []));
+            }
+
+            return summaries;
+          })(),
+        ]);
+
+        return {
+          success: true as const,
+          models: normalizeBedrockCatalog(foundationModels.modelSummaries, profileSummaries),
         };
+      } catch (err) {
+        logger.error("Bedrock model listing error:", err);
+        const mapped = mapEnterpriseError("bedrock", err, bedrockConfig);
+
+        return { success: false as const, error: mapped.message };
       }
-
-      const client = new BedrockClient({ region, ...(credentials ? { credentials } : {}) });
-
-      const [foundationModels, profileSummaries] = await Promise.all([
-        client.send(new ListFoundationModelsCommand({ byOutputModality: "TEXT" })),
-        (async () => {
-          const summaries: unknown[] = [];
-
-          const paginator = paginateListInferenceProfiles(
-            { client },
-            { typeEquals: "SYSTEM_DEFINED" }
-          );
-
-          for await (const page of paginator) {
-            summaries.push(...(page.inferenceProfileSummaries || []));
-          }
-
-          return summaries;
-        })(),
-      ]);
-
-      return {
-        success: true as const,
-        models: normalizeBedrockCatalog(
-          foundationModels.modelSummaries as never,
-          profileSummaries as never
-        ),
-      };
-    } catch (err) {
-      logger.error("Bedrock model listing error:", err);
-      const mapped = mapEnterpriseError("bedrock", err, bedrockConfig);
-
-      return { success: false as const, error: mapped.message };
     }
-  });
+  );
 
   ipcMain.handle(transcriptionExecutionChannels.getTinfoilChatModels, async () => {
     return getTinfoilChatModels();

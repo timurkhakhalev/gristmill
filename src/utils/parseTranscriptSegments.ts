@@ -6,6 +6,9 @@ export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
   if (!raw.startsWith("[")) return [];
 
   try {
+    // SAFETY: this column is written by the upload/meeting pipeline as a JSON
+    // array of transcript segments; the map below reads each field defensively
+    // and normalizeTranscriptSegments re-derives the speaker state.
     const parsed = JSON.parse(raw) as Array<{
       text: string;
       source?: "mic" | "system";

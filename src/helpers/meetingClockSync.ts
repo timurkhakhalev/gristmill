@@ -99,10 +99,7 @@ export class MeetingClockSync {
     this.generation = generation;
   }
 
-  createProbe(
-    sourceSendNs: string,
-    nonce: string = globalThis.crypto.randomUUID()
-  ): { nonce: string; sourceSendNs: string } {
+  createProbe(sourceSendNs: string, nonce: string = globalThis.crypto.randomUUID()) {
     if (parseNs(sourceSendNs) === null || !isUuid(nonce) || this.pending.has(nonce)) {
       throw new Error("Invalid clock probe");
     }

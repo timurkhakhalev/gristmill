@@ -22,7 +22,7 @@ export interface MeetingSpeakerRecognitionDeps {
   ) => Promise<void>;
   createTempPath: () => string;
   removeFile: (filePath: string) => void;
-  logSkipped?: (error: unknown) => void;
+  logSkipped?: <T>(error: T) => void;
 }
 
 export async function recognizeMeetingSpeakers(
@@ -119,6 +119,8 @@ export async function recognizeMeetingSpeakers(
   } finally {
     try {
       deps.removeFile(tempPath);
-    } catch {}
+    } catch {
+      // Best-effort temp cleanup; a failure here must not mask the result.
+    }
   }
 }

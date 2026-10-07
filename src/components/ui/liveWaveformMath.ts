@@ -25,13 +25,15 @@ export function waveBarColor(index: number, count: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-// Bars are vertically centered, so scaleY's default center origin reproduces
-// the symmetric growth the old animated height had.
-export function waveBarVisual(norm: number): {
+interface WaveBarVisual {
   scaleY: number;
   quietOpacity: number;
   activeOpacity: number;
-} {
+}
+
+// Bars are vertically centered, so scaleY's default center origin reproduces
+// the symmetric growth the old animated height had.
+export function waveBarVisual(norm: number): WaveBarVisual {
   if (norm < WAVE_QUIET_NORM) {
     return {
       scaleY: WAVE_MIN_PX / WAVE_MAX_PX,

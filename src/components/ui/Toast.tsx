@@ -212,7 +212,6 @@ const Toast: React.FC<
   copyCommand,
   technicalDetails,
   action,
-  presentation = "standard",
   variant = "default",
   duration = 3500,
   isExiting,

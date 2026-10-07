@@ -16,15 +16,20 @@ export const useWindowControls = (): UseWindowControlsReturn => {
   useEffect(() => {
     let mounted = true;
 
-    const syncIsMaximized = async (): Promise<void> => {
-      try {
-        const maximized = await window.electronAPI?.windowIsMaximized?.();
-
-        if (mounted) setIsMaximized(Boolean(maximized));
-      } catch {}
+    const syncIsMaximized = (): void => {
+      // The probe owns its rejection: a failed read leaves the last known state
+      // and the next tick retries, so callers (initial + interval) stay void.
+      void window.electronAPI
+        ?.windowIsMaximized?.()
+        .then((maximized) => {
+          if (mounted) setIsMaximized(Boolean(maximized));
+        })
+        .catch(() => {
+          // Window mid-teardown or bridge unavailable; keep the last state.
+        });
     };
 
-    void syncIsMaximized();
+    syncIsMaximized();
     // Polled because maximize can also happen outside these buttons (for
     // example, by double-clicking the drag band) and no renderer event reports it.
     const intervalId = window.setInterval(syncIsMaximized, 1000);
@@ -35,10 +40,15 @@ export const useWindowControls = (): UseWindowControlsReturn => {
     };
   }, []);
 
+  // Best-effort window actions: they have no recovery path (the OS owns the
+  // window), and the preload bridge can be absent during teardown. The state
+  // poll above re-syncs the visible result after these resolve.
   const minimize = async (): Promise<void> => {
     try {
       await window.electronAPI?.windowMinimize?.();
-    } catch {}
+    } catch {
+      // No recovery path; the OS owns the window.
+    }
   };
 
   const toggleMaximize = async (): Promise<void> => {
@@ -46,13 +56,17 @@ export const useWindowControls = (): UseWindowControlsReturn => {
       await window.electronAPI?.windowMaximize?.();
       const maximized = await window.electronAPI?.windowIsMaximized?.();
       setIsMaximized(Boolean(maximized));
-    } catch {}
+    } catch {
+      // The maximize may still have applied; the next poll reflects it.
+    }
   };
 
   const close = async (): Promise<void> => {
     try {
       await window.electronAPI?.windowClose?.();
-    } catch {}
+    } catch {
+      // No recovery path; the OS owns the window.
+    }
   };
 
   return { isMaximized, minimize, toggleMaximize, close };

@@ -43,6 +43,8 @@ export default function ControlPanelSidebar({
     <div className="flex h-full shrink-0 flex-col bg-surface-window" style={{ width }}>
       <div
         className="h-11 w-full shrink-0"
+        // SAFETY: WebkitAppRegion is Electron's window-drag CSS seam; React's
+        // CSSProperties type does not declare it.
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
 
@@ -75,9 +77,21 @@ export default function ControlPanelSidebar({
 
       <div className="flex-1 min-h-0 flex flex-col">
         <SpacesTree
-          onDeleteNote={handleDelete}
+          onDeleteNote={(id) => {
+            // The tree prop is void; observe the rejection so a failed delete
+            // is recorded instead of floating.
+            handleDelete(id).catch((error) => {
+              console.error("[ControlPanelSidebar] Failed to delete note:", error);
+            });
+          }}
           onMoveNote={handleMoveNote}
-          onCreateFolderAndMove={handleCreateFolderAndMove}
+          onCreateFolderAndMove={(noteId, folderName) => {
+            // The tree prop is void; observe the rejection so a failed folder
+            // create/move is recorded instead of floating.
+            handleCreateFolderAndMove(noteId, folderName).catch((error) => {
+              console.error("[ControlPanelSidebar] Failed to create folder and move note:", error);
+            });
+          }}
           onNewNote={handleNewNoteIn}
           onNavigate={() => onViewChange("personal-notes")}
         />

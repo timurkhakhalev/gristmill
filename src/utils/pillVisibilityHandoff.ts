@@ -3,8 +3,13 @@ import { waitForVisualFrames } from "./visualFrame";
 interface PillVisibilityHandoffOptions {
   onSuppressedChange: (suppressed: boolean) => void;
   shouldAutoHide?: () => boolean;
-  hideWindow?: () => Promise<unknown> | undefined;
+  hideWindow?: () => Promise<void> | undefined;
   waitForFrames?: () => Promise<void>;
+}
+
+interface PillReleaseResult {
+  released: boolean;
+  superseded: boolean;
 }
 
 /**
@@ -36,7 +41,7 @@ export function createPillVisibilityHandoff({
       publish(true);
     },
 
-    async releaseAfter(settleBounds: () => Promise<unknown>) {
+    async releaseAfter(settleBounds: () => Promise<void>): Promise<PillReleaseResult> {
       const releaseGeneration = ++generation;
 
       try {

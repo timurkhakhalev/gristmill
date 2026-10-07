@@ -27,12 +27,16 @@ const EMA_NEXT = 0.5;
 // Sentinel errors set by meetingRecordingStore, translated at display time.
 // A sentinel may carry one argument after a colon, e.g. `unsupportedProvider:groq`.
 // Anything that is not a sentinel reaches the toast unchanged.
-const MEETING_ERROR_KEYS: Record<string, string> = {
+const MEETING_ERROR_KEYS = {
   policyRestricted: "notes.meeting.restrictedByOrg",
   unsupportedSelfHosted: "notes.meeting.unsupportedSelfHosted",
   unsupportedProvider: "notes.meeting.unsupportedProvider",
   noProviderSelected: "notes.meeting.noProviderSelected",
-};
+} satisfies Record<string, string>;
+
+function isKnownErrorKey(name: string): name is keyof typeof MEETING_ERROR_KEYS {
+  return Object.prototype.hasOwnProperty.call(MEETING_ERROR_KEYS, name);
+}
 
 export default function MeetingRecordingMount(): null {
   useMeetingCompanionSync();
@@ -142,16 +146,17 @@ export default function MeetingRecordingMount(): null {
             notifyAutoEnded.current();
           };
 
-          const completion = window.electronAPI?.meetingAutoEndCompleted;
+          const electronAPI = window.electronAPI;
 
-          if (!stopped || !completion) {
+          if (!stopped || !electronAPI?.meetingAutoEndCompleted) {
             abandonRestart();
 
             return;
           }
 
           pendingAutoEndRestart.current = restartContext;
-          void completion(sessionId)
+          electronAPI
+            .meetingAutoEndCompleted(sessionId)
             .then((result) => {
               if (!result.success) abandonRestart();
             })
@@ -174,13 +179,28 @@ export default function MeetingRecordingMount(): null {
       );
     };
 
+    // Fire-and-forget by contract: the listeners cannot await, so each observes
+    // its own call and logs; handleAutoEnd contains its expected failures.
+    const runAutoEnd = (request: { sessionId: string }, platformLeave = false): void => {
+      handleAutoEnd(request, platformLeave).catch((error) =>
+        logger.error(
+          "Meeting auto-end request failed",
+          {
+            error: error instanceof Error ? error.message : String(error),
+            sessionId: request.sessionId,
+          },
+          "meeting"
+        )
+      );
+    };
+
     const unsubscribeStop = window.electronAPI?.onMeetingAutoEndRequested?.((request) =>
-      handleAutoEnd(request)
+      runAutoEnd(request)
     );
 
     const unsubscribeLeave = window.electronAPI?.onMeetingTranscriptionStopRequested?.(
       (request) => {
-        if (request.reason === "platform-leave") handleAutoEnd(request, true);
+        if (request.reason === "platform-leave") runAutoEnd(request, true);
       }
     );
 
@@ -230,7 +250,7 @@ export default function MeetingRecordingMount(): null {
   useEffect(() => {
     if (!error) return;
     const [sentinel, argument] = error.split(":");
-    const errorKey = MEETING_ERROR_KEYS[sentinel];
+    const errorKey = isKnownErrorKey(sentinel) ? MEETING_ERROR_KEYS[sentinel] : undefined;
     const captureErrorCode = useMeetingRecordingStore.getState().captureErrorCode;
 
     const captureWriteFailed =

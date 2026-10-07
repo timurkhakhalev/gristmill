@@ -89,12 +89,18 @@ export default function CalendarConnectionsStep() {
   );
 
   useEffect(() => {
-    void window.electronAPI?.gcalGetConnectionStatus().then((status) => {
-      setGoogleConfigured(Boolean(status.configured));
-    });
-    void window.electronAPI?.mcalGetConnectionStatus().then((status) => {
-      setMicrosoftConfigured(Boolean(status.configured));
-    });
+    window.electronAPI
+      ?.gcalGetConnectionStatus()
+      .then((status) => {
+        setGoogleConfigured(Boolean(status.configured));
+      })
+      .catch(() => {});
+    window.electronAPI
+      ?.mcalGetConnectionStatus()
+      .then((status) => {
+        setMicrosoftConfigured(Boolean(status.configured));
+      })
+      .catch(() => {});
 
     const google = window.electronAPI?.onGcalConnectionChanged((data) => {
       store.setGcalAccounts(data.accounts);

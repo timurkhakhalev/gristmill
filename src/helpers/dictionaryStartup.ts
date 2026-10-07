@@ -18,12 +18,18 @@ export type DictionaryStartupAction = {
  * - Non-empty DB → SQLite wins; refresh the cache from the DB.
  * - Both empty → nothing to do.
  */
-export function chooseDictionaryStartupAction(
-  dbWords: unknown,
-  localWords: unknown
+// The DB read and the renderer cache both cross a trust boundary; a
+// non-string-array value is treated as empty rather than trusted.
+function isStringArray<T>(value: T): value is T & string[] {
+  return Array.isArray(value) && value.every((item): item is string => typeof item === "string");
+}
+
+export function chooseDictionaryStartupAction<TDb, TLocal>(
+  dbWords: TDb,
+  localWords: TLocal
 ): DictionaryStartupAction {
-  const db = Array.isArray(dbWords) ? (dbWords as string[]) : [];
-  const local = Array.isArray(localWords) ? (localWords as string[]) : [];
+  const db = isStringArray(dbWords) ? dbWords : [];
+  const local = isStringArray(localWords) ? localWords : [];
 
   if (db.length === 0 && local.length > 0) {
     return { action: "push-local-to-db", words: local };

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import ApiKeyInput from "./ui/ApiKeyInput";
+import ApiKeyInput, { type ApiKeySetter } from "./ui/ApiKeyInput";
 import ModelCardList from "./ui/ModelCardList";
 import SearchableModelList, { MODEL_SEARCH_THRESHOLD } from "./ui/SearchableModelList";
 import { buildApiUrl, getModelListBaseCandidates, normalizeBaseUrl } from "../config/constants.mts";
@@ -16,11 +17,38 @@ interface ModelOption {
   ownedBy?: string;
 }
 
+// Non-conformant endpoints may return numeric ids or object descriptions, so
+// every field is coerced here before it reaches the render.
+const modelsPayloadSchema = z.object({
+  data: z.array(z.record(z.string(), z.unknown())).optional(),
+  models: z.array(z.record(z.string(), z.unknown())).optional(),
+});
+
+interface RawModelItem {
+  id?: unknown;
+  name?: unknown;
+  description?: unknown;
+  owned_by?: unknown;
+}
+
+/** Non-empty id/name, which some non-conformant endpoints return as a number. */
+function isScalar(value: unknown): value is string | number {
+  return (typeof value === "string" && value !== "") || typeof value === "number";
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value !== "";
+}
+
 interface OpenAICompatiblePanelProps {
   baseUrl: string;
   setBaseUrl: (value: string) => void;
   apiKey: string;
-  setApiKey: (value: string) => unknown | Promise<unknown>;
+  setApiKey: ApiKeySetter;
   model: string;
   setModel: (value: string) => void;
   defaultBaseUrl?: string;
@@ -154,34 +182,36 @@ export default function OpenAICompatiblePanel({
             throw new Error(summary.trim());
           }
 
-          const payload = await response.json().catch(() => ({}));
+          const json: unknown = await response.json().catch(() => ({}));
 
-          const rawModels = Array.isArray(payload?.data)
-            ? payload.data
-            : Array.isArray(payload?.models)
-              ? payload.models
+          const parsed = modelsPayloadSchema.safeParse(json);
+
+          const data = parsed.success ? parsed.data.data : undefined;
+          const models = parsed.success ? parsed.data.models : undefined;
+
+          const rawModels: RawModelItem[] = Array.isArray(data)
+            ? data
+            : Array.isArray(models)
+              ? models
               : [];
 
           // Coerce fields defensively: non-conformant endpoints may return
           // numeric ids or object descriptions, which would crash the render.
-          return (rawModels as Array<Record<string, unknown>>)
-            .map((item) => {
-              const rawValue = item?.id ?? item?.name;
+          return rawModels.flatMap((item) => {
+            const rawValue = item.id ?? item.name;
 
-              if (rawValue === undefined || rawValue === null || rawValue === "") return null;
-              const value = String(rawValue);
-              const ownedBy = typeof item?.owned_by === "string" ? item.owned_by : undefined;
+            if (!isScalar(rawValue)) return [];
+            const value = String(rawValue);
+            const ownedBy = isString(item.owned_by) ? item.owned_by : undefined;
 
-              const description =
-                typeof item?.description === "string" && item.description
-                  ? item.description
-                  : ownedBy
-                    ? t("reasoning.custom.ownerLabel", { owner: ownedBy })
-                    : undefined;
+            const description = isNonEmptyString(item.description)
+              ? item.description
+              : ownedBy
+                ? t("reasoning.custom.ownerLabel", { owner: ownedBy })
+                : undefined;
 
-              return { value, label: value, description, ownedBy } as ModelOption;
-            })
-            .filter(Boolean) as ModelOption[];
+            return [{ value, label: value, description, ownedBy }];
+          });
         };
 
         // When the entered base yields no models, fall back through sibling
@@ -200,8 +230,10 @@ export default function OpenAICompatiblePanel({
               resolvedBase = candidate;
               break;
             }
-          } catch (error) {
-            if (candidate === normalized) primaryError = error as Error;
+          } catch (cause: unknown) {
+            // SAFETY: fetchModelOptions only throws Error; other values are wrapped.
+            if (candidate === normalized)
+              primaryError = cause instanceof Error ? cause : new Error(String(cause));
           }
         }
 
@@ -223,9 +255,12 @@ export default function OpenAICompatiblePanel({
           setModelsError(null);
           lastLoadedBaseRef.current = resolvedBase;
         }
-      } catch (error) {
+      } catch (cause: unknown) {
         if (isMountedRef.current && latestBaseRef.current === normalized) {
-          const message = (error as Error).message || t("reasoning.custom.unableToLoadModels");
+          const message =
+            (cause instanceof Error ? cause.message : String(cause)) ||
+            t("reasoning.custom.unableToLoadModels");
+
           const unauthorized = /\b(401|403)\b/.test(message);
 
           if (unauthorized && !effectiveKey) {
@@ -264,7 +299,7 @@ export default function OpenAICompatiblePanel({
     if (pendingBaseRef.current === normalizedBase) return;
 
     if (lastLoadedBaseRef.current === normalizedBase) return;
-    loadRemoteModels();
+    loadRemoteModels().catch(() => {});
   }, [hasBase, normalizedBase, loadRemoteModels]);
 
   const applyBase = useCallback(() => {
@@ -272,7 +307,7 @@ export default function OpenAICompatiblePanel({
     setDraftBase(normalized);
     setBaseUrl(normalized);
     lastLoadedBaseRef.current = null;
-    loadRemoteModels(normalized, true);
+    loadRemoteModels(normalized, true).catch(() => {});
   }, [trimmedDraft, setBaseUrl, loadRemoteModels]);
 
   const handleBlur = useCallback(() => {
@@ -288,7 +323,7 @@ export default function OpenAICompatiblePanel({
     setDraftBase(target);
     setBaseUrl(target);
     lastLoadedBaseRef.current = null;
-    loadRemoteModels(target, true);
+    loadRemoteModels(target, true).catch(() => {});
   }, [defaultBaseUrl, setBaseUrl, loadRemoteModels]);
 
   const handleRefresh = useCallback(() => {
@@ -299,7 +334,7 @@ export default function OpenAICompatiblePanel({
     }
 
     if (!trimmedDraft) return;
-    loadRemoteModels(undefined, true);
+    loadRemoteModels(undefined, true).catch(() => {});
   }, [applyBase, isDraftDirty, trimmedDraft, loadRemoteModels]);
 
   const displayedModels = isDraftDirty ? [] : modelOptions;

@@ -4,9 +4,16 @@ import { Check, X, KeyRound } from "../icons";
 import { Input } from "./input";
 import logger from "../../utils/logger";
 
+/** Outcome of persisting a secret. */
+export interface ApiKeySaveResult {
+  success: boolean;
+}
+
+export type ApiKeySetter = (key: string) => ApiKeySaveResult | Promise<ApiKeySaveResult>;
+
 interface ApiKeyInputProps {
   apiKey: string;
-  setApiKey: (key: string) => unknown | Promise<unknown>;
+  setApiKey: ApiKeySetter;
   className?: string;
   placeholder?: string;
   label?: string;
@@ -67,12 +74,7 @@ export default function ApiKeyInput({
     try {
       const result = await setApiKey(draft.trim());
 
-      if (
-        !result ||
-        typeof result !== "object" ||
-        !("success" in result) ||
-        result.success !== true
-      ) {
+      if (result?.success !== true) {
         setSaveError(true);
 
         return;
@@ -97,7 +99,7 @@ export default function ApiKeyInput({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      save();
+      save().catch(() => {});
     }
 
     if (e.key === "Escape") {
@@ -112,8 +114,9 @@ export default function ApiKeyInput({
     if (!isEditing) return;
 
     const handleClickOutside = (e: MouseEvent) => {
+      // SAFETY: mousedown targets are always DOM nodes in the renderer.
       if (containerRef.current?.contains(e.target as Node)) return;
-      save();
+      save().catch(() => {});
     };
 
     document.addEventListener("mousedown", handleClickOutside);

@@ -26,7 +26,13 @@ import { isDevelopmentChannel } from "./appChannel.js";
 import { suppressDevSnapshotAfterReset } from "./devSnapshot.js";
 import { getAutoStartState, setAutoStartEnabled } from "./autoStart.js";
 import { openSystemSettings } from "./systemSettingsLauncher.js";
-import type { HotkeyActivationCallback, HotkeySlot } from "./hotkeyManager.js";
+import type {
+  HotkeyActivationCallback,
+  HotkeyRegistrationResult,
+  HotkeySlot,
+} from "./hotkeyManager.js";
+import type { DragOperationResult } from "./dragManager.js";
+import type { StoredHotkeyListValue } from "./hotkeyList.js";
 import { resolveSystemDefaultMicrophone } from "./systemDefaultMicrophone.js";
 import { getAgentCliStatus, installAgentCli } from "./installAgentCli.js";
 import { resolveLocalServerNeeds } from "./localServerPolicy.js";
@@ -46,13 +52,32 @@ import {
   type SaveKeyWireResult,
 } from "../contracts/desktopSettings.js";
 
-type IpcEventListener = (event: unknown, ...args: unknown[]) => void;
+export interface SaveAllKeysResult {
+  success: boolean;
+  path: string;
+}
 
 export interface Logger {
-  log: (message: string, data?: unknown) => void;
-  debug: (message: string, data?: unknown) => void;
-  warn: (message: string, data?: unknown, tag?: string) => void;
-  error: (message: string, data?: unknown, tag?: string) => void;
+  log: <T>(message: string, data?: T) => void;
+  debug: <T>(message: string, data?: T) => void;
+  warn: <T>(message: string, data?: T, tag?: string) => void;
+  error: <T>(message: string, data?: T, tag?: string) => void;
+}
+
+// Every argument that arrives from the renderer is unparsed until it is decoded
+// here. These guards name the external shapes this module accepts: primitive
+// scalars for credential/string channels, and object "record" payloads whose
+// individual fields are still checked before use.
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function isBoolean<T>(value: T): value is T & boolean {
+  return typeof value === "boolean";
+}
+
+function errorMessage<T>(error: T): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // The macOS hotkey-capture mode is module state: entering capture unregisters
@@ -62,11 +87,11 @@ let hotkeyCaptureMode = false;
 export interface DesktopSettingsDeps {
   windowManager: {
     setOnboardingWindowMode: (mode: string) => boolean;
-    setOnboardingActive: (active: unknown) => boolean;
+    setOnboardingActive: (active: boolean) => boolean;
     controlPanelWindow: BrowserWindow | null;
     snapControlPanelToMeetingMode: () => void;
     restoreControlPanelFromMeetingMode: () => void;
-    setNotificationInteractivity(sender: unknown, interactive: boolean): void;
+    setNotificationInteractivity(sender: WebContents, interactive: boolean): void;
     setHotkeyListeningMode: (enabled: boolean) => void;
     isUsingNativeShortcutHotkeys: () => boolean;
     hotkeyManager: {
@@ -74,16 +99,16 @@ export interface DesktopSettingsDeps {
       getCurrentHotkey: () => string | null;
       registerSlot(
         slotName: string,
-        hotkeys: unknown,
+        hotkeys: StoredHotkeyListValue,
         callback: HotkeyActivationCallback
-      ): Promise<unknown>;
+      ): Promise<HotkeyRegistrationResult>;
       unregisterSlot: (slotName: string) => void;
       supportsPushToTalk: (hotkey: string | null) => boolean;
       getPushToTalkUnavailableReason: (hotkey: string | null) => string;
       getEffectiveDefaultHotkey: () => string;
     };
-    startControlPanelDrag: () => Promise<unknown>;
-    stopControlPanelDrag: () => Promise<unknown>;
+    startControlPanelDrag: () => Promise<DragOperationResult>;
+    stopControlPanelDrag: () => Promise<DragOperationResult>;
     notificationPrefs: Record<string, boolean>;
     setNotificationPreferences: (prefs: Record<string, boolean>) => void;
     notificationsGateDetection: () => boolean;
@@ -136,7 +161,7 @@ export interface DesktopSettingsDeps {
     saveActivationMode: (mode: string) => SaveKeyWireResult;
     getUiLanguage: () => string;
     saveUiLanguage: (language: string) => SaveKeyWireResult & { language: string };
-    saveAllKeysToEnvFile: () => Promise<unknown>;
+    saveAllKeysToEnvFile: () => Promise<SaveAllKeysResult>;
     clearAllPersistedData: () => Promise<void>;
   };
   audioTap: {
@@ -221,7 +246,7 @@ function syncStartupEnv(
 
 export function registerDesktopSettingsHandlers(
   ipcMain: {
-    handle(channel: string, listener: IpcEventListener): void;
+    handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
     emit?: (event: string, ...args: unknown[]) => boolean;
   },
   deps: DesktopSettingsDeps
@@ -231,7 +256,7 @@ export function registerDesktopSettingsHandlers(
 
   // ---- onboarding / window ------------------------------------------------------
 
-  ipcMain.handle(desktopSettingsChannels.setOnboardingWindowMode, (_event, mode: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.setOnboardingWindowMode, (_event, mode) => {
     const parsed = onboardingWindowModeSchema.safeParse(mode);
 
     if (!parsed.success) return false;
@@ -239,8 +264,8 @@ export function registerDesktopSettingsHandlers(
     return windowManager.setOnboardingWindowMode(parsed.data);
   });
 
-  ipcMain.handle(desktopSettingsChannels.setOnboardingActive, (_event, active: unknown) => {
-    if (typeof active !== "boolean") return false;
+  ipcMain.handle(desktopSettingsChannels.setOnboardingActive, (_event, active) => {
+    if (!isBoolean(active)) return false;
 
     return windowManager.setOnboardingActive(active);
   });
@@ -285,8 +310,10 @@ export function registerDesktopSettingsHandlers(
   });
 
   ipcMain.handle(desktopSettingsChannels.setNotificationInteractivity, (event, interactive) => {
+    // SAFETY: Electron invokes handlers with an IpcMainInvokeEvent, so its
+    // sender is the webContents that issued the call.
     windowManager.setNotificationInteractivity(
-      (event as { sender: unknown }).sender,
+      (event as { sender: WebContents }).sender,
       Boolean(interactive)
     );
 
@@ -297,94 +324,94 @@ export function registerDesktopSettingsHandlers(
 
   for (const k of BYOK_API_KEYS) {
     ipcMain.handle(`get-${k.base}-key`, () => environment.byokGet(k.get));
-    ipcMain.handle(`save-${k.base}-key`, (_event, key: unknown) =>
-      environment.byokSave(k.save, typeof key === "string" ? key : "")
+    ipcMain.handle(`save-${k.base}-key`, (_event, key) =>
+      environment.byokSave(k.save, isString(key) ? key : "")
     );
   }
 
   // ---- credentials: Corti / custom endpoints / enterprise providers ---------------
 
   ipcMain.handle(desktopSettingsChannels.getCortiClientId, () => environment.getCortiClientId());
-  ipcMain.handle(desktopSettingsChannels.setCortiClientId, (_event, key: unknown) =>
-    environment.saveCortiClientId(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setCortiClientId, (_event, key) =>
+    environment.saveCortiClientId(isString(key) ? key : "")
   );
   ipcMain.handle(desktopSettingsChannels.getCortiClientSecret, () =>
     environment.getCortiClientSecret()
   );
-  ipcMain.handle(desktopSettingsChannels.setCortiClientSecret, (_event, key: unknown) =>
-    environment.saveCortiClientSecret(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setCortiClientSecret, (_event, key) =>
+    environment.saveCortiClientSecret(isString(key) ? key : "")
   );
 
   ipcMain.handle(desktopSettingsChannels.getCustomTranscriptionKey, () =>
     environment.getCustomTranscriptionKey()
   );
-  ipcMain.handle(desktopSettingsChannels.setCustomTranscriptionKey, (_event, key: unknown) =>
-    environment.saveCustomTranscriptionKey(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setCustomTranscriptionKey, (_event, key) =>
+    environment.saveCustomTranscriptionKey(isString(key) ? key : "")
   );
   ipcMain.handle(desktopSettingsChannels.getCleanupCustomKey, () =>
     environment.getCleanupCustomKey()
   );
-  ipcMain.handle(desktopSettingsChannels.setCleanupCustomKey, (_event, key: unknown) =>
-    environment.saveCleanupCustomKey(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setCleanupCustomKey, (_event, key) =>
+    environment.saveCleanupCustomKey(isString(key) ? key : "")
   );
 
   ipcMain.handle(desktopSettingsChannels.getBedrockRegion, () => environment.getBedrockRegion());
-  ipcMain.handle(desktopSettingsChannels.setBedrockRegion, (_event, value: unknown) =>
-    environment.saveBedrockRegion(typeof value === "string" ? value : "")
+  ipcMain.handle(desktopSettingsChannels.setBedrockRegion, (_event, value) =>
+    environment.saveBedrockRegion(isString(value) ? value : "")
   );
   ipcMain.handle(desktopSettingsChannels.getBedrockProfile, () => environment.getBedrockProfile());
-  ipcMain.handle(desktopSettingsChannels.setBedrockProfile, (_event, value: unknown) =>
-    environment.saveBedrockProfile(typeof value === "string" ? value : "")
+  ipcMain.handle(desktopSettingsChannels.setBedrockProfile, (_event, value) =>
+    environment.saveBedrockProfile(isString(value) ? value : "")
   );
   ipcMain.handle(desktopSettingsChannels.getBedrockAccessKeyId, () =>
     environment.getBedrockAccessKeyId()
   );
-  ipcMain.handle(desktopSettingsChannels.setBedrockAccessKeyId, (_event, key: unknown) =>
-    environment.saveBedrockAccessKeyId(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setBedrockAccessKeyId, (_event, key) =>
+    environment.saveBedrockAccessKeyId(isString(key) ? key : "")
   );
   ipcMain.handle(desktopSettingsChannels.getBedrockSecretAccessKey, () =>
     environment.getBedrockSecretAccessKey()
   );
-  ipcMain.handle(desktopSettingsChannels.setBedrockSecretAccessKey, (_event, key: unknown) =>
-    environment.saveBedrockSecretAccessKey(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setBedrockSecretAccessKey, (_event, key) =>
+    environment.saveBedrockSecretAccessKey(isString(key) ? key : "")
   );
   ipcMain.handle(desktopSettingsChannels.getBedrockSessionToken, () =>
     environment.getBedrockSessionToken()
   );
-  ipcMain.handle(desktopSettingsChannels.setBedrockSessionToken, (_event, key: unknown) =>
-    environment.saveBedrockSessionToken(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setBedrockSessionToken, (_event, key) =>
+    environment.saveBedrockSessionToken(isString(key) ? key : "")
   );
   ipcMain.handle(desktopSettingsChannels.getAzureEndpoint, () => environment.getAzureEndpoint());
-  ipcMain.handle(desktopSettingsChannels.setAzureEndpoint, (_event, value: unknown) =>
-    environment.saveAzureEndpoint(typeof value === "string" ? value : "")
+  ipcMain.handle(desktopSettingsChannels.setAzureEndpoint, (_event, value) =>
+    environment.saveAzureEndpoint(isString(value) ? value : "")
   );
   ipcMain.handle(desktopSettingsChannels.getAzureApiKey, () => environment.getAzureApiKey());
-  ipcMain.handle(desktopSettingsChannels.setAzureApiKey, (_event, key: unknown) =>
-    environment.saveAzureApiKey(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setAzureApiKey, (_event, key) =>
+    environment.saveAzureApiKey(isString(key) ? key : "")
   );
   ipcMain.handle(desktopSettingsChannels.getAzureDeployment, () =>
     environment.getAzureDeployment()
   );
-  ipcMain.handle(desktopSettingsChannels.setAzureDeployment, (_event, value: unknown) =>
-    environment.saveAzureDeployment(typeof value === "string" ? value : "")
+  ipcMain.handle(desktopSettingsChannels.setAzureDeployment, (_event, value) =>
+    environment.saveAzureDeployment(isString(value) ? value : "")
   );
   ipcMain.handle(desktopSettingsChannels.getAzureApiVersion, () =>
     environment.getAzureApiVersion()
   );
-  ipcMain.handle(desktopSettingsChannels.setAzureApiVersion, (_event, value: unknown) =>
-    environment.saveAzureApiVersion(typeof value === "string" ? value : "")
+  ipcMain.handle(desktopSettingsChannels.setAzureApiVersion, (_event, value) =>
+    environment.saveAzureApiVersion(isString(value) ? value : "")
   );
   ipcMain.handle(desktopSettingsChannels.getVertexProject, () => environment.getVertexProject());
-  ipcMain.handle(desktopSettingsChannels.setVertexProject, (_event, value: unknown) =>
-    environment.saveVertexProject(typeof value === "string" ? value : "")
+  ipcMain.handle(desktopSettingsChannels.setVertexProject, (_event, value) =>
+    environment.saveVertexProject(isString(value) ? value : "")
   );
   ipcMain.handle(desktopSettingsChannels.getVertexLocation, () => environment.getVertexLocation());
-  ipcMain.handle(desktopSettingsChannels.setVertexLocation, (_event, value: unknown) =>
-    environment.saveVertexLocation(typeof value === "string" ? value : "")
+  ipcMain.handle(desktopSettingsChannels.setVertexLocation, (_event, value) =>
+    environment.saveVertexLocation(isString(value) ? value : "")
   );
   ipcMain.handle(desktopSettingsChannels.getVertexApiKey, () => environment.getVertexApiKey());
-  ipcMain.handle(desktopSettingsChannels.setVertexApiKey, (_event, key: unknown) =>
-    environment.saveVertexApiKey(typeof key === "string" ? key : "")
+  ipcMain.handle(desktopSettingsChannels.setVertexApiKey, (_event, key) =>
+    environment.saveVertexApiKey(isString(key) ? key : "")
   );
 
   ipcMain.handle(desktopSettingsChannels.saveAllKeysToEnv, () =>
@@ -393,61 +420,60 @@ export function registerDesktopSettingsHandlers(
 
   // ---- hotkeys ---------------------------------------------------------------------
 
-  ipcMain.handle(
-    desktopSettingsChannels.setHotkeyListeningMode,
-    async (_event, enabled: unknown) => {
-      if (typeof enabled !== "boolean") {
-        return { success: false };
-      }
+  ipcMain.handle(desktopSettingsChannels.setHotkeyListeningMode, async (_event, enabled) => {
+    if (!isBoolean(enabled)) {
+      return { success: false };
+    }
 
-      if (hotkeyCaptureMode === enabled) return { success: true, skipped: true };
-      hotkeyCaptureMode = enabled;
-      windowManager.setHotkeyListeningMode(enabled);
-      // Slots registered through IPC announce their changes so macOS can
-      // re-derive which keys the native Globe listener owns.
-      ipcMain.emit?.("hotkey-listening-mode-changed", null, enabled);
+    if (hotkeyCaptureMode === enabled) return { success: true, skipped: true };
+    hotkeyCaptureMode = enabled;
+    windowManager.setHotkeyListeningMode(enabled);
+    // Slots registered through IPC announce their changes so macOS can
+    // re-derive which keys the native Globe listener owns.
+    ipcMain.emit?.("hotkey-listening-mode-changed", null, enabled);
 
-      if (enabled) {
-        // Entering capture mode — unregister ALL slots so none intercept keypresses.
-        // Dictation is always active; meeting and agent may or may not be set.
-        const allSlots = hotkeyManager.slots;
+    if (enabled) {
+      // Entering capture mode — unregister ALL slots so none intercept keypresses.
+      // Dictation is always active; meeting and agent may or may not be set.
+      const allSlots = hotkeyManager.slots;
 
-        for (const [slot, info] of allSlots) {
-          // Native-listener entries (null accelerator) are handled by the
-          // platform hotkey manager.
-          for (const accel of info?.accelerators || []) {
-            if (!accel) continue;
-            logger.log(
-              `[IPC] Unregistering globalShortcut "${accel}" (slot "${slot}") for capture mode`
-            );
+      for (const [slot, info] of allSlots) {
+        // Native-listener entries (null accelerator) are handled by the
+        // platform hotkey manager.
+        for (const accel of info?.accelerators || []) {
+          if (!accel) continue;
+          logger.log(
+            `[IPC] Unregistering globalShortcut "${accel}" (slot "${slot}") for capture mode`
+          );
 
-            try {
-              globalShortcut.unregister(accel);
-            } catch {}
+          try {
+            globalShortcut.unregister(accel);
+          } catch {
+            // A slot already released by the OS needs no further handling.
           }
         }
-      } else {
-        // Exiting capture mode — re-register globalShortcut-backed hotkeys.
-        for (const [slot, info] of hotkeyManager.slots) {
-          const hotkeys = info?.hotkeys || [];
-
-          if (hotkeys.length === 0 || !info?.callback) continue;
-          logger.log(
-            `[IPC] Re-registering slot "${slot}" ("${hotkeys.join(", ")}") after capture mode`
-          );
-          await hotkeyManager.registerSlot(slot, hotkeys, info.callback).catch((err: Error) => {
-            logger.warn(`[IPC] Failed to re-register slot "${slot}":`, err.message);
-          });
-        }
       }
+    } else {
+      // Exiting capture mode — re-register globalShortcut-backed hotkeys.
+      for (const [slot, info] of hotkeyManager.slots) {
+        const hotkeys = info?.hotkeys || [];
 
-      return { success: true };
+        if (hotkeys.length === 0 || !info?.callback) continue;
+        logger.log(
+          `[IPC] Re-registering slot "${slot}" ("${hotkeys.join(", ")}") after capture mode`
+        );
+        await hotkeyManager.registerSlot(slot, hotkeys, info.callback).catch((err: Error) => {
+          logger.warn(`[IPC] Failed to re-register slot "${slot}":`, err.message);
+        });
+      }
     }
-  );
 
-  ipcMain.handle(desktopSettingsChannels.getHotkeyModeInfo, (_event, requestedHotkey: unknown) => {
+    return { success: true };
+  });
+
+  ipcMain.handle(desktopSettingsChannels.getHotkeyModeInfo, (_event, requestedHotkey) => {
     const hotkey =
-      typeof requestedHotkey === "string" && requestedHotkey.trim()
+      isString(requestedHotkey) && requestedHotkey.trim()
         ? requestedHotkey.split(",")[0].trim()
         : hotkeyManager.getCurrentHotkey();
 
@@ -466,8 +492,10 @@ export function registerDesktopSettingsHandlers(
     };
   });
 
-  ipcMain.handle(desktopSettingsChannels.registerCancelHotkey, (_event, key: unknown) => {
-    return hotkeyManager.registerSlot("cancel", key, () => {
+  ipcMain.handle(desktopSettingsChannels.registerCancelHotkey, (_event, key) => {
+    // SAFETY: the preload forwards the cancel-slot hotkey list unchanged; the
+    // slot parser accepts exactly this stored string/array/null/undefined union.
+    return hotkeyManager.registerSlot("cancel", key as StoredHotkeyListValue, () => {
       deps.sendToMainWindow("cancel-hotkey-pressed");
     });
   });
@@ -491,7 +519,7 @@ export function registerDesktopSettingsHandlers(
 
   // ---- external links ----------------------------------------------------------------
 
-  ipcMain.handle(desktopSettingsChannels.openExternal, async (_event, url: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.openExternal, async (_event, url) => {
     try {
       const parsedUrl = zUrlString.safeParse(url);
 
@@ -509,7 +537,7 @@ export function registerDesktopSettingsHandlers(
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
@@ -525,7 +553,7 @@ export function registerDesktopSettingsHandlers(
     }
   });
 
-  ipcMain.handle(desktopSettingsChannels.setAutoStartEnabled, async (_event, enabled: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.setAutoStartEnabled, async (_event, enabled) => {
     try {
       setAutoStartEnabled(enabled === true);
       logger.debug("Auto-start setting updated", { enabled });
@@ -534,13 +562,13 @@ export function registerDesktopSettingsHandlers(
     } catch (error) {
       logger.error("Error setting auto-start:", error);
 
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
   ipcMain.handle(desktopSettingsChannels.getActivationMode, () => environment.getActivationMode());
 
-  ipcMain.handle(desktopSettingsChannels.saveActivationMode, (_event, mode: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.saveActivationMode, (_event, mode) => {
     const parsed = activationModeSchema.safeParse(mode);
 
     if (!parsed.success) {
@@ -550,7 +578,7 @@ export function registerDesktopSettingsHandlers(
     return environment.saveActivationMode(parsed.data);
   });
 
-  ipcMain.handle(desktopSettingsChannels.syncStartupPreferences, (_event, prefs: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.syncStartupPreferences, (_event, prefs) => {
     const parsed = startupPreferencesSchema.safeParse(prefs);
 
     if (!parsed.success) {
@@ -634,7 +662,7 @@ export function registerDesktopSettingsHandlers(
 
   // ---- language ---------------------------------------------------------------------------
 
-  ipcMain.handle(desktopSettingsChannels.setTimeFormat, (_event, format: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.setTimeFormat, (_event, format) => {
     if (format !== "locale" && format !== "12h" && format !== "24h") return { success: false };
     const tray = deps.getTrayManager();
 
@@ -648,16 +676,16 @@ export function registerDesktopSettingsHandlers(
 
   ipcMain.handle(desktopSettingsChannels.getUiLanguage, () => environment.getUiLanguage());
 
-  ipcMain.handle(desktopSettingsChannels.saveUiLanguage, (_event, language: unknown) => {
-    if (typeof language !== "string") {
+  ipcMain.handle(desktopSettingsChannels.saveUiLanguage, (_event, language) => {
+    if (!isString(language)) {
       return { success: false, language: environment.getUiLanguage() };
     }
 
     return environment.saveUiLanguage(language);
   });
 
-  ipcMain.handle(desktopSettingsChannels.setUiLanguage, (_event, language: unknown) => {
-    if (typeof language !== "string") {
+  ipcMain.handle(desktopSettingsChannels.setUiLanguage, (_event, language) => {
+    if (!isString(language)) {
       return { success: false, language: environment.getUiLanguage() };
     }
 
@@ -674,7 +702,7 @@ export function registerDesktopSettingsHandlers(
 
   ipcMain.handle(desktopSettingsChannels.getLogLevel, () => debugLogger.getLevel());
 
-  ipcMain.handle(desktopSettingsChannels.log, (_event, entry: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.log, (_event, entry) => {
     debugLogger.logEntry(entry);
 
     return { success: true };
@@ -694,9 +722,9 @@ export function registerDesktopSettingsHandlers(
     }
   });
 
-  ipcMain.handle(desktopSettingsChannels.setDebugLogging, async (_event, enabled: unknown) => {
+  ipcMain.handle(desktopSettingsChannels.setDebugLogging, async (_event, enabled) => {
     try {
-      if (typeof enabled !== "boolean") {
+      if (!isBoolean(enabled)) {
         return { success: false, error: "Invalid debug logging request" };
       }
 
@@ -753,7 +781,7 @@ export function registerDesktopSettingsHandlers(
     } catch (error) {
       logger.error("Failed to set debug logging:", error);
 
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
@@ -769,7 +797,7 @@ export function registerDesktopSettingsHandlers(
     } catch (error) {
       logger.error("Failed to open logs folder:", error);
 
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
   ipcMain.handle(desktopSettingsChannels.getAgentCliStatus, () => getAgentCliStatus());
@@ -779,7 +807,7 @@ export function registerDesktopSettingsHandlers(
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
@@ -789,8 +817,10 @@ export function registerDesktopSettingsHandlers(
     openSystemSettings("microphone")
   );
   ipcMain.handle(desktopSettingsChannels.openSoundInputSettings, () => openSystemSettings("sound"));
-  ipcMain.handle(desktopSettingsChannels.getSystemDefaultMicrophone, (_event, options: unknown) =>
+  ipcMain.handle(desktopSettingsChannels.getSystemDefaultMicrophone, (_event, options) =>
     resolveSystemDefaultMicrophone({
+      // SAFETY: the renderer sends an options bag; only its boolean `refresh`
+      // flag is read and it is compared, not trusted.
       refresh: (options as { refresh?: boolean } | undefined)?.refresh === true,
     })
   );
@@ -893,8 +923,8 @@ export function registerDesktopSettingsHandlers(
     return clipboard.readText();
   });
 
-  ipcMain.handle(desktopSettingsChannels.writeClipboard, (_event, text: unknown) => {
-    if (typeof text !== "string") throw new TypeError("Clipboard text must be a string");
+  ipcMain.handle(desktopSettingsChannels.writeClipboard, (_event, text) => {
+    if (!isString(text)) throw new TypeError("Clipboard text must be a string");
     clipboard.writeText(text);
 
     return { success: true };
@@ -902,32 +932,29 @@ export function registerDesktopSettingsHandlers(
 
   // ---- notification preferences ------------------------------------------------------------------
 
-  ipcMain.handle(
-    desktopSettingsChannels.syncNotificationPreferences,
-    (_event, rawPrefs: unknown) => {
-      try {
-        const parsed = notificationPreferencesSchema.safeParse(rawPrefs);
+  ipcMain.handle(desktopSettingsChannels.syncNotificationPreferences, (_event, rawPrefs) => {
+    try {
+      const parsed = notificationPreferencesSchema.safeParse(rawPrefs);
 
-        if (!parsed.success) {
-          return { success: false, error: "Invalid preferences" };
-        }
-
-        const prefs: Record<string, boolean> = {};
-
-        for (const [k, v] of Object.entries(parsed.data)) {
-          if (NOTIFICATION_PREF_KEYS.has(k)) prefs[k] = v;
-        }
-
-        windowManager.setNotificationPreferences(prefs);
-        // Detection only serves the notification, so the toggle also gates the detector.
-        deps.setDetectionGateForNotifications(windowManager.notificationsGateDetection());
-
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: (error as Error).message };
+      if (!parsed.success) {
+        return { success: false, error: "Invalid preferences" };
       }
+
+      const prefs: Record<string, boolean> = {};
+
+      for (const [k, v] of Object.entries(parsed.data)) {
+        if (NOTIFICATION_PREF_KEYS.has(k)) prefs[k] = v;
+      }
+
+      windowManager.setNotificationPreferences(prefs);
+      // Detection only serves the notification, so the toggle also gates the detector.
+      deps.setDetectionGateForNotifications(windowManager.notificationsGateDetection());
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: errorMessage(error) };
     }
-  );
+  });
 
   // ---- device cleanup ------------------------------------------------------------------------------
 
@@ -945,7 +972,7 @@ export function registerDesktopSettingsHandlers(
         return {
           success: false,
           message: "Cleanup stopped because reset could not be recorded",
-          errors: [`Snapshot reset state: ${(e as Error).message}`],
+          errors: [`Snapshot reset state: ${errorMessage(e)}`],
         };
       }
     }
@@ -954,44 +981,44 @@ export function registerDesktopSettingsHandlers(
     try {
       await cleanup.stopParakeetServer();
     } catch (e) {
-      errors.push(`Parakeet stop: ${(e as Error).message}`);
+      errors.push(`Parakeet stop: ${errorMessage(e)}`);
     }
 
     try {
-      cleanup.stopWhisperServer();
+      await cleanup.stopWhisperServer();
     } catch (e) {
-      errors.push(`Whisper stop: ${(e as Error).message}`);
+      errors.push(`Whisper stop: ${errorMessage(e)}`);
     }
 
     try {
       cleanup.stopGoogleCalendar();
     } catch (e) {
-      errors.push(`GCal stop: ${(e as Error).message}`);
+      errors.push(`GCal stop: ${errorMessage(e)}`);
     }
 
     try {
       cleanup.stopMicrosoftCalendar();
     } catch (e) {
-      errors.push(`MCal stop: ${(e as Error).message}`);
+      errors.push(`MCal stop: ${errorMessage(e)}`);
     }
 
     try {
       cleanup.stopAppleCalendar();
     } catch (e) {
-      errors.push(`ACal stop: ${(e as Error).message}`);
+      errors.push(`ACal stop: ${errorMessage(e)}`);
     }
 
     try {
       await cleanup.shutdownDiarization();
     } catch (e) {
-      errors.push(`Diarization stop: ${(e as Error).message}`);
+      errors.push(`Diarization stop: ${errorMessage(e)}`);
     }
 
     // Revoke Google OAuth tokens before DB is closed
     try {
       await cleanup.revokeGoogleTokens();
     } catch (e) {
-      errors.push(`GCal revoke: ${(e as Error).message}`);
+      errors.push(`GCal revoke: ${errorMessage(e)}`);
     }
 
     // The durable deletion rows must remain available until every managed audio
@@ -1005,7 +1032,7 @@ export function registerDesktopSettingsHandlers(
         return { success: false, message: "Cleanup stopped because audio deletion failed", errors };
       }
     } catch (e) {
-      errors.push(`Audio delete: ${(e as Error).message}`);
+      errors.push(`Audio delete: ${errorMessage(e)}`);
 
       return { success: false, message: "Cleanup stopped because audio deletion failed", errors };
     }
@@ -1014,43 +1041,45 @@ export function registerDesktopSettingsHandlers(
     try {
       cleanup.closeDatabase();
     } catch (e) {
-      errors.push(`DB close: ${(e as Error).message}`);
+      errors.push(`DB close: ${errorMessage(e)}`);
     }
 
     // Delete downloaded models
     try {
       cleanup.deleteWhisperModels();
     } catch (e) {
-      errors.push(`Whisper models: ${(e as Error).message}`);
+      errors.push(`Whisper models: ${errorMessage(e)}`);
     }
 
     try {
       await cleanup.deleteParakeetModels();
     } catch (e) {
-      errors.push(`Parakeet models: ${(e as Error).message}`);
+      errors.push(`Parakeet models: ${errorMessage(e)}`);
     }
 
     try {
       await cleanup.deleteDiarizationModels();
     } catch (e) {
-      errors.push(`Diarization models: ${(e as Error).message}`);
+      errors.push(`Diarization models: ${errorMessage(e)}`);
     }
 
     try {
       await cleanup.deleteLlmModels();
     } catch (e) {
-      errors.push(`LLM models: ${(e as Error).message}`);
+      errors.push(`LLM models: ${errorMessage(e)}`);
     }
 
     // These caches are not owned by one account. Remove them only through
     // the explicit device-erasure path, never during normal account deletion.
     const homeCacheRoot = path.join(os.homedir(), ".cache", "gristmill");
 
-    for (const cacheName of []) {
+    const ownedCacheNames: string[] = [];
+
+    for (const cacheName of ownedCacheNames) {
       try {
         fs.rmSync(path.join(homeCacheRoot, cacheName), { recursive: true, force: true });
       } catch (e) {
-        errors.push(`${cacheName} cache: ${(e as Error).message}`);
+        errors.push(`${cacheName} cache: ${errorMessage(e)}`);
       }
     }
 
@@ -1077,14 +1106,14 @@ export function registerDesktopSettingsHandlers(
         }
       }
     } catch (e) {
-      errors.push(`DB file: ${(e as Error).message}`);
+      errors.push(`DB file: ${errorMessage(e)}`);
     }
 
     // Delete device-wide settings and encrypted credentials.
     try {
       await environment.clearAllPersistedData();
     } catch (e) {
-      errors.push(`Environment settings: ${(e as Error).message}`);
+      errors.push(`Environment settings: ${errorMessage(e)}`);
     }
 
     try {
@@ -1092,7 +1121,7 @@ export function registerDesktopSettingsHandlers(
         fs.rmSync(path.join(app.getPath("userData"), fileName), { force: true });
       }
     } catch (e) {
-      errors.push(`Device setting files: ${(e as Error).message}`);
+      errors.push(`Device setting files: ${errorMessage(e)}`);
     }
 
     for (const directoryName of ["bin", "llama-cpp"]) {
@@ -1102,19 +1131,21 @@ export function registerDesktopSettingsHandlers(
           force: true,
         });
       } catch (e) {
-        errors.push(`${directoryName} runtime: ${(e as Error).message}`);
+        errors.push(`${directoryName} runtime: ${errorMessage(e)}`);
       }
     }
 
     try {
       setAutoStartEnabled(false);
     } catch (e) {
-      errors.push(`Launch at login: ${(e as Error).message}`);
+      errors.push(`Launch at login: ${errorMessage(e)}`);
     }
 
     // Clear browser-held account/session state, including cookies, IndexedDB,
     // Cache Storage and localStorage persisted by any app window.
     try {
+      // SAFETY: Electron invokes handlers with an IpcMainInvokeEvent whose
+      // sender is the webContents that issued the call.
       const win = BrowserWindow.fromWebContents((event as { sender: WebContents }).sender);
 
       if (win) {
@@ -1122,7 +1153,7 @@ export function registerDesktopSettingsHandlers(
         await win.webContents.session.clearCache();
       }
     } catch (e) {
-      errors.push(`Browser data: ${(e as Error).message}`);
+      errors.push(`Browser data: ${errorMessage(e)}`);
     }
 
     // Clear localStorage
@@ -1130,7 +1161,7 @@ export function registerDesktopSettingsHandlers(
       try {
         await mainWindow.webContents.executeJavaScript("localStorage.clear()");
       } catch (e) {
-        errors.push(`localStorage: ${(e as Error).message}`);
+        errors.push(`localStorage: ${errorMessage(e)}`);
       }
     }
 
@@ -1165,12 +1196,12 @@ export function registerDesktopSettingsHandlers(
     } catch (error) {
       logger.error("Failed to open model cache folder:", error);
 
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
-  ipcMain.handle(desktopSettingsChannels.getMD5Hash, (_event, text: unknown) => {
-    if (typeof text !== "string") {
+  ipcMain.handle(desktopSettingsChannels.getMD5Hash, (_event, text) => {
+    if (!isString(text)) {
       return "";
     }
 

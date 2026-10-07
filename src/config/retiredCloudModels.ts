@@ -23,7 +23,11 @@ export interface RetiredProviderModels {
   models: Record<string, string>;
 }
 
-export const RETIRED_CLOUD_MODELS: Record<string, RetiredProviderModels> = {
+interface RetiredCloudModelTable {
+  [provider: string]: RetiredProviderModels;
+}
+
+export const RETIRED_CLOUD_MODELS: RetiredCloudModelTable = {
   // Retired 2026-08-16. The key predates this table and is already set on
   // installed apps, so it stays exactly as it shipped.
   groq: {

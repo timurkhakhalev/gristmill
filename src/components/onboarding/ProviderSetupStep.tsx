@@ -217,12 +217,7 @@ export function ByokProviderStep({
 
       if (!isCurrent()) return;
 
-      if (
-        !result ||
-        typeof result !== "object" ||
-        !("success" in result) ||
-        result.success !== true
-      ) {
+      if (result?.success !== true) {
         setSaveError(true);
 
         return;
@@ -419,7 +414,9 @@ export function ByokProviderStep({
         )}
         <Button
           type="button"
-          onClick={commitAndProceed}
+          onClick={() => {
+            commitAndProceed().catch(() => {});
+          }}
           disabled={!connected || !fieldsReady || isSaving}
           className="mt-4 w-full"
         >

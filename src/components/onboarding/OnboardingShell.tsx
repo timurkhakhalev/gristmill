@@ -11,6 +11,12 @@ import { useWindowControls } from "../../hooks/useWindowControls";
 import onboardingBackgroundLight from "@/assets/onboarding-bg-light.svg";
 import onboardingBackgroundDark from "@/assets/onboarding-bg-dark.svg";
 
+// SAFETY: custom CSS properties are valid on style but absent from CSSProperties.
+const onboardingBackgroundStyle = {
+  "--onboarding-background-light": `url(${onboardingBackgroundLight})`,
+  "--onboarding-background-dark": `url(${onboardingBackgroundDark})`,
+} as CSSProperties;
+
 interface OnboardingShellProps {
   compact?: boolean;
   children: ReactNode;
@@ -52,11 +58,14 @@ function OnboardingWindowControls() {
   return (
     <div
       className="absolute right-3 top-3 z-[60] flex items-center gap-1"
+      // SAFETY: WebkitAppRegion is Electron's window-drag CSS seam; React's CSSProperties lacks it.
       style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
     >
       <button
         type="button"
-        onClick={minimize}
+        onClick={() => {
+          minimize().catch(() => {});
+        }}
         title={minimizeLabel}
         aria-label={minimizeLabel}
         className={buttonClass}
@@ -65,7 +74,9 @@ function OnboardingWindowControls() {
       </button>
       <button
         type="button"
-        onClick={toggleMaximize}
+        onClick={() => {
+          toggleMaximize().catch(() => {});
+        }}
         title={maximizeLabel}
         aria-label={maximizeLabel}
         className={buttonClass}
@@ -78,7 +89,9 @@ function OnboardingWindowControls() {
       </button>
       <button
         type="button"
-        onClick={close}
+        onClick={() => {
+          close().catch(() => {});
+        }}
         title={closeLabel}
         aria-label={closeLabel}
         className={buttonClass}
@@ -196,12 +209,7 @@ export default function OnboardingShell({
   return (
     <main
       className={`onboarding-canvas relative flex h-screen flex-col overflow-hidden ${compact ? "compact" : ""}`}
-      style={
-        {
-          "--onboarding-background-light": `url(${onboardingBackgroundLight})`,
-          "--onboarding-background-dark": `url(${onboardingBackgroundDark})`,
-        } as CSSProperties
-      }
+      style={onboardingBackgroundStyle}
     >
       {/* This is the frameless window's only title bar, so it has to be a
           target someone can actually grab. Interactive overlays in this band
@@ -217,6 +225,7 @@ export default function OnboardingShell({
           height and the permissions list then overflows. */}
       <div
         className="absolute inset-x-0 top-0 z-50 h-12"
+        // SAFETY: WebkitAppRegion is Electron's window-drag CSS seam; React's CSSProperties lacks it.
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
         data-window-drag-zone=""
         aria-hidden="true"

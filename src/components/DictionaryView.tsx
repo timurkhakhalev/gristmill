@@ -277,7 +277,9 @@ export default function DictionaryView() {
                       {t("dictionary.clearAll")}
                     </button>
                     <button
-                      onClick={handleExport}
+                      onClick={() => {
+                        handleExport().catch(() => {});
+                      }}
                       aria-label={t("dictionary.exportDictionary")}
                       className="text-muted hover:text-muted transition-colors"
                     >

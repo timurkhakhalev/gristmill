@@ -7,6 +7,8 @@ import { GetApiKeyLink } from "../../ui/GetApiKeyLink";
 import {
   credentialSetterName,
   type CredentialKey,
+  type CredentialSaveResult,
+  type CredentialSetter,
   type ProviderCapability,
   type ProviderEntry,
 } from "./providerDirectory";
@@ -31,10 +33,13 @@ export function ProviderCredentialsForm({
       )
     : entry.fields;
 
-  const setValue = (key: CredentialKey, value: string) => {
-    const setter = useSettingsStore.getState()[credentialSetterName(key)] as (
-      next: string
-    ) => unknown;
+  const setValue = (
+    key: CredentialKey,
+    value: string
+  ): CredentialSaveResult | Promise<CredentialSaveResult> => {
+    // SAFETY: credentialSetterName maps each CredentialKey to the store's matching
+    // setter; secret setters resolve a save result, plain setters resolve void.
+    const setter = useSettingsStore.getState()[credentialSetterName(key)] as CredentialSetter;
 
     return setter(value);
   };
@@ -64,7 +69,9 @@ export function ProviderCredentialsForm({
             ) : field.input === "select" ? (
               <SelectField
                 value={values[field.key]}
-                onChange={(value) => setValue(field.key, value)}
+                onChange={(value) => {
+                  Promise.resolve(setValue(field.key, value)).catch(() => {});
+                }}
                 options={(field.options ?? []).map((option) => ({
                   id: option.value,
                   label: option.label,
@@ -77,7 +84,9 @@ export function ProviderCredentialsForm({
               <Input
                 dir="ltr"
                 value={values[field.key]}
-                onChange={(event) => setValue(field.key, event.target.value)}
+                onChange={(event) => {
+                  Promise.resolve(setValue(field.key, event.target.value)).catch(() => {});
+                }}
                 placeholder={field.placeholder}
                 aria-label={label}
                 className="h-8 text-sm"

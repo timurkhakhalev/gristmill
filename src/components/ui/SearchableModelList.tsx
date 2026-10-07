@@ -123,7 +123,7 @@ export default function SearchableModelList({
     }
 
     for (const key of sortedKeys) {
-      const bucket = groups.get(key)!.sort((a, b) => a.label.localeCompare(b.label));
+      const bucket = (groups.get(key) ?? []).sort((a, b) => a.label.localeCompare(b.label));
       result.push({
         type: "header",
         key: `g:${key}`,

@@ -1,6 +1,7 @@
 // Pure resolver for the "retention-settings-changed" IPC sync. The renderer
 // re-syncs on mount, so the handler needs to know whether the incoming values
 // actually differ before kicking off another cleanup sweep.
+import { z } from "zod";
 
 export interface RetentionSettings {
   audioRetentionDays: number;
@@ -22,20 +23,47 @@ export const DEFAULT_RETENTION_SETTINGS: RetentionSettings = {
   localHistoryPolicyResolved: false,
 };
 
-function toDays(value: unknown, fallback: number): number {
+// The renderer sends a partial patch. Each field is decoded independently and
+// falls back to `undefined` when unusable, so one bad value never discards the
+// rest — the same per-field tolerance the previous `toDays`/`typeof` guards had.
+const daysField = z
+  .union([z.number(), z.string(), z.boolean(), z.null()])
+  .optional()
+  .catch(undefined);
+
+const booleanField = z.boolean().optional().catch(undefined);
+
+const retentionPatchSchema = z.object({
+  audioRetentionDays: daysField,
+  transcriptRetentionDays: daysField,
+  dataRetentionEnabled: booleanField,
+  localHistoryPolicyResolved: booleanField,
+});
+
+type RetentionPatch = z.infer<typeof retentionPatchSchema>;
+
+function toDays(value: number | string | boolean | null | undefined, fallback: number): number {
   const days = Math.trunc(Number(value));
 
   return Number.isFinite(days) && days >= 0 ? days : fallback;
 }
 
-export function applyRetentionSettings(
+export interface RetentionApplyResult {
+  changed: boolean;
+  settings: RetentionSettings;
+}
+
+function parseIncoming<T>(incoming: T): RetentionPatch {
+  const parsed = retentionPatchSchema.safeParse(incoming);
+
+  return parsed.success ? parsed.data : {};
+}
+
+export function applyRetentionSettings<T>(
   current: RetentionSettings,
-  incoming: unknown
-): { changed: boolean; settings: RetentionSettings } {
-  const record = (typeof incoming === "object" && incoming !== null ? incoming : {}) as Record<
-    string,
-    unknown
-  >;
+  incoming: T
+): RetentionApplyResult {
+  const record = parseIncoming(incoming);
 
   const settings: RetentionSettings = {
     audioRetentionDays: toDays(record.audioRetentionDays, current.audioRetentionDays),
@@ -43,14 +71,9 @@ export function applyRetentionSettings(
       record.transcriptRetentionDays,
       current.transcriptRetentionDays
     ),
-    dataRetentionEnabled:
-      typeof record.dataRetentionEnabled === "boolean"
-        ? record.dataRetentionEnabled
-        : current.dataRetentionEnabled,
+    dataRetentionEnabled: record.dataRetentionEnabled ?? current.dataRetentionEnabled,
     localHistoryPolicyResolved:
-      typeof record.localHistoryPolicyResolved === "boolean"
-        ? record.localHistoryPolicyResolved
-        : current.localHistoryPolicyResolved,
+      record.localHistoryPolicyResolved ?? current.localHistoryPolicyResolved,
   };
 
   const changed =
@@ -64,31 +87,31 @@ export function applyRetentionSettings(
   return { changed, settings };
 }
 
-export interface RetentionSettingsHandlerDeps {
+export interface RetentionSettingsHandlerDeps<Owner = object> {
   getCurrentSettings(): RetentionSettings;
   // The webContents that owns retention cleanup; syncs from anyone else are
-  // ignored. null while the owner is not mounted.
-  getOwner(): unknown;
+  // ignored. null/undefined while the owner is not mounted. Its identity is
+  // compared, never inspected, so it stays opaque here.
+  getOwner(): Owner | null | undefined;
   hasSynced(): boolean;
   onSettingsChanged(settings: RetentionSettings): void;
 }
 
-export function createRetentionSettingsHandler({
-  getCurrentSettings,
-  getOwner,
-  hasSynced,
-  onSettingsChanged,
-}: RetentionSettingsHandlerDeps) {
-  return (event: { sender?: unknown }, incoming: unknown): void => {
-    const owner = getOwner();
+export type RetentionSettingsHandler = <T>(event: { sender?: unknown }, incoming: T) => void;
+
+export function createRetentionSettingsHandler<Owner>(
+  deps: RetentionSettingsHandlerDeps<Owner>
+): RetentionSettingsHandler {
+  return (event, incoming) => {
+    const owner = deps.getOwner();
 
     if (!owner || event.sender !== owner) return;
 
-    const { changed, settings } = applyRetentionSettings(getCurrentSettings(), incoming);
+    const { changed, settings } = applyRetentionSettings(deps.getCurrentSettings(), incoming);
 
     // Before the first sync the current values are defaults, not the user's, so
     // "unchanged" only means they happen to match the default — the consumer
     // still needs that first sync to know the settings are real (#1370).
-    if (changed || !hasSynced()) onSettingsChanged(settings);
+    if (changed || !deps.hasSynced()) deps.onSettingsChanged(settings);
   };
 }

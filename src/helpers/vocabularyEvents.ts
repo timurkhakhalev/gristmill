@@ -14,7 +14,7 @@ import type { ZodType } from "zod";
 
 const snippetListSchema = z.array(snippetSchema);
 
-function parseOrDrop<T>(channel: string, payload: unknown, schema: ZodType<T>): T | null {
+function parseOrDrop<T, Raw>(channel: string, payload: Raw, schema: ZodType<T>): T | null {
   const result = schema.safeParse(payload);
 
   if (!result.success) {
@@ -30,7 +30,7 @@ function parseOrDrop<T>(channel: string, payload: unknown, schema: ZodType<T>): 
   return result.data;
 }
 
-export function sendDictionaryUpdated(words: unknown): void {
+export function sendDictionaryUpdated<T>(words: T): void {
   const valid = parseOrDrop(
     vocabularyEventChannels.dictionaryUpdated,
     words,
@@ -40,7 +40,7 @@ export function sendDictionaryUpdated(words: unknown): void {
   if (valid) broadcastToWindows(vocabularyEventChannels.dictionaryUpdated, valid);
 }
 
-export function sendSnippetsUpdated(snippets: unknown): void {
+export function sendSnippetsUpdated<T>(snippets: T): void {
   const valid = parseOrDrop(vocabularyEventChannels.snippetsUpdated, snippets, snippetListSchema);
 
   if (valid) broadcastToWindows(vocabularyEventChannels.snippetsUpdated, valid);

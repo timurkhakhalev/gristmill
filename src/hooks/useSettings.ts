@@ -1,8 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef } from "react";
+import React, { createContext, useContext, useEffect, useRef } from "react";
 import type { ColorSchemeId } from "../config/colorSchemes";
 import { useSettingsStore, initializeSettings } from "../stores/settingsStore";
 import logger from "../utils/logger";
-import { useLocalStorage } from "./useLocalStorage";
 import type { ChineseScriptPreference } from "../types/electron";
 import type {
   LocalTranscriptionProvider,
@@ -125,7 +124,7 @@ function useSettingsInternal() {
     initializeSettings().catch((err) => {
       logger.warn(
         "Failed to initialize settings store",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "settings"
       );
     });
@@ -186,7 +185,7 @@ function useSettingsInternal() {
       .catch((err) =>
         logger.warn(
           "Failed to sync notification preferences",
-          { error: (err as Error).message },
+          { error: err instanceof Error ? err.message : String(err) },
           "settings"
         )
       );
@@ -228,7 +227,7 @@ function useSettingsInternal() {
       .catch((err) =>
         logger.warn(
           "Failed to sync startup preferences",
-          { error: (err as Error).message },
+          { error: err instanceof Error ? err.message : String(err) },
           "settings"
         )
       );

@@ -1,7 +1,13 @@
 // Split query/hash so path-suffix stripping and later joins operate on the
 // path only. Provider docs and Azure/gateway pastes often include ?api-version=
 // (or similar) on a full /chat/completions URL (#1309).
-function splitUrlDecorators(value: string): { path: string; query: string; hash: string } {
+export interface UrlDecorators {
+  path: string;
+  query: string;
+  hash: string;
+}
+
+function splitUrlDecorators(value: string): UrlDecorators {
   let path = value;
   let hash = "";
   const hashIndex = path.indexOf("#");
@@ -101,7 +107,22 @@ export const getModelListBaseCandidates = (base: string): string[] => {
   return withV1 === normalized ? [normalized] : [normalized, withV1];
 };
 
-const env = (typeof import.meta !== "undefined" && (import.meta as any).env) || {};
+// Build-time env overrides. `import.meta.env` exists under Vite (renderer) and
+// is absent under NodeNext (main), so the lookup is typed and optional rather
+// than read as a global.
+interface BuildEnv {
+  OPENAI_BASE_URL?: string;
+  WHISPER_BASE_URL?: string;
+}
+
+interface ImportMetaWithEnv {
+  env?: BuildEnv;
+}
+
+const env: BuildEnv =
+  // SAFETY: import.meta exists under Vite; the cast only names the env fields
+  // this module reads, and BuildEnv types them as optional strings.
+  (typeof import.meta !== "undefined" && (import.meta as ImportMetaWithEnv).env) || {};
 
 const computeBaseUrl = (candidates: Array<string | undefined>, fallback: string): string => {
   for (const candidate of candidates) {
@@ -115,15 +136,9 @@ const computeBaseUrl = (candidates: Array<string | undefined>, fallback: string)
   return fallback;
 };
 
-const DEFAULT_OPENAI_BASE = computeBaseUrl(
-  [env.OPENAI_BASE_URL as string | undefined],
-  "https://api.openai.com/v1"
-);
+const DEFAULT_OPENAI_BASE = computeBaseUrl([env.OPENAI_BASE_URL], "https://api.openai.com/v1");
 
-const DEFAULT_TRANSCRIPTION_BASE = computeBaseUrl(
-  [env.WHISPER_BASE_URL as string | undefined],
-  DEFAULT_OPENAI_BASE
-);
+const DEFAULT_TRANSCRIPTION_BASE = computeBaseUrl([env.WHISPER_BASE_URL], DEFAULT_OPENAI_BASE);
 
 export const API_ENDPOINTS = {
   OPENAI_BASE: DEFAULT_OPENAI_BASE,

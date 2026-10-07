@@ -31,12 +31,16 @@ export function useSystemAudioPermission() {
   }, []);
 
   useEffect(() => {
-    check();
+    check().catch(() => {});
   }, [check]);
 
   useEffect(() => {
     if (!isMacOS) return;
-    const handleFocus = () => check();
+
+    const handleFocus = () => {
+      check().catch(() => {});
+    };
+
     window.addEventListener("focus", handleFocus);
 
     return () => window.removeEventListener("focus", handleFocus);

@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const DEFAULT_DEV_SERVER_PORT = 5183;
 
+/** @param {string | undefined} rawPort */
 const parseDevServerPort = (rawPort) => {
   const normalizedPort = rawPort || String(DEFAULT_DEV_SERVER_PORT);
   const parsedPort = Number(normalizedPort);

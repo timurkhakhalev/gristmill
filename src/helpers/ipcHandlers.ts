@@ -1939,7 +1939,9 @@ export class IPCHandlers {
 
     // Note files (markdown mirror), reveal and Granola import live in the
     // typed module; the mirror stays a projection of SQLite-owned content.
-    const ipcInstance = this;
+    // The getter/setter below run with the state object as their receiver, so
+    // the instance is captured here rather than read from `this`.
+    const ipcState = { owner: this };
     registerNoteFilesHandlers(ipcMain, {
       mirror: markdownMirror,
       getDefaultNotesPath: () => path.join(app.getPath("userData"), "notes"),
@@ -1982,10 +1984,10 @@ export class IPCHandlers {
       importNotes: (notes) => this.databaseManager.importNotes(notes),
       granolaState: {
         get pending() {
-          return ipcInstance._granolaImportPending;
+          return ipcState.owner._granolaImportPending;
         },
         set pending(value) {
-          ipcInstance._granolaImportPending = value;
+          ipcState.owner._granolaImportPending = value;
         },
       },
       logError: (message, data, tag) => debugLogger.error(message, data, tag),

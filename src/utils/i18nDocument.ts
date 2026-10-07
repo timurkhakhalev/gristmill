@@ -2,8 +2,8 @@ interface DocumentLanguageSource {
   language: string;
   resolvedLanguage?: string;
   dir(language?: string): "ltr" | "rtl";
-  on(event: "languageChanged", listener: (language: string) => void): unknown;
-  off(event: "languageChanged", listener: (language: string) => void): unknown;
+  on(event: "languageChanged", listener: (language: string) => void): void;
+  off(event: "languageChanged", listener: (language: string) => void): void;
 }
 
 interface DocumentLanguageRoot {

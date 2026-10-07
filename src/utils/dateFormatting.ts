@@ -6,6 +6,19 @@ export type DateFormat = "locale" | "dmy" | "mdy" | "ymd";
 
 export type TimeFormat = "locale" | "12h" | "24h";
 
+// A type alias, not an interface: aliases of object literals carry an implicit
+// index signature, so existing `(key, options?: Record<string, unknown>)`
+// translation callbacks stay assignable to this contract.
+type TranslateOptions = {
+  count?: number;
+};
+
+type Translate = (key: string, options?: TranslateOptions) => string;
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
 export function formatDate(
   date: Date,
   locale: string | undefined,
@@ -57,8 +70,8 @@ export function formatTime(
   });
 }
 
-export function parseEventDate(value: string): Date | null {
-  if (typeof value !== "string" || !value) return null;
+export function parseEventDate<T>(value: T): Date | null {
+  if (!isString(value) || !value) return null;
   const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
 
   const parsed = dateOnly
@@ -68,8 +81,8 @@ export function parseEventDate(value: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export function normalizeDbDate(dateStr: string): Date {
-  if (typeof dateStr !== "string" || !dateStr.trim()) return new Date(NaN);
+export function normalizeDbDate<T>(dateStr: T): Date {
+  if (!isString(dateStr) || !dateStr.trim()) return new Date(NaN);
   const trimmed = dateStr.trim();
   const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
   const source = hasExplicitZone ? trimmed : `${trimmed}Z`;
@@ -180,7 +193,7 @@ export function formatNoteDate(
  */
 export function formatRelativeTime(
   dateStr: string,
-  t: (key: string, options?: Record<string, unknown>) => string,
+  t: Translate,
   locale?: string,
   dateFormat: DateFormat = "locale",
   options: { ago?: boolean } = {}
@@ -235,7 +248,7 @@ export function formatDateGroup(
   format: DateFormat = "locale"
 ): string {
   if (!date) return "";
-  const d = typeof date === "string" ? normalizeDbDate(date) : date;
+  const d = isString(date) ? normalizeDbDate(date) : date;
 
   if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "";
   const now = new Date();

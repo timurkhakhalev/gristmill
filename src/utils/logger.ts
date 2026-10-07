@@ -9,11 +9,15 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   fatal: 60,
 };
 
+function isLogLevel(value: string): value is LogLevel {
+  return value in LOG_LEVELS;
+}
+
 const normalizeLevel = (value?: string | null): LogLevel | null => {
   if (!value) return null;
   const lower = value.toLowerCase();
 
-  return lower in LOG_LEVELS ? (lower as LogLevel) : null;
+  return isLogLevel(lower) ? lower : null;
 };
 
 const defaultLevel: LogLevel = "info";
@@ -56,7 +60,11 @@ const shouldLog = (level: LogLevel, current: LogLevel) => {
   return LOG_LEVELS[level] >= LOG_LEVELS[current];
 };
 
-const logToConsole = (level: LogLevel, message: string, meta?: unknown, scope?: string) => {
+function errorMessage<T>(cause: T): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+const logToConsole = <T>(level: LogLevel, message: string, meta?: T, scope?: string) => {
   const levelTag = `[${level.toUpperCase()}]`;
   const scopeTag = scope ? `[${scope}]` : "";
 
@@ -74,7 +82,12 @@ const logToConsole = (level: LogLevel, message: string, meta?: unknown, scope?: 
   }
 };
 
-const log = async (level: LogLevel, message: string, meta?: unknown, scope?: string) => {
+const log = async <T>(
+  level: LogLevel,
+  message: string,
+  meta?: T,
+  scope?: string
+): Promise<void> => {
   const currentLevel = await resolveLogLevel();
 
   if (!shouldLog(level, currentLevel)) return;
@@ -101,24 +114,24 @@ const log = async (level: LogLevel, message: string, meta?: unknown, scope?: str
 // Fire-and-forget by contract: log() handles every failure internally
 // (bridge errors fall back to console) and no caller awaits logging, so the
 // public API returns void and the promise is observed here.
-const logFireAndForget = (...args: Parameters<typeof log>): void => {
-  log(...args).catch((error: unknown) => logToConsole("error", String(error)));
+const logFireAndForget = <T>(level: LogLevel, message: string, meta?: T, scope?: string): void => {
+  log(level, message, meta, scope).catch((error) => logToConsole("error", errorMessage(error)));
 };
 
 const logger = {
-  trace: (message: string, meta?: unknown, scope?: string) =>
+  trace: <T>(message: string, meta?: T, scope?: string) =>
     logFireAndForget("trace", message, meta, scope),
-  debug: (message: string, meta?: unknown, scope?: string) =>
+  debug: <T>(message: string, meta?: T, scope?: string) =>
     logFireAndForget("debug", message, meta, scope),
-  info: (message: string, meta?: unknown, scope?: string) =>
+  info: <T>(message: string, meta?: T, scope?: string) =>
     logFireAndForget("info", message, meta, scope),
-  warn: (message: string, meta?: unknown, scope?: string) =>
+  warn: <T>(message: string, meta?: T, scope?: string) =>
     logFireAndForget("warn", message, meta, scope),
-  error: (message: string, meta?: unknown, scope?: string) =>
+  error: <T>(message: string, meta?: T, scope?: string) =>
     logFireAndForget("error", message, meta, scope),
-  fatal: (message: string, meta?: unknown, scope?: string) =>
+  fatal: <T>(message: string, meta?: T, scope?: string) =>
     logFireAndForget("fatal", message, meta, scope),
-  logReasoning: (stage: string, details?: unknown) =>
+  logReasoning: <T>(stage: string, details?: T) =>
     logFireAndForget("debug", stage, details, "reasoning"),
   refreshLogLevel: () => {
     cachedLevel = null;

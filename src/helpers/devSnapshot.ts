@@ -28,6 +28,53 @@ const ENV_STRIP_KEYS = new Set(
   )
 );
 
+function errorMessage<T>(error: T): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function errorCode<T>(error: T): string | undefined {
+  if (!(error instanceof Error) || !("code" in error)) return undefined;
+  const code: unknown = error.code;
+
+  return isString(code) ? code : undefined;
+}
+
+interface DotenvModule {
+  parse(content: string): Record<string, string>;
+}
+
+interface SnapshotSqliteStatement {
+  get(): { busy?: number; name?: string } | undefined;
+  all(): Array<{ name: string }>;
+  run(...params: unknown[]): { changes: number };
+}
+
+interface SnapshotSqliteDatabase {
+  exec(source: string): void;
+  prepare(source: string): SnapshotSqliteStatement;
+  close(): void;
+}
+
+type SnapshotSqliteConstructor = new (
+  filename: string,
+  options?: { readonly: boolean; fileMustExist: boolean }
+) => SnapshotSqliteDatabase;
+
+function openSnapshotDatabase(
+  file: string,
+  options?: { readonly: boolean; fileMustExist: boolean }
+): SnapshotSqliteDatabase {
+  // SAFETY: better-sqlite3 ships no declarations; this module defines the exact
+  // structural surface used below, matching database.ts's own seam.
+  const Database = require("better-sqlite3") as SnapshotSqliteConstructor;
+
+  return new Database(file, options);
+}
+
 function cloneEnvFile(source: string, target: string): void {
   const destination = path.join(target, ".env");
   const origin = path.join(source, ".env");
@@ -37,7 +84,9 @@ function cloneEnvFile(source: string, target: string): void {
   }
 
   if (fs.existsSync(destination) || !fs.existsSync(origin)) return;
-  const parsed = require("dotenv").parse(fs.readFileSync(origin, "utf8")) as Record<string, string>;
+  // SAFETY: dotenv is bundled by build-main.js; its parse export takes the file
+  // text and returns string assignments, and no wire data crosses this seam.
+  const parsed = (require("dotenv") as DotenvModule).parse(fs.readFileSync(origin, "utf8"));
 
   const safeContent = Object.entries(parsed)
     .filter(([key]) => !ENV_STRIP_KEYS.has(key.toUpperCase()))
@@ -69,7 +118,7 @@ function ordinaryFileOrMissing(file: string): boolean {
   try {
     return fs.lstatSync(file).isFile();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    if (errorCode(error) === "ENOENT") return true;
     throw error;
   }
 }
@@ -78,7 +127,7 @@ function ordinaryDirectoryOrMissing(dir: string): boolean {
   try {
     return fs.lstatSync(dir).isDirectory();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    if (errorCode(error) === "ENOENT") return true;
     throw error;
   }
 }
@@ -142,15 +191,10 @@ function cloneDir(from: string, to: string): void {
 // would lose them, so a blocked checkpoint is a failure, not a warning.
 function checkpointDatabase(file: string): boolean {
   try {
-    const Database = require("better-sqlite3") as new (path: string) => {
-      prepare: (sql: string) => { get: () => { busy: number } };
-      close: () => void;
-    };
-
-    const db = new Database(file);
+    const db = openSnapshotDatabase(file);
 
     try {
-      const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy: number };
+      const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
 
       if (row?.busy !== 0) throw new Error("wal_checkpoint blocked by another reader");
     } finally {
@@ -161,7 +205,7 @@ function checkpointDatabase(file: string): boolean {
   } catch (error) {
     debugLogger.warn(
       "database checkpoint failed; retrying on the next launch",
-      { error: (error as Error)?.message },
+      { error: errorMessage(error) },
       "devSnapshot"
     );
 
@@ -170,17 +214,7 @@ function checkpointDatabase(file: string): boolean {
 }
 
 function discardPlaintextCalendarTokens(file: string): void {
-  const Database = require("better-sqlite3") as new (path: string) => {
-    exec(sql: string): void;
-    prepare(sql: string): {
-      all(): Array<{ name: string }>;
-      run(...params: unknown[]): { changes: number };
-      get(): { busy?: number } | undefined;
-    };
-    close(): void;
-  };
-
-  const db = new Database(file);
+  const db = openSnapshotDatabase(file);
 
   try {
     db.exec("PRAGMA secure_delete = ON");
@@ -253,7 +287,7 @@ function adoptLegacyDevDatabase(target: string): boolean {
     debugLogger.warn(
       "legacy dev database could not be prepared; retrying on the next launch",
       {
-        error: (error as Error).message,
+        error: errorMessage(error),
       },
       "devSnapshot"
     );
@@ -270,7 +304,7 @@ function adoptLegacyDevDatabase(target: string): boolean {
       debugLogger.warn(
         "dev database could not be prepared; retrying on the next launch",
         {
-          error: (error as Error).message,
+          error: errorMessage(error),
         },
         "devSnapshot"
       );
@@ -342,15 +376,7 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
   fs.rmSync(staged, { force: true, recursive: true });
 
   try {
-    const Database = require("better-sqlite3") as new (
-      path: string,
-      options: { readonly: boolean; fileMustExist: boolean }
-    ) => {
-      exec: (sql: string) => void;
-      close: () => void;
-    };
-
-    const db = new Database(path.join(source, PROD_DB), {
+    const db = openSnapshotDatabase(path.join(source, PROD_DB), {
       readonly: true,
       fileMustExist: true,
     });
@@ -374,7 +400,7 @@ function snapshotDatabase(source: string, target: string, name: string): boolean
     if (fs.existsSync(destination)) return true; // a concurrent launch won
     debugLogger.warn(
       "consistent database snapshot failed; retrying on the next launch",
-      { error: (error as Error)?.message },
+      { error: errorMessage(error) },
       "devSnapshot"
     );
 
@@ -512,7 +538,7 @@ export function snapshotProductionProfileForDev(): boolean {
   } catch (error) {
     debugLogger.warn(
       "production profile snapshot incomplete; it resumes on the next launch",
-      { error: (error as Error)?.message },
+      { error: errorMessage(error) },
       "devSnapshot"
     );
 

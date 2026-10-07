@@ -17,11 +17,162 @@ const MAX_CAPTURE_ERROR_LOG_BYTES = 1024 * 1024;
 
 const MAX_CAPTURE_ERROR_ENTRY_BYTES = 16 * 1024;
 
-const normalizeLevel = (value: unknown): LogLevel | null => {
-  if (!value) return null;
-  const lower = String(value).toLowerCase();
+// The serializable value domain of a log entry. Callers pass arbitrary domain
+// objects; each writer keeps its own concrete argument type and the sinks walk
+// the value through the guards below, so no reader-facing signature widens to
+// an anonymous escape hatch.
+type LogValue =
+  | string
+  | number
+  | boolean
+  | bigint
+  | null
+  | undefined
+  | Error
+  | readonly LogValue[]
+  | LogObject;
 
-  return Object.prototype.hasOwnProperty.call(LOG_LEVELS, lower) ? (lower as LogLevel) : null;
+interface LogObject {
+  [key: string]: LogValue;
+}
+
+interface SerializedError {
+  name: string;
+  message: string;
+  code?: string | number;
+  stack?: string;
+  [key: string]: LogValue;
+}
+
+// The renderer log entry the desktopSettings IPC forwards. Each field is read
+// defensively, so a wrong-shaped entry degrades instead of throwing.
+interface RendererLogEntry {
+  level?: unknown;
+  message?: unknown;
+  scope?: unknown;
+  source?: unknown;
+  meta?: unknown;
+}
+
+interface AudioDataInfo {
+  context: string;
+  type: string;
+  size: number;
+  constructor: string;
+  byteLength?: number;
+  firstBytes?: string;
+}
+
+interface FfmpegDebugInfo {
+  context: string;
+  ffmpegPath: string | null | undefined;
+  exists: boolean;
+  platform: string;
+  fileInfo?: {
+    size: number;
+    isFile: boolean;
+    isExecutable: boolean;
+    executableCheckSkipped: boolean;
+    permissions: string;
+    modified: string;
+  };
+  statError?: string;
+  dirReadable?: boolean;
+  dirError?: string;
+  pathChecks?: Array<{ path: string | null | undefined; exists: boolean; normalized: string }>;
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function isNumber<T>(value: T): value is T & number {
+  return typeof value === "number";
+}
+
+function isBoolean<T>(value: T): value is T & boolean {
+  return typeof value === "boolean";
+}
+
+function isBigInt<T>(value: T): value is T & bigint {
+  return typeof value === "bigint";
+}
+
+function isStructured<T>(value: T): value is T & object {
+  return typeof value === "object" && value !== null;
+}
+
+function isLogLevel(value: string): value is LogLevel {
+  return value in LOG_LEVELS;
+}
+
+function isLogValue<T>(value: T): value is T & LogValue {
+  if (value === null) return true;
+
+  if (isString(value) || isNumber(value) || isBoolean(value) || isBigInt(value)) return true;
+
+  if (value instanceof Error) return true;
+
+  if (Array.isArray(value)) return value.every((entry) => isLogValue(entry));
+
+  if (typeof value === "object") return Object.values(value).every((entry) => isLogValue(entry));
+
+  return false;
+}
+
+function errorCode(error: Error): string | number | undefined {
+  if (!("code" in error)) return undefined;
+  const value: unknown = error.code;
+
+  return isString(value) || isNumber(value) ? value : undefined;
+}
+
+// Own enumerable fields of an Error, filtered to the serializable value
+// domain. Keeps the legacy spread of an Error's custom properties.
+function ownLogFields(error: Error): LogObject {
+  const fields: LogObject = {};
+
+  // SAFETY: an Error's own enumerable fields are dynamic, so Object.entries
+  // widens each value to `any`; isLogValue re-checks every entry before use.
+  for (const [key, value] of Object.entries(error) as [string, unknown][]) {
+    if (isStructured(value) || value === null || isString(value) || isNumber(value)) {
+      if (isLogValue(value)) {
+        fields[key] = value;
+      }
+    }
+  }
+
+  return fields;
+}
+
+function scalarText<T>(value: T): string {
+  if (isString(value) || isNumber(value) || isBoolean(value) || isBigInt(value))
+    return String(value);
+
+  return value === null || value === undefined ? "" : jsonText(value);
+}
+
+function jsonText<T>(value: T): string {
+  if (isString(value)) return value;
+
+  try {
+    return JSON.stringify(value, null, 2) ?? "";
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+function firstBytesHex(view: Uint8Array): string {
+  return Array.from(view)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join(" ");
+}
+
+const normalizeLevel = <T>(value: T): LogLevel | null => {
+  if (!isString(value)) return null;
+  const lower = value.toLowerCase();
+
+  return isLogLevel(lower) ? lower : null;
 };
 
 const readArgLogLevel = (): string | null => {
@@ -170,51 +321,39 @@ class DebugLogger {
     return LOG_LEVELS[normalized] >= this.levelValue;
   }
 
-  serializeValue(value: unknown): unknown {
+  serializeValue<T>(value: T): T | SerializedError {
     if (value instanceof Error) {
-      const code = (value as NodeJS.ErrnoException).code;
+      const code = errorCode(value);
 
       return {
         name: value.name,
         message: value.message,
         ...(code ? { code } : {}),
         ...(value.stack ? { stack: value.stack } : {}),
-        ...(value as unknown as Record<string, unknown>),
+        ...ownLogFields(value),
       };
     }
 
     return value;
   }
 
-  formatArgs(args: unknown[]): string {
-    return args
-      .map((arg) => {
-        if (arg !== null && typeof arg === "object") {
-          try {
-            return JSON.stringify(this.serializeValue(arg), null, 2);
-          } catch {
-            return String(arg);
-          }
-        }
-
-        return String(arg);
-      })
-      .join(" ");
+  formatArgs<T>(args: readonly T[]): string {
+    return args.map((arg) => this.formatMeta(arg)).join(" ");
   }
 
-  formatMeta(meta: unknown): string {
+  formatMeta<T>(meta: T): string {
     if (meta === undefined) return "";
 
-    if (typeof meta === "string") return meta;
+    if (isString(meta)) return meta;
 
     try {
-      return JSON.stringify(this.serializeValue(meta), null, 2);
+      return JSON.stringify(this.serializeValue(meta), null, 2) ?? scalarText(meta);
     } catch {
-      return String(meta);
+      return scalarText(meta);
     }
   }
 
-  write(level: string, message: string, meta?: unknown, scope?: string, source?: string): void {
+  write<T>(level: string, message: string, meta?: T, scope?: string, source?: string): void {
     const normalized = normalizeLevel(level) || "info";
 
     const captureFailure =
@@ -292,61 +431,60 @@ class DebugLogger {
     }
   }
 
-  log(...args: unknown[]): void {
+  log(...args: readonly unknown[]): void {
     this.write("debug", this.formatArgs(args));
   }
 
-  debug(message: string, meta?: unknown, scope?: string, source?: string): void {
+  debug<T>(message: string, meta?: T, scope?: string, source?: string): void {
     this.write("debug", message, meta, scope, source);
   }
 
-  trace(message: string, meta?: unknown, scope?: string, source?: string): void {
+  trace<T>(message: string, meta?: T, scope?: string, source?: string): void {
     this.write("trace", message, meta, scope, source);
   }
 
-  info(message: string, meta?: unknown, scope?: string, source?: string): void {
+  info<T>(message: string, meta?: T, scope?: string, source?: string): void {
     this.write("info", message, meta, scope, source);
   }
 
-  warn(message: string, meta?: unknown, scope?: string, source?: string): void {
+  warn<T>(message: string, meta?: T, scope?: string, source?: string): void {
     this.write("warn", message, meta, scope, source);
   }
 
-  logReasoning(stage: string, details: unknown): void {
+  logReasoning<T>(stage: string, details: T): void {
     this.debug(stage, details, "reasoning");
   }
 
-  error(...args: unknown[]): void {
+  error(...args: readonly unknown[]): void {
     const message = `ERROR: ${this.formatArgs(args)}`;
     this.write("error", message);
   }
 
-  fatal(...args: unknown[]): void {
+  fatal(...args: readonly unknown[]): void {
     const message = `FATAL: ${this.formatArgs(args)}`;
     this.write("fatal", message);
   }
 
-  logEntry(entry: unknown): void {
-    if (!entry || typeof entry !== "object") return;
-    const record = entry as Record<string, unknown>;
+  logEntry<T>(entry: T): void {
+    if (!isStructured(entry)) return;
 
-    const normalized =
-      normalizeLevel(typeof record.level === "string" ? record.level : undefined) || "info";
+    const record: RendererLogEntry = entry;
+    const normalized = normalizeLevel(record.level) || "info";
 
-    const message = record.message ? String(record.message) : "";
-    const scope = record.scope ? String(record.scope) : undefined;
-    const source = record.source ? String(record.source) : "renderer";
+    const message = scalarText(record.message);
+    const scope = record.scope !== undefined ? scalarText(record.scope) : undefined;
+    const source = record.source !== undefined ? scalarText(record.source) : "renderer";
     this.write(normalized, message, record.meta, scope, source);
   }
 
-  logFFmpegDebug(
+  logFFmpegDebug<T extends object>(
     context: string,
     ffmpegPath: string | null | undefined,
-    additionalInfo: Record<string, unknown> = {}
+    additionalInfo: T
   ): void {
     if (!this.isDebugEnabled()) return;
 
-    const debugInfo: Record<string, unknown> = {
+    const debugInfo: FfmpegDebugInfo = {
       context,
       ffmpegPath,
       exists: ffmpegPath ? fs.existsSync(ffmpegPath) : false,
@@ -357,6 +495,7 @@ class DebugLogger {
     if (ffmpegPath && fs.existsSync(ffmpegPath)) {
       try {
         const stats = fs.statSync(ffmpegPath);
+
         debugInfo.fileInfo = {
           size: stats.size,
           isFile: stats.isFile(),
@@ -364,10 +503,10 @@ class DebugLogger {
           isExecutable: process.platform !== "win32" ? !!(stats.mode & fs.constants.X_OK) : false,
           executableCheckSkipped: process.platform === "win32",
           permissions: stats.mode.toString(8),
-          modified: stats.mtime,
+          modified: stats.mtime.toISOString(),
         };
       } catch (e) {
-        debugInfo.statError = (e as Error).message;
+        debugInfo.statError = scalarText(e);
       }
     }
 
@@ -380,7 +519,7 @@ class DebugLogger {
         debugInfo.dirReadable = true;
       } catch (e) {
         debugInfo.dirReadable = false;
-        debugInfo.dirError = (e as Error).message;
+        debugInfo.dirError = scalarText(e);
       }
     }
 
@@ -427,35 +566,37 @@ class DebugLogger {
     this.debug(`FFmpeg Debug - ${context}`, debugInfo, "ffmpeg");
   }
 
-  logAudioData(context: string, audioBlob: unknown): void {
+  logAudioData<T>(context: string, audioBlob: T): void {
     if (!this.isDebugEnabled()) return;
 
-    const blob = (audioBlob ?? null) as {
-      type?: string;
-      size?: number;
-      constructor?: { name?: string };
-    } | null;
+    const blob = isStructured(audioBlob) ? audioBlob : null;
+    const type = blob && "type" in blob ? blob.type : undefined;
+    const size = blob && "size" in blob ? blob.size : undefined;
+    const constructorValue = blob && "constructor" in blob ? blob.constructor : undefined;
 
-    const audioInfo: Record<string, unknown> = {
+    const audioInfo: AudioDataInfo = {
       context,
-      type: blob?.type || "unknown",
-      size: blob?.size || 0,
-      constructor: blob?.constructor?.name || "unknown",
+      type: isString(type) ? type : "unknown",
+      size: isNumber(size) ? size : 0,
+      constructor:
+        isStructured(constructorValue) &&
+        "name" in constructorValue &&
+        isString(constructorValue.name)
+          ? constructorValue.name
+          : "unknown",
     };
 
     if (audioBlob instanceof ArrayBuffer) {
-      audioInfo.byteLength = audioBlob.byteLength;
+      const buffer = audioBlob;
+      audioInfo.byteLength = buffer.byteLength;
       // Check first few bytes
-      const view = new Uint8Array(audioBlob, 0, Math.min(16, audioBlob.byteLength));
-      audioInfo.firstBytes = Array.from(view)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(" ");
+      audioInfo.firstBytes = firstBytesHex(
+        new Uint8Array(buffer, 0, Math.min(16, buffer.byteLength))
+      );
     } else if (audioBlob instanceof Uint8Array) {
-      audioInfo.byteLength = audioBlob.byteLength;
-      const view = audioBlob.slice(0, Math.min(16, audioBlob.byteLength));
-      audioInfo.firstBytes = Array.from(view)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(" ");
+      const bytes = new Uint8Array(audioBlob);
+      audioInfo.byteLength = bytes.byteLength;
+      audioInfo.firstBytes = firstBytesHex(bytes.slice(0, Math.min(16, bytes.byteLength)));
     }
 
     this.debug("Audio Data Debug", audioInfo, "audio");
@@ -495,12 +636,12 @@ class DebugLogger {
     }
   }
 
-  logWhisperPipeline(stage: string, details: unknown): void {
+  logWhisperPipeline<T>(stage: string, details: T): void {
     if (!this.isDebugEnabled()) return;
     this.debug(`Whisper Pipeline - ${stage}`, details, "whisper");
   }
 
-  logSTTPipeline(stage: string, details: unknown): void {
+  logSTTPipeline<T>(stage: string, details: T): void {
     if (!this.isDebugEnabled()) return;
     this.debug(`STT Pipeline - ${stage}`, details, "stt");
   }

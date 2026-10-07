@@ -131,6 +131,9 @@ interface ModelRegistryData {
   localProviders: LocalProviderData[];
 }
 
+// SAFETY: model registry JSON is a build-time bundled asset; its checked-in
+// shape is the source of ModelRegistryData and resolveJsonModule types it as a
+// literal, so the assertion only re-voices the declared contract.
 const modelData: ModelRegistryData = modelDataRaw as ModelRegistryData;
 
 function getTinfoilCloudProvider(): CloudProviderData | undefined {
@@ -242,14 +245,20 @@ export interface ReasoningProvider {
   models: ReasoningModel[];
 }
 
-export type ReasoningProviders = Record<string, ReasoningProvider>;
+export interface ReasoningProviders {
+  [provider: string]: ReasoningProvider;
+}
 
 export type EnterpriseProvider = "bedrock" | "azure" | "vertex";
 
 export const ENTERPRISE_PROVIDERS: readonly EnterpriseProvider[] = ["bedrock", "azure", "vertex"];
 
-export function isEnterpriseProvider(value: unknown): value is EnterpriseProvider {
-  return typeof value === "string" && (ENTERPRISE_PROVIDERS as readonly string[]).includes(value);
+export function isEnterpriseProvider<T>(value: T): value is T & EnterpriseProvider {
+  if (typeof value !== "string") return false;
+
+  // SAFETY: includes needs the widened string view to test an arbitrary string
+  // against the closed provider-id list; membership is the runtime check.
+  return (ENTERPRISE_PROVIDERS as readonly string[]).includes(value);
 }
 
 export function enterpriseProviderName(provider: EnterpriseProvider): string {
@@ -362,17 +371,17 @@ export function getReasoningModelLabel(modelId: string): string {
   return model?.fullLabel || modelId;
 }
 
-const NON_REGISTRY_PROVIDER_NAMES: Record<string, string> = {
+interface ProviderDisplayOverrides {
+  [provider: string]: string;
+}
+
+const NON_REGISTRY_PROVIDER_NAMES: ProviderDisplayOverrides = {
   openrouter: "OpenRouter",
   custom: "Custom",
 };
 
 export function getProviderDisplayName(provider: string): string {
-  return (
-    REASONING_PROVIDERS[provider as keyof typeof REASONING_PROVIDERS]?.name ??
-    NON_REGISTRY_PROVIDER_NAMES[provider] ??
-    provider
-  );
+  return REASONING_PROVIDERS[provider]?.name ?? NON_REGISTRY_PROVIDER_NAMES[provider] ?? provider;
 }
 
 export function getModelProvider(modelId: string): string {

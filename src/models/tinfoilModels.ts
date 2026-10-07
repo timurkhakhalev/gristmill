@@ -26,7 +26,11 @@ export interface TinfoilCatalogModel {
  * Curated, translated descriptions keyed by model id. The endpoint only returns
  * English copy.
  */
-export const DESCRIPTION_KEYS: Record<string, string> = {
+interface DescriptionKeys {
+  [modelId: string]: string;
+}
+
+export const DESCRIPTION_KEYS: DescriptionKeys = {
   "glm-5-3": "models.descriptions.cloud.tinfoil_glm_5_3",
   "gemma4-31b": "models.descriptions.cloud.tinfoil_gemma4_31b",
   "gpt-oss-120b": "models.descriptions.cloud.tinfoil_gpt_oss_120b",
@@ -61,7 +65,7 @@ function reconcileSelectedModels(
   models: CloudModelDefinition[]
 ): void {
   const available = new Set(models.map((model) => model.id));
-  const settings = getSettings() as unknown as Record<string, unknown>;
+  const settings = getSettings();
   const replacement = pickDefaultTinfoilModel(models);
 
   if (!replacement) return;
@@ -74,7 +78,7 @@ function reconcileSelectedModels(
 
     const selected = settings[model];
 
-    if (typeof selected !== "string" || !selected || available.has(selected)) continue;
+    if (!selected || available.has(selected)) continue;
 
     setStringSetting(model, replacement.id);
 
@@ -91,13 +95,13 @@ function reconcileSelectedModels(
 let inFlight: Promise<CloudModelDefinition[]> | null = null;
 
 async function fetchAndApply(): Promise<CloudModelDefinition[]> {
-  const fetchModels = window.electronAPI?.getTinfoilChatModels;
+  const catalog = await window.electronAPI?.getTinfoilChatModels?.();
 
-  if (!fetchModels) {
+  if (!catalog) {
     throw new Error("Tinfoil model list is unavailable");
   }
 
-  const models = toCloudModels(await fetchModels());
+  const models = toCloudModels(catalog);
 
   if (models.length === 0) {
     // Far more likely something upstream broke, so keep what we already have.

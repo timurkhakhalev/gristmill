@@ -163,7 +163,7 @@ const SPEECH_SETTERS = {
 /** Leaving a local LLM frees the llama server, as the old mode switch did. */
 function stopLocalLlmIfLeaving(task: LanguageTask) {
   if (selectResolvedLLMConfig(useSettingsStore.getState(), task).mode === "local") {
-    void window.electronAPI?.llamaServerStop?.();
+    window.electronAPI?.llamaServerStop?.().catch(() => {});
   }
 }
 
@@ -187,7 +187,7 @@ export function selectCloudModel(task: ModelTask, providerId: string, modelId: s
     cloudMode: "byok",
     provider: providerId,
     model: modelId,
-  });
+  })?.catch(() => {});
 }
 
 /** The IPC backend a local speech model runs on; Oruk models use the NVIDIA (sherpa) backend. */
@@ -216,7 +216,11 @@ export function selectLocalModel(task: ModelTask, entry: LocalModelEntry): void 
     return;
   }
 
-  setResolvedLLMConfig(task, { mode: "local", provider: entry.organization, model: entry.id });
+  setResolvedLLMConfig(task, {
+    mode: "local",
+    provider: entry.organization,
+    model: entry.id,
+  })?.catch(() => {});
 }
 
 export function selectSelfHosted(task: ModelTask, modelId?: string): void {
@@ -225,7 +229,7 @@ export function selectSelfHosted(task: ModelTask, modelId?: string): void {
   setResolvedLLMConfig(task, {
     mode: "self-hosted",
     ...(modelId !== undefined ? { model: modelId } : {}),
-  });
+  })?.catch(() => {});
 }
 
 export function selectBb(
@@ -243,5 +247,5 @@ export function selectBb(
           agentReasoningLevel: selection.reasoningLevel,
         }
       : { mode: "agent", agentProvider: "", agentModel: "", agentReasoningLevel: "" }
-  );
+  )?.catch(() => {});
 }

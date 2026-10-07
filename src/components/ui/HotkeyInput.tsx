@@ -14,7 +14,11 @@ import {
   shouldRestoreCaptureFocus,
 } from "./hotkeyCapturePolicy";
 
-const CODE_TO_KEY: Record<string, string> = {
+interface KeyLabelTable {
+  [code: string]: string;
+}
+
+const CODE_TO_KEY: KeyLabelTable = {
   Backquote: "`",
   Digit1: "1",
   Digit2: "2",
@@ -545,7 +549,7 @@ export function HotkeyInput({
       setIsCapturing(true);
       setValidationWarning(null);
       clearFnHeld();
-      window.electronAPI?.setHotkeyListeningMode?.(true);
+      window.electronAPI?.setHotkeyListeningMode?.(true).catch(() => {});
     }
   }, [disabled, clearFnHeld]);
 
@@ -554,7 +558,7 @@ export function HotkeyInput({
     setActiveModifiers([]);
     setValidationWarning(null);
     clearFnHeld();
-    window.electronAPI?.setHotkeyListeningMode?.(false);
+    window.electronAPI?.setHotkeyListeningMode?.(false).catch(() => {});
     onBlur?.();
   }, [onBlur, clearFnHeld]);
 
@@ -568,9 +572,7 @@ export function HotkeyInput({
         // On Windows, focusing a DOM node does not bring an inactive native
         // window to the foreground. Main restores/focuses the BrowserWindow as
         // part of this handshake; waiting for it makes the first chord reliable.
-        const listening = window.electronAPI?.setHotkeyListeningMode?.(true);
-
-        if (listening) await listening.catch(() => undefined);
+        await window.electronAPI?.setHotkeyListeningMode?.(true).catch(() => undefined);
       }
 
       if (cancelled) return;
@@ -590,11 +592,14 @@ export function HotkeyInput({
       });
     };
 
-    void focusCaptureSurface();
-    const handleWindowFocus = () => void focusCaptureSurface(true);
+    focusCaptureSurface().catch(() => {});
+
+    const handleWindowFocus = () => {
+      focusCaptureSurface(true).catch(() => {});
+    };
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") void focusCaptureSurface(true);
+      if (document.visibilityState === "visible") focusCaptureSurface(true).catch(() => {});
     };
 
     window.addEventListener("focus", handleWindowFocus);
@@ -615,7 +620,7 @@ export function HotkeyInput({
 
   useEffect(() => {
     return () => {
-      window.electronAPI?.setHotkeyListeningMode?.(false);
+      window.electronAPI?.setHotkeyListeningMode?.(false).catch(() => {});
 
       if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
     };

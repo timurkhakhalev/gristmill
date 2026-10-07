@@ -65,7 +65,7 @@ export const RETIRED_DEFAULT_PROMPT_HASHES: ReadonlySet<string> = new Set([
 // Hashes of the defaults currently shipped, keyed by locale/bundle key. Not
 // used by the sweep; the registry test compares these against the live locale
 // bundles so a prompt change cannot land without updating the retired set.
-export const CURRENT_DEFAULT_PROMPT_HASHES: Record<string, string> = {
+export const CURRENT_DEFAULT_PROMPT_HASHES = {
   "ar/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
   "de/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
   "en/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
@@ -78,7 +78,7 @@ export const CURRENT_DEFAULT_PROMPT_HASHES: Record<string, string> = {
   "zh-CN/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
   "zh-TW/cleanupPrompt": "1b3925e02b99c56cdb235f2356156054e7ecd553dffc51057ed4debb40e0bef2",
   chatAgent: "1099fe25bc3d89a14f80d09c351041a612f708478ce1a7dd9ff49372b05eb92c",
-};
+} satisfies Record<string, string>;
 
 export async function hashPromptText(text: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -93,8 +93,15 @@ export interface PromptOverrideStorage {
   removeItem(key: string): void;
 }
 
-export async function isRetiredDefaultPrompt(text: unknown): Promise<boolean> {
-  if (typeof text !== "string" || text.length === 0) return false;
+// A retired-default match is only meaningful for a non-empty string; every
+// other runtime value (null, number, object) is the caller's data and is not a
+// prompt, so the guard rejects it without a hash attempt.
+function isNonEmptyString<T>(value: T): value is T & string {
+  return typeof value === "string" && value.length > 0;
+}
+
+export async function isRetiredDefaultPrompt<T>(text: T): Promise<boolean> {
+  if (!isNonEmptyString(text)) return false;
 
   if (!globalThis.crypto?.subtle) return false;
 

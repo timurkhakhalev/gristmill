@@ -55,7 +55,7 @@ export function useTinfoilModels(enabled: boolean): UseTinfoilModelsResult {
       logger.error("Failed to load Tinfoil models", { error: err }, "models");
 
       if (isMountedRef.current) {
-        setError((err as Error).message || "Unable to load models");
+        setError(err instanceof Error ? err.message : "Unable to load models");
       }
     } finally {
       if (willFetch && isMountedRef.current) {
@@ -66,7 +66,8 @@ export function useTinfoilModels(enabled: boolean): UseTinfoilModelsResult {
 
   useEffect(() => {
     if (!enabled) return;
-    refresh();
+
+    refresh().catch(() => {});
   }, [enabled, refresh]);
 
   return { models, loading, error, refresh };

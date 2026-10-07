@@ -26,7 +26,11 @@ export function getWordBoost(customDictionary?: string[]): string[] {
   return customDictionary.filter((w) => w.trim());
 }
 
-const TOOL_INSTRUCTIONS: Record<string, string> = {
+interface ToolInstructionMap {
+  [toolName: string]: string;
+}
+
+const TOOL_INSTRUCTIONS: ToolInstructionMap = {
   search_notes:
     "Use search_notes to find information from the user's past meetings, discussions, or personal notes before answering from memory.",
   get_note:

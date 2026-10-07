@@ -33,7 +33,7 @@ export function MeetIntegrationSettings() {
       const result = await window.electronAPI?.configureMeetIntegration(action);
 
       if (!result?.success) throw new Error(result?.error ?? t("meetIntegration.setupFailed"));
-      setSetup(await window.electronAPI!.getMeetIntegrationSetup());
+      setSetup((await window.electronAPI?.getMeetIntegrationSetup()) ?? null);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     } finally {

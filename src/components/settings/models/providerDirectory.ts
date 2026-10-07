@@ -24,6 +24,16 @@ export type CredentialKey =
 
 export type CredentialSetterName = `set${Capitalize<CredentialKey>}`;
 
+/** Store secret setters resolve to this; plain string setters resolve to undefined. */
+export interface CredentialSaveResult {
+  success: boolean;
+}
+
+export type CredentialSetter = (
+  next: string
+) => CredentialSaveResult | Promise<CredentialSaveResult>;
+
+// SAFETY: the store names every credential setter as `set${Cap}` of its key.
 export const credentialSetterName = (key: CredentialKey): CredentialSetterName =>
   `set${key[0].toUpperCase()}${key.slice(1)}` as CredentialSetterName;
 

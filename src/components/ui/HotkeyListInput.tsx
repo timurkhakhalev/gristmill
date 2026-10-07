@@ -14,9 +14,9 @@ export interface HotkeyListInputProps {
    * Called with the new comma-separated list whenever it has at least one entry.
    * If it resolves to `false`, the optimistic UI change is rolled back.
    */
-  onChange: (list: string) => unknown;
+  onChange: (list: string) => boolean | void | Promise<boolean | void>;
   /** Called when the list becomes empty (removing the last entry). Omit to make the slot required. */
-  onClear?: () => unknown;
+  onClear?: () => boolean | void | Promise<boolean | void>;
   disabled?: boolean;
   /** When true, the last remaining hotkey cannot be removed and the list is never emptied. */
   required?: boolean;
@@ -84,14 +84,14 @@ export function HotkeyListInput({
   };
 
   const replaceAt = (index: number, next: string) => {
-    void commit(items.map((h, i) => (i === index ? next : h)));
+    commit(items.map((h, i) => (i === index ? next : h))).catch(() => {});
   };
 
   const removeAt = async (index: number) => {
     const remaining = items.filter((_, i) => i !== index);
 
     if (remaining.length > 0) {
-      void commit(remaining);
+      commit(remaining).catch(() => {});
 
       return;
     }
@@ -107,7 +107,7 @@ export function HotkeyListInput({
     setAdding(false);
 
     if (!hotkey || items.some((existing) => isSameHotkey(existing, hotkey))) return;
-    void commit([...items, hotkey]);
+    commit([...items, hotkey]).catch(() => {});
   };
 
   const canRemove = !required || items.length > 1;
@@ -120,7 +120,13 @@ export function HotkeyListInput({
           key={`${hotkey}-${index}`}
           value={hotkey}
           onChange={(next) => replaceAt(index, next)}
-          onClear={canRemove ? () => void removeAt(index) : undefined}
+          onClear={
+            canRemove
+              ? () => {
+                  removeAt(index).catch(() => {});
+                }
+              : undefined
+          }
           disabled={disabled}
           validate={makeValidate(index)}
         />

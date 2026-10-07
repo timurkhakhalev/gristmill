@@ -14,6 +14,21 @@ export interface CachedTinfoilModels {
 
 const EMPTY: CachedTinfoilModels = { models: [], fetchedAt: 0 };
 
+interface StoredTinfoilModels {
+  models: CloudModelDefinition[];
+  fetchedAt: number;
+}
+
+function isStoredTinfoilModels<T>(value: T): value is T & StoredTinfoilModels {
+  if (typeof value !== "object" || value === null) return false;
+
+  // SAFETY: localStorage is untrusted; the object check above only narrows the
+  // representation, so read the fields as unknown and validate each below.
+  const stored = value as { models?: unknown; fetchedAt?: unknown };
+
+  return Array.isArray(stored.models) && typeof stored.fetchedAt === "number";
+}
+
 export function readCachedTinfoilModels(): CachedTinfoilModels {
   if (!isBrowser) return EMPTY;
 
@@ -22,9 +37,9 @@ export function readCachedTinfoilModels(): CachedTinfoilModels {
 
     if (!raw) return EMPTY;
 
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
 
-    if (!Array.isArray(parsed?.models) || typeof parsed.fetchedAt !== "number") return EMPTY;
+    if (!isStoredTinfoilModels(parsed)) return EMPTY;
 
     return { models: parsed.models, fetchedAt: parsed.fetchedAt };
   } catch {
@@ -37,7 +52,9 @@ export function writeCachedTinfoilModels(models: CloudModelDefinition[]): void {
 
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify({ models, fetchedAt: Date.now() }));
-  } catch {}
+  } catch {
+    // A full or unavailable localStorage must not break a fetched list.
+  }
 }
 
 export function isCachedListFresh(cached: CachedTinfoilModels): boolean {

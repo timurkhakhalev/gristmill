@@ -1,6 +1,10 @@
 import registry from "../../config/languageRegistry.json";
 
-const NATIVE_LABELS: Record<string, string> = {
+interface StringTable {
+  [key: string]: string;
+}
+
+const NATIVE_LABELS: StringTable = {
   ar: "العربية",
   de: "Deutsch",
   "en-US": "English",
@@ -17,14 +21,14 @@ const NATIVE_LABELS: Record<string, string> = {
   "zh-TW": "繁體中文",
 };
 
-const LANGUAGE_LABELS: Record<string, string> = {
+const LANGUAGE_LABELS: StringTable = {
   "en-US": "English",
   ar: "Arabic",
   "zh-CN": "Chinese - Simplified",
   "zh-TW": "Chinese - Traditional",
 };
 
-const SEARCH_ALIASES: Record<string, string> = {
+const SEARCH_ALIASES: StringTable = {
   hi: "hind hindustani",
 };
 

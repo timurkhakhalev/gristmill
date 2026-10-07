@@ -3,11 +3,8 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useDialogs } from "./useDialogs";
 import { useToast } from "../components/ui/useToast";
-import type {
-  LocalLLMDownloadProgressEvent,
-  LocalModelDownloadStatus,
-  WhisperDownloadProgressData,
-} from "../types/electron";
+import type { LocalModelDownloadStatus, WhisperDownloadProgressData } from "../types/electron";
+import type { LlmDownloadProgressEvent } from "../contracts/localLlmModels";
 import { clearMissingLocalModelSelections } from "../stores/settingsStore";
 import "../types/electron";
 
@@ -36,7 +33,7 @@ export type ModelType = "whisper" | "llm" | "parakeet";
 
 interface UseModelDownloadOptions {
   modelType: ModelType;
-  onDownloadComplete?: () => void;
+  onDownloadComplete?: () => void | Promise<void>;
   onModelsCleared?: () => void;
 }
 
@@ -46,8 +43,6 @@ interface ModelDownloadTerminalEvent {
   code?: string;
   sequence?: number;
 }
-
-type LLMDownloadProgressData = LocalLLMDownloadProgressEvent & { sequence?: number };
 
 export function formatETA(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -236,7 +231,9 @@ export function useModelDownload({
   const handleNativeProgress = useCallback(
     (data: WhisperDownloadProgressData) => {
       if (data.type === "complete" || data.type === "error") {
-        void handleTerminalDownload(data.model, data.type, data.error, data.code, data.sequence);
+        handleTerminalDownload(data.model, data.type, data.error, data.code, data.sequence).catch(
+          () => {}
+        );
 
         return;
       }
@@ -269,27 +266,19 @@ export function useModelDownload({
   // The bridge validates payloads before delivery; the narrower local view is
   // what the download UI reads.
   const handleLLMProgress = useCallback(
-    (raw: {
-      modelId: string;
-      type?: "progress" | "error" | "complete";
-      progress?: number;
-      downloadedSize?: number;
-      totalSize?: number;
-      error?: string;
-      code?: string;
-      details?: unknown;
-      sequence?: number;
-    }) => {
-      const data = raw as LLMDownloadProgressData;
-
+    (data: LlmDownloadProgressEvent) => {
       if (data.type === "complete") {
-        void handleTerminalDownload(data.modelId, data.type, undefined, undefined, data.sequence);
+        handleTerminalDownload(data.modelId, data.type, undefined, undefined, data.sequence).catch(
+          () => {}
+        );
 
         return;
       }
 
       if (data.type === "error") {
-        void handleTerminalDownload(data.modelId, data.type, data.error, data.code, data.sequence);
+        handleTerminalDownload(data.modelId, data.type, data.error, data.code, data.sequence).catch(
+          () => {}
+        );
 
         return;
       }

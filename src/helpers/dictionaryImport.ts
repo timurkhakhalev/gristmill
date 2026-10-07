@@ -15,8 +15,8 @@
  * @param {string} text
  * @returns {string[]}
  */
-export function parseDictionaryImportText(text: unknown): string[] {
-  const raw = String(text ?? "");
+export function parseDictionaryImportText(text: string | null | undefined): string[] {
+  const raw = text ?? "";
   // An unbalanced quote is not the export shape; fall back to the plain split
   // rather than silently swallowing the rest of the paste.
   const quoted = parseFields(raw);

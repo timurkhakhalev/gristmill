@@ -26,8 +26,6 @@ export interface ValidationResult {
 
 const MODIFIER_ORDER = ["Control", "Command", "Alt", "Shift", "Super", "Fn"];
 
-const MODIFIERS = new Set(MODIFIER_ORDER);
-
 const RIGHT_SIDE_MODIFIERS = new Set([
   "rightcontrol",
   "rightctrl",

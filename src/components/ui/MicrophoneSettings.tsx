@@ -87,9 +87,12 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
   }, [onDeviceSelect, selectedMicDeviceId, selectedMicDeviceLabel, t]);
 
   useEffect(() => {
-    loadDevices();
+    loadDevices().catch(() => {});
 
-    const handleDeviceChange = () => loadDevices();
+    const handleDeviceChange = () => {
+      loadDevices().catch(() => {});
+    };
+
     navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
 
     return () => {
@@ -182,7 +185,9 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
         <Button
           variant="ghost"
           size="icon"
-          onClick={loadDevices}
+          onClick={() => {
+            loadDevices().catch(() => {});
+          }}
           disabled={isLoading}
           aria-label={t("microphoneSettings.refresh", { defaultValue: "Refresh devices" })}
           title={t("microphoneSettings.refresh", { defaultValue: "Refresh devices" })}

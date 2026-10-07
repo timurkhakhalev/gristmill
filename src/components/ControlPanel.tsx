@@ -40,6 +40,27 @@ import { Button } from "./ui/button";
 import { HomeSkeleton } from "./home/HomeSkeleton";
 import NoteSkeleton from "./notes/NoteSkeleton";
 import { localMutationErrorKey } from "../lib/localMutationError";
+import logger from "../utils/logger";
+
+function errorText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+// Runs a fire-and-forget action from a void callback (menu/keyboard/tray),
+// recording a rejected action instead of letting it float.
+function runAction(action: () => Promise<void>, label: string): void {
+  action().catch((error) => {
+    logger.error(`Failed to ${label}`, { error: errorText(error) }, "notes");
+  });
+}
+
+// openNoteRow only reads `.id` (and, when present, `.title`/`.content`); these
+// callers hold an id whose full row it fetches, which is its documented path.
+function noteRef(id: number): NoteItem {
+  // SAFETY: openNoteRow's partial-row branch reads only `id` before fetching the
+  // full NoteItem from the store or bridge, matching this reference shape.
+  return { id } as NoteItem;
+}
 
 const SIDEBAR_DEFAULT_WIDTH_PX = 192;
 
@@ -107,7 +128,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const [meetingRecordingRequest, setMeetingRecordingRequest] = useState<{
     noteId: number;
     folderId: null | number;
-    event: any;
+    event: unknown;
   } | null>(null);
 
   // A calendar-event draft's latest typed revision, forwarded to the notes
@@ -175,57 +196,85 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
   // The sidebar tree renders on every view, not only inside the notes view.
   useEffect(() => {
-    void initializeNotesTree();
+    initializeNotesTree().catch((error) => {
+      logger.error("Failed to initialize the notes tree", { error: errorText(error) }, "notes");
+    });
   }, []);
 
   useEffect(() => {
-    const drainMeeting = async () => {
-      const data = await window.electronAPI?.getPendingMeetingNoteNavigation?.();
-
-      if (!data) return;
-      setActiveFolderId(data.folderId);
-      // The pending note may sit outside the container caches (#185).
-      void openNoteRow({ id: data.noteId } as NoteItem);
-      setActiveView("personal-notes");
-      setMeetingRecordingRequest({
-        noteId: data.noteId,
-        folderId: data.folderId,
-        event: data.event,
-      });
-      initializeNotes(null, 50, data.folderId);
-
-      if (
-        data.trigger === "hotkey" &&
-        useSettingsStore.getState().meetingHotkeyLayoutMode === "side-panel" &&
-        window.electronAPI?.snapToMeetingMode
-      ) {
-        window.electronAPI.snapToMeetingMode();
-      }
+    // Each pending-drain step is fire-and-forget by the original contract: the
+    // note fetch and the container refresh run concurrently, and the view switch
+    // does not wait on either. Rejections are recorded instead of floating.
+    const reportDrain = (label: string) => (cause: unknown) => {
+      logger.error(label, { error: errorText(cause) }, "meeting");
     };
 
-    void drainMeeting();
+    const drainMeeting = (): void => {
+      window.electronAPI
+        ?.getPendingMeetingNoteNavigation?.()
+        .then((data) => {
+          if (!data) return;
+          setActiveFolderId(data.folderId);
+          // The pending note may sit outside the container caches (#185).
+          runAction(() => openNoteRow(noteRef(data.noteId)), "open the pending meeting note");
+          setActiveView("personal-notes");
+          setMeetingRecordingRequest({
+            noteId: data.noteId,
+            folderId: data.folderId,
+            event: data.event,
+          });
+          runAction(
+            () => initializeNotes(null, 50, data.folderId).then(() => undefined),
+            "refresh the pending meeting note container"
+          );
+
+          if (
+            data.trigger === "hotkey" &&
+            useSettingsStore.getState().meetingHotkeyLayoutMode === "side-panel" &&
+            window.electronAPI?.snapToMeetingMode
+          ) {
+            runAction(
+              () => window.electronAPI?.snapToMeetingMode?.() ?? Promise.resolve(),
+              "snap to meeting mode"
+            );
+          }
+        })
+        .catch(reportDrain("Failed to drain the pending meeting note navigation"));
+    };
+
+    drainMeeting();
     const dispose = window.electronAPI?.onMeetingNoteNavigationPending?.(drainMeeting);
 
     return () => dispose?.();
   }, []);
 
   useEffect(() => {
-    const drainNote = async () => {
-      const data = await window.electronAPI?.getPendingNoteNavigation?.();
-
-      if (!data) return;
-
-      if (data.folderId != null) {
-        setActiveFolderId(data.folderId);
-        initializeNotes(null, 50, data.folderId);
-      }
-
-      // The pending note may sit outside the container caches (#185).
-      void openNoteRow({ id: data.noteId } as NoteItem);
-      setActiveView("personal-notes");
+    const reportDrain = (label: string) => (cause: unknown) => {
+      logger.error(label, { error: errorText(cause) }, "notes");
     };
 
-    void drainNote();
+    const drainNote = (): void => {
+      window.electronAPI
+        ?.getPendingNoteNavigation?.()
+        .then((data) => {
+          if (!data) return;
+
+          if (data.folderId != null) {
+            setActiveFolderId(data.folderId);
+            runAction(
+              () => initializeNotes(null, 50, data.folderId).then(() => undefined),
+              "refresh the pending note container"
+            );
+          }
+
+          // The pending note may sit outside the container caches (#185).
+          runAction(() => openNoteRow(noteRef(data.noteId)), "open the pending note");
+          setActiveView("personal-notes");
+        })
+        .catch(reportDrain("Failed to drain the pending note navigation"));
+    };
+
+    drainNote();
     const dispose = window.electronAPI?.onNoteNavigationPending?.(drainNote);
 
     return () => dispose?.();
@@ -248,19 +297,40 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
   useEffect(() => {
     if (isTreeLoading || spaces.length === 0) return;
-    const dispose = window.electronAPI?.onTrayNewNote?.(() => void createAndOpenNote());
+
+    const dispose = window.electronAPI?.onTrayNewNote?.(() =>
+      runAction(createAndOpenNote, "create and open a note")
+    );
 
     return () => dispose?.();
   }, [createAndOpenNote, isTreeLoading, spaces.length]);
 
-  const openNote = useCallback((note: NoteItem) => {
-    if (note.folder_id != null) setActiveFolderId(note.folder_id);
-    else navigateToContainer(note.space_id, null);
-    // Hold the full row: search/chat results can sit outside the newest-50
-    // container caches, and the editor needs the row, not just the id (#185).
-    void openNoteRow(note);
-    setActiveView("personal-notes");
+  // Fire-and-forget open: these handlers are synchronous (menu/keyboard/tray
+  // callbacks), so the row fetch observes its own rejection and logs it.
+  const openNoteRowSafely = useCallback((note: NoteItem) => {
+    openNoteRow(note).catch((error) => {
+      logger.error("Failed to open note", { error: errorText(error) }, "notes");
+    });
   }, []);
+
+  const openNoteById = useCallback(
+    (id: number) => {
+      openNoteRowSafely(noteRef(id));
+    },
+    [openNoteRowSafely]
+  );
+
+  const openNote = useCallback(
+    (note: NoteItem) => {
+      if (note.folder_id != null) setActiveFolderId(note.folder_id);
+      else navigateToContainer(note.space_id, null);
+      // Hold the full row: search/chat results can sit outside the newest-50
+      // container caches, and the editor needs the row, not just the id (#185).
+      openNoteRowSafely(note);
+      setActiveView("personal-notes");
+    },
+    [openNoteRowSafely]
+  );
 
   // An event with a note opens it; one without opens a draft that creates
   // the note only once the user writes, records or asks.
@@ -280,7 +350,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
 
     const dispose = window.electronAPI?.onTrayOpenEvent?.((event) => {
       setActiveView("home");
-      void openCalendarEvent(event);
+      runAction(() => openCalendarEvent(event), "open calendar event");
     });
 
     return () => dispose?.();
@@ -363,7 +433,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           openSettings();
           break;
         case "new-note":
-          void createAndOpenNote();
+          runAction(createAndOpenNote, "create and open a note");
           break;
         case "new-folder":
           if (spaces.length > 0) setNewFolderDialogOpen(true);
@@ -392,7 +462,11 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   }, [showSettings, openSettings, createAndOpenNote, spaces.length, goToAdjacentNote]);
 
   const handleExitSidePanel = useCallback(() => {
-    if (isMeetingMode) window.electronAPI?.restoreFromMeetingMode?.();
+    if (isMeetingMode)
+      runAction(
+        () => window.electronAPI?.restoreFromMeetingMode?.() ?? Promise.resolve(),
+        "restore from meeting mode"
+      );
 
     if (notesDebugScenario) setNotesDebugScenario(null);
     else setActiveNoteId(null);
@@ -482,7 +556,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               sidebarOpen={drawerOpen}
               onToggleSidebar={toggleSidebar}
               onOpenSearch={() => setShowSearch(true)}
-              onNewNote={() => void createAndOpenNote()}
+              onNewNote={() => runAction(createAndOpenNote, "create and open a note")}
               isSidePanelLayout={isSidePanelLayout}
               insetTrafficLights={!sidebarInline}
               onExitSidePanel={handleExitSidePanel}
@@ -496,8 +570,9 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   onReturnToNote={() => {
                     setActiveView("personal-notes");
                     setActiveFolderId(recordingFolderId);
+
                     // The recording note may sit outside the caches (#185).
-                    void openNoteRow({ id: recordingNoteId } as NoteItem);
+                    if (recordingNoteId != null) openNoteById(recordingNoteId);
                   }}
                 />
               }
@@ -514,7 +589,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                     openNote(note);
 
                     if (intent === "record" && !useMeetingRecordingStore.getState().isRecording) {
-                      void startRecordingForNote(note);
+                      runAction(() => startRecordingForNote(note), "start recording for the note");
                     }
                   }}
                 />
@@ -524,7 +599,9 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   <HomeView
                     onOpenNote={openNote}
                     onConnectCalendar={() => openSettings("calendar")}
-                    onOpenEvent={(event) => void openCalendarEvent(event)}
+                    onOpenEvent={(event) =>
+                      runAction(() => openCalendarEvent(event), "open calendar event")
+                    }
                   />
                 </Suspense>
               )}
@@ -552,7 +629,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
                   <UploadAudioView
                     onNoteCreated={(noteId, folderId) => {
                       // The fresh row may land in an unloaded container (#185).
-                      void openNoteRow({ id: noteId } as NoteItem);
+                      openNoteById(noteId);
 
                       if (folderId != null) setActiveFolderId(folderId);
                       setActiveView("personal-notes");
@@ -574,7 +651,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
             else if (spaceId != null) navigateToContainer(spaceId, null);
             // Search can surface Notes past the container caches (#185): the
             // row is held or fetched by id inside openNoteRow.
-            void openNoteRow({ id } as NoteItem);
+            openNoteById(id);
             setActiveView("personal-notes");
           }}
           onContainerSelect={(spaceId, folderId) => {
@@ -605,7 +682,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
             onChange={(e) => setNewFolderName(e.target.value)}
             placeholder={t("notes.folders.folderName")}
             onKeyDown={(e) => {
-              if (e.key === "Enter") void submitNewFolder();
+              if (e.key === "Enter") runAction(submitNewFolder, "create the folder");
             }}
           />
           <DialogFooter>
@@ -618,7 +695,10 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
             >
               {t("common.cancel")}
             </Button>
-            <Button onClick={() => void submitNewFolder()} disabled={!newFolderName.trim()}>
+            <Button
+              onClick={() => runAction(submitNewFolder, "create the folder")}
+              disabled={!newFolderName.trim()}
+            >
               {t("common.create")}
             </Button>
           </DialogFooter>

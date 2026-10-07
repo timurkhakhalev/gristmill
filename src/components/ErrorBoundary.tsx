@@ -58,7 +58,14 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
                 {this.state.error.message}
               </pre>
             )}
-            <button onClick={this.handleReload} className="button button--primary button--md">
+            <button
+              onClick={() => {
+                this.handleReload().catch((error) => {
+                  console.error("[ErrorBoundary] Reload failed:", error);
+                });
+              }}
+              className="button button--primary button--md"
+            >
               {i18n.t("errorBoundary.reload")}
             </button>
           </div>

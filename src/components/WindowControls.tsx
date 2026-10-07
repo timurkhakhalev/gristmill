@@ -16,7 +16,9 @@ export default function WindowControls() {
       <Button
         variant="ghost"
         size="icon"
-        onClick={minimize}
+        onClick={() => {
+          minimize().catch(() => {});
+        }}
         title={minimizeLabel}
         aria-label={minimizeLabel}
         className="h-8 w-8"
@@ -26,7 +28,9 @@ export default function WindowControls() {
       <Button
         variant="ghost"
         size="icon"
-        onClick={toggleMaximize}
+        onClick={() => {
+          toggleMaximize().catch(() => {});
+        }}
         title={maximizeLabel}
         aria-label={maximizeLabel}
         className="h-8 w-8"
@@ -36,7 +40,9 @@ export default function WindowControls() {
       <Button
         variant="ghost"
         size="icon"
-        onClick={close}
+        onClick={() => {
+          close().catch(() => {});
+        }}
         className="h-8 w-8 hover:text-danger hover:bg-danger/10"
         title={closeLabel}
         aria-label={closeLabel}

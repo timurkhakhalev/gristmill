@@ -1,11 +1,15 @@
 import type { IconComponent } from "./createIcon";
 import { Sparkles, WandSparkles } from "./index";
 
-const KEY_ICON: Record<string, IconComponent> = {
+const KEY_ICON = {
   sparkles: Sparkles,
   "wand-sparkles": WandSparkles,
   wand: WandSparkles,
-};
+} satisfies Record<string, IconComponent>;
+
+function isKnownKey(name: string): name is keyof typeof KEY_ICON {
+  return Object.prototype.hasOwnProperty.call(KEY_ICON, name);
+}
 
 /**
  * Single source of truth for "this row generates AI output" affordances.
@@ -23,7 +27,8 @@ export function AiActionIcon({
   size?: number | string;
   className?: string;
 }) {
-  const Resolved = KEY_ICON[icon ?? ""] ?? WandSparkles;
+  const key = icon ?? "";
+  const Resolved = isKnownKey(key) ? KEY_ICON[key] : WandSparkles;
 
   return <Resolved size={size} className={className} />;
 }

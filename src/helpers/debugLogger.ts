@@ -236,14 +236,15 @@ class DebugLogger {
 
   serializeValue(value: unknown): unknown {
     if (value instanceof Error) {
-      const code = (value as NodeJS.ErrnoException).code;
+      const code = "code" in value ? value.code : undefined;
 
       return {
         name: value.name,
         message: value.message,
         ...(code ? { code } : {}),
         ...(value.stack ? { stack: value.stack } : {}),
-        ...(value as unknown as Record<string, unknown>),
+        // Own enumerable fields of the Error, matching the legacy spread.
+        ...Object.fromEntries(Object.entries(value)),
       };
     }
 

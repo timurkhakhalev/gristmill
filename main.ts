@@ -276,7 +276,7 @@ process.on("uncaughtException", (error: Error) => {
   console.error("Uncaught Exception:", error);
 
   // Don't exit the process for EPIPE errors as they're harmless
-  if ("code" in error && error.code === "EPIPE") {
+  if (error instanceof Error && "code" in error && error.code === "EPIPE") {
     return;
   }
 

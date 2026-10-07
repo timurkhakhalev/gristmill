@@ -125,17 +125,19 @@ export class ActiveMicRecoveryController<
 
   constructor({
     mediaDevices,
-    acquire,
-    onRecovered,
     onStatusChange,
     onPlatformMuteChange,
     debounceMs = DEFAULT_DEBOUNCE_MS,
     muteGraceMs = DEFAULT_MUTE_GRACE_MS,
     retryMs = DEFAULT_RETRY_MS,
+    ...callbacks
   }: ActiveMicRecoveryOptions<Stream>) {
     this.mediaDevices = mediaDevices;
-    this.acquire = acquire;
-    this.onRecovered = onRecovered;
+    // Bind through the options object so the bivariant method signatures kept
+    // on ActiveMicRecoveryOptions (and their generic variance) are preserved.
+    this.acquire = (reason) => callbacks.acquire.call(callbacks, reason);
+    this.onRecovered = (replacement, oldStream, reason) =>
+      callbacks.onRecovered.call(callbacks, replacement, oldStream, reason);
     this.onStatusChange = onStatusChange;
     this.onPlatformMuteChange = onPlatformMuteChange;
     this.debounceMs = debounceMs;
@@ -154,15 +156,19 @@ export class ActiveMicRecoveryController<
     this.started = false;
     this.intentionalMute = false;
     this.onDeviceChange = () => this.scheduleEvaluation();
-    this.onTrackEnded = () => this.recover("ended");
+    this.onTrackEnded = () => {
+      // recover() settles internally; drop the fire-and-forget rejection.
+      this.recover("ended").catch(() => {});
+    };
+
     this.onTrackMute = () => {
-      void this.publishMuteState(true);
+      this.publishMuteState(true).catch(() => {});
       this.scheduleMuteRecovery();
     };
 
     this.onTrackUnmute = () => {
       clearTimeout(this.muteTimer);
-      void this.publishMuteState(false);
+      this.publishMuteState(false).catch(() => {});
     };
   }
 
@@ -188,7 +194,7 @@ export class ActiveMicRecoveryController<
 
     if (this.intentionalMute) return;
     this.muteTimer = setTimeout(() => {
-      if (this.track?.muted) this.recover("muted");
+      if (this.track?.muted) this.recover("muted").catch(() => {});
     }, this.muteGraceMs);
   }
 
@@ -228,7 +234,7 @@ export class ActiveMicRecoveryController<
     this.setStatus(alive ? "active" : "unavailable");
 
     if (!alive) {
-      this.recover("start");
+      this.recover("start").catch(() => {});
     } else if (track.muted) {
       this.onTrackMute();
     }
@@ -270,7 +276,9 @@ export class ActiveMicRecoveryController<
   private scheduleEvaluation(): void {
     if (!this.started) return;
     clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => this.evaluateDeviceChange(), this.debounceMs);
+    this.debounceTimer = setTimeout(() => {
+      this.evaluateDeviceChange().catch(() => {});
+    }, this.debounceMs);
   }
 
   private async evaluateDeviceChange(): Promise<void> {
@@ -282,7 +290,7 @@ export class ActiveMicRecoveryController<
     if (generation !== this.generation) return;
 
     if (!this.started || !current) {
-      if (this.track?.readyState === "ended") this.recover("devicechange-ended");
+      if (this.track?.readyState === "ended") this.recover("devicechange-ended").catch(() => {});
 
       return;
     }
@@ -291,7 +299,7 @@ export class ActiveMicRecoveryController<
     const activeMissing = !activeTrackIsAvailable(this.track, current);
 
     if ((this.followDefault && defaultChanged) || activeMissing || this.status === "unavailable") {
-      this.recover("devicechange");
+      this.recover("devicechange").catch(() => {});
     }
   }
 
@@ -407,7 +415,7 @@ export class ActiveMicRecoveryController<
     if (!this.started || this.retryTimer) return;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = undefined;
-      this.recover("retry");
+      this.recover("retry").catch(() => {});
     }, this.retryMs);
   }
 

@@ -5,7 +5,7 @@
 // Channels, argument order, results, events and errors are unchanged;
 // untrusted payloads are parsed at the boundary and only validated values
 // reach the managers.
-import { dialog, shell } from "electron";
+import { dialog, shell, type WebContents } from "electron";
 import fs from "fs";
 import { z } from "zod";
 import { approveAudioPath, resolveAllowedAudioPath } from "./audioPathAllowlist.js";
@@ -22,38 +22,64 @@ import {
 import {
   binaryLikeSchema,
   transcriptionDataChannels,
-  type TranscriptionDeleteResult,
+  type PendingNoteNavigation,
 } from "../contracts/transcriptionData.js";
-import type { NoteRow, TranscriptionRow } from "./database.js";
+import type {
+  ClearedResult,
+  DeletedIdResult,
+  NoteRow,
+  SuccessResult,
+  TranscriptionRow,
+  TranscriptionSaveResult,
+} from "./database.js";
 import type { Logger } from "./transcriptionExecutionIpcHandlers.js";
 
-export interface TranscriptionDataDeps {
+// The renderer-supplied options bag accepted by db-save-transcription; mirrors
+// the manager's own signature so valid calls pass straight through.
+interface TranscriptionSaveOptions {
+  status?: string;
+  errorMessage?: string | null;
+  errorCode?: string | null;
+  routeKind?: string | null;
+  occurredAt?: unknown;
+}
+
+interface TranscriptionListOptions {
+  includeDiscarded?: boolean;
+}
+
+interface TranscriptionAudioUpdate {
+  hasAudio: boolean | number;
+  audioDurationMs: number | null;
+  provider: string | null;
+  model: string | null;
+}
+
+// The export formats that map to a fixed file extension; anything else falls
+// back to "txt" exactly as the previous lookup did.
+interface TranscriptExtensions {
+  [format: string]: string;
+}
+
+export interface TranscriptionDataDeps<PendingNotification = PendingNoteNavigation> {
   // Method syntax keeps parameter checks bivariant so the real
   // DatabaseManager satisfies this without casts; the handler validates
   // untrusted IPC payloads itself before any database call.
   database: {
     saveTranscription(
-      text: unknown,
-      rawText: unknown,
-      options: unknown
-    ): { success: boolean; transcription: TranscriptionRow | null } | null | undefined;
-    getTranscriptions(limit: unknown, options: unknown): TranscriptionRow[];
-    clearTranscriptions(): { success: boolean; cleared: number };
-    deleteTranscription(id: number): unknown;
-    updateTranscriptionAudio: (
-      id: number,
-      update: {
-        hasAudio: number;
-        audioDurationMs: number | null;
-        provider: string | null;
-        model: string | null;
-      }
-    ) => unknown;
-    getTranscriptionById: (id: number) => (TranscriptionRow & Record<string, unknown>) | null;
-    updateTranscriptionText: (id: number, text: string, rawText: string | null) => unknown;
-    getAudioFlaggedIds: () => Array<{ id: number }>;
-    clearAudioFlags: (ids: number[]) => unknown;
-    getNote: (id: number) => NoteRow | null;
+      text: string,
+      rawText: string | null | undefined,
+      options: TranscriptionSaveOptions
+    ): TranscriptionSaveResult;
+    getTranscriptions(limit: number, options: TranscriptionListOptions): TranscriptionRow[];
+    clearTranscriptions(): ClearedResult;
+    deleteTranscription(id: number): DeletedIdResult;
+    updateTranscriptionAudio(id: number, update: TranscriptionAudioUpdate): SuccessResult;
+    getTranscriptionById(id: number): TranscriptionRow | null;
+    updateTranscriptionText(id: number, text: string, rawText: string | null): SuccessResult;
+    getAudioFlaggedIds(): Array<{ id: number }>;
+    clearAudioFlags(ids: Array<number | string>): SuccessResult;
+    getNote(id: number): NoteRow | null;
   };
   audioStorage: {
     saveAudio: (
@@ -70,27 +96,66 @@ export interface TranscriptionDataDeps {
   deleteAllAudio: () => Promise<{ deleted: number; failed: number }>;
   // The shared delete path (audio + row + transcription-deleted broadcast)
   // owned by the composition root.
-  deleteTranscriptionInternal: (id: number) => unknown;
+  deleteTranscriptionInternal: (id: number) => DeletedIdResult;
   buildSpeakerMappings: (noteId: number) => Record<string, string>;
   queueNoteNavigation: (payload: { noteId: number; folderId: number | null }) => Promise<void>;
-  consumePendingNoteNavigation: () => unknown;
+  consumePendingNoteNavigation: () => PendingNotification;
   retention: {
     getCurrentSettings: () => RetentionSettings;
-    getOwner: () => unknown;
+    getOwner: () => WebContents | null | undefined;
     hasSynced: () => boolean;
     onSettingsChanged: (settings: RetentionSettings) => void;
   };
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: <Payload>(channel: string, payload: Payload) => void;
   logger: Logger;
 }
 
 const SAFE_NAME_PATTERN = /[/\\?%*:|"<>]/g;
+
+// Electron delivers each handler its own event first; the body is only ever a
+// rest tuple of renderer arguments, decoded at the boundary before use.
+type IpcMainLike = {
+  handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
+  // `event.sender` stays opaque: the only consumer is the retention-settings
+  // factory, which compares the sender against the owner window without
+  // reading into it.
+  on(channel: string, listener: (event: { sender?: unknown }, ...args: unknown[]) => void): void;
+};
+
+function messageOf<T>(error: T): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function isSegmentArray<T>(value: T): value is T & unknown[] {
+  return Array.isArray(value);
+}
+
+const isAudioSegment = <T>(
+  value: T
+): value is T & { buffer: ArrayBuffer | ArrayBufferView; mimeType: string } => {
+  if (typeof value !== "object" || value === null) return false;
+
+  if (!("buffer" in value) || !("mimeType" in value)) return false;
+  const buffer: unknown = value.buffer;
+  const mimeType: unknown = value.mimeType;
+
+  return (
+    (buffer instanceof ArrayBuffer || ArrayBuffer.isView(buffer)) && typeof mimeType === "string"
+  );
+};
 
 function viewToBuffer(value: ArrayBuffer | ArrayBufferView): Buffer {
   if (value instanceof ArrayBuffer) {
     return Buffer.from(new Uint8Array(value));
   }
 
+  // SAFETY: IPC binary payloads are structured-cloned ArrayBuffers or typed
+  // arrays; a SharedArrayBuffer cannot cross the Electron structured clone
+  // boundary, so the backing buffer is always a real ArrayBuffer.
   return Buffer.from(value.buffer as ArrayBuffer, value.byteOffset, value.byteLength);
 }
 
@@ -104,20 +169,16 @@ function formatTxtContent(content: string | null | undefined): string {
     .trim();
 }
 
-export function registerTranscriptionDataHandlers(
-  ipcMain: {
-    handle(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
-    // `never` parameters accept the narrower handler signatures some shared
-    // listener factories (retention settings) are typed with.
-    on(channel: string, listener: (event: { sender?: unknown }, ...args: unknown[]) => void): void;
-  },
-  deps: TranscriptionDataDeps
+export function registerTranscriptionDataHandlers<PendingNotification>(
+  ipcMain: IpcMainLike,
+  deps: TranscriptionDataDeps<PendingNotification>
 ): void {
   const { logger, database, audioStorage } = deps;
 
   ipcMain.handle(
     transcriptionDataChannels.saveTranscription,
-    async (_event, text: unknown, rawText: unknown, options: unknown) => {
+    async (_event, ...args: unknown[]) => {
+      const [text, rawText, options] = zSaveTranscriptionArgs.parse(args);
       const result = database.saveTranscription(text, rawText, options ?? {});
 
       if (result?.success && result?.transcription) {
@@ -132,7 +193,9 @@ export function registerTranscriptionDataHandlers(
 
   ipcMain.handle(
     transcriptionDataChannels.getTranscriptions,
-    async (_event, limit: unknown, options: unknown) => {
+    async (_event, ...args: unknown[]) => {
+      const [limit, options] = zGetTranscriptionsArgs.parse(args);
+
       return database.getTranscriptions(limit ?? 50, options ?? {});
     }
   );
@@ -152,28 +215,33 @@ export function registerTranscriptionDataHandlers(
     return result;
   });
 
-  ipcMain.handle(transcriptionDataChannels.deleteTranscription, async (_event, id: unknown) => {
-    const parsed = zObjectId.safeParse(id);
+  ipcMain.handle(
+    transcriptionDataChannels.deleteTranscription,
+    async (_event, ...args: unknown[]) => {
+      const parsed = zObjectId.safeParse(args[0]);
 
-    if (!parsed.success) {
-      return { success: false };
+      if (!parsed.success) {
+        return { success: false };
+      }
+
+      return deps.deleteTranscriptionInternal(parsed.data);
     }
-
-    return deps.deleteTranscriptionInternal(parsed.data) as TranscriptionDeleteResult;
-  });
+  );
 
   // Audio storage handlers
   ipcMain.handle(
     transcriptionDataChannels.saveTranscriptionAudio,
-    async (_event, id: unknown, audioBuffer: unknown, metadata: unknown) => {
-      const parsedId = zObjectId.safeParse(id);
-      const parsedBuffer = binaryLikeSchema.safeParse(audioBuffer);
+    async (_event, ...args: unknown[]) => {
+      const parsedId = zObjectId.safeParse(args[0]);
+      const parsedBuffer = binaryLikeSchema.safeParse(args[1]);
 
       if (!parsedId.success || !parsedBuffer.success) {
         return { success: false };
       }
 
-      const meta = (metadata ?? {}) as {
+      // SAFETY: Electron structured-clones the renderer's metadata bag; only the
+      // three optional fields below are read, each defaulting to null.
+      const meta = (args[2] ?? {}) as {
         durationMs?: number | null;
         provider?: string | null;
         model?: string | null;
@@ -191,9 +259,9 @@ export function registerTranscriptionDataHandlers(
       if (result.success) {
         database.updateTranscriptionAudio(parsedId.data, {
           hasAudio: 1,
-          audioDurationMs: meta?.durationMs || null,
-          provider: meta?.provider || null,
-          model: meta?.model || null,
+          audioDurationMs: meta.durationMs || null,
+          provider: meta.provider || null,
+          model: meta.model || null,
         });
         const updated = database.getTranscriptionById(parsedId.data);
 
@@ -206,22 +274,22 @@ export function registerTranscriptionDataHandlers(
 
   ipcMain.handle(
     transcriptionDataChannels.mergeAudioSegments,
-    async (_event, segments: unknown) => {
+    async (_event, ...args: unknown[]) => {
+      const segments = args[0];
+
       try {
-        if (!Array.isArray(segments) || segments.length < 2 || segments.length > 100) {
+        if (!isSegmentArray(segments) || segments.length < 2 || segments.length > 100) {
           throw new Error("Invalid audio segment count");
         }
 
         const normalized = segments.map((segment) => {
-          const record = segment as { buffer?: unknown; mimeType?: unknown } | null;
-
-          if (!record?.buffer || typeof record.mimeType !== "string") {
+          if (!isAudioSegment(segment)) {
             throw new Error("Invalid audio segment");
           }
 
           return {
-            buffer: viewToBuffer(record.buffer as ArrayBuffer | ArrayBufferView),
-            mimeType: record.mimeType,
+            buffer: viewToBuffer(segment.buffer),
+            mimeType: segment.mimeType,
           };
         });
 
@@ -236,34 +304,37 @@ export function registerTranscriptionDataHandlers(
         };
       } catch (error) {
         logger.error("Failed to merge recovered audio segments", {
-          error: (error as Error).message,
+          error: messageOf(error),
         });
 
-        return { success: false as const, error: (error as Error).message };
+        return { success: false as const, error: messageOf(error) };
       }
     }
   );
 
-  ipcMain.handle(transcriptionDataChannels.getAudioPath, async (_event, id: unknown) => {
-    const parsed = zObjectId.safeParse(id);
+  ipcMain.handle(transcriptionDataChannels.getAudioPath, async (_event, ...args: unknown[]) => {
+    const parsed = zObjectId.safeParse(args[0]);
 
     return parsed.success ? audioStorage.getAudioPath(parsed.data) : null;
   });
 
-  ipcMain.handle(transcriptionDataChannels.showAudioInFolder, async (_event, id: unknown) => {
-    const parsed = zObjectId.safeParse(id);
+  ipcMain.handle(
+    transcriptionDataChannels.showAudioInFolder,
+    async (_event, ...args: unknown[]) => {
+      const parsed = zObjectId.safeParse(args[0]);
 
-    if (!parsed.success) return { success: false };
-    const filePath = audioStorage.getAudioPath(parsed.data);
+      if (!parsed.success) return { success: false };
+      const filePath = audioStorage.getAudioPath(parsed.data);
 
-    if (!filePath) return { success: false };
-    shell.showItemInFolder(filePath);
+      if (!filePath) return { success: false };
+      shell.showItemInFolder(filePath);
 
-    return { success: true };
-  });
+      return { success: true };
+    }
+  );
 
-  ipcMain.handle(transcriptionDataChannels.getAudioBuffer, async (_event, id: unknown) => {
-    const parsed = zObjectId.safeParse(id);
+  ipcMain.handle(transcriptionDataChannels.getAudioBuffer, async (_event, ...args: unknown[]) => {
+    const parsed = zObjectId.safeParse(args[0]);
 
     if (!parsed.success) return null;
     const buffer = audioStorage.getAudioBuffer(parsed.data);
@@ -273,8 +344,8 @@ export function registerTranscriptionDataHandlers(
 
   ipcMain.handle(
     transcriptionDataChannels.deleteTranscriptionAudio,
-    async (_event, id: unknown) => {
-      const parsed = zObjectId.safeParse(id);
+    async (_event, ...args: unknown[]) => {
+      const parsed = zObjectId.safeParse(args[0]);
 
       if (!parsed.success) return { success: false };
       const result = audioStorage.deleteAudio(parsed.data);
@@ -321,7 +392,7 @@ export function registerTranscriptionDataHandlers(
       } catch (error) {
         logger.error(
           "Failed to clear audio flags after delete-all",
-          { error: (error as Error).message },
+          { error: messageOf(error) },
           "audio-storage"
         );
       }
@@ -329,16 +400,19 @@ export function registerTranscriptionDataHandlers(
     return result;
   });
 
-  ipcMain.handle(transcriptionDataChannels.getTranscriptionById, async (_event, id: unknown) => {
-    const parsed = zObjectId.safeParse(id);
+  ipcMain.handle(
+    transcriptionDataChannels.getTranscriptionById,
+    async (_event, ...args: unknown[]) => {
+      const parsed = zObjectId.safeParse(args[0]);
 
-    return parsed.success ? database.getTranscriptionById(parsed.data) : null;
-  });
+      return parsed.success ? database.getTranscriptionById(parsed.data) : null;
+    }
+  );
 
   ipcMain.handle(
     transcriptionDataChannels.updateTranscriptionText,
-    async (_event, id: unknown, text: unknown, rawText: unknown) => {
-      const parsed = zUpdateArgs.safeParse({ id, text, rawText });
+    async (_event, ...args: unknown[]) => {
+      const parsed = zUpdateArgs.safeParse({ id: args[0], text: args[1], rawText: args[2] });
 
       if (!parsed.success) {
         return { success: false, error: "Invalid transcription update" };
@@ -352,113 +426,109 @@ export function registerTranscriptionDataHandlers(
       } catch (error) {
         logger.error(
           "Failed to update transcription text",
-          { id: parsed.data.id, error: (error as Error).message },
+          { id: parsed.data.id, error: messageOf(error) },
           "audio-storage"
         );
 
-        return { success: false, error: (error as Error).message };
+        return { success: false, error: messageOf(error) };
       }
     }
   );
 
-  ipcMain.handle(
-    transcriptionDataChannels.exportNote,
-    async (_event, noteId: unknown, format: unknown) => {
-      try {
-        const parsed = zNoteExportArgs.safeParse({ noteId, format });
-
-        if (!parsed.success) return { success: false, error: "Invalid export request" };
-        const note = database.getNote(parsed.data.noteId);
-
-        if (!note) return { success: false, error: "Note not found" };
-
-        const ext = parsed.data.format === "txt" ? "txt" : "md";
-        const safeName = String(note.title || "Untitled").replace(SAFE_NAME_PATTERN, "-");
-
-        const result = await dialog.showSaveDialog({
-          defaultPath: `${safeName}.${ext}`,
-          filters: [
-            { name: "Markdown", extensions: ["md"] },
-            { name: "Text", extensions: ["txt"] },
-          ],
-        });
-
-        if (result.canceled || !result.filePath) return { success: false };
-
-        const exportContent =
-          parsed.data.format === "txt"
-            ? formatTxtContent(note.content)
-            : note.enhanced_content || note.content;
-
-        fs.writeFileSync(result.filePath, exportContent ?? "", "utf-8");
-
-        return { success: true };
-      } catch (error) {
-        logger.error("Error exporting note", { error: (error as Error).message }, "notes");
-
-        return { success: false, error: (error as Error).message };
-      }
-    }
-  );
-
-  ipcMain.handle(
-    transcriptionDataChannels.exportTranscript,
-    async (_event, noteId: unknown, format: unknown) => {
-      try {
-        const parsed = zTranscriptExportArgs.safeParse({ noteId, format });
-
-        if (!parsed.success) return { success: false, error: "Invalid export request" };
-        const note = database.getNote(parsed.data.noteId);
-
-        if (!note) return { success: false, error: "Note not found" };
-
-        const segments = JSON.parse(note.transcript || "[]") as TranscriptExportSegment[];
-
-        if (!segments.length) return { success: false, error: "No transcript available" };
-
-        const speakerMappings = deps.buildSpeakerMappings(parsed.data.noteId);
-        const extMap = { srt: "srt", json: "json", md: "md" } as Record<string, string>;
-        const ext = extMap[parsed.data.format] || "txt";
-        const safeName = String(note.title || "Untitled").replace(SAFE_NAME_PATTERN, "-");
-
-        const result = await dialog.showSaveDialog({
-          defaultPath: `${safeName}.${ext}`,
-          filters: [
-            { name: "Text", extensions: ["txt"] },
-            { name: "SubRip Subtitles", extensions: ["srt"] },
-            { name: "JSON", extensions: ["json"] },
-            { name: "Markdown", extensions: ["md"] },
-          ],
-        });
-
-        if (result.canceled || !result.filePath) return { success: false };
-
-        let exportContent: string;
-
-        if (parsed.data.format === "txt") {
-          exportContent = formatTxt(note, segments, speakerMappings);
-        } else if (parsed.data.format === "srt") {
-          exportContent = formatSrt(segments, speakerMappings, note);
-        } else if (parsed.data.format === "md") {
-          exportContent = formatMd(note, segments, speakerMappings);
-        } else {
-          exportContent = formatJson(note, segments, speakerMappings);
-        }
-
-        fs.writeFileSync(result.filePath, exportContent, "utf-8");
-
-        return { success: true };
-      } catch (error) {
-        logger.error("Error exporting transcript", { error: (error as Error).message }, "notes");
-
-        return { success: false, error: (error as Error).message };
-      }
-    }
-  );
-
-  ipcMain.handle(transcriptionDataChannels.exportDictionary, async (_event, words: unknown) => {
+  ipcMain.handle(transcriptionDataChannels.exportNote, async (_event, ...args: unknown[]) => {
     try {
-      const parsed = zWordList.safeParse(words);
+      const parsed = zNoteExportArgs.safeParse({ noteId: args[0], format: args[1] });
+
+      if (!parsed.success) return { success: false, error: "Invalid export request" };
+      const note = database.getNote(parsed.data.noteId);
+
+      if (!note) return { success: false, error: "Note not found" };
+
+      const ext = parsed.data.format === "txt" ? "txt" : "md";
+      const safeName = String(note.title || "Untitled").replace(SAFE_NAME_PATTERN, "-");
+
+      const result = await dialog.showSaveDialog({
+        defaultPath: `${safeName}.${ext}`,
+        filters: [
+          { name: "Markdown", extensions: ["md"] },
+          { name: "Text", extensions: ["txt"] },
+        ],
+      });
+
+      if (result.canceled || !result.filePath) return { success: false };
+
+      const exportContent =
+        parsed.data.format === "txt"
+          ? formatTxtContent(note.content)
+          : note.enhanced_content || note.content;
+
+      fs.writeFileSync(result.filePath, exportContent ?? "", "utf-8");
+
+      return { success: true };
+    } catch (error) {
+      logger.error("Error exporting note", { error: messageOf(error) }, "notes");
+
+      return { success: false, error: messageOf(error) };
+    }
+  });
+
+  ipcMain.handle(transcriptionDataChannels.exportTranscript, async (_event, ...args: unknown[]) => {
+    try {
+      const parsed = zTranscriptExportArgs.safeParse({ noteId: args[0], format: args[1] });
+
+      if (!parsed.success) return { success: false, error: "Invalid export request" };
+      const note = database.getNote(parsed.data.noteId);
+
+      if (!note) return { success: false, error: "Note not found" };
+
+      // SAFETY: the transcript column is written by this app as JSON of the
+      // exported segment shape, so the persisted string decodes directly.
+      const segments = JSON.parse(note.transcript || "[]") as TranscriptExportSegment[];
+
+      if (!segments.length) return { success: false, error: "No transcript available" };
+
+      const speakerMappings = deps.buildSpeakerMappings(parsed.data.noteId);
+      const extMap: TranscriptExtensions = { srt: "srt", json: "json", md: "md" };
+      const ext = extMap[parsed.data.format] || "txt";
+      const safeName = String(note.title || "Untitled").replace(SAFE_NAME_PATTERN, "-");
+
+      const result = await dialog.showSaveDialog({
+        defaultPath: `${safeName}.${ext}`,
+        filters: [
+          { name: "Text", extensions: ["txt"] },
+          { name: "SubRip Subtitles", extensions: ["srt"] },
+          { name: "JSON", extensions: ["json"] },
+          { name: "Markdown", extensions: ["md"] },
+        ],
+      });
+
+      if (result.canceled || !result.filePath) return { success: false };
+
+      let exportContent: string;
+
+      if (parsed.data.format === "txt") {
+        exportContent = formatTxt(note, segments, speakerMappings);
+      } else if (parsed.data.format === "srt") {
+        exportContent = formatSrt(segments, speakerMappings, note);
+      } else if (parsed.data.format === "md") {
+        exportContent = formatMd(note, segments, speakerMappings);
+      } else {
+        exportContent = formatJson(note, segments, speakerMappings);
+      }
+
+      fs.writeFileSync(result.filePath, exportContent, "utf-8");
+
+      return { success: true };
+    } catch (error) {
+      logger.error("Error exporting transcript", { error: messageOf(error) }, "notes");
+
+      return { success: false, error: messageOf(error) };
+    }
+  });
+
+  ipcMain.handle(transcriptionDataChannels.exportDictionary, async (_event, ...args: unknown[]) => {
+    try {
+      const parsed = zWordList.safeParse(args[0]);
 
       if (!parsed.success) return { success: false, error: "Invalid dictionary export request" };
 
@@ -473,14 +543,14 @@ export function registerTranscriptionDataHandlers(
 
       return { success: true };
     } catch (error) {
-      logger.error("Error exporting dictionary", { error: (error as Error).message }, "dictionary");
+      logger.error("Error exporting dictionary", { error: messageOf(error) }, "dictionary");
 
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: messageOf(error) };
     }
   });
 
-  ipcMain.handle(transcriptionDataChannels.selectAudioFile, async (_event, options: unknown) => {
-    const parsed = zSelectOptions.safeParse(options ?? {});
+  ipcMain.handle(transcriptionDataChannels.selectAudioFile, async (_event, ...args: unknown[]) => {
+    const parsed = zSelectOptions.safeParse(args[0] ?? {});
 
     if (!parsed.success) return { canceled: true };
     const multiple = parsed.data.multiple === true;
@@ -514,13 +584,15 @@ export function registerTranscriptionDataHandlers(
 
   // Fired by the preload's getPathForFile for real drag-dropped files; a
   // renderer-constructed File yields "" there, so this can't be forged.
-  ipcMain.on(transcriptionDataChannels.approveAudioPath, (_event, filePath: unknown) => {
-    approveAudioPath(filePath);
+  ipcMain.on(transcriptionDataChannels.approveAudioPath, (_event, ...args: unknown[]) => {
+    approveAudioPath(args[0]);
   });
 
-  ipcMain.handle(transcriptionDataChannels.getFileSize, async (_event, filePath: unknown) => {
+  ipcMain.handle(transcriptionDataChannels.getFileSize, async (_event, ...args: unknown[]) => {
     try {
-      if (typeof filePath !== "string") return 0;
+      const filePath = args[0];
+
+      if (!isString(filePath)) return 0;
       const real = resolveAllowedAudioPath(filePath);
 
       if (!real) return 0;
@@ -532,8 +604,8 @@ export function registerTranscriptionDataHandlers(
     }
   });
 
-  ipcMain.handle(transcriptionDataChannels.agentOpenNote, async (_event, noteId: unknown) => {
-    const parsed = zObjectId.safeParse(noteId);
+  ipcMain.handle(transcriptionDataChannels.agentOpenNote, async (_event, ...args: unknown[]) => {
+    const parsed = zObjectId.safeParse(args[0]);
 
     if (!parsed.success) {
       return { success: false, error: "Invalid note id" };
@@ -541,6 +613,7 @@ export function registerTranscriptionDataHandlers(
 
     try {
       const note = database.getNote(parsed.data);
+
       await deps.queueNoteNavigation({
         noteId: parsed.data,
         folderId: note?.folder_id ?? null,
@@ -550,7 +623,7 @@ export function registerTranscriptionDataHandlers(
     } catch (error) {
       logger.error("Failed to open note from agent:", error);
 
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: messageOf(error) };
     }
   });
 
@@ -562,6 +635,25 @@ export function registerTranscriptionDataHandlers(
 // The shared boundary parsers for this module (ids are DB rowids; the update
 // args mirror the positional channel arguments).
 const zObjectId = z.number().int();
+
+const zSaveTranscriptionArgs = z.tuple([
+  z.string(),
+  z.string().nullish(),
+  z
+    .object({
+      status: z.string().optional(),
+      errorMessage: z.string().nullish(),
+      errorCode: z.string().nullish(),
+      routeKind: z.string().nullish(),
+      occurredAt: z.unknown().optional(),
+    })
+    .nullish(),
+]);
+
+const zGetTranscriptionsArgs = z.tuple([
+  z.number().nullish(),
+  z.object({ includeDiscarded: z.boolean().optional() }).nullish(),
+]);
 
 const zUpdateArgs = z.object({
   id: z.number().int(),

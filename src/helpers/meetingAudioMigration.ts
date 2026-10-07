@@ -6,6 +6,8 @@ import { convertMeetingPcm, inspectMeetingOpus } from "./meetingOpus.js";
 
 /** Bootstrap cutover: until the transaction commits, every PCM original remains usable. */
 export function migrateMeetingAudio(database: SqliteDatabase, userData: string): void {
+  // SAFETY: this query selects the sqlite_master row for the table we created,
+  // so a syntax-only read of its schema is the migration contract.
   const schema = database
     .prepare("SELECT sql FROM sqlite_master WHERE name = 'meeting_recording_epochs'")
     .get() as { sql: string };
@@ -16,6 +18,8 @@ export function migrateMeetingAudio(database: SqliteDatabase, userData: string):
     return;
   }
 
+  // SAFETY: the join selects the migration columns this function created; the
+  // .all() result is the epoch list the migration loop then validates per row.
   const rows = database
     .prepare(
       "SELECT e.*, r.audio_state FROM meeting_recording_epochs e JOIN meeting_recordings r ON r.id = e.recording_id"
@@ -173,6 +177,8 @@ function removeMigratedPcm(database: SqliteDatabase, userData: string): void {
 
   if (!fs.existsSync(backup)) return;
 
+  // SAFETY: this is the migration table's two-column projection; each
+  // recording_id is schema-validated and the path is regex-checked below.
   const rows = database
     .prepare("SELECT recording_id, relative_path FROM meeting_recording_epochs")
     .all() as Array<{ recording_id: string; relative_path: string }>;

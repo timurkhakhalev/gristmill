@@ -119,7 +119,7 @@ Expected response: {"speakers":[]}`;
 
 export const MEETING_TITLE_INSTRUCTION = `Generate a concise 3–8 word meeting title in the main language of the conversation. Describe its main topic from the actual transcript, ignoring greetings and small talk. Do not invent details or infer a topic from calendar participants. If meaningful content is insufficient, return title: null. Return JSON only: {"title":"..."} or {"title":null}.`;
 
-export function meetingNamingInstruction(input: unknown): string {
+export function meetingNamingInstruction<T>(input: T): string {
   const parsed = meetingSpeakerNamingInputSchema.parse(input);
 
   const needsSpeakers = parsed.segments.some(
@@ -135,26 +135,28 @@ export function meetingNamingInstruction(input: unknown): string {
   return `${MEETING_SPEAKER_NAMING_INSTRUCTION.replaceAll('{"speakers":', '{"title":null,"speakers":')}\n\n${MEETING_TITLE_INSTRUCTION.split("Return JSON only:")[0]}Return JSON only: {"title": string or null, "speakers": [...]}.`;
 }
 
-export async function suggestMeetingSpeakerNames(
-  input: unknown,
+export async function suggestMeetingSpeakerNames<T>(
+  input: T,
   conversation: MeetingTextConversation
 ): Promise<{ speakers: Array<{ speakerId: string; name: string }>; title?: string | null }> {
   const parsedInput = meetingSpeakerNamingInputSchema.parse(input);
 
-  const unknownSpeakerIds = [
-    ...new Set(
-      parsedInput.segments
-        .filter(
-          (segment) =>
-            segment.speakerId !== null &&
-            (segment.speakerName === null || segment.speakerNameSource === "model")
-        )
-        .map((segment) => segment.speakerId as string)
-    ),
-  ];
-
   const ids = meetingPromptSpeakerIds(parsedInput.segments);
-  const sourceIds = new Map(unknownSpeakerIds.map((id) => [ids.get(id)!, id]));
+  const sourceIds = new Map<string, string>();
+
+  for (const segment of parsedInput.segments) {
+    if (
+      segment.speakerId === null ||
+      (segment.speakerName !== null && segment.speakerNameSource !== "model")
+    ) {
+      continue;
+    }
+
+    const promptId = ids.get(segment.speakerId);
+
+    if (promptId !== undefined) sourceIds.set(promptId, segment.speakerId);
+  }
+
   const allowed = new Set(sourceIds.keys());
 
   return requestMeetingJson({
@@ -201,10 +203,11 @@ export async function suggestMeetingSpeakerNames(
         ? {
             success: true,
             value: {
-              speakers: result.speakers.map((speaker) => ({
-                ...speaker,
-                speakerId: sourceIds.get(speaker.speakerId)!,
-              })),
+              speakers: result.speakers.flatMap((speaker) => {
+                const sourceId = sourceIds.get(speaker.speakerId);
+
+                return sourceId === undefined ? [] : [{ ...speaker, speakerId: sourceId }];
+              }),
               ...(parsedInput.generateTitle ? { title: shape.data.title } : {}),
             },
           }

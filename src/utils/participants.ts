@@ -60,8 +60,12 @@ export const resolveExpectedSpeakerCount = (
   let attendees: CalendarAttendee[];
 
   try {
-    const parsed = JSON.parse(note.participants);
-    attendees = Array.isArray(parsed) ? parsed : [];
+    const parsed: unknown = JSON.parse(note.participants);
+
+    // SAFETY: participants is written by the calendar sync as a JSON array of
+    // attendee objects; a non-array (or malformed) value yields none. Timestamp
+    // and self fields are only truthiness-checked, so extra shapes still count.
+    attendees = Array.isArray(parsed) ? (parsed as CalendarAttendee[]) : [];
   } catch {
     return null;
   }

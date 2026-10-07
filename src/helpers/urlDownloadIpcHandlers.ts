@@ -17,35 +17,37 @@ import {
   urlDownloadResultSchema,
   type CancelUrlDownloadResult,
   type DeleteTempFileResult,
+  type UrlDownloadProgress,
   type UrlDownloadResult,
 } from "../contracts/urlDownload.js";
+import type { UrlAudioDownloadResult } from "./urlAudioDownloader.js";
 
 export interface UrlDownloadHandlerDeps {
   download: (
     url: string,
-    onProgress: (progress: unknown) => void,
+    onProgress: (progress: UrlDownloadProgress) => void,
     signal: AbortSignal
-  ) => Promise<unknown>;
+  ) => Promise<UrlAudioDownloadResult>;
   sweepStaleTempArtifacts: () => void;
   getSafeTempDir: () => string;
   debugLogger: {
-    error(message: string, meta?: unknown): void;
-    warn(message: string, meta?: unknown): void;
+    error<T>(message: string, meta?: T): void;
+    warn<T>(message: string, meta?: T): void;
   };
 }
 
 interface ProgressSender {
-  send(channel: string, payload: unknown): void;
+  send(channel: string, payload: UrlDownloadProgress & { downloadId: string }): void;
   isDestroyed(): boolean;
 }
 
 interface IpcMainLike {
-  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): unknown;
+  handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
 }
 
-// Downloader results and progress come from untyped JS. Validate before use so
-// a shape drift surfaces as a failure result, not a silently-typed lie.
-function parseOrThrow<T>(schema: ZodType<T>, raw: unknown, message: string): T {
+// Downloader results and progress come from the untyped JS downloader. Validate
+// before use so a shape drift surfaces as a failure result, not a silently-typed lie.
+function parseOrThrow<T, Raw>(schema: ZodType<T>, raw: Raw, message: string): T {
   const result = schema.safeParse(raw);
 
   if (!result.success) {
@@ -53,6 +55,18 @@ function parseOrThrow<T>(schema: ZodType<T>, raw: unknown, message: string): T {
   }
 
   return result.data;
+}
+
+function isNonEmptyString<T>(value: T): value is T & string {
+  return typeof value === "string" && value !== "";
+}
+
+function isCodedError<T>(value: T): value is T & { code: string } {
+  return value instanceof Error && "code" in value && typeof value.code === "string";
+}
+
+function codedErrorCode<T>(error: T): string | undefined {
+  return isCodedError(error) ? error.code : undefined;
 }
 
 export function registerUrlDownloadHandlers(
@@ -81,6 +95,8 @@ export function registerUrlDownloadHandlers(
       }
 
       const [url, downloadId] = parsed.data;
+      // SAFETY: Electron invokes handlers with an IpcMainInvokeEvent whose
+      // sender provides isDestroyed/send; only those two members are used.
       const event = rawEvent as { sender: ProgressSender } | null;
 
       if (!event || !event.sender) {
@@ -91,8 +107,7 @@ export function registerUrlDownloadHandlers(
       // (old preload copies, CLI glue) historically passed anything; a missing,
       // empty or non-string id gets a generated one — exactly the tolerant
       // normalization the JS handlers did before parsing existed.
-      const id =
-        typeof downloadId === "string" && downloadId ? downloadId : `dl-${++urlDownloadSeq}`;
+      const id = isNonEmptyString(downloadId) ? downloadId : `dl-${++urlDownloadSeq}`;
 
       const abortController = new AbortController();
       activeUrlDownloads.set(id, abortController);
@@ -100,7 +115,7 @@ export function registerUrlDownloadHandlers(
       try {
         const result = await deps.download(
           url,
-          (progress: unknown) => {
+          (progress: UrlDownloadProgress) => {
             const validated = urlDownloadProgressSchema.safeParse(progress);
 
             if (!validated.success) {
@@ -119,20 +134,14 @@ export function registerUrlDownloadHandlers(
           abortController.signal
         );
 
-        const merged: unknown = { success: true, ...(result as Record<string, unknown>) };
-
         return parseOrThrow(
           urlDownloadResultSchema,
-          merged,
+          { success: true, ...result },
           "URL audio downloader returned an unexpected result shape"
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Download failed";
-
-        const code =
-          typeof (error as { code?: unknown })?.code === "string"
-            ? (error as { code: string }).code
-            : undefined;
+        const code = codedErrorCode(error);
 
         deps.debugLogger.error("URL audio download error", { error: message, code });
 
@@ -158,7 +167,7 @@ export function registerUrlDownloadHandlers(
 
       const [downloadId] = parsed.data;
 
-      if (typeof downloadId === "string" && downloadId) {
+      if (isNonEmptyString(downloadId)) {
         const controller = activeUrlDownloads.get(downloadId);
 
         if (!controller) return { success: false };
@@ -201,7 +210,10 @@ export function registerUrlDownloadHandlers(
 
         try {
           tempDir = fs.realpathSync(tempDir);
-        } catch {}
+        } catch {
+          // Keep the unresolved temp dir; the relative-path guard below still
+          // rejects anything outside it.
+        }
 
         const rel = path.relative(tempDir, real);
 

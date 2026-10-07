@@ -1,5 +1,7 @@
 import modelData from "../models/modelRegistryData.json";
 
+// SAFETY: modelRegistryData.json is this repo's own checked-in catalog; the
+// parakeetModels map is authored with these optional fields.
 const catalog = modelData.parakeetModels as Record<
   string,
   { organization?: { id: string }; modelType?: string; recommended?: boolean }

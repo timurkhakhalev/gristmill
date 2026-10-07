@@ -5,6 +5,8 @@ async function createTinfoilModel(apiKey: string, model: string): Promise<Langua
   const { createTinfoilAI } = await import("tinfoil");
   const provider = await createTinfoilAI(apiKey);
 
+  // SAFETY: tinfoil's provider callable returns an AI SDK LanguageModel; this
+  // is the lazy factory the shared createAIModel helper expects.
   return provider(model) as LanguageModel;
 }
 

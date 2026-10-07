@@ -107,11 +107,13 @@ export class OpusPages {
   }
 }
 
-export function inspectMeetingOpus(filePath: string): {
+export interface MeetingOpusInspection {
   frameCount: number;
   ignoredTrailingBytes: number;
   errorCode: string | null;
-} {
+}
+
+export function inspectMeetingOpus(filePath: string): MeetingOpusInspection {
   const fd = fs.openSync(filePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
   const pages = new OpusPages();
   let errorCode: string | null = null;

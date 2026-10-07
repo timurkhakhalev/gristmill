@@ -7,12 +7,18 @@ import { createAbortError } from "./abortError.js";
 
 let cachedFFmpegPath: string | null = null;
 
+function errorMessage<T>(error: T): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function getFFmpegPath(): string | null {
   if (cachedFFmpegPath) return cachedFFmpegPath;
 
   try {
+    // SAFETY: ffmpeg-static is bundled by build-main.js and exports the absolute
+    // binary path (or null) as its default; no wire data crosses this seam.
     const ffmpegStaticPath = require("ffmpeg-static") as string;
-    let ffmpegPath: string = path.normalize(ffmpegStaticPath as string);
+    let ffmpegPath: string = path.normalize(ffmpegStaticPath);
 
     if (process.platform === "win32" && !ffmpegPath.endsWith(".exe")) {
       ffmpegPath += ".exe";
@@ -31,7 +37,7 @@ export function getFFmpegPath(): string | null {
           try {
             fs.chmodSync(unpackedPath, 0o755);
           } catch (chmodErr) {
-            debugLogger.warn("Failed to chmod FFmpeg", { error: (chmodErr as Error).message });
+            debugLogger.warn("Failed to chmod FFmpeg", { error: errorMessage(chmodErr) });
           }
         }
       }
@@ -58,7 +64,7 @@ export function getFFmpegPath(): string | null {
       return ffmpegPath;
     }
   } catch (err) {
-    debugLogger.debug("Bundled FFmpeg not available", { error: (err as Error).message });
+    debugLogger.debug("Bundled FFmpeg not available", { error: errorMessage(err) });
   }
 
   const systemCandidates: string[] =
@@ -193,7 +199,7 @@ export function convertToWav(
 
     signal?.addEventListener("abort", onAbort, { once: true });
 
-    proc.stderr.on("data", (data) => {
+    proc.stderr.on("data", (data: Buffer) => {
       stderr += data.toString();
     });
 
@@ -430,7 +436,7 @@ export function splitAudioFile(
 
     signal?.addEventListener("abort", onAbort, { once: true });
 
-    proc.stderr.on("data", (data) => {
+    proc.stderr.on("data", (data: Buffer) => {
       stderr += data.toString();
     });
 
@@ -552,7 +558,7 @@ export async function mergeAudioSegments(segments: AudioSegmentBuffer[]): Promis
       });
 
       let stderr = "";
-      proc.stderr.on("data", (data) => {
+      proc.stderr.on("data", (data: Buffer) => {
         stderr += data.toString();
       });
       proc.on("error", (error) => reject(new Error(`FFmpeg process error: ${error.message}`)));

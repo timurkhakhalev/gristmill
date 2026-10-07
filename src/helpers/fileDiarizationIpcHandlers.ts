@@ -14,9 +14,39 @@ import {
   type DiarizationResult,
   type DiarizationSegment,
 } from "../contracts/uploadTranscription.js";
+import { z } from "zod";
+import type { MergedSpeakerSegment } from "./speakerMerge.js";
 import type { UploadCancelRegistry } from "./uploadCancelRegistry.js";
 
-type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
+type IpcMainLike = {
+  handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
+};
+
+// The merge handler keeps its historical tolerance: junk items are coerced
+// field-by-field (missing keys keep their defaults), never rejected.
+const sanitizedSegmentSchema = z
+  .object({
+    speaker: z
+      .string()
+      .transform((value) => value.slice(0, 100))
+      .catch("unknown")
+      .default("unknown"),
+    start: z.number().refine(Number.isFinite).catch(0).default(0),
+    end: z.number().refine(Number.isFinite).catch(0).default(0),
+  })
+  .catch({ speaker: "unknown", start: 0, end: 0 });
+
+function messageOf<T>(error: T): string | undefined {
+  return error instanceof Error ? error.message : undefined;
+}
+
+function nameOf<T>(error: T): string | undefined {
+  return error instanceof Error ? error.name : undefined;
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
 
 export interface FileDiarizationManager {
   isModelDownloaded(): boolean;
@@ -34,7 +64,7 @@ export interface FileDiarizationDeps {
     inputPath: string,
     outputPath: string,
     options?: { sampleRate?: number; channels?: number; signal?: AbortSignal }
-  ) => Promise<unknown>;
+  ) => Promise<void>;
   createTempWavPath: () => string;
   fileSize: (filePath: string) => number;
   resolveClusterThreshold: (durationSeconds: number, requestedThreshold?: number) => number;
@@ -46,21 +76,18 @@ export interface FileDiarizationDeps {
     segments: DiarizationSegment[],
     text: string,
     duration: number
-  ) => unknown;
-  formatSpeakerTranscript: (merged: unknown) => string;
+  ) => MergedSpeakerSegment[];
+  formatSpeakerTranscript: (merged: MergedSpeakerSegment[]) => string;
   uploadCancelRegistry: UploadCancelRegistry;
-  logDebug: (message: string, data?: unknown) => void;
-  logError: (message: string, data?: unknown) => void;
+  logDebug: <T>(message: string, data?: T) => void;
+  logError: <T>(message: string, data?: T) => void;
 }
 
 function cancelled(): DiarizationResult {
   return { success: false, error: "Cancelled", code: "UPLOAD_CANCELLED" };
 }
 
-function registerDiarizeHandler(
-  ipcMain: { handle(channel: string, listener: IpcEventListener): void },
-  deps: FileDiarizationDeps
-): void {
+function registerDiarizeHandler(ipcMain: IpcMainLike, deps: FileDiarizationDeps): void {
   ipcMain.handle(
     uploadTranscriptionChannels.diarizeAudioFile,
     async (_event, ...args: unknown[]) => {
@@ -93,7 +120,7 @@ function registerDiarizeHandler(
         // Cancel may have landed during the lazy model preparation above.
         if (signal?.aborted) return cancelled();
 
-        if (typeof filePathArg !== "string") {
+        if (!isString(filePathArg)) {
           return { success: false, error: "Invalid file path" };
         }
 
@@ -150,17 +177,15 @@ function registerDiarizeHandler(
           }
         }
       } catch (error) {
-        const err = error as { name?: string; message?: string };
-
-        if (err?.name === "AbortError" || signal?.aborted) {
+        if (nameOf(error) === "AbortError" || signal?.aborted) {
           deps.logDebug("Diarization cancelled", { requestId: options.requestId });
 
           return cancelled();
         }
 
-        deps.logError("Diarization error", { error: err?.message });
+        deps.logError("Diarization error", { error: messageOf(error) });
 
-        return { success: false, error: err?.message };
+        return { success: false, error: messageOf(error) };
       } finally {
         release();
       }
@@ -168,10 +193,7 @@ function registerDiarizeHandler(
   );
 }
 
-function registerMergeHandler(
-  ipcMain: { handle(channel: string, listener: IpcEventListener): void },
-  deps: FileDiarizationDeps
-): void {
+function registerMergeHandler(ipcMain: IpcMainLike, deps: FileDiarizationDeps): void {
   ipcMain.handle(
     uploadTranscriptionChannels.mergeSpeakerText,
     async (_event, ...args: unknown[]) => {
@@ -188,31 +210,22 @@ function registerMergeHandler(
           return { success: false, error: "Input too large" };
         }
 
-        const sanitizedSegments = segments.map((s) => {
-          const item = (typeof s === "object" && s !== null ? s : {}) as Record<string, unknown>;
-
-          return {
-            speaker: typeof item.speaker === "string" ? item.speaker.slice(0, 100) : "unknown",
-            start: typeof item.start === "number" && isFinite(item.start) ? item.start : 0,
-            end: typeof item.end === "number" && isFinite(item.end) ? item.end : 0,
-          };
-        });
+        const sanitizedSegments = segments.map((s) => sanitizedSegmentSchema.parse(s));
 
         const merged = deps.mergeSpeakersWithText(sanitizedSegments, text, duration);
 
         return { success: true, text: deps.formatSpeakerTranscript(merged) };
       } catch (error) {
-        const err = error as { message?: string };
-        deps.logError("Speaker merge error", { error: err?.message });
+        deps.logError("Speaker merge error", { error: messageOf(error) });
 
-        return { success: false, error: err?.message };
+        return { success: false, error: messageOf(error) };
       }
     }
   );
 }
 
 export function registerFileDiarizationHandlers(
-  ipcMain: { handle(channel: string, listener: IpcEventListener): void },
+  ipcMain: IpcMainLike,
   deps: FileDiarizationDeps
 ): void {
   registerDiarizeHandler(ipcMain, deps);

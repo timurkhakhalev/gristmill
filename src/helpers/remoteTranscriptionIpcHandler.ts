@@ -31,7 +31,19 @@ import {
 import type { UploadCancelRegistry } from "./uploadCancelRegistry.js";
 import type { TranscriptionProviderBaseUrl } from "../services/transcriptionBaseUrl.ts";
 
-const AUDIO_MIME_TYPES: Record<string, string> = {
+// JSON values the providers can return over the wire. Provider payloads are
+// validated field-by-field through the guards below before any read.
+type ProviderJson = string | number | boolean | null | ProviderJson[] | ProviderJsonObject;
+
+interface ProviderJsonObject {
+  [key: string]: ProviderJson;
+}
+
+interface AudioMimeTypes {
+  [extension: string]: string;
+}
+
+const AUDIO_MIME_TYPES: AudioMimeTypes = {
   mp3: "audio/mpeg",
   wav: "audio/wav",
   m4a: "audio/mp4",
@@ -42,6 +54,46 @@ const AUDIO_MIME_TYPES: Record<string, string> = {
   aac: "audio/aac",
   opus: "audio/ogg",
 };
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function isNumber<T>(value: T): value is T & number {
+  return typeof value === "number";
+}
+
+function isProviderObject<T>(value: T): value is T & ProviderJsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isProviderArray<T>(value: T): value is T & ProviderJson[] {
+  return Array.isArray(value);
+}
+
+function asRecord<T>(value: T): (T & ProviderJsonObject) | null {
+  return isProviderObject(value) ? value : null;
+}
+
+function errorName<T>(error: T): string | undefined {
+  return error instanceof Error ? error.name : undefined;
+}
+
+function errorCode<T>(error: T): string | undefined {
+  if (!(error instanceof Error) || !("code" in error)) return undefined;
+
+  const code: unknown = error.code;
+
+  return isString(code) ? code : undefined;
+}
+
+function errorMessageKey<T>(error: T): string | undefined {
+  if (!(error instanceof Error) || !("messageKey" in error)) return undefined;
+
+  const messageKey: unknown = error.messageKey;
+
+  return isString(messageKey) ? messageKey : undefined;
+}
 
 // Which diarization dialect a resolved endpoint speaks, for Custom endpoints
 // that front a known provider. Null when the host offers no known dialect.
@@ -60,12 +112,21 @@ function diarizationHost(endpoint: string): string | null {
   return null;
 }
 
+interface MultipartFields {
+  [name: string]: string | number | boolean | null | undefined;
+}
+
+export interface MultipartBody {
+  body: Buffer;
+  boundary: string;
+}
+
 export function buildMultipartBody(
   fileBuffer: Buffer,
   fileName: string,
   contentType: string,
-  fields: Record<string, unknown> = {}
-): { body: Buffer; boundary: string } {
+  fields: MultipartFields = {}
+): MultipartBody {
   const boundary = `----Gristmill${Date.now()}`;
   const parts: Array<string | Buffer> = [];
 
@@ -89,7 +150,7 @@ export function buildMultipartBody(
 
   parts.push(`--${boundary}--\r\n`);
 
-  const bodyParts = parts.map((p) => (typeof p === "string" ? Buffer.from(p) : p));
+  const bodyParts = parts.map((p) => (isString(p) ? Buffer.from(p) : p));
 
   return { body: Buffer.concat(bodyParts), boundary };
 }
@@ -137,7 +198,7 @@ export interface RemoteTranscriptionDeps {
     diarize: boolean;
     apiKey: string;
     signal?: AbortSignal;
-    onRawResponse?: (response: unknown) => Promise<void>;
+    onRawResponse?: <T>(response: T) => Promise<void>;
   }) => Promise<RemoteTranscriptionResult>;
   transcribeWithCorti: (args: {
     environment?: string;
@@ -154,14 +215,16 @@ export interface RemoteTranscriptionDeps {
   getGeminiKey: () => string;
   // The shared registry instance — one per app, never per request.
   uploadCancelRegistry: UploadCancelRegistry;
-  logDebug: (message: string, data?: unknown) => void;
-  logWarn: (message: string, data?: unknown) => void;
-  logError: (message: string, data?: unknown) => void;
+  logDebug: <T>(message: string, data?: T) => void;
+  logWarn: <T>(message: string, data?: T) => void;
+  logError: <T>(message: string, data?: T) => void;
 }
 
-type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
+type IpcMainLike = {
+  handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
+};
 
-function parseResult(raw: unknown): RemoteTranscriptionResult {
+function parseResult(raw: PostMultipartResult["data"]): RemoteTranscriptionResult {
   const result = remoteTranscriptionResponseSchema.safeParse(raw);
 
   if (!result.success) {
@@ -171,29 +234,31 @@ function parseResult(raw: unknown): RemoteTranscriptionResult {
   return result.data;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
 function cancelled(): RemoteTranscriptionResult {
   return { success: false, error: "Cancelled", code: "UPLOAD_CANCELLED" };
+}
+
+function stringifyScalar(value: ProviderJson | undefined): string | undefined {
+  if (value === undefined || value === null) return undefined;
+
+  return isProviderObject(value) || isProviderArray(value) ? undefined : String(value);
 }
 
 // Project the providers' diarized payloads (Mistral `speakers`, OpenAI
 // `segments`) onto checked wire segments; junk items degrade the way the
 // original JS did (falsy ids/labels fall back, timing coerces to 0).
 function projectDiarizedSegments(
-  items: unknown[],
-  label: (item: Record<string, unknown>) => string
+  items: ProviderJson[],
+  label: (item: ProviderJsonObject) => string
 ): Array<{ speaker: string; text: string; start: number; end: number }> {
   return items.map((item) => {
     const record = asRecord(item) ?? {};
-    const start = typeof record.start === "number" ? record.start : 0;
-    const end = typeof record.end === "number" ? record.end : 0;
+    const start = isNumber(record.start) ? record.start : 0;
+    const end = isNumber(record.end) ? record.end : 0;
 
     return {
       speaker: label(record),
-      text: typeof record.text === "string" ? record.text : "",
+      text: isString(record.text) ? record.text : "",
       start,
       end,
     };
@@ -208,46 +273,43 @@ function formatDiarizedTranscript(
     .join("\n\n");
 }
 
-export function parseOpenAIFileResponse(
-  raw: unknown,
+export function parseOpenAIFileResponse<T>(
+  raw: T,
   diarize: boolean,
   timestamps = false
 ): RemoteTranscriptionResult {
   const response = asRecord(raw);
 
-  if (diarize && Array.isArray(response?.segments)) {
-    const segments = projectDiarizedSegments(response.segments, (item) =>
-      String(item.speaker || "Speaker ?")
+  if (diarize && isProviderArray(response?.segments)) {
+    const segments = projectDiarizedSegments(
+      response.segments,
+      (item) => stringifyScalar(item.speaker) || "Speaker ?"
     );
 
-    const text = segments.length ? formatDiarizedTranscript(segments) : response.text;
+    const fallback = response.text;
+    const text = segments.length ? formatDiarizedTranscript(segments) : fallback;
 
     return {
       success: true,
-      ...(typeof text === "string" ? { text } : {}),
+      ...(isString(text) ? { text } : {}),
       diarized: true,
       segments,
     };
   }
 
-  const segments = timestamps ? mapVerboseSegments(raw) : null;
+  const mappedSegments = timestamps ? mapVerboseSegments(raw) : null;
 
   return {
     success: true,
-    ...(typeof response?.text === "string" ? { text: response.text } : {}),
-    ...(segments ? { segments } : {}),
+    ...(isString(response?.text) ? { text: response.text } : {}),
+    ...(mappedSegments ? { segments: mappedSegments } : {}),
   };
 }
 
-function errorMessageFromStatus(
-  data: { statusCode: number; data: unknown },
-  prefix: string
-): string {
+function errorMessageFromStatus(data: PostMultipartResult, prefix: string): string {
   const error = asRecord(data.data)?.error;
-
-  const message =
-    (asRecord(error)?.message as string | undefined) ||
-    (typeof error === "string" ? error : undefined);
+  const nested = asRecord(error)?.message;
+  const message = (isString(nested) && nested) || (isString(error) && error) || undefined;
 
   return message || `${prefix} ${data.statusCode}`;
 }
@@ -256,7 +318,7 @@ export async function transcribeAudioFileByok(
   deps: RemoteTranscriptionDeps,
   payload: RemoteTranscriptionRequest,
   internal: {
-    onRawProviderResponse?: (response: unknown) => Promise<void>;
+    onRawProviderResponse?: <T>(response: T) => Promise<void>;
     signal?: AbortSignal;
   } = {}
 ): Promise<RemoteTranscriptionResult> {
@@ -329,7 +391,12 @@ export async function transcribeAudioFileByok(
         throw new Error(errorMessageFromStatus(data, "Self-hosted API Error:"));
       }
 
-      return parseResult({ success: true, text: asRecord(data.data)?.text as string | undefined });
+      const selfHostedText = asRecord(data.data)?.text;
+
+      return parseResult({
+        success: true,
+        ...(isString(selfHostedText) ? { text: selfHostedText } : {}),
+      });
     }
 
     const fileSize = deps.fileSize(realByok);
@@ -563,7 +630,7 @@ export async function transcribeAudioFileByok(
     // mistral/xai have no OpenAI-compatible endpoint — talk to them
     // directly; everything else consumes the route endpoint as-is.
     let transcriptionUrl: string;
-    const multipartFields: Record<string, unknown> = {};
+    const multipartFields: MultipartFields = {};
 
     if (route.provider === "xai") {
       transcriptionUrl = XAI_STT_URL;
@@ -652,9 +719,10 @@ export async function transcribeAudioFileByok(
 
     const payloadRecord = asRecord(data.data);
 
-    if (diarize && Array.isArray(payloadRecord?.speakers)) {
-      const segments = projectDiarizedSegments(payloadRecord.speakers, (item) =>
-        String(item.id || `Speaker ${item.speaker || "?"}`)
+    if (diarize && isProviderArray(payloadRecord?.speakers)) {
+      const segments = projectDiarizedSegments(
+        payloadRecord.speakers,
+        (item) => stringifyScalar(item.id) || `Speaker ${stringifyScalar(item.speaker) || "?"}`
       );
 
       return parseResult({
@@ -674,33 +742,37 @@ export async function transcribeAudioFileByok(
 
     return parseResult({
       success: true,
-      ...(typeof text === "string" ? { text } : {}),
+      ...(isString(text) ? { text } : {}),
       ...(segments ? { segments } : {}),
     });
   } catch (error) {
-    const err = error as { name?: string; message?: string; code?: string; messageKey?: string };
-
-    if (err?.name === "AbortError" || signal?.aborted) {
+    if (errorName(error) === "AbortError" || signal?.aborted) {
       deps.logDebug("BYOK audio file transcription cancelled", { requestId: payload.requestId });
 
       return cancelled();
     }
 
-    deps.logError("BYOK audio file transcription error", { error: err?.message });
+    const message = error instanceof Error ? error.message : String(error);
+    const code = errorCode(error);
+    const messageKey = errorMessageKey(error);
+
+    deps.logError("BYOK audio file transcription error", { error: message });
 
     return {
       success: false,
-      error: err?.message,
+      error: message,
       ...(internal.onRawProviderResponse
         ? {
             code:
-              err?.code ||
-              (err?.name === "TypeError" ? "TRANSCRIPTION_TRANSPORT_ERROR" : "TRANSCRIPTION_ERROR"),
+              code ||
+              (errorName(error) === "TypeError"
+                ? "TRANSCRIPTION_TRANSPORT_ERROR"
+                : "TRANSCRIPTION_ERROR"),
           }
-        : err?.code
-          ? { code: err.code }
+        : code
+          ? { code }
           : {}),
-      ...(err?.messageKey ? { messageKey: err.messageKey } : {}),
+      ...(messageKey ? { messageKey } : {}),
     };
   } finally {
     release();
@@ -708,7 +780,7 @@ export async function transcribeAudioFileByok(
 }
 
 export function registerRemoteTranscriptionHandler(
-  ipcMain: { handle(channel: string, listener: IpcEventListener): void },
+  ipcMain: IpcMainLike,
   deps: RemoteTranscriptionDeps
 ): void {
   ipcMain.handle(
@@ -723,8 +795,7 @@ export function registerRemoteTranscriptionHandler(
 
         return {
           success: false,
-          error:
-            typeof filePath === "string" ? "Invalid transcription request" : "Invalid file path",
+          error: isString(filePath) ? "Invalid transcription request" : "Invalid file path",
         };
       }
 

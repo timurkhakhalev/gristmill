@@ -1,7 +1,10 @@
 import { execFile, type ExecFileOptionsWithStringEncoding } from "child_process";
+import { z } from "zod";
 import { resolveBundledBinary } from "./binaryResolver.js";
 
-const debugLogger = require("./debugLogger");
+// SAFETY: CJS require seam fixed by build-main.js bundling; the default
+// export's type is the module contract.
+const debugLogger = require("./debugLogger") as typeof import("./debugLogger.js").default;
 
 const COMMAND_TIMEOUT_MS = 3000;
 
@@ -126,11 +129,27 @@ export type SystemDefaultMicrophoneResolver = (options?: {
   refresh?: boolean;
 }) => Promise<SystemDefaultMicrophoneResult>;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+function errorMessage<T>(error: T): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
+// Native resolver output arrives as text from an OS command; these schemas
+// pin only the fields this module reads and tolerate everything else.
+const jsonMicrophoneSchema = z.looseObject({
+  name: z.string(),
+  id: z.string().nullish().catch(undefined),
+});
+
+const pactlSourceSchema = z.object({
+  name: z.string(),
+  description: z.string().nullish().catch(undefined),
+  properties: z
+    .looseObject({ "device.description": z.string().nullish().catch(undefined) })
+    .nullish()
+    .catch(undefined),
+});
+
+const pactlSourcesSchema = z.array(z.unknown());
 
 function runFile(
   command: string,
@@ -158,30 +177,38 @@ function runFile(
   });
 }
 
-export function parseJsonResult(output: unknown): NativeMicrophoneDescription | null {
-  const line = String(output || "")
+export function parseJsonResult(output: string): NativeMicrophoneDescription | null {
+  const line = output
     .split(/\r?\n/)
     .map((candidate) => candidate.trim())
     .filter(Boolean)
     .at(-1);
 
   if (!line) return null;
-  const result: unknown = JSON.parse(line);
+  let parsed: unknown;
 
-  if (!isRecord(result) || typeof result.name !== "string" || !result.name.trim()) return null;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+
+  const result = jsonMicrophoneSchema.safeParse(parsed);
+
+  if (!result.success || !result.data.name.trim()) return null;
 
   return {
-    name: result.name.trim(),
-    nativeId: typeof result.id === "string" && result.id ? result.id : undefined,
+    name: result.data.name.trim(),
+    nativeId: result.data.id || undefined,
   };
 }
 
-export function parseWpctlResult(output: unknown): NativeMicrophoneDescription | null {
-  const description = String(output || "").match(
+export function parseWpctlResult(output: string): NativeMicrophoneDescription | null {
+  const description = output.match(
     /^\s*(?:node\.description|device\.description)\s*=\s*"([^"]+)"/m
   )?.[1];
 
-  const name = String(output || "").match(/^\s*node\.name\s*=\s*"([^"]+)"/m)?.[1];
+  const name = output.match(/^\s*node\.name\s*=\s*"([^"]+)"/m)?.[1];
   const label = description || name;
 
   return label ? { name: label, nativeId: name || undefined } : null;
@@ -191,30 +218,28 @@ export function parsePactlSources(
   output: string,
   defaultSourceName: string
 ): NativeMicrophoneDescription | null {
-  let sources: unknown;
+  let parsed: unknown;
 
   try {
-    sources = JSON.parse(output);
+    parsed = JSON.parse(output);
   } catch {
     return null;
   }
 
-  if (!Array.isArray(sources)) return null;
+  const sources = pactlSourcesSchema.safeParse(parsed);
 
-  const source = sources.find(
-    (candidate): candidate is Record<string, unknown> =>
-      isRecord(candidate) && candidate.name === defaultSourceName
-  );
+  if (!sources.success) return null;
 
-  if (!source || typeof source.name !== "string") return null;
-  const properties = isRecord(source.properties) ? source.properties : null;
+  const source = sources.data
+    .map((candidate) => pactlSourceSchema.safeParse(candidate))
+    .find((result) => result.success && result.data.name === defaultSourceName);
 
-  const label =
-    (typeof source.description === "string" && source.description) ||
-    (typeof properties?.["device.description"] === "string" && properties["device.description"]) ||
-    source.name;
+  if (!source?.success) return null;
+  const { name, description, properties } = source.data;
 
-  return label ? { name: label, nativeId: source.name } : null;
+  const label = description || properties?.["device.description"] || name;
+
+  return label ? { name: label, nativeId: name } : null;
 }
 
 export function createSystemDefaultMicrophoneResolver({

@@ -19,6 +19,7 @@ import {
   type WebContents,
 } from "electron";
 import debugLogger from "./debugLogger.js";
+import type { MeetingNotificationPrompt } from "./windowConfig.js";
 import {
   createMeetingSystemAudioWatchdog,
   type MeetingSystemAudioWatchdog,
@@ -39,6 +40,7 @@ import {
   meetingMicIntentRequestSchema,
   meetingClockProbeRequestSchema,
   meetingOptionsSchema,
+  type MeetingStartResult,
 } from "../contracts/meetingCoordinator.js";
 import { createMeetingTranscriptionLifecycle } from "./meetingTranscriptionLifecycle.js";
 import {
@@ -63,17 +65,102 @@ const MEETING_SYSTEM_AUDIO_TICK_MS = 2000;
 // Level meters (in-app pill, companion) only need ~20 updates a second.
 const MEETING_SYSTEM_AUDIO_LEVEL_INTERVAL_MS = 50;
 
+interface MessageHolder {
+  message: string;
+}
+
+interface CodeHolder {
+  code: string;
+}
+
+interface MessageKeyHolder {
+  messageKey: string;
+}
+
+function hasStringMessage<T>(value: T): value is T & MessageHolder {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    typeof value.message === "string"
+  );
+}
+
+function hasStringCode<T>(value: T): value is T & CodeHolder {
+  return (
+    typeof value === "object" && value !== null && "code" in value && typeof value.code === "string"
+  );
+}
+
+function hasStringMessageKey<T>(value: T): value is T & MessageKeyHolder {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "messageKey" in value &&
+    typeof value.messageKey === "string"
+  );
+}
+
+function errorMessage<T>(error: T): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function requireMeetingDetectionEngine(
+  engine: MeetingCoordinatorDeps["meetingDetectionEngine"],
+  method: string
+): NonNullable<MeetingCoordinatorDeps["meetingDetectionEngine"]> {
+  if (engine) return engine;
+
+  // Reproduce the TypeError the old non-null assertion raised on a null engine,
+  // so the IPC failure message is unchanged.
+  throw new TypeError(`Cannot read properties of null (reading '${method}')`);
+}
+
+function isNumberValue<T>(value: T): value is T & number {
+  return typeof value === "number";
+}
+
+function isStringValue<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function isMeetingAudioSource<T>(value: T): value is T & MeetingAudioSource {
+  return value === "mic" || value === "system";
+}
+
+// The capture-start options forwarded by the transcription lifecycle; the IPC
+// boundary already parsed them with meetingOptionsSchema.
+interface MeetingStartOptions {
+  noteId?: number | null;
+  sessionId?: string;
+  groupId?: string;
+  autoEndEligible?: boolean;
+  manualMicMuted?: boolean;
+  restartSessionId?: string;
+  recordingConfig?: unknown;
+}
+
 export type MeetingAudioSource = "mic" | "system";
 
 export interface CoordinatorWindowLike {
   isDestroyed(): boolean;
-  webContents: { send(channel: string, payload?: unknown): void };
+  webContents: { send(channel: string, ...args: unknown[]): void };
+}
+
+// The pending meeting-note navigation payload the window manager parks for the
+// control panel. Its producer hands back an opaque value, so every field is
+// optional here; the preload still validates the wire shape before use.
+interface PendingMeetingNoteNavigationPayload {
+  noteId?: number;
+  folderId?: number | null;
+  event?: unknown;
+  trigger?: string;
 }
 
 export interface MeetingCoordinatorDeps {
   companionProfilePath?: string;
   companionEnabled?: boolean;
-  showCompanionReminder?(scope: MeetingRecordingScope): Promise<unknown> | void;
+  showCompanionReminder?(scope: MeetingRecordingScope): Promise<void> | void;
   dismissCompanionReminder?(scope: MeetingRecordingScope, sender?: WebContents): boolean;
   databaseManager: MeetingSpeakerRosterDatabase &
     import("./meetingCaptureSession.js").MeetingCaptureDatabase &
@@ -107,8 +194,8 @@ export interface MeetingCoordinatorDeps {
   // Narrow window-manager surface (notification window + note navigation +
   // owning window), owned by the composition root.
   getControlPanelWindow?(): CoordinatorWindowLike | null;
-  getMeetingNotificationData?(): unknown;
-  consumePendingMeetingNoteNavigation?(): unknown;
+  getMeetingNotificationData?(): MeetingNotificationPrompt | null;
+  consumePendingMeetingNoteNavigation?(): PendingMeetingNoteNavigationPayload | null;
   showNotificationWindow?(sender: WebContents): void;
   setMeetingCaptureState?(active: boolean): void;
   onCaptureStarted?(noteId: number): void;
@@ -120,15 +207,20 @@ interface MeetingSystemAudioPlan {
   strategy: "native" | "unsupported";
 }
 
-// Method syntax on purpose: method members stay parameter-bivariant, so test
-// fixtures may declare wider (unknown-event) listeners than Electron's own.
-// The rest args are any[] for the same reason Electron's own IpcMain types are.
+// Handler listeners stay parameter-bivariant (the `bivarianceHack` call
+// signature) so test fixtures may declare wider listeners than Electron's own
+// IpcMain types; the payloads are narrowed per handler before use.
+type IpcInvokeHandler<Result> = {
+  bivarianceHack(event: IpcMainInvokeEvent, ...args: unknown[]): Result;
+}["bivarianceHack"];
+
+type IpcEventListener = {
+  bivarianceHack(event: IpcMainEvent, ...args: unknown[]): void;
+}["bivarianceHack"];
+
 export type IpcMainLike = {
-  handle(
-    channel: string,
-    listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown
-  ): unknown;
-  on(channel: string, listener: (event: IpcMainEvent, ...args: any[]) => void): unknown;
+  handle<Result>(channel: string, listener: IpcInvokeHandler<Result>): void;
+  on(channel: string, listener: IpcEventListener): void;
 };
 
 export interface MeetingRecordingScope {
@@ -164,14 +256,6 @@ export interface MeetingCoordinatorRuntime {
   resolveOneOnOneOtherParticipant(
     participantsJson: string | null | undefined
   ): { displayName: string; email: string | null } | null;
-}
-
-interface MeetingStartFailure {
-  success: false;
-  error: string;
-  code?: string;
-  messageKey?: string;
-  [key: string]: unknown;
 }
 
 export function registerMeetingCoordinatorHandlers(
@@ -246,9 +330,13 @@ export function registerMeetingCoordinatorHandlers(
     },
     leave: (binding) => {
       deps.preparePlatformLeave?.(binding.sessionId);
-      void requestSafeStop({ expected: binding, reason: "platform-leave" });
+      requestSafeStop({ expected: binding, reason: "platform-leave" }).catch(() => {});
     },
-    remind: (scope) => deps.showCompanionReminder?.(scope),
+    remind: (scope) => {
+      const reminder = deps.showCompanionReminder?.(scope);
+
+      if (reminder) reminder.catch(() => {});
+    },
     observe: (binding, context) => {
       if (meetCoverage) meetCoverage.reads++;
       const clock = browserClocks.get(browserClockKey(binding.connectionId, binding.ref));
@@ -359,7 +447,12 @@ export function registerMeetingCoordinatorHandlers(
           let clock = browserClocks.get(key);
 
           if (!clock || clock.generation !== origin.helperGeneration) {
-            if (browserClocks.size >= 128) browserClocks.delete(browserClocks.keys().next().value!);
+            if (browserClocks.size >= 128) {
+              const oldest = browserClocks.keys().next().value;
+
+              if (oldest !== undefined) browserClocks.delete(oldest);
+            }
+
             const sync = new MeetingClockSync();
             sync.reset(origin.helperGeneration);
             clock = { sync, generation: origin.helperGeneration, replies: new Map() };
@@ -378,8 +471,12 @@ export function registerMeetingCoordinatorHandlers(
             .then((reply) => {
               if (browserClocks.get(key) !== pendingClock) return;
 
-              if (pendingClock.replies.size >= 8)
-                pendingClock.replies.delete(pendingClock.replies.keys().next().value!);
+              if (pendingClock.replies.size >= 8) {
+                const oldestReply = pendingClock.replies.keys().next().value;
+
+                if (oldestReply !== undefined) pendingClock.replies.delete(oldestReply);
+              }
+
               pendingClock.replies.set(message.nonce, reply);
               send({
                 version: 1,
@@ -405,36 +502,30 @@ export function registerMeetingCoordinatorHandlers(
   if (deps.companionEnabled === false) companion.setEnabled(false);
   let companionStarted: Promise<void> | null = null;
   let companionTicker: NodeJS.Timeout | null = null;
-  ipcMain.handle(
-    meetingCoordinatorChannels.finishPausedMeetRecording,
-    (event, recordingId: unknown) => {
-      if (
-        event.sender !== deps.getControlPanelWindow?.()?.webContents ||
-        recordingId !== pausedRecording?.recordingId
-      )
-        return { success: false };
-      pausedRecording = null;
-      companionServer?.broadcastSnapshot();
+  ipcMain.handle(meetingCoordinatorChannels.finishPausedMeetRecording, (event, recordingId) => {
+    if (
+      event.sender !== deps.getControlPanelWindow?.()?.webContents ||
+      recordingId !== pausedRecording?.recordingId
+    )
+      return { success: false };
+    pausedRecording = null;
+    companionServer?.broadcastSnapshot();
 
-      return { success: true };
-    }
-  );
-  ipcMain.handle(
-    meetingCoordinatorChannels.respondMeetContextReminder,
-    async (event, request: unknown) => {
-      const parsed = companionReminderResponseSchema.safeParse(request);
+    return { success: true };
+  });
+  ipcMain.handle(meetingCoordinatorChannels.respondMeetContextReminder, async (event, request) => {
+    const parsed = companionReminderResponseSchema.safeParse(request);
 
-      if (!parsed.success) return { success: false };
-      const { action, ...scope } = parsed.data;
+    if (!parsed.success) return { success: false };
+    const { action, ...scope } = parsed.data;
 
-      if (!deps.dismissCompanionReminder?.(scope, event.sender)) return { success: false };
+    if (!deps.dismissCompanionReminder?.(scope, event.sender)) return { success: false };
 
-      if (action === "dismiss") return { success: true };
+    if (action === "dismiss") return { success: true };
 
-      return requestSafeStop({ expected: scope, reason: "context-reminder" });
-    }
-  );
-  ipcMain.handle(meetingCoordinatorChannels.claimMeetingAutoEnd, (event, sessionId: unknown) => {
+    return requestSafeStop({ expected: scope, reason: "context-reminder" });
+  });
+  ipcMain.handle(meetingCoordinatorChannels.claimMeetingAutoEnd, (event, sessionId) => {
     if (
       event.sender !== activeCaptureOwner ||
       sessionId !== activeCaptureSessionId ||
@@ -449,19 +540,16 @@ export function registerMeetingCoordinatorHandlers(
     return { success: true };
   });
   ipcMain.handle(meetingCoordinatorChannels.getMeetCompanionStatus, () => companion.status());
-  ipcMain.handle(
-    meetingCoordinatorChannels.confirmMeetCompanionBinding,
-    (event, request: unknown) => {
-      const parsed = companionSelectionSchema.safeParse(request);
+  ipcMain.handle(meetingCoordinatorChannels.confirmMeetCompanionBinding, (event, request) => {
+    const parsed = companionSelectionSchema.safeParse(request);
 
-      return {
-        success:
-          parsed.success &&
-          event.sender === activeCaptureOwner &&
-          companion.confirm(parsed.data.expected, parsed.data.candidate),
-      };
-    }
-  );
+    return {
+      success:
+        parsed.success &&
+        event.sender === activeCaptureOwner &&
+        companion.confirm(parsed.data.expected, parsed.data.candidate),
+    };
+  });
 
   const rosterDeps = {
     databaseManager,
@@ -578,7 +666,7 @@ export function registerMeetingCoordinatorHandlers(
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
@@ -590,14 +678,16 @@ export function registerMeetingCoordinatorHandlers(
     return { success: true };
   });
 
-  const meetingFailure = (error: unknown): MeetingStartFailure => {
-    const err = error as { message?: string; code?: string; messageKey?: string };
+  const meetingFailure = <T>(error: T): MeetingStartResult => {
+    const message = hasStringMessage(error) ? error.message : "";
+    const code = hasStringCode(error) ? error.code : "";
+    const messageKey = hasStringMessageKey(error) ? error.messageKey : "";
 
     return {
       success: false,
-      error: err?.message || String(error),
-      ...(err?.code ? { code: err.code } : {}),
-      ...(err?.messageKey ? { messageKey: err.messageKey } : {}),
+      error: message || String(error),
+      ...(code ? { code } : {}),
+      ...(messageKey ? { messageKey } : {}),
     };
   };
 
@@ -606,16 +696,16 @@ export function registerMeetingCoordinatorHandlers(
 
   const startMeetingTranscription = async (
     event: { sender: WebContents },
-    options: Record<string, unknown> = {}
-  ) => {
+    options: MeetingStartOptions = {}
+  ): Promise<MeetingStartResult> => {
     if (shuttingDown) return { success: false, error: "Meeting capture is shutting down" };
 
     if (activeCaptureSession || meetingTranscriptionStartInProgress) {
       return { success: false, error: "Meeting capture is already active" };
     }
 
-    const noteId = typeof options.noteId === "number" ? options.noteId : null;
-    const sessionId = typeof options.sessionId === "string" ? options.sessionId : "";
+    const noteId = isNumberValue(options.noteId) ? options.noteId : null;
+    const sessionId = isStringValue(options.sessionId) ? options.sessionId : "";
 
     if (!noteId || !Number.isSafeInteger(noteId) || noteId < 1 || !sessionId) {
       return { success: false, error: "A saved note and capture session are required" };
@@ -640,7 +730,7 @@ export function registerMeetingCoordinatorHandlers(
         recordingConfig,
         startedAt,
         undefined,
-        typeof options.groupId === "string" ? options.groupId : undefined,
+        isStringValue(options.groupId) ? options.groupId : undefined,
         options.manualMicMuted === true
       );
     } catch (error) {
@@ -690,12 +780,11 @@ export function registerMeetingCoordinatorHandlers(
         systemAudioAvailable: false,
       });
 
-      const restartCandidate =
-        typeof options.restartSessionId === "string"
-          ? lastStoppedBinding?.sessionId === options.restartSessionId
-            ? lastStoppedBinding.candidate
-            : null
-          : undefined;
+      const restartCandidate = isStringValue(options.restartSessionId)
+        ? lastStoppedBinding?.sessionId === options.restartSessionId
+          ? lastStoppedBinding.candidate
+          : null
+        : undefined;
 
       companion.start({ recordingId: capture.recordingId, sessionId }, restartCandidate);
       capture.initializePlatformMute(platformMuted);
@@ -761,11 +850,11 @@ export function registerMeetingCoordinatorHandlers(
     }
   };
 
-  const sendMeetingAudio = (
-    audioBuffer: unknown,
-    source: MeetingAudioSource,
-    sessionId: string,
-    packet: { epochIndex: number; epochStartFrame: number; sequence: number; sampleOffset: number }
+  const sendMeetingAudio = <Audio, Source, Session, Packet>(
+    audioBuffer: Audio,
+    source: Source,
+    sessionId: Session,
+    packet: Packet
   ) => {
     const capture = activeCaptureSession;
 
@@ -777,14 +866,16 @@ export function registerMeetingCoordinatorHandlers(
       throw new Error("Meeting capture packet must be an ArrayBuffer");
     }
 
-    if (source !== "mic" && source !== "system") {
+    if (!isMeetingAudioSource(source)) {
       throw new Error("Meeting capture source is invalid");
     }
 
     const parsedPacket = meetingCapturePacketSchema.safeParse(packet);
 
     if (!parsedPacket.success) throw new Error("Meeting capture packet metadata is invalid");
+
     const raw = Buffer.isBuffer(audioBuffer) ? audioBuffer : Buffer.from(audioBuffer);
+
     capture.appendRendererSamples(source, parsedPacket.data, raw);
     meetingDetectionEngine?.recordMeetingAudioChunk(source, raw);
 
@@ -873,7 +964,9 @@ export function registerMeetingCoordinatorHandlers(
             }
 
             if (activeCaptureSessionId) {
-              void stopMeetingTranscription(activeCaptureSessionId, { incomplete: true });
+              stopMeetingTranscription(activeCaptureSessionId, { incomplete: true }).catch(
+                () => {}
+              );
             }
           }
         },
@@ -916,29 +1009,11 @@ export function registerMeetingCoordinatorHandlers(
     await startCapture();
   };
 
-  ipcMain.handle(
-    "meeting-transcription-send",
-    (
-      _event,
-      audioBuffer: unknown,
-      source: MeetingAudioSource,
-      sessionId: string,
-      packet: unknown
-    ) =>
-      sendMeetingAudio(
-        audioBuffer,
-        source,
-        sessionId,
-        packet as {
-          epochIndex: number;
-          epochStartFrame: number;
-          sequence: number;
-          sampleOffset: number;
-        }
-      )
+  ipcMain.handle("meeting-transcription-send", (_event, audioBuffer, source, sessionId, packet) =>
+    sendMeetingAudio(audioBuffer, source, sessionId, packet)
   );
 
-  ipcMain.handle("meeting-transcription-set-mic-intent", async (event, request: unknown) => {
+  ipcMain.handle("meeting-transcription-set-mic-intent", async (event, request) => {
     const parsed = meetingMicIntentRequestSchema.safeParse(request);
 
     if (!parsed.success) return { success: false, error: "Microphone intent request is invalid" };
@@ -966,7 +1041,7 @@ export function registerMeetingCoordinatorHandlers(
     }
   });
 
-  ipcMain.handle("meeting-transcription-probe-clock", async (event, request: unknown) => {
+  ipcMain.handle("meeting-transcription-probe-clock", async (event, request) => {
     const parsed = meetingClockProbeRequestSchema.safeParse(request);
     const capture = activeCaptureSession;
 
@@ -1099,6 +1174,8 @@ export function registerMeetingCoordinatorHandlers(
 
   const meetingTranscriptionLifecycle = createMeetingTranscriptionLifecycle({
     start: ({ sessionId, ownerWebContents, options }) =>
+      // SAFETY: startSession is only invoked from the IPC handler with a live
+      // event.sender; the lifecycle's own owner-loss path never starts a session.
       startMeetingTranscription(
         { sender: ownerWebContents as WebContents },
         { ...options, sessionId }
@@ -1164,17 +1241,19 @@ export function registerMeetingCoordinatorHandlers(
       const owner = activeCaptureOwner;
 
       if (!owner || owner.isDestroyed()) {
-        void meetingTranscriptionLifecycle
+        meetingTranscriptionLifecycle
           .stopSession(sessionId, { incomplete: true, suppressProcessing })
-          .then((result) => settle({ success: result.success, captureState: result.captureState }));
+          .then((result) => settle({ success: result.success, captureState: result.captureState }))
+          .catch(() => {});
 
         return;
       }
 
       timeout = setTimeout(() => {
-        void meetingTranscriptionLifecycle
+        meetingTranscriptionLifecycle
           .stopSession(sessionId, { incomplete: true, suppressProcessing })
-          .then((result) => settle({ success: result.success, captureState: result.captureState }));
+          .then((result) => settle({ success: result.success, captureState: result.captureState }))
+          .catch(() => {});
       }, 5000);
       owner.send("meeting-transcription-stop-requested", {
         sessionId,
@@ -1193,15 +1272,15 @@ export function registerMeetingCoordinatorHandlers(
     return pendingSafeStop;
   };
 
-  ipcMain.handle("meeting-transcription-start", (event, options: Record<string, unknown> = {}) => {
+  ipcMain.handle("meeting-transcription-start", (event, options) => {
     if (shuttingDown) return { success: false, error: "Meeting capture is shutting down" };
-    const parsed = meetingOptionsSchema.safeParse(options);
+    const parsed = meetingOptionsSchema.safeParse(options === undefined ? {} : options);
 
     if (!parsed.success)
       return meetingFailure(new Error("Meeting capture start request is invalid"));
 
     const sessionId =
-      typeof parsed.data.sessionId === "string" && parsed.data.sessionId.length > 0
+      isStringValue(parsed.data.sessionId) && parsed.data.sessionId.length > 0
         ? parsed.data.sessionId
         : crypto.randomUUID();
 
@@ -1218,7 +1297,7 @@ export function registerMeetingCoordinatorHandlers(
     });
   });
 
-  ipcMain.handle("meeting-transcription-stop", (_event, request: unknown) => {
+  ipcMain.handle("meeting-transcription-stop", (_event, request) => {
     const parsed = meetingCaptureStopRequestSchema.safeParse(request);
 
     if (!parsed.success)
@@ -1292,9 +1371,15 @@ export function registerMeetingCoordinatorHandlers(
 
   ipcMain.handle("meeting-detection-get-preferences", async () => {
     try {
-      return { success: true, preferences: meetingDetectionEngine!.getPreferences() };
+      return {
+        success: true,
+        preferences: requireMeetingDetectionEngine(
+          meetingDetectionEngine,
+          "getPreferences"
+        ).getPreferences(),
+      };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
@@ -1302,11 +1387,13 @@ export function registerMeetingCoordinatorHandlers(
     "meeting-detection-set-preferences",
     async (_event, prefs: Record<string, boolean>) => {
       try {
-        meetingDetectionEngine!.setPreferences(prefs);
+        requireMeetingDetectionEngine(meetingDetectionEngine, "setPreferences").setPreferences(
+          prefs
+        );
 
         return { success: true };
       } catch (error) {
-        return { success: false, error: (error as Error).message };
+        return { success: false, error: errorMessage(error) };
       }
     }
   );
@@ -1338,7 +1425,7 @@ export function registerMeetingCoordinatorHandlers(
 
         return { success: true };
       } catch (error) {
-        return { success: false, error: (error as Error).message };
+        return { success: false, error: errorMessage(error) };
       }
     }
   );
@@ -1347,11 +1434,14 @@ export function registerMeetingCoordinatorHandlers(
     "meeting-notification-respond",
     async (_event, detectionId: string, action: string) => {
       try {
-        await meetingDetectionEngine!.handleNotificationResponse(detectionId, action);
+        await requireMeetingDetectionEngine(
+          meetingDetectionEngine,
+          "handleNotificationResponse"
+        ).handleNotificationResponse(detectionId, action);
 
         return { success: true };
       } catch (error) {
-        return { success: false, error: (error as Error).message };
+        return { success: false, error: errorMessage(error) };
       }
     }
   );
@@ -1360,11 +1450,14 @@ export function registerMeetingCoordinatorHandlers(
 
   ipcMain.handle("join-calendar-meeting", async (_event, eventId: string) => {
     try {
-      await meetingDetectionEngine!.joinCalendarMeeting(eventId);
+      await requireMeetingDetectionEngine(
+        meetingDetectionEngine,
+        "joinCalendarMeeting"
+      ).joinCalendarMeeting(eventId);
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
@@ -1377,8 +1470,8 @@ export function registerMeetingCoordinatorHandlers(
     async (_event, eventId: string, initial: { title?: unknown; content?: unknown } | null) => {
       return (
         meetingDetectionEngine?.createCalendarEventNote(eventId, {
-          title: typeof initial?.title === "string" ? initial.title : undefined,
-          content: typeof initial?.content === "string" ? initial.content : undefined,
+          title: isStringValue(initial?.title) ? initial.title : undefined,
+          content: isStringValue(initial?.content) ? initial.content : undefined,
         }) ?? null
       );
     }
@@ -1470,7 +1563,7 @@ export function registerMeetingCoordinatorHandlers(
 
   function releaseMicHold(sender: {
     id: number;
-    off(event: string, listener: () => void): unknown;
+    off(event: string, listener: () => void): void;
   }): void {
     const release = micHoldSenders.get(sender.id);
 

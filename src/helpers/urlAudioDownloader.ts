@@ -50,6 +50,18 @@ function coded(message: string, code: string): CodedError {
   return Object.assign(new Error(message), { code });
 }
 
+function errorMessage<T>(error: T): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isCodedError<T>(value: T): value is T & { code: string } {
+  return value instanceof Error && "code" in value && typeof value.code === "string";
+}
+
+function errorCode<T>(error: T): string | undefined {
+  return isCodedError(error) ? error.code : undefined;
+}
+
 function isNat64Prefix(ip: string): boolean {
   const head = ip.split("::")[0].split(":");
 
@@ -65,7 +77,9 @@ function nat64EmbeddedV4(ip: string): string | null {
   const head = parts[0].split(":").filter(Boolean);
   const tail = parts.length > 1 ? parts[1].split(":").filter(Boolean) : [];
   const missing = parts.length > 1 ? 8 - head.length - tail.length : 0;
-  const groups = parts.length > 1 ? [...head, ...Array(missing).fill("0"), ...tail] : head;
+
+  const groups =
+    parts.length > 1 ? [...head, ...Array.from({ length: missing }, () => "0"), ...tail] : head;
 
   if (groups.length !== 8) return null;
   const high = Number.parseInt(groups[6], 16);
@@ -166,8 +180,14 @@ export function ssrfSafeLookup(
   });
 }
 
-export function detectUrlType(urlString: unknown): "direct" {
-  if (!urlString || typeof urlString !== "string") throw coded("Invalid URL", "INVALID_URL");
+function isNonEmptyString<T>(value: T): value is T & string {
+  return typeof value === "string" && value !== "";
+}
+
+export function detectUrlType<T>(urlString: T): "direct" {
+  // Untyped JS/CLI glue can pass anything; a non-string falls into the same
+  // INVALID_URL path as an empty string.
+  if (!isNonEmptyString(urlString)) throw coded("Invalid URL", "INVALID_URL");
   let parsed: URL;
 
   try {
@@ -228,7 +248,12 @@ function firstHeaderValue(headers: HttpHeaderBag, name: string): string | undefi
   return Array.isArray(value) ? value[0] : value;
 }
 
-function deriveTitleAndExt(urlPath: string): { title: string; ext: string } {
+interface TitleAndExt {
+  title: string;
+  ext: string;
+}
+
+function deriveTitleAndExt(urlPath: string): TitleAndExt {
   const match = urlPath.match(/\.([a-zA-Z0-9]{2,5})$/);
   const ext = match?.[1] || "audio";
   const raw = path.basename(urlPath, `.${ext}`) || "audio";
@@ -287,7 +312,11 @@ async function resolveProxyForUrl(targetUrl: string): Promise<string | null> {
   let session: { defaultSession?: { resolveProxy(url: string): Promise<string> } } | undefined;
 
   try {
-    ({ session } = require("electron"));
+    // SAFETY: CJS require seam fixed by build-main.js bundling; only the
+    // defaultSession.resolveProxy slice below is read.
+    ({ session } = require("electron") as {
+      session?: { defaultSession?: { resolveProxy(url: string): Promise<string> } };
+    });
   } catch {
     return null;
   }
@@ -299,13 +328,13 @@ async function resolveProxyForUrl(targetUrl: string): Promise<string | null> {
     result = await session.defaultSession.resolveProxy(targetUrl);
   } catch (error) {
     debugLogger.warn("resolveProxy failed; falling back to direct", {
-      error: (error as Error).message,
+      error: errorMessage(error),
     });
 
     return null;
   }
 
-  const first = typeof result === "string" ? result.split(";")[0].trim() : "";
+  const first = result.split(";")[0].trim();
 
   if (!first || first.toUpperCase() === "DIRECT") return null;
   const [scheme, hostPort] = first.split(/\s+/);
@@ -353,7 +382,7 @@ interface StreamToFileOptions {
   title: string;
   onProgress?: UrlAudioProgressCallback;
   abortSignal?: AbortSignal;
-  abort(): void;
+  abort: () => void;
 }
 
 function streamToFile(
@@ -397,7 +426,10 @@ function streamToFile(
       settled = true;
       stall.clear();
       abortSignal?.removeEventListener("abort", onAbort);
-      void cleanupFile().then(() => reject(error));
+      cleanupFile().then(
+        () => reject(error),
+        () => reject(error)
+      );
     };
 
     abortSignal?.addEventListener("abort", onAbort, { once: true });
@@ -420,7 +452,7 @@ function streamToFile(
         });
       }
     });
-    response.on("error", (error) =>
+    response.on("error", (error: Error) =>
       bail(coded(error.message || "Download failed", "DOWNLOAD_FAILED"))
     );
     response.pipe(output);
@@ -435,7 +467,7 @@ function streamToFile(
         settled = true;
         resolve(size);
       } catch (error) {
-        bail(Object.assign(error as Error, { code: "DOWNLOAD_FAILED" }));
+        bail(coded(errorMessage(error) || "Write failed", "DOWNLOAD_FAILED"));
       }
     });
   });
@@ -445,7 +477,9 @@ function streamToFile(
 let electronNetOverride: ElectronNetLike | null = null;
 
 function getElectronNet(): ElectronNetLike {
-  return electronNetOverride || (require("electron").net as ElectronNetLike);
+  // SAFETY: CJS require seam fixed by build-main.js bundling; the proxy path
+  // only uses the request() slice of Electron's net.
+  return electronNetOverride || (require("electron") as { net: ElectronNetLike }).net;
 }
 
 interface ProxyHandoff {
@@ -486,61 +520,63 @@ export async function downloadViaProxy(
       request = netModule.request({ url, method: "GET", redirect: "manual" });
       request.setHeader("User-Agent", USER_AGENT);
     } catch (error) {
-      return reject(coded((error as Error).message || "Download failed", "DOWNLOAD_FAILED"));
+      return reject(coded(errorMessage(error) || "Download failed", "DOWNLOAD_FAILED"));
     }
 
     let done = false;
-    let timeout: NodeJS.Timeout;
+
+    const timeout: NodeJS.Timeout = setTimeout(() => {
+      request.abort();
+      fail(coded("Connection timed out", "DOWNLOAD_FAILED"));
+    }, CONNECT_TIMEOUT_MS);
 
     const onAbort = () => {
       request.abort();
-      finish(coded("Download cancelled", "DOWNLOAD_CANCELLED"));
+      fail(coded("Download cancelled", "DOWNLOAD_CANCELLED"));
     };
 
-    const finish = (value: unknown, isError = true): void => {
+    const settle = (run: () => void): void => {
       if (done) return;
       done = true;
       clearTimeout(timeout);
       abortSignal?.removeEventListener("abort", onAbort);
-
-      if (isError) {
-        reject(value as Error);
-      } else {
-        resolve(value as ProxySettled);
-      }
+      run();
     };
 
-    timeout = setTimeout(() => {
-      request.abort();
-      finish(coded("Connection timed out", "DOWNLOAD_FAILED"));
-    }, CONNECT_TIMEOUT_MS);
+    const fail = (error: Error): void => settle(() => reject(error));
+    const succeed = (value: ProxySettled): void => settle(() => resolve(value));
+
     abortSignal?.addEventListener("abort", onAbort, { once: true });
     request.on("redirect", (_status, _method, redirectUrl) => {
       if (redirectCount + 1 > MAX_REDIRECTS)
-        return finish(coded("Too many redirects", "DOWNLOAD_FAILED"));
+        return fail(coded("Too many redirects", "DOWNLOAD_FAILED"));
       let next: URL;
 
       try {
         next = new URL(redirectUrl);
       } catch {
-        return finish(coded("Invalid redirect URL", "INVALID_URL"));
+        return fail(coded("Invalid redirect URL", "INVALID_URL"));
       }
 
       if (next.protocol !== "https:")
-        return finish(coded("Only HTTPS URLs are supported for direct downloads", "INVALID_URL"));
+        return fail(coded("Only HTTPS URLs are supported for direct downloads", "INVALID_URL"));
 
       try {
         assertNotYouTube(next);
       } catch (error) {
-        return finish(error as Error);
+        return fail(coded(errorMessage(error) || "Download failed", "DOWNLOAD_FAILED"));
       }
 
       request.abort();
-      finish({ kind: "redirect", url: next.href }, false);
+      succeed({ kind: "redirect", url: next.href });
     });
     request.on("response", (rawResponse) => {
+      // SAFETY: Electron's net emits an IncomingMessage; Readable is the Node
+      // stream face this module consumes (data/pipe/resume/destroy).
       const response = rawResponse as Electron.IncomingMessage & Readable;
 
+      // SAFETY: the header bag is untrusted provider output; firstHeaderValue
+      // returns string | string[] | undefined and .toLowerCase runs on a string.
       const contentType = (
         firstHeaderValue(response.headers as HttpHeaderBag, "content-type") || ""
       ).toLowerCase();
@@ -548,13 +584,13 @@ export async function downloadViaProxy(
       if (response.statusCode !== 200) {
         response.resume();
 
-        return finish(coded(`HTTP ${response.statusCode}`, "DOWNLOAD_FAILED"));
+        return fail(coded(`HTTP ${response.statusCode}`, "DOWNLOAD_FAILED"));
       }
 
       if (!isAcceptableAudioContentType(contentType)) {
         response.resume();
 
-        return finish(
+        return fail(
           coded(
             `URL does not point to an audio file (content-type: ${contentType})`,
             "CONTENT_TYPE_INVALID"
@@ -563,18 +599,20 @@ export async function downloadViaProxy(
       }
 
       const contentLength =
+        // SAFETY: untrusted response headers; firstHeaderValue returns a string
+        // or string[] for the named header, matching the HttpHeaderBag shape.
         Number(firstHeaderValue(response.headers as HttpHeaderBag, "content-length")) || null;
 
       if (contentLength !== null && contentLength > MAX_DOWNLOAD_BYTES) {
         response.resume();
 
-        return finish(coded("File too large. Maximum download size is 500 MB.", "FILE_TOO_LARGE"));
+        return fail(coded("File too large. Maximum download size is 500 MB.", "FILE_TOO_LARGE"));
       }
 
-      finish({ kind: "response", response, contentLength, request }, false);
+      succeed({ kind: "response", response, contentLength, request });
     });
     request.on("error", (error) =>
-      finish(
+      fail(
         coded(
           error.message || "Download failed",
           abortSignal?.aborted ? "DOWNLOAD_CANCELLED" : "DOWNLOAD_FAILED"
@@ -660,7 +698,7 @@ export async function downloadDirect(
       break;
     }
   } catch (error) {
-    const code = (error as CodedError).code;
+    const code = errorCode(error);
 
     if (
       code &&
@@ -781,6 +819,6 @@ export function sweepStaleTempArtifacts(maxAgeMs = 24 * 60 * 60 * 1000): void {
   }
 }
 
-export function _setElectronNetForTests(netModule: unknown): void {
-  electronNetOverride = netModule as ElectronNetLike | null;
+export function _setElectronNetForTests(netModule: ElectronNetLike | null): void {
+  electronNetOverride = netModule;
 }

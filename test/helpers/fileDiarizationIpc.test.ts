@@ -114,12 +114,12 @@ function setup({ manager, convert, diarize }: SetupOverrides = {}) {
           return null;
         }
       },
-      convertToWav: async (input: string, output: string, options: unknown) => {
+      convertToWav: async (input: string, output: string, options: unknown): Promise<void> => {
         calls.converts.push({ input, output, options: options as { signal?: AbortSignal } });
         wavPaths.push(output);
         fs.writeFileSync(output, Buffer.alloc(PCM16_MONO_16K_BYTES_PER_SECOND * 10));
 
-        if (convert) return convert(input, output, options as { signal?: AbortSignal });
+        if (convert) await convert(input, output, options as { signal?: AbortSignal });
       },
       createTempWavPath: () =>
         path.join(tmpRoot, `ow-diarize-${Date.now()}-${wavPaths.length}.wav`),

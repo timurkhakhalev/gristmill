@@ -264,11 +264,12 @@ export const createAudioPipeline = async ({
   }>({
     write: async ({ buffer, packet }) => {
       if (gateOpening) await gateOpening;
-      const send = window.electronAPI?.meetingTranscriptionSend;
+      const api = window.electronAPI;
 
-      if (!send) throw new Error("Meeting recording bridge is unavailable");
+      if (!api?.meetingTranscriptionSend)
+        throw new Error("Meeting recording bridge is unavailable");
       // SAFETY: the bridge contract returns the ack for the sent packet.
-      const ack = await send(buffer, source, sessionId, packet);
+      const ack = await api.meetingTranscriptionSend(buffer, source, sessionId, packet);
 
       if (!ack.success || ack.sequence !== packet.sequence) {
         throw new Error("Meeting recording write was not acknowledged");

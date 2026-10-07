@@ -16,11 +16,13 @@ export interface SpeakerSegment {
   speakerLockSource?: string | null;
   suggestedName?: string | null;
   suggestedProfileId?: number | null;
-  [key: string]: unknown;
+  text?: string | null;
+  timestamp?: number | null;
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 export function canonicalizeSpeakerStatus(
-  status: unknown,
+  status: string | null | undefined,
   segment: SpeakerSegment | null = null
 ): SpeakerStatusValue | undefined {
   if (segment?.speakerLocked || segment?.speakerLockSource === "user") {

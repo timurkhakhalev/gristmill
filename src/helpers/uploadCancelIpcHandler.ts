@@ -9,10 +9,10 @@ import {
 } from "../contracts/uploadTranscription.js";
 import type { UploadCancelRegistry } from "./uploadCancelRegistry.js";
 
-type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
+type IpcEventListener<Result> = (...args: unknown[]) => Result;
 
 export function registerUploadCancelHandler(
-  ipcMain: { handle(channel: string, listener: IpcEventListener): void },
+  ipcMain: { handle<Result>(channel: string, listener: IpcEventListener<Result>): void },
   deps: { uploadCancelRegistry: UploadCancelRegistry }
 ): void {
   ipcMain.handle(

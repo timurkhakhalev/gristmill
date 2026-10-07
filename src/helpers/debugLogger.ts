@@ -17,11 +17,75 @@ const MAX_CAPTURE_ERROR_LOG_BYTES = 1024 * 1024;
 
 const MAX_CAPTURE_ERROR_ENTRY_BYTES = 16 * 1024;
 
+// The renderer log entry the desktopSettings IPC forwards. Each field is read
+// defensively, so a wrong-shaped entry degrades instead of throwing.
+interface RendererLogEntry {
+  level?: unknown;
+  message?: unknown;
+  scope?: unknown;
+  source?: unknown;
+  meta?: unknown;
+}
+
+interface AudioDataInfo {
+  context: string;
+  type: string;
+  size: number;
+  constructor: string;
+  byteLength?: number;
+  firstBytes?: string;
+}
+
+interface FfmpegDebugInfo {
+  context: string;
+  ffmpegPath: string | null | undefined;
+  exists: boolean;
+  platform: string;
+  fileInfo?: {
+    size: number;
+    isFile: boolean;
+    isExecutable: boolean;
+    executableCheckSkipped: boolean;
+    permissions: string;
+    modified: string;
+  };
+  statError?: string;
+  dirReadable?: boolean;
+  dirError?: string;
+  pathChecks?: Array<{ path: string | null | undefined; exists: boolean; normalized: string }>;
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function isRendererLogEntry(value: unknown): value is RendererLogEntry {
+  return typeof value === "object" && value !== null;
+}
+
+function isSerializableArg(value: unknown): value is object {
+  return value !== null && typeof value === "object";
+}
+
+function isLogLevel(value: string): value is LogLevel {
+  return Object.prototype.hasOwnProperty.call(LOG_LEVELS, value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function firstBytesHex(view: Uint8Array): string {
+  return Array.from(view)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join(" ");
+}
+
 const normalizeLevel = (value: unknown): LogLevel | null => {
   if (!value) return null;
   const lower = String(value).toLowerCase();
 
-  return Object.prototype.hasOwnProperty.call(LOG_LEVELS, lower) ? (lower as LogLevel) : null;
+  return isLogLevel(lower) ? lower : null;
 };
 
 const readArgLogLevel = (): string | null => {
@@ -172,14 +236,15 @@ class DebugLogger {
 
   serializeValue(value: unknown): unknown {
     if (value instanceof Error) {
-      const code = (value as NodeJS.ErrnoException).code;
+      const code = "code" in value ? value.code : undefined;
 
       return {
         name: value.name,
         message: value.message,
         ...(code ? { code } : {}),
         ...(value.stack ? { stack: value.stack } : {}),
-        ...(value as unknown as Record<string, unknown>),
+        // Own enumerable fields of the Error, matching the legacy spread.
+        ...Object.fromEntries(Object.entries(value)),
       };
     }
 
@@ -189,7 +254,7 @@ class DebugLogger {
   formatArgs(args: unknown[]): string {
     return args
       .map((arg) => {
-        if (arg !== null && typeof arg === "object") {
+        if (isSerializableArg(arg)) {
           try {
             return JSON.stringify(this.serializeValue(arg), null, 2);
           } catch {
@@ -205,7 +270,7 @@ class DebugLogger {
   formatMeta(meta: unknown): string {
     if (meta === undefined) return "";
 
-    if (typeof meta === "string") return meta;
+    if (isString(meta)) return meta;
 
     try {
       return JSON.stringify(this.serializeValue(meta), null, 2);
@@ -327,11 +392,11 @@ class DebugLogger {
   }
 
   logEntry(entry: unknown): void {
-    if (!entry || typeof entry !== "object") return;
-    const record = entry as Record<string, unknown>;
+    if (!isRendererLogEntry(entry)) return;
 
-    const normalized =
-      normalizeLevel(typeof record.level === "string" ? record.level : undefined) || "info";
+    const record = entry;
+
+    const normalized = normalizeLevel(isString(record.level) ? record.level : undefined) || "info";
 
     const message = record.message ? String(record.message) : "";
     const scope = record.scope ? String(record.scope) : undefined;
@@ -342,11 +407,11 @@ class DebugLogger {
   logFFmpegDebug(
     context: string,
     ffmpegPath: string | null | undefined,
-    additionalInfo: Record<string, unknown> = {}
+    additionalInfo: Partial<FfmpegDebugInfo> = {}
   ): void {
     if (!this.isDebugEnabled()) return;
 
-    const debugInfo: Record<string, unknown> = {
+    const debugInfo: FfmpegDebugInfo = {
       context,
       ffmpegPath,
       exists: ffmpegPath ? fs.existsSync(ffmpegPath) : false,
@@ -357,6 +422,7 @@ class DebugLogger {
     if (ffmpegPath && fs.existsSync(ffmpegPath)) {
       try {
         const stats = fs.statSync(ffmpegPath);
+
         debugInfo.fileInfo = {
           size: stats.size,
           isFile: stats.isFile(),
@@ -364,10 +430,10 @@ class DebugLogger {
           isExecutable: process.platform !== "win32" ? !!(stats.mode & fs.constants.X_OK) : false,
           executableCheckSkipped: process.platform === "win32",
           permissions: stats.mode.toString(8),
-          modified: stats.mtime,
+          modified: stats.mtime.toISOString(),
         };
       } catch (e) {
-        debugInfo.statError = (e as Error).message;
+        debugInfo.statError = errorMessage(e);
       }
     }
 
@@ -380,7 +446,7 @@ class DebugLogger {
         debugInfo.dirReadable = true;
       } catch (e) {
         debugInfo.dirReadable = false;
-        debugInfo.dirError = (e as Error).message;
+        debugInfo.dirError = errorMessage(e);
       }
     }
 
@@ -430,13 +496,15 @@ class DebugLogger {
   logAudioData(context: string, audioBlob: unknown): void {
     if (!this.isDebugEnabled()) return;
 
+    // SAFETY: the caller passes a Blob/ArrayBuffer-like value; the optional
+    // reads below only probe type/size/constructor and fall back when absent.
     const blob = (audioBlob ?? null) as {
       type?: string;
       size?: number;
       constructor?: { name?: string };
     } | null;
 
-    const audioInfo: Record<string, unknown> = {
+    const audioInfo: AudioDataInfo = {
       context,
       type: blob?.type || "unknown",
       size: blob?.size || 0,
@@ -444,18 +512,16 @@ class DebugLogger {
     };
 
     if (audioBlob instanceof ArrayBuffer) {
-      audioInfo.byteLength = audioBlob.byteLength;
+      const buffer = audioBlob;
+      audioInfo.byteLength = buffer.byteLength;
       // Check first few bytes
-      const view = new Uint8Array(audioBlob, 0, Math.min(16, audioBlob.byteLength));
-      audioInfo.firstBytes = Array.from(view)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(" ");
+      audioInfo.firstBytes = firstBytesHex(
+        new Uint8Array(buffer, 0, Math.min(16, buffer.byteLength))
+      );
     } else if (audioBlob instanceof Uint8Array) {
-      audioInfo.byteLength = audioBlob.byteLength;
-      const view = audioBlob.slice(0, Math.min(16, audioBlob.byteLength));
-      audioInfo.firstBytes = Array.from(view)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(" ");
+      const bytes = new Uint8Array(audioBlob);
+      audioInfo.byteLength = bytes.byteLength;
+      audioInfo.firstBytes = firstBytesHex(bytes.slice(0, Math.min(16, bytes.byteLength)));
     }
 
     this.debug("Audio Data Debug", audioInfo, "audio");

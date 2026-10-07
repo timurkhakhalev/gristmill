@@ -27,6 +27,10 @@ let mode: BackendMode | null = null;
 
 let masterKey: Buffer | null = null;
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function _backupPath(): string {
   return path.join(app.getPath("userData"), "secure-keys", BACKUP_FILE);
 }
@@ -50,7 +54,7 @@ function _saveMasterKeyBackup(): void {
   } catch (error) {
     debugLogger.warn(
       "failed to save master key backup",
-      { error: (error as Error)?.message },
+      { error: errorMessage(error) },
       "secretCrypto"
     );
   }
@@ -77,11 +81,18 @@ function _initKeychain(): boolean {
   let Entry: new (service: string, account: string) => KeyringEntry;
 
   try {
-    ({ Entry } = require("@napi-rs/keyring"));
+    // SAFETY: @napi-rs/keyring is bundled by build-main.js; its Entry export is
+    // the constructor this module's KeyringEntry surface describes, and no wire
+    // data crosses this seam.
+    Entry = (
+      require("@napi-rs/keyring") as {
+        Entry: new (service: string, account: string) => KeyringEntry;
+      }
+    ).Entry;
   } catch (error) {
     debugLogger.warn(
       "@napi-rs/keyring failed to load",
-      { error: (error as Error)?.message },
+      { error: errorMessage(error) },
       "secretCrypto"
     );
 
@@ -115,7 +126,7 @@ function _initKeychain(): boolean {
   } catch (error) {
     debugLogger.warn(
       "OS keychain unavailable — falling back to safeStorage",
-      { error: (error as Error)?.message, platform: process.platform },
+      { error: errorMessage(error), platform: process.platform },
       "secretCrypto"
     );
 

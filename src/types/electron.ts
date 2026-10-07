@@ -293,7 +293,7 @@ export interface WhisperDownloadProgressData {
   total_bytes?: number;
   error?: string;
   code?: string;
-  result?: any;
+  result?: unknown;
   sequence?: number;
 }
 

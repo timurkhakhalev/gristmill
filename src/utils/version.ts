@@ -2,8 +2,12 @@ const CANONICAL_APP_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 type AppVersionParts = readonly [number, number, number];
 
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
 function parseCanonicalAppVersion(value: unknown): AppVersionParts | null {
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
 
   const match = CANONICAL_APP_VERSION.exec(value);
 

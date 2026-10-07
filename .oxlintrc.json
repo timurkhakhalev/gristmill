@@ -122,6 +122,56 @@
         "quality/no-unsafe-dictionary-type": "off"
       }
     },
+    // Honest unknown at the JSON/HTTP request boundary: the decoded body and
+    // its fields stay unknown until each route's schema or predicate validates
+    // them before any domain call; responses are serialized opaque payloads.
+    {
+      "files": ["src/helpers/cliBridge.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off",
+        "quality/no-unsafe-dictionary-type": "off",
+        "quality/no-known-value-widening": "off"
+      }
+    },
+    // Opaque log-meta transport boundary: callers pass arbitrary domain objects
+    // that the sinks serialize. The legacy String() coercion is the observable
+    // triage format (CUS-113), so `[object Object]` stringification is intended.
+    {
+      "files": ["src/helpers/debugLogger.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off",
+        "quality/no-known-value-widening": "off",
+        "typescript/no-base-to-string": "off"
+      }
+    },
+    // Opaque renderer log-meta transport boundary: the same arbitrary-meta
+    // contract as the main-process logger above.
+    {
+      "files": ["src/utils/logger.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    // Value parsers for untrusted app/OS input (versions, timestamps, env
+    // errors): each accepts the honest unknown and returns a concrete type or a
+    // documented fallback, so the unknown guards the boundary, not the business
+    // logic.
+    {
+      "files": [
+        "src/helpers/appVersion.ts",
+        "src/helpers/dbTimestamp.ts",
+        "src/helpers/devSnapshot.ts",
+        "src/helpers/environment.ts",
+        "src/helpers/secretCrypto.ts",
+        "src/utils/version.ts",
+        "src/utils/dateFormatting.ts"
+      ],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
     {
       "files": ["src/helpers/downloadUtils.ts"],
       "rules": {

@@ -9,13 +9,17 @@
 
 const EXPLICIT_TIME_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
 export function hasExplicitTimeZone(value: unknown): boolean {
-  return typeof value === "string" && EXPLICIT_TIME_ZONE.test(value.trim());
+  return isString(value) && EXPLICIT_TIME_ZONE.test(value.trim());
 }
 
 /** Returns null for anything unreadable, so callers can fall back explicitly. */
 export function parseDbTimestamp(value: unknown): Date | null {
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
   const trimmed = value.trim();
 
   if (!trimmed) return null;

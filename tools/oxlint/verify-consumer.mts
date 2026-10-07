@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import ts from "typescript";
 import { z } from "zod";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -65,9 +66,21 @@ await test("project consumer preserves type, Promise and runtime boundary rules"
     })
   );
 
-  const configuration = configSchema.parse(
-    JSON.parse(readFileSync(path.join(root, ".oxlintrc.json"), "utf8"))
+  // The root config is JSONC: each exact-file override carries its reason as a
+  // comment next to the setting (type-safety.md). Parse it with the TypeScript
+  // config parser — the same JSONC grammar oxlint's own loader accepts (comments
+  // and trailing commas) — rather than a hand-rolled stripper that could drift
+  // from the loader. A malformed config is surfaced, never passed as empty.
+  const parsedConfig = ts.parseConfigFileTextToJson(
+    ".oxlintrc.json",
+    readFileSync(path.join(root, ".oxlintrc.json"), "utf8")
   );
+
+  if (parsedConfig.error) {
+    throw new Error(ts.flattenDiagnosticMessageText(parsedConfig.error.messageText, "\n"));
+  }
+
+  const configuration = configSchema.parse(parsedConfig.config);
 
   // configuration keeps the documented relative extends; the bundle above is
   // copied so the resolution graph matches a real consumer checkout.

@@ -1,4 +1,4 @@
-import type { ToolCallInfo } from "./types";
+import type { ToolCallInfo, ToolCallMetadata } from "./types";
 
 export interface NoteCardRef {
   noteId: number;
@@ -11,8 +11,12 @@ const NOTE_TOOLS = new Set(["create_note", "update_note", "get_note"]);
 // doesn't bury the answer under a wall of note buttons.
 const MAX_SEARCH_CARDS = 5;
 
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
 function cardFromHit(
-  hit: Record<string, unknown>,
+  hit: ToolCallMetadata,
   seen: Set<number>,
   fallbackTitle: string
 ): NoteCardRef | null {
@@ -22,7 +26,7 @@ function cardFromHit(
 
   if (!Number.isSafeInteger(noteId) || noteId <= 0 || seen.has(noteId)) return null;
   seen.add(noteId);
-  const rawTitle = typeof hit.title === "string" ? hit.title.trim() : "";
+  const rawTitle = isString(hit.title) ? hit.title.trim() : "";
 
   return { noteId, title: rawTitle || fallbackTitle };
 }
@@ -48,7 +52,7 @@ export function extractNoteCards(
 
       if (!Number.isSafeInteger(noteId) || noteId <= 0 || seen.has(noteId)) continue;
       seen.add(noteId);
-      const metaTitle = typeof tc.metadata.title === "string" ? tc.metadata.title.trim() : "";
+      const metaTitle = isString(tc.metadata.title) ? tc.metadata.title.trim() : "";
 
       const resultTitle =
         tc.result?.replace(/^(Created|Updated|Retrieved) note: "(.+)"$/, "$2")?.trim() || "";

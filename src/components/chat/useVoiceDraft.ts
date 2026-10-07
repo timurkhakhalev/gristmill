@@ -56,12 +56,12 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
 
   const buildConfig = (): FileTranscriptionConfig => ({
     useLocalWhisper,
-    localTranscriptionProvider: localTranscriptionProvider as string,
+    localTranscriptionProvider,
     whisperModel,
     parakeetModel,
     cohereModel,
-    getApiKey: () => getTranscriptionApiKey(cloudTranscriptionProvider as string, settings),
-    cloudTranscriptionProvider: cloudTranscriptionProvider as string,
+    getApiKey: () => getTranscriptionApiKey(cloudTranscriptionProvider, settings),
+    cloudTranscriptionProvider,
     cloudTranscriptionBaseUrl: cloudTranscriptionBaseUrl || "",
     cloudTranscriptionModel,
     // Empty = auto-detect; the resolver supplies a default where one is required.
@@ -145,7 +145,7 @@ export function useVoiceDraft({ onTranscript, onError }: UseVoiceDraftOptions) {
     } catch (error) {
       onErrorRef.current(error instanceof Error ? error.message : String(error));
     } finally {
-      if (tempPath) void window.electronAPI.deleteTempAudio(tempPath);
+      if (tempPath) window.electronAPI.deleteTempAudio(tempPath).catch(() => {});
       setStatus("idle");
     }
   }, [teardownCapture]);

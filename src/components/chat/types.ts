@@ -1,3 +1,12 @@
+// Tool metadata crossing to the note cards and the persistence wire: the
+// note-tool payload (id/title) or the search_notes hit list. Values stay
+// `unknown` because each reader guards the field it consumes, matching the
+// chat-persistence IPC contract.
+export interface ToolCallMetadata {
+  id?: unknown;
+  title?: unknown;
+}
+
 export interface ToolCallInfo {
   id: string;
   name: string;
@@ -5,7 +14,7 @@ export interface ToolCallInfo {
   status: "executing" | "completed" | "error";
   result?: string;
   // Single object for note tools; search_notes attaches its result array.
-  metadata?: Record<string, unknown> | Array<Record<string, unknown>>;
+  metadata?: ToolCallMetadata | ToolCallMetadata[];
 }
 
 export interface Message {

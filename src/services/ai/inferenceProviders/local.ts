@@ -30,7 +30,8 @@ export const localProvider: InferenceProvider = {
       throw buildLocalInferenceError(result);
     }
 
-    // success:true results always carry the completed output text.
+    // SAFETY: the local reasoning IPC contract's success arm carries the
+    // completed output text; `success === false` was handled above.
     const outputText = result.text as string;
     logger.logReasoning("LOCAL_SUCCESS", {
       model,

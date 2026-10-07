@@ -1,5 +1,13 @@
 import { MAX_SNIPPET_TRIGGER_LENGTH, type Snippet } from "../../utils/snippets";
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import {
+  isJsonObject,
+  readArray,
+  readString,
+  type JsonValue,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
 import { cleanWordList } from "./dictionaryTool";
 
 export interface SnippetActions {
@@ -35,8 +43,8 @@ export function createSnippetTool(getSnippets: () => Snippet[]): ToolDefinition 
     },
     readOnly: true,
 
-    async execute(args: Record<string, unknown>): Promise<ToolResult> {
-      const requested = typeof args.trigger === "string" ? args.trigger : "";
+    async execute(args: ToolArguments): Promise<ToolResult> {
+      const requested = readString(args, "trigger") ?? "";
       const wanted = normalizeTrigger(requested);
       const snippet = getSnippets().find((s) => normalizeTrigger(s.trigger) === wanted);
 
@@ -57,14 +65,13 @@ export function createSnippetTool(getSnippets: () => Snippet[]): ToolDefinition 
   };
 }
 
-function parseSnippetInputs(values: unknown): Snippet[] {
-  if (!Array.isArray(values)) return [];
+function parseSnippetInputs(values: readonly JsonValue[]): Snippet[] {
   const byKey = new Map<string, Snippet>();
 
   for (const value of values) {
-    const raw = value as Partial<Snippet> | null;
-    const trigger = typeof raw?.trigger === "string" ? raw.trigger.trim() : "";
-    const replacement = typeof raw?.replacement === "string" ? raw.replacement.trim() : "";
+    if (!isJsonObject(value)) continue;
+    const trigger = readString(value, "trigger")?.trim() ?? "";
+    const replacement = readString(value, "replacement")?.trim() ?? "";
 
     if (trigger && trigger.length <= MAX_SNIPPET_TRIGGER_LENGTH && replacement) {
       byKey.set(normalizeTrigger(trigger), { trigger, replacement });
@@ -105,11 +112,11 @@ export function createUpdateSnippetsTool(actions: SnippetActions): ToolDefinitio
     },
     readOnly: false,
 
-    async execute(args: Record<string, unknown>): Promise<ToolResult> {
+    async execute(args: ToolArguments): Promise<ToolResult> {
       const current = actions.getSnippets();
-      const add = parseSnippetInputs(args.add);
+      const add = parseSnippetInputs(readArray(args, "add"));
       const addKeys = new Set(add.map((s) => normalizeTrigger(s.trigger)));
-      const requestedRemove = cleanWordList(args.remove);
+      const requestedRemove = cleanWordList(readArray(args, "remove"));
       const removeKeys = new Set(requestedRemove.map(normalizeTrigger));
       const keyOf = (s: Snippet) => normalizeTrigger(s.trigger);
 

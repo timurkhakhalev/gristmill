@@ -18,6 +18,40 @@ import {
 // Update this together with the JSON fixtures and the runtime smoke check.
 export const SUPPORTED_BB_VERSION = "0.44.0";
 
+// bb's stdout is opaque JSON until a caller parses it with its operation
+// schema. jsonCommand validates the JSON value shape at its boundary.
+type BbJson = z.infer<ReturnType<typeof z.json>>;
+
+// Narrow an opaque JSON field to the primitive types bb statuses use.
+function isDisplayValue(value: unknown): value is string | number | boolean | bigint {
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  );
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+interface TurnInputItem {
+  type: string;
+  text: string;
+}
+
+function isTurnInputTextItem(value: unknown): value is TurnInputItem {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "text" &&
+    "text" in value &&
+    typeof value.text === "string"
+  );
+}
+
 export class BbCliError extends Error {
   constructor(
     readonly code: string,
@@ -105,7 +139,7 @@ async function execute(args: string[], input?: string, signal?: AbortSignal): Pr
   });
 }
 
-async function jsonCommand(args: string[], input?: string, signal?: AbortSignal): Promise<unknown> {
+async function jsonCommand(args: string[], input?: string, signal?: AbortSignal): Promise<BbJson> {
   const raw = await execute([...args, "--json"], input, signal);
 
   try {
@@ -117,7 +151,7 @@ async function jsonCommand(args: string[], input?: string, signal?: AbortSignal)
 
     if (failure.success) throw new BbCliError(failure.data.error.code, failure.data.error.message);
 
-    return data;
+    return z.json().parse(data);
   } catch (error) {
     if (error instanceof BbCliError) throw error;
     throw new BbCliError("bb-invalid-response", "bb returned invalid JSON");
@@ -419,16 +453,14 @@ export async function getBbThreadHistory(
       if (
         event.type === "thread/context/cleared" ||
         event.type === "thread/compacted" ||
-        (typeof providerId === "string" &&
-          providerThreadId !== undefined &&
-          providerId !== providerThreadId)
+        (isString(providerId) && providerThreadId !== undefined && providerId !== providerThreadId)
       ) {
         pendingInputs.clear();
         assistantText = undefined;
         onContextReset?.();
       }
 
-      if (typeof providerId === "string") providerThreadId = providerId;
+      if (isString(providerId)) providerThreadId = providerId;
 
       const parsedItem = z
         .object({
@@ -444,26 +476,29 @@ export async function getBbThreadHistory(
         event.type === "item/completed" &&
         item?.type === "agentMessage" &&
         !item.parentToolCallId &&
-        typeof item.text === "string"
+        isString(item.text)
       )
         assistantText = item.text;
+
+      const requestId = event.data?.requestId;
+      const input = event.data?.input;
 
       if (
         onUserText &&
         event.type === "client/turn/requested" &&
-        typeof event.data?.requestId === "string" &&
-        Array.isArray(event.data.input)
+        isString(requestId) &&
+        Array.isArray(input)
       ) {
         pendingInputs.set(
-          event.data.requestId,
-          event.data.input
-            .filter((item) => item?.type === "text" && typeof item.text === "string")
-            .map((item) => item.text)
+          requestId,
+          input
+            .filter(isTurnInputTextItem)
+            .map((entry) => entry.text)
             .join("\n\n")
         );
       }
 
-      if (event.type === "turn/input/accepted" && typeof event.data?.clientRequestId === "string") {
+      if (event.type === "turn/input/accepted" && isString(event.data?.clientRequestId)) {
         const text = pendingInputs.get(event.data.clientRequestId);
 
         if (text) onUserText?.(text);
@@ -511,7 +546,7 @@ export async function* watchBbThread(
     for (const event of events) {
       sequence = Math.max(sequence, event.seq);
 
-      if (event.type === "item/agentMessage/delta" && typeof event.data?.delta === "string") {
+      if (event.type === "item/agentMessage/delta" && isString(event.data?.delta)) {
         yield event.data.delta;
       }
 
@@ -519,7 +554,7 @@ export async function* watchBbThread(
         if (event.data?.status !== "completed") {
           throw new BbCliError(
             "bb-turn-failed",
-            `bb turn ended: ${String(event.data?.status ?? "unknown")}`
+            `bb turn ended: ${isDisplayValue(event.data?.status) ? String(event.data.status) : "unknown"}`
           );
         }
 

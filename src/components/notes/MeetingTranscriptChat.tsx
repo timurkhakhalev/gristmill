@@ -1,5 +1,6 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, Loader2, ShieldCheck, Sparkles, Users, X } from "../icons";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
@@ -102,7 +103,7 @@ function PartialBubble({
   source: "mic" | "system";
   speakerLabel?: string;
   speakerState?: TranscriptSpeakerStatus;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: TFunction;
 }) {
   const s = BUBBLE_STYLES[source];
 
@@ -176,7 +177,7 @@ interface SpeakerPickerProps {
   speakerProfiles?: SpeakerProfileLite[];
   participants?: Array<{ email: string; displayName: string | null }>;
   onSelectName: (name: string, email?: string | null, profileId?: number) => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: TFunction;
 }
 
 function AddContactButton({
@@ -186,7 +187,7 @@ function AddContactButton({
 }: {
   profile: { id: number; display_name: string };
   onAttachEmail: (profileId: number, email: string | null) => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: TFunction;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -430,7 +431,7 @@ function SpeakerLabel({
   onMap?: (speakerId: string, name: string, email?: string | null, profileId?: number) => void;
   onConfirm?: (speakerId: string, name: string, profileId: number) => void;
   onDismiss?: (speakerId: string) => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: TFunction;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -455,9 +456,13 @@ function SpeakerLabel({
           {segment.suggestedName}
         </span>
         <button
-          onClick={() =>
-            onConfirm?.(speakerId, segment.suggestedName!, segment.suggestedProfileId!)
-          }
+          onClick={() => {
+            const suggestedName = segment.suggestedName;
+            const suggestedProfileId = segment.suggestedProfileId;
+
+            if (suggestedName === undefined || suggestedProfileId === undefined) return;
+            onConfirm?.(speakerId, suggestedName, suggestedProfileId);
+          }}
           className="opacity-0 group-hover:opacity-100 p-0.5 rounded transition-opacity cursor-pointer text-muted-foreground hover:text-success"
         >
           <Check size={12} />
@@ -555,7 +560,7 @@ export function SelectionBar({
   speakerProfiles?: SpeakerProfileLite[];
   participants?: Array<{ email: string; displayName: string | null }>;
   onAssignName: (name: string, email?: string | null, profileId?: number) => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: TFunction;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -618,7 +623,7 @@ interface SegmentRowProps {
   onDismissSuggestion?: (speakerId: string) => void;
   onAttachSpeakerEmail?: (profileId: number, email: string | null) => void;
   onToggleSelect?: (segmentId: string) => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: TFunction;
 }
 
 // Memoized so live partials (several per second) only re-render the two partial
@@ -646,20 +651,19 @@ const SegmentRow = memo(function SegmentRow({
   t,
 }: SegmentRowProps) {
   const hasSpeaker = !!segment.speaker;
+  const speakerId = segment.speaker;
+  const attachSpeakerEmail = onAttachSpeakerEmail;
   const isOriginallyYou = segment.speaker === "you";
   const isSystemSpeaker = hasSpeaker && !selfSide;
   const selectable = !!onToggleSelect;
 
   const canAddContact =
-    !!matchedProfile &&
-    matchedProfile.id != null &&
-    !matchedProfile.email &&
-    !!onAttachSpeakerEmail;
+    !!matchedProfile && matchedProfile.id != null && !matchedProfile.email && !!attachSpeakerEmail;
 
-  const labelElement = hasSpeaker && (
+  const labelElement = speakerId && (
     <div className="flex items-center gap-1">
       <SpeakerLabel
-        speakerId={segment.speaker!}
+        speakerId={speakerId}
         segment={segment}
         resolvedName={activeName}
         speakerProfiles={speakerProfiles}
@@ -671,10 +675,10 @@ const SegmentRow = memo(function SegmentRow({
         onDismiss={onDismissSuggestion}
         t={t}
       />
-      {canAddContact && matchedProfile && matchedProfile.id != null && (
+      {canAddContact && matchedProfile && matchedProfile.id != null && attachSpeakerEmail && (
         <AddContactButton
           profile={{ id: matchedProfile.id, display_name: matchedProfile.display_name }}
-          onAttachEmail={onAttachSpeakerEmail!}
+          onAttachEmail={attachSpeakerEmail}
           t={t}
         />
       )}

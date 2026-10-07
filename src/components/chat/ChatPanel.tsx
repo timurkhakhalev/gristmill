@@ -26,6 +26,13 @@ function readStoredHeight(): number | null {
   return Number.isFinite(value) && value >= FLOATING_MIN_HEIGHT_PX ? value : null;
 }
 
+// React.Ref is either a callback or a mutable object; only the callback is callable.
+function isRefCallback(
+  ref: React.Ref<HTMLDivElement> | undefined
+): ref is React.RefCallback<HTMLDivElement> {
+  return typeof ref === "function";
+}
+
 export type ChatPanelMode = "hidden" | "floating" | "sidebar";
 
 interface ChatPanelProps {
@@ -178,7 +185,7 @@ export default function ChatPanel({
     (node: HTMLDivElement | null) => {
       panelRef.current = node;
 
-      if (typeof floatingPanelRef === "function") return floatingPanelRef(node);
+      if (isRefCallback(floatingPanelRef)) return floatingPanelRef(node);
 
       if (floatingPanelRef) floatingPanelRef.current = node;
     },
@@ -191,9 +198,9 @@ export default function ChatPanel({
     if (mode !== "floating") return;
 
     const onPointerDown = (e: MouseEvent) => {
-      const target = e.target as Element | null;
+      const target = e.target;
 
-      if (!target || panelRef.current?.contains(target)) return;
+      if (!(target instanceof Element) || panelRef.current?.contains(target)) return;
 
       if (
         target.closest(

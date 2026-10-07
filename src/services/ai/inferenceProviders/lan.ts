@@ -33,10 +33,11 @@ export const lanProvider: InferenceProvider = {
         "LAN"
       );
     } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
       logger.logReasoning("LAN_ERROR", {
         url: lanUrl,
-        error: (error as Error).message,
-        errorType: (error as Error).name,
+        error: failure.message,
+        errorType: failure.name,
       });
       throw error;
     }

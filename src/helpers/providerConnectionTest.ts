@@ -13,10 +13,14 @@ export interface ProviderConnectionConfig {
   tenant?: string;
 }
 
+export interface HeaderMap {
+  [name: string]: string;
+}
+
 export interface ResolvedProviderRequest {
   endpoint: string;
   endpoints: string[];
-  headers: Record<string, string>;
+  headers: HeaderMap;
 }
 
 export interface ConnectionTestOutcome {
@@ -26,7 +30,11 @@ export interface ConnectionTestOutcome {
   status?: number;
 }
 
-const ENDPOINTS: Record<string, string> = {
+export interface EndpointMap {
+  [provider: string]: string;
+}
+
+const ENDPOINTS: EndpointMap = {
   openai: "https://api.openai.com/v1/models",
   groq: "https://api.groq.com/openai/v1/models",
   xai: "https://api.x.ai/v1/models",
@@ -65,9 +73,13 @@ function buildModelEndpoints(base: string): string[] {
   return getModelListBaseCandidates(base).map((candidate) => `${candidate}/models`);
 }
 
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
 export function resolveProviderRequest(config: ProviderConnectionConfig): ResolvedProviderRequest {
   const provider = String(config?.provider || "").toLowerCase();
-  const apiKey = typeof config?.apiKey === "string" ? config.apiKey.trim() : "";
+  const apiKey = isString(config?.apiKey) ? config.apiKey.trim() : "";
   const knownEndpoint = ENDPOINTS[provider];
   let endpoints: string[] = knownEndpoint ? [knownEndpoint] : [];
 
@@ -117,7 +129,7 @@ export function resolveProviderRequest(config: ProviderConnectionConfig): Resolv
     throw new ConnectionTestError("apiKeyRequired", "Add an API key before testing.");
   }
 
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: HeaderMap = { Accept: "application/json" };
 
   if (apiKey) {
     if (provider === "anthropic") {
@@ -140,7 +152,16 @@ export function resolveProviderRequest(config: ProviderConnectionConfig): Resolv
 }
 
 // When several candidate endpoints fail, report the most actionable failure.
-const FAILURE_PRIORITY: Record<string, number> = {
+interface FailurePriority {
+  credentialsRejected: number;
+  providerStatus: number;
+  modelNotFound: number;
+  endpointNotFound: number;
+  timeout: number;
+  network: number;
+}
+
+const FAILURE_PRIORITY: FailurePriority = {
   credentialsRejected: 4,
   providerStatus: 3,
   modelNotFound: 2.5,
@@ -149,14 +170,20 @@ const FAILURE_PRIORITY: Record<string, number> = {
   network: 0,
 };
 
+function isFailureCode(value: string | undefined): value is keyof FailurePriority {
+  return value !== undefined && value in FAILURE_PRIORITY;
+}
+
+function failurePriority(value: string | undefined): number {
+  return isFailureCode(value) ? FAILURE_PRIORITY[value] : 0;
+}
+
 type FailureCandidate = Omit<ConnectionTestOutcome, "success">;
 
 function pickFailure(current: FailureCandidate | null, next: FailureCandidate): FailureCandidate {
   if (!current) return next;
 
-  return FAILURE_PRIORITY[next.errorCode as string] > FAILURE_PRIORITY[current.errorCode as string]
-    ? next
-    : current;
+  return failurePriority(next.errorCode) > failurePriority(current.errorCode) ? next : current;
 }
 
 function describeStatusFailure(status: number, provider: string): FailureCandidate {
@@ -179,65 +206,121 @@ function describeStatusFailure(status: number, provider: string): FailureCandida
   return { errorCode: "providerStatus", error: `The provider returned status ${status}.`, status };
 }
 
-function normalizeModelId(value: unknown): string {
-  return String(value || "")
+interface ModelEntry {
+  id?: unknown;
+  name?: unknown;
+}
+
+interface ModelListPayload {
+  data?: unknown;
+  models?: unknown;
+}
+
+export type ConnectionTestPayload = ModelListPayload | readonly unknown[];
+
+export type ModelIdentifier = string | number | boolean | bigint;
+
+function isIdentifier<T>(value: T): value is T & ModelIdentifier {
+  const kind = typeof value;
+
+  return kind === "string" || kind === "number" || kind === "boolean" || kind === "bigint";
+}
+
+function isModelEntry<T>(value: T): value is T & ModelEntry {
+  return typeof value === "object" && value !== null;
+}
+
+function isModelListPayload<T>(value: T): value is T & ModelListPayload {
+  return typeof value === "object" && value !== null;
+}
+
+// Mirrors `String(value || "")`: falsy values collapse to the empty string,
+// scalars stringify, and objects keep their default tag.
+function identifierText<T>(value: T): string {
+  if (!value) return "";
+
+  if (isIdentifier(value)) return String(value);
+
+  return Object.prototype.toString.call(value);
+}
+
+// Mirrors the original map: a string passes through; an object contributes its
+// `id` then `name`; any other primitive (or a missing id/name) becomes absent.
+function modelIdentifierOf<T>(model: T) {
+  if (isString(model)) return model;
+
+  if (!isModelEntry(model)) return undefined;
+
+  return model.id || model.name;
+}
+
+function normalizeModelId<T>(value: T): string {
+  return identifierText(value)
     .trim()
     .replace(/^models\//i, "");
 }
 
-function responseModelIds(payload: unknown): string[] {
-  const record = payload as
-    | { data?: unknown; models?: unknown }
-    | Array<unknown>
-    | null
-    | undefined;
-
-  const models = Array.isArray(payload)
+export function responseModelIds(payload: ConnectionTestPayload): string[] {
+  const models: readonly unknown[] = Array.isArray(payload)
     ? payload
-    : Array.isArray(record && !Array.isArray(record) ? record.data : undefined)
-      ? (record as { data: unknown[] }).data
-      : Array.isArray(record && !Array.isArray(record) ? record.models : undefined)
-        ? (record as { models: unknown[] }).models
+    : isModelListPayload(payload) && Array.isArray(payload.data)
+      ? payload.data
+      : isModelListPayload(payload) && Array.isArray(payload.models)
+        ? payload.models
         : [];
 
-  return models
-    .map((model) =>
-      typeof model === "string"
-        ? model
-        : ((model as { id?: unknown; name?: unknown })?.id as string | undefined) ||
-          ((model as { name?: unknown })?.name as string | undefined)
-    )
-    .map(normalizeModelId)
-    .filter(Boolean);
+  return models.map(modelIdentifierOf).map(normalizeModelId).filter(Boolean);
+}
+
+export interface ConnectionTestResponse {
+  ok: boolean;
+  status: number;
+  json?: Response["json"];
 }
 
 async function responseOffersModel(
-  response: { json(): Promise<unknown> },
+  response: ConnectionTestResponse,
   model: string
 ): Promise<boolean> {
   if (!model) return true;
 
   try {
-    const payload = await response.json();
+    const payload: unknown = response.json ? await response.json() : undefined;
 
-    return responseModelIds(payload).includes(normalizeModelId(model));
+    return responseModelIds(asModelListPayload(payload)).includes(normalizeModelId(model));
   } catch {
     return false;
   }
 }
 
+function asModelListPayload<T>(payload: T): ConnectionTestPayload {
+  if (Array.isArray(payload)) return payload;
+
+  if (isModelListPayload(payload)) return payload;
+
+  return [];
+}
+
+interface NamedError {
+  name?: unknown;
+}
+
+function isNamedError<T>(value: T): value is T & NamedError {
+  return typeof value === "object" && value !== null;
+}
+
+function isAbortError<T>(value: T): boolean {
+  return isNamedError(value) && isString(value.name) && value.name === "AbortError";
+}
+
 export type ConnectionTestFetch = (
   url: string,
   init?: RequestInit
-) => Promise<{
-  ok: boolean;
-  status: number;
-  json(): Promise<unknown>;
-}>;
+) => Promise<ConnectionTestResponse>;
 
 export async function testProviderConnection(
   config: ProviderConnectionConfig,
-  fetchImpl: ConnectionTestFetch = fetch as ConnectionTestFetch
+  fetchImpl: ConnectionTestFetch = fetch
 ): Promise<ConnectionTestOutcome> {
   let request;
 
@@ -246,8 +329,8 @@ export async function testProviderConnection(
   } catch (error) {
     return {
       success: false,
-      errorCode: (error as ConnectionTestError).errorCode || "invalidUrl",
-      error: (error as Error).message,
+      errorCode: error instanceof ConnectionTestError ? error.errorCode : "invalidUrl",
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 
@@ -279,7 +362,7 @@ export async function testProviderConnection(
 
       failure = pickFailure(failure, describeStatusFailure(response.status, provider));
     } catch (error) {
-      if ((error as { name?: string })?.name === "AbortError") {
+      if (isAbortError(error)) {
         failure = pickFailure(failure, {
           errorCode: "timeout",
           error: "The connection test timed out.",

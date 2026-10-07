@@ -1,12 +1,16 @@
 import { refreshTinfoilCatalogAndReconcileSelections } from "../../../models/tinfoilModels";
 import type { InferenceProvider } from "./types";
+import type { TinfoilAI } from "tinfoil";
 import { TOKEN_LIMITS } from "../../../config/constants.mts";
 import { withRetry, createApiRetryStrategy } from "../../../utils/retry";
 import logger from "../../../utils/logger";
 import { applyChatCompletionsParams, isTruncatedFinishReason } from "../chatRequestBody";
+import type { ProviderRequestBody } from "../thinkingSuppressionDialects";
 import { getTinfoilChatClient } from "../tinfoilClient";
 import { getLlmRequestTimeoutSeconds } from "../../../helpers/llmRequestTimeout.js";
 import { wrapCleanupTranscript } from "../../../config/prompts";
+
+type TinfoilChatParams = TinfoilAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
 export const tinfoilProvider: InferenceProvider = {
   id: "tinfoil",
@@ -40,7 +44,7 @@ export const tinfoilProvider: InferenceProvider = {
         )
       );
 
-    const requestBody: Record<string, unknown> = { model, messages };
+    const requestBody: ProviderRequestBody = { model, messages };
     applyChatCompletionsParams(requestBody, { model, provider: "tinfoil", config, maxTokens });
 
     // The client verifies enclave attestation before every request and
@@ -52,7 +56,10 @@ export const tinfoilProvider: InferenceProvider = {
 
     const response = await withRetry(
       () =>
-        client.chat.completions.create(requestBody as any, {
+        // SAFETY: the SDK sends this body verbatim as JSON; the OpenAI params
+        // it requires (model, messages) are present, and the suppression params
+        // this provider adds are valid OpenAI-compatible chat fields.
+        client.chat.completions.create(requestBody as TinfoilChatParams, {
           timeout: timeoutMs,
           maxRetries: 0,
         }),
@@ -61,13 +68,13 @@ export const tinfoilProvider: InferenceProvider = {
 
     const responseText =
       response.choices
-        ?.map((choice: any) => choice?.message?.content)
-        .find((content: unknown) => typeof content === "string" && content.trim())
+        ?.map((choice) => choice.message?.content)
+        .find((content): content is string => typeof content === "string" && content.trim() !== "")
         ?.trim() || "";
 
     if (
       config.requireCompleteOutput &&
-      response.choices?.some((choice: any) => isTruncatedFinishReason(choice?.finish_reason))
+      response.choices?.some((choice) => isTruncatedFinishReason(choice.finish_reason ?? undefined))
     ) {
       throw new Error("Model output was truncated before the selection edit completed");
     }

@@ -51,7 +51,7 @@ function materialBlocks(
   if (new Set(matches.map((match) => match[0])).size !== matches.length) return [];
 
   return matches.map((match, index) => {
-    const start = match.index! + match[0].length;
+    const start = (match.index ?? 0) + match[0].length;
     let end = matches[index + 1]?.index ?? text.length;
 
     while (end > start && text[end - 1] === "\n") end -= 1;

@@ -46,15 +46,166 @@ const BEDROCK_SAFE_NETWORK_CODES = new Set([
   "UND_ERR_SOCKET",
 ]);
 
-export type ErrorRecord = Record<string, unknown> & { lastError?: unknown; cause?: unknown };
-
-function asErrorRecord(value: unknown): ErrorRecord | null {
-  return typeof value === "object" && value !== null ? (value as ErrorRecord) : null;
+// The error shapes external SDKs (AWS/AI SDK, Azure, Vertex) actually carry:
+// any of these fields may be present, so each is read through a guard. A named
+// interface with fixed keys is a contract, not an open dictionary.
+export interface ErrorRecord {
+  message?: unknown;
+  code?: unknown;
+  name?: unknown;
+  type?: unknown;
+  __type?: unknown;
+  status?: unknown;
+  statusCode?: unknown;
+  httpStatusCode?: unknown;
+  requestId?: unknown;
+  $metadata?: unknown;
+  response?: unknown;
+  responseHeaders?: unknown;
+  headers?: unknown;
+  data?: unknown;
+  lastError?: unknown;
+  cause?: unknown;
+  toString?(): string;
 }
 
-export function unwrapRetryError(error: unknown): unknown {
+interface HeaderGetter {
+  get(name: string): string | null | undefined;
+}
+
+interface HeaderBag {
+  [name: string]: string | undefined;
+}
+
+// Provider config reaches the mappers as filenames/regions; each field is
+// optional and read through a guard. `model`/`timeoutMs` are listed so callers
+// passing the IPC connection config share a key with this contract.
+export interface EnterpriseProviderConfig {
+  bedrockRegion?: unknown;
+  bedrockProfile?: unknown;
+  bedrockAccessKeyId?: unknown;
+  bedrockSecretAccessKey?: unknown;
+  bedrockSessionToken?: unknown;
+  azureEndpoint?: unknown;
+  azureApiVersion?: unknown;
+  vertexProject?: unknown;
+  vertexLocation?: unknown;
+  model?: unknown;
+  timeoutMs?: unknown;
+}
+
+// The credential subset the SDK factories consume, normalized to strings by
+// `pickEnterpriseConfig` (see the reasoning runtime's `enterprise` field).
+export interface EnterpriseRuntimeConfig {
+  bedrockRegion?: string;
+  bedrockProfile?: string;
+  bedrockAccessKeyId?: string;
+  bedrockSecretAccessKey?: string;
+  bedrockSessionToken?: string;
+  azureEndpoint?: string;
+  azureApiVersion?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function isNumber<T>(value: T): value is T & number {
+  return typeof value === "number";
+}
+
+function isInteger<T>(value: T): value is T & number {
+  return typeof value === "number" && Number.isInteger(value);
+}
+
+function isScalar<T>(value: T): value is T & (string | number | boolean | bigint | symbol) {
+  const kind = typeof value;
+
+  return (
+    kind === "string" ||
+    kind === "number" ||
+    kind === "boolean" ||
+    kind === "bigint" ||
+    kind === "symbol"
+  );
+}
+
+function isErrorRecord<T>(value: T): value is T & ErrorRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function isObjectValue<T>(value: T): value is T & object {
+  return typeof value === "object" && value !== null;
+}
+
+function isHeaderBag<T>(value: T): value is T & HeaderBag {
+  return typeof value === "object" && value !== null;
+}
+
+function isHeaderGetter<T>(value: T): value is T & HeaderGetter {
+  if (!isObjectValue(value)) return false;
+
+  return "get" in value && typeof value.get === "function";
+}
+
+function asErrorRecord<T>(value: T): ErrorRecord | null {
+  return isErrorRecord(value) ? value : null;
+}
+
+function stringifyScalar<T>(value: T): string {
+  return isScalar(value) ? String(value) : "";
+}
+
+function runtimeString<T>(value: T): string {
+  if (value instanceof Error) return String(value);
+
+  if (value === null) return "null";
+
+  if (value === undefined) return "undefined";
+
+  if (isScalar(value)) return String(value);
+
+  return String(asErrorRecord(value));
+}
+
+function messageOrRuntime<T>(record: ErrorRecord | null, fallback: T): string {
+  const message = record?.message;
+
+  return message ? runtimeString(message) : runtimeString(fallback);
+}
+
+function messageThenCode<T>(record: ErrorRecord | null, fallback: T): string {
+  const message = record?.message;
+
+  if (message) return runtimeString(message);
+  const code = record?.code;
+
+  if (code) return runtimeString(code);
+
+  return runtimeString(fallback);
+}
+
+function firstPresentThenTruthy<T>(record: ErrorRecord | null, fallback: T): string {
+  const combined = record?.message ?? record?.code;
+
+  return combined ? runtimeString(combined) : runtimeString(fallback);
+}
+
+function numberValue<T>(value: T): number | undefined {
+  return isNumber(value) ? value : undefined;
+}
+
+// Mirrors `String(value || fallback)`: a falsy config value falls back, a
+// present scalar stringifies, and objects keep their default tag.
+function defaultedText<T>(value: T, fallback: string): string {
+  return value ? stringifyScalar(value) || String(value) : fallback;
+}
+
+export function unwrapRetryError<T>(error: T): ErrorRecord | null {
   let current = asErrorRecord(error);
-  const seen = new Set<unknown>();
+  const seen = new Set<ErrorRecord>();
 
   while (current?.lastError && !seen.has(current)) {
     seen.add(current);
@@ -64,52 +215,56 @@ export function unwrapRetryError(error: unknown): unknown {
   return current;
 }
 
-function bedrockErrorChain(error: unknown): unknown[] {
-  const chain: unknown[] = [];
-  let current: unknown = unwrapRetryError(error);
-  const seen = new Set<unknown>();
+function bedrockErrorChain<T>(error: T): ErrorRecord[] {
+  const chain: ErrorRecord[] = [];
+  let current = unwrapRetryError(error);
+  const seen = new Set<ErrorRecord>();
 
   while (current && !seen.has(current)) {
     chain.push(current);
     seen.add(current);
-    current = asErrorRecord(current)?.cause;
+    current = asErrorRecord(current.cause);
   }
 
   return chain;
 }
 
-function getBedrockHttpStatus(error: unknown): number | undefined {
-  for (const item of bedrockErrorChain(error)) {
-    const record = asErrorRecord(item);
-    const metadata = asErrorRecord(record?.$metadata);
-    const response = asErrorRecord(record?.response);
+function getBedrockHttpStatus<T>(error: T): number | undefined {
+  for (const record of bedrockErrorChain(error)) {
+    const metadata = asErrorRecord(record.$metadata);
+    const response = asErrorRecord(record.response);
 
     const status =
-      record?.status ?? record?.statusCode ?? metadata?.httpStatusCode ?? response?.status;
+      record.status ?? record.statusCode ?? metadata?.httpStatusCode ?? response?.status;
 
-    if (typeof status === "number" && Number.isInteger(status)) return status;
+    if (isInteger(status)) return status;
   }
 
   return undefined;
 }
 
-function getHeaderCaseInsensitive(headers: unknown, headerName: string): string | undefined {
+function getHeaderCaseInsensitive<T>(headers: T, headerName: string): string | undefined {
   if (!headers) return undefined;
-  const getter = (headers as { get?: unknown }).get;
 
-  if (typeof getter === "function")
-    return (getter as (name: string) => string | null).call(headers, headerName) || undefined;
+  if (isHeaderGetter(headers)) {
+    const value = headers.get(headerName);
+
+    return isString(value) && value ? value : undefined;
+  }
+
   const normalizedName = headerName.toLowerCase();
 
-  for (const [name, value] of Object.entries(headers as Record<string, unknown>)) {
-    if (name.toLowerCase() === normalizedName) return value as string;
+  if (isHeaderBag(headers)) {
+    for (const [name, value] of Object.entries(headers)) {
+      if (name.toLowerCase() === normalizedName && isString(value)) return value;
+    }
   }
 
   return undefined;
 }
 
-function normalizeBedrockExceptionType(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
+function normalizeBedrockExceptionType<T>(value: T): string | undefined {
+  if (!isString(value)) return undefined;
   const trimmed = value.trim();
   const namespaceSeparator = trimmed.lastIndexOf("#");
 
@@ -124,20 +279,20 @@ function normalizeBedrockExceptionType(value: unknown): string | undefined {
   return normalized.trim() || undefined;
 }
 
-function getBedrockExceptionType(error: unknown): string | undefined {
-  for (const item of bedrockErrorChain(error)) {
-    const record = asErrorRecord(item);
-    const response = asErrorRecord(record?.response);
-    const headers = record?.responseHeaders || response?.headers;
+function getBedrockExceptionType<T>(error: T): string | undefined {
+  for (const record of bedrockErrorChain(error)) {
+    const response = asErrorRecord(record.response);
+    const headers = record.responseHeaders || response?.headers;
+    const data = asErrorRecord(record.data);
 
     const candidates = [
       getHeaderCaseInsensitive(headers, "x-amzn-errortype"),
-      asErrorRecord(record?.data)?.code,
-      asErrorRecord(record?.data)?.__type,
-      asErrorRecord(record?.data)?.type,
-      record?.type,
-      record?.code,
-      record?.name,
+      data?.code,
+      data?.__type,
+      data?.type,
+      record.type,
+      record.code,
+      record.name,
     ];
 
     for (const candidate of candidates) {
@@ -150,38 +305,36 @@ function getBedrockExceptionType(error: unknown): string | undefined {
   return undefined;
 }
 
-function getBedrockRequestId(error: unknown): string | undefined {
-  for (const item of bedrockErrorChain(error)) {
-    const record = asErrorRecord(item);
-    const response = asErrorRecord(record?.response);
-    const headers = record?.responseHeaders || response?.headers || {};
+function getBedrockRequestId<T>(error: T): string | undefined {
+  for (const record of bedrockErrorChain(error)) {
+    const response = asErrorRecord(record.response);
+    const headers = record.responseHeaders || response?.headers || {};
+    const metadata = asErrorRecord(record.$metadata);
 
     const requestId =
-      asErrorRecord(record?.$metadata)?.requestId ||
-      record?.requestId ||
+      metadata?.requestId ||
+      record.requestId ||
       getHeaderCaseInsensitive(headers, "x-amzn-requestid") ||
       getHeaderCaseInsensitive(headers, "x-amz-request-id");
 
-    if (requestId) return requestId as string;
+    if (isString(requestId) && requestId) return requestId;
   }
 
   return undefined;
 }
 
-function getBedrockErrorCode(error: unknown): string | undefined {
-  for (const item of bedrockErrorChain(error)) {
-    const record = asErrorRecord(item);
+function getBedrockErrorCode<T>(error: T): string | undefined {
+  for (const record of bedrockErrorChain(error)) {
+    if (isString(record.code)) return record.code;
+    const causeCode = asErrorRecord(record.cause)?.code;
 
-    if (typeof record?.code === "string") return record.code;
-    const causeCode = asErrorRecord(record?.cause)?.code;
-
-    if (typeof causeCode === "string") return causeCode;
+    if (isString(causeCode)) return causeCode;
   }
 
   return undefined;
 }
 
-function isBedrockTimeout(error: unknown): boolean {
+function isBedrockTimeout<T>(error: T): boolean {
   const status = getBedrockHttpStatus(error);
   const type = (getBedrockExceptionType(error) || "").toLowerCase();
   const code = (getBedrockErrorCode(error) || "").toUpperCase();
@@ -197,25 +350,26 @@ function isBedrockTimeout(error: unknown): boolean {
   );
 }
 
-function isSafeBedrockNetworkError(error: unknown): boolean {
+function isSafeBedrockNetworkError<T>(error: T): boolean {
   if (getBedrockHttpStatus(error) !== undefined) return false;
   const code = (getBedrockErrorCode(error) || "").toUpperCase();
 
   if (BEDROCK_SAFE_NETWORK_CODES.has(code)) return true;
 
   return bedrockErrorChain(error).some(
-    (item) =>
-      (item as { name?: unknown })?.name === "TypeError" &&
-      /fetch failed|network/i.test(String((item as { message?: unknown })?.message || ""))
+    (record) =>
+      isString(record.name) &&
+      record.name === "TypeError" &&
+      /fetch failed|network/i.test(stringifyScalar(record.message))
   );
 }
 
-function getBedrockFailureKind(error: unknown): string {
+function getBedrockFailureKind<T>(error: T): string {
   const status = getBedrockHttpStatus(error);
   const type = (getBedrockExceptionType(error) || "").toLowerCase();
 
   const message = bedrockErrorChain(error)
-    .map((item) => String((item as { message?: unknown })?.message || ""))
+    .map((record) => stringifyScalar(record.message))
     .join(" ")
     .toLowerCase();
 
@@ -237,7 +391,7 @@ function getBedrockFailureKind(error: unknown): string {
   return "other";
 }
 
-function shouldRetryBedrockError(error: unknown): boolean {
+function shouldRetryBedrockError<T>(error: T): boolean {
   return ["unavailable", "throttled", "timeout", "network"].includes(getBedrockFailureKind(error));
 }
 
@@ -249,21 +403,22 @@ function sleepWithAbort(delay: number, signal?: AbortSignal): Promise<void> {
       return;
     }
 
-    let timer: NodeJS.Timeout | undefined;
-
-    const onAbort = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      reject((signal as AbortSignal).reason);
-    };
+    const abortSignal = signal;
 
     const onTimeout = () => {
-      signal?.removeEventListener("abort", onAbort);
+      abortSignal?.removeEventListener("abort", onAbort);
       resolve();
     };
 
-    timer = setTimeout(onTimeout, delay);
-    signal?.addEventListener("abort", onAbort, { once: true });
+    const timer = setTimeout(onTimeout, delay);
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      abortSignal?.removeEventListener("abort", onAbort);
+      reject(abortSignal?.reason);
+    };
+
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -330,39 +485,34 @@ export async function runBedrockRequest<T>(
   throw new Error("Bedrock retry loop exited unexpectedly");
 }
 
-function getBedrockTechnicalDetails(error: unknown): MappedEnterpriseError["technicalDetails"] {
+function getBedrockTechnicalDetails<T>(error: T): MappedEnterpriseError["technicalDetails"] {
   const underlying = unwrapRetryError(error);
+  const status = getBedrockHttpStatus(underlying);
+  const exceptionType = getBedrockExceptionType(underlying);
+  const requestId = getBedrockRequestId(underlying);
 
   return {
-    ...(getBedrockHttpStatus(underlying) !== undefined
-      ? { status: getBedrockHttpStatus(underlying) }
-      : {}),
-    ...(getBedrockExceptionType(underlying)
-      ? { exceptionType: getBedrockExceptionType(underlying) }
-      : {}),
-    ...(getBedrockRequestId(underlying) ? { requestId: getBedrockRequestId(underlying) } : {}),
-    underlyingError:
-      (asErrorRecord(underlying)?.message as string | undefined) || String(underlying),
+    ...(status !== undefined ? { status } : {}),
+    ...(exceptionType !== undefined ? { exceptionType } : {}),
+    ...(requestId !== undefined ? { requestId } : {}),
+    underlyingError: messageOrRuntime(underlying, underlying),
   };
 }
 
-function mapBedrockError(
-  error: unknown,
-  config: Record<string, unknown> = {}
+function mapBedrockError<T>(
+  error: T,
+  config: EnterpriseProviderConfig = {}
 ): MappedEnterpriseError {
   const underlying = unwrapRetryError(error);
   const underlyingRecord = asErrorRecord(underlying);
 
-  const msg =
-    (underlyingRecord?.message as string | undefined) ||
-    (underlyingRecord?.code as string | undefined) ||
-    String(underlying);
+  const msg = messageThenCode(underlyingRecord, underlying);
 
   const status = getBedrockHttpStatus(underlying);
   const exceptionType = getBedrockExceptionType(underlying) || "";
   const signature = `${exceptionType} ${msg}`.toLowerCase();
-  const profile = String(config.bedrockProfile || "default");
-  const region = String(config.bedrockRegion || "us-east-1");
+  const profile = defaultedText(config.bedrockProfile, "default");
+  const region = defaultedText(config.bedrockRegion, "us-east-1");
   const technicalDetails = getBedrockTechnicalDetails(underlying);
 
   const withDetails = (mapped: MappedEnterpriseError): MappedEnterpriseError => ({
@@ -475,10 +625,10 @@ function mapBedrockError(
   });
 }
 
-function mapAzureError(error: unknown): MappedEnterpriseError {
+function mapAzureError<T>(error: T): MappedEnterpriseError {
   const record = asErrorRecord(error);
-  const status = (record?.status ?? record?.statusCode) as number | undefined;
-  const msg = ((record?.message ?? record?.code) as string | undefined) || String(error);
+  const status = numberValue(record?.status) ?? numberValue(record?.statusCode);
+  const msg = firstPresentThenTruthy(record, error);
 
   if (status === 401 || msg.includes("Unauthorized") || msg.includes("invalid")) {
     return { message: "Invalid API key for Azure OpenAI resource." };
@@ -514,13 +664,10 @@ function mapAzureError(error: unknown): MappedEnterpriseError {
   return { message: `Azure OpenAI error: ${msg}` };
 }
 
-function mapVertexError(
-  error: unknown,
-  config: Record<string, unknown> = {}
-): MappedEnterpriseError {
+function mapVertexError<T>(error: T, config: EnterpriseProviderConfig = {}): MappedEnterpriseError {
   const record = asErrorRecord(error);
-  const msg = ((record?.message ?? record?.code) as string | undefined) || String(error);
-  const project = config.vertexProject || "";
+  const msg = firstPresentThenTruthy(record, error);
+  const project = defaultedText(config.vertexProject, "");
 
   if (msg.includes("UNAUTHENTICATED") || msg.includes("Could not load the default credentials")) {
     return {
@@ -567,10 +714,10 @@ function mapVertexError(
  * @param {Record<string,string>} config - provider config for contextual messages
  * @returns {{ message: string, action?: string, copyCommand?: string, retryable?: boolean }}
  */
-export function mapEnterpriseError(
+export function mapEnterpriseError<T>(
   provider: string,
-  error: unknown,
-  config: Record<string, unknown> = {}
+  error: T,
+  config: EnterpriseProviderConfig = {}
 ): MappedEnterpriseError {
   switch (provider) {
     case "bedrock":
@@ -580,13 +727,13 @@ export function mapEnterpriseError(
     case "vertex":
       return mapVertexError(error, config);
     default:
-      return { message: (asErrorRecord(error)?.message as string | undefined) || String(error) };
+      return { message: messageOrRuntime(asErrorRecord(error), error) };
   }
 }
 
 const ENTERPRISE_PROVIDERS: readonly string[] = ["bedrock", "azure", "vertex"];
 
-export function isEnterpriseProvider(value: unknown): boolean {
+export function isEnterpriseProvider(value: unknown): value is EnterpriseProvider {
   return typeof value === "string" && ENTERPRISE_PROVIDERS.includes(value);
 }
 
@@ -664,20 +811,25 @@ export function validateEnterpriseEndpoint(endpoint: string | null | undefined):
 
 /**
  * Extracts the enterprise credential/config subset from an IPC payload
- * so SDK factories receive only the fields they expect.
+ * so SDK factories receive only the fields they expect. Each field is kept
+ * only when it is a string; anything else is dropped, as before.
  */
 export function pickEnterpriseConfig(
-  config: Record<string, unknown> = {}
-): Record<string, unknown> {
+  config: EnterpriseProviderConfig = {}
+): EnterpriseRuntimeConfig {
   return {
-    bedrockRegion: config.bedrockRegion,
-    bedrockProfile: config.bedrockProfile,
-    bedrockAccessKeyId: config.bedrockAccessKeyId,
-    bedrockSecretAccessKey: config.bedrockSecretAccessKey,
-    bedrockSessionToken: config.bedrockSessionToken,
-    azureEndpoint: config.azureEndpoint,
-    azureApiVersion: config.azureApiVersion,
-    vertexProject: config.vertexProject,
-    vertexLocation: config.vertexLocation,
+    bedrockRegion: isString(config.bedrockRegion) ? config.bedrockRegion : undefined,
+    bedrockProfile: isString(config.bedrockProfile) ? config.bedrockProfile : undefined,
+    bedrockAccessKeyId: isString(config.bedrockAccessKeyId) ? config.bedrockAccessKeyId : undefined,
+    bedrockSecretAccessKey: isString(config.bedrockSecretAccessKey)
+      ? config.bedrockSecretAccessKey
+      : undefined,
+    bedrockSessionToken: isString(config.bedrockSessionToken)
+      ? config.bedrockSessionToken
+      : undefined,
+    azureEndpoint: isString(config.azureEndpoint) ? config.azureEndpoint : undefined,
+    azureApiVersion: isString(config.azureApiVersion) ? config.azureApiVersion : undefined,
+    vertexProject: isString(config.vertexProject) ? config.vertexProject : undefined,
+    vertexLocation: isString(config.vertexLocation) ? config.vertexLocation : undefined,
   };
 }

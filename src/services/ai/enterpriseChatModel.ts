@@ -30,15 +30,28 @@ const SERIALIZABLE_OPTION_KEYS = [
 ] as const;
 
 function pickSerializableOptions(options: LanguageModelV3CallOptions) {
-  const picked: Record<string, unknown> = {};
+  const entries: Array<[string, unknown]> = [];
 
   for (const key of SERIALIZABLE_OPTION_KEYS) {
     const value = options[key];
 
-    if (value !== undefined) picked[key] = value;
+    if (value !== undefined) entries.push([key, value]);
   }
 
-  return picked;
+  return Object.fromEntries(entries);
+}
+
+// The preload bridge only wires these two operations in a working desktop
+// build; probe for them before proxying, so a stripped environment errors the
+// local stream instead of throwing a TypeError.
+function hasEnterpriseStreaming(
+  api: Window["electronAPI"] | undefined
+): api is NonNullable<Window["electronAPI"]> {
+  return (
+    api !== undefined &&
+    typeof api.enterpriseStreamStart === "function" &&
+    typeof api.onEnterpriseStreamPart === "function"
+  );
 }
 
 export function createEnterpriseChatModel(
@@ -58,11 +71,7 @@ export function createEnterpriseChatModel(
     async doStream(options: LanguageModelV3CallOptions) {
       const api = window.electronAPI;
 
-      if (
-        !api ||
-        typeof api.enterpriseStreamStart !== "function" ||
-        typeof api.onEnterpriseStreamPart !== "function"
-      ) {
+      if (!hasEnterpriseStreaming(api)) {
         throw new Error("Enterprise streaming is not available in this environment");
       }
 
@@ -101,7 +110,7 @@ export function createEnterpriseChatModel(
       };
 
       const onAbort = () => {
-        void api.enterpriseStreamCancel(streamId);
+        api.enterpriseStreamCancel(streamId).catch(() => {});
         // Renderer cancellation must complete independently of the main
         // terminal event (#33): settle the local stream and clean up now,
         // while the start invoke may still be pending.
@@ -136,6 +145,8 @@ export function createEnterpriseChatModel(
             } else if (envelope.done) {
               finish();
             } else if (envelope.part !== undefined) {
+              // SAFETY: the preload bridge relays each SDK stream part verbatim
+              // over IPC; main produced it as a LanguageModelV3StreamPart.
               controller.enqueue(envelope.part as LanguageModelV3StreamPart);
             }
           });
@@ -155,7 +166,7 @@ export function createEnterpriseChatModel(
               // cancel op above found no registered stream yet, so cancel the
               // now-started one instead of streaming for a dead consumer.
               if (options.abortSignal?.aborted) {
-                void api.enterpriseStreamCancel(streamId);
+                api.enterpriseStreamCancel(streamId).catch(() => {});
                 fail("Aborted");
 
                 return;
@@ -169,7 +180,7 @@ export function createEnterpriseChatModel(
           // Explicit cancel settles the local stream without waiting for a
           // main terminal event, then aborts the provider request.
           cleanup();
-          void api.enterpriseStreamCancel(streamId);
+          api.enterpriseStreamCancel(streamId).catch(() => {});
         },
       });
 

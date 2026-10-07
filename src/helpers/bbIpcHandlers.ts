@@ -1,4 +1,9 @@
-import { bbChannels, bbSelectionSchema, bbStreamStartSchema } from "../contracts/bb.js";
+import {
+  bbChannels,
+  bbSelectionSchema,
+  bbStreamStartSchema,
+  type BbStreamEnvelope,
+} from "../contracts/bb.js";
 import { AgentStreamRequestRegistry } from "./agentStreamRequestRegistry.js";
 import { ensureBbWorkspace } from "./bbWorkspace.js";
 import {
@@ -20,7 +25,7 @@ import type { DatabaseManager } from "./database.js";
 interface Sender {
   id: number;
   isDestroyed(): boolean;
-  send(channel: string, payload: unknown): void;
+  send(channel: string, payload: BbStreamEnvelope): void;
   once(event: string, callback: () => void): void;
 }
 
@@ -29,7 +34,17 @@ interface IpcEvent {
 }
 
 interface IpcMain {
-  handle(channel: string, handler: (event: IpcEvent, ...args: unknown[]) => unknown): void;
+  handle<Result>(channel: string, handler: (event: IpcEvent, ...args: unknown[]) => Result): void;
+}
+
+// IPC arguments are untrusted: decode them with these predicates before use.
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+// bb stream ids are UUID-shaped; a malformed cancel is ignored, not an error.
+function isStreamId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
 }
 
 // bb names a thread asynchronously after its first turn, so poll briefly.
@@ -61,14 +76,18 @@ export function registerBbHandlers(
 
   ipcMain.handle(bbChannels.catalog, () => listBbHarnesses());
   ipcMain.handle(bbChannels.hostPreferences, () => getBbHostPreferences());
-  ipcMain.handle(bbChannels.models, (_event, provider: unknown) => {
-    if (typeof provider !== "string" || !provider.trim())
-      throw new Error("bb provider is required");
+  ipcMain.handle(bbChannels.models, (_event, ...args: unknown[]) => {
+    const provider = args[0];
+
+    if (!isString(provider) || !provider.trim()) throw new Error("bb provider is required");
 
     return listBbModels(provider);
   });
-  ipcMain.handle(bbChannels.generate, async (_event, prompt: unknown, selection: unknown) => {
-    if (typeof prompt !== "string" || !prompt.trim()) throw new Error("bb prompt is required");
+  ipcMain.handle(bbChannels.generate, async (_event, ...args: unknown[]) => {
+    const prompt = args[0];
+    const selection = args[1];
+
+    if (!isString(prompt) || !prompt.trim()) throw new Error("bb prompt is required");
     const config = bbSelectionSchema.parse(selection);
     const id = await spawnBbThread(prompt, config, workspace());
 
@@ -78,8 +97,8 @@ export function registerBbHandlers(
 
     return getBbThreadOutput(id);
   });
-  ipcMain.handle(bbChannels.streamStart, async (event, raw: unknown) => {
-    const request = bbStreamStartSchema.parse(raw);
+  ipcMain.handle(bbChannels.streamStart, async (event, ...args: unknown[]) => {
+    const request = bbStreamStartSchema.parse(args[0]);
     const sender = event.sender;
     const controller = requests.begin(sender.id, request.streamId);
 
@@ -180,7 +199,7 @@ export function registerBbHandlers(
         if (!controller.signal.aborted && !sender.isDestroyed()) {
           sender.send(bbChannels.streamPart, {
             streamId: request.streamId,
-            error: (error as Error).message,
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       } finally {
@@ -191,12 +210,17 @@ export function registerBbHandlers(
     });
 
     turnTails.set(request.conversationId, turn);
-    void turn.finally(() => {
-      if (turnTails.get(request.conversationId) === turn) turnTails.delete(request.conversationId);
-    });
+    turn
+      .finally(() => {
+        if (turnTails.get(request.conversationId) === turn)
+          turnTails.delete(request.conversationId);
+      })
+      .catch(() => {});
   });
-  ipcMain.handle(bbChannels.streamCancel, async (event, raw: unknown) => {
-    if (typeof raw !== "string" || !/^[0-9a-f-]{36}$/i.test(raw)) return;
-    requests.cancel(event.sender.id, raw);
+  ipcMain.handle(bbChannels.streamCancel, async (event, ...args: unknown[]) => {
+    const streamId = args[0];
+
+    if (!isStreamId(streamId)) return;
+    requests.cancel(event.sender.id, streamId);
   });
 }

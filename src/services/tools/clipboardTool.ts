@@ -1,4 +1,9 @@
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import {
+  readString,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
 
 export const clipboardTool: ToolDefinition = {
   name: "copy_to_clipboard",
@@ -16,8 +21,8 @@ export const clipboardTool: ToolDefinition = {
   },
   readOnly: false,
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const text = args.text as string;
+  async execute(args: ToolArguments): Promise<ToolResult> {
+    const text = readString(args, "text") ?? "";
 
     try {
       await window.electronAPI.writeClipboard(text);
@@ -33,7 +38,7 @@ export const clipboardTool: ToolDefinition = {
       return {
         success: false,
         data: null,
-        displayText: `Failed to copy to clipboard: ${(error as Error).message}`,
+        displayText: `Failed to copy to clipboard: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   },

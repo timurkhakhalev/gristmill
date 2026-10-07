@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import ReasoningService, { type AgentStreamChunk } from "../../services/ReasoningService";
+import ReasoningService from "../../services/ReasoningService";
 import { isEnterpriseProvider } from "../../models/ModelRegistry";
 import { getSettings, useSettingsStore } from "../../stores/settingsStore";
 import { selectResolvedLLMConfig } from "../../config/settingsSelectors";
@@ -267,7 +267,6 @@ export function useChatStreaming({
 
       try {
         let fullContent = "";
-        let stream: AsyncGenerator<AgentStreamChunk>;
 
         // A disabled or never-chosen harness resolves empty; say so instead of spawning.
         if (isBbAgent && (!llmConfig.agentProvider || !llmConfig.agentModel)) {
@@ -275,7 +274,9 @@ export function useChatStreaming({
         }
 
         const aiTools = registry?.toAISDKFormat();
-        stream = ReasoningService.processTextStreamingAI(
+        const conversationId = sendOptions?.conversationId;
+
+        const stream = ReasoningService.processTextStreamingAI(
           llmMessages,
           isBbAgent ? llmConfig.agentModel || "" : llmConfig.model,
           isBbAgent ? "bb" : llmConfig.provider,
@@ -289,10 +290,10 @@ export function useChatStreaming({
                     model: llmConfig.agentModel || "",
                     reasoningLevel: llmConfig.agentReasoningLevel || "",
                   },
-                  agentConversationId: sendOptions?.conversationId,
+                  agentConversationId: conversationId,
                   onThreadTitle:
-                    onThreadTitle && sendOptions?.conversationId != null
-                      ? (title) => onThreadTitle?.(title, sendOptions.conversationId!)
+                    onThreadTitle && conversationId != null
+                      ? (title) => onThreadTitle(title, conversationId)
                       : undefined,
                 }
               : {}),
@@ -413,12 +414,16 @@ export function useChatStreaming({
           );
         } else {
           announceResponse();
+          // SAFETY: the streaming loop only rejects with an Error the service
+          // constructs; non-Error rejections would not carry a message anyway.
+          const message = error instanceof Error ? error.message : String(error);
+
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
                 ? {
                     ...m,
-                    content: `${t("agentMode.chat.errorPrefix")}: ${(error as Error).message}`,
+                    content: `${t("agentMode.chat.errorPrefix")}: ${message}`,
                     isStreaming: false,
                   }
                 : m

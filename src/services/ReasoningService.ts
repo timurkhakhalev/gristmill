@@ -10,13 +10,15 @@ import {
 import { BaseReasoningService, ReasoningConfig } from "./BaseReasoningService";
 import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy, httpError } from "../utils/retry";
-import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, ensureV1Suffix } from "../config/constants.mts";
+import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl } from "../config/constants.mts";
 import logger from "../utils/logger";
 import { getSettings } from "../stores/settingsStore";
 import { decodeCleanupTranscriptEntities, wrapCleanupTranscript } from "../config/prompts";
 import { stripThinkingTags } from "../helpers/stripThinking.js";
 import { getLlmRequestTimeoutSeconds } from "../helpers/llmRequestTimeout.js";
 import { streamText, stepCountIs } from "ai";
+import type { JSONValue, ModelMessage, Tool } from "ai";
+import { z } from "zod";
 import { getAIModel } from "./ai/providers";
 import { createEnterpriseChatModel } from "./ai/enterpriseChatModel";
 import { PROVIDER_REGISTRY, type ProviderContext } from "./ai/inferenceProviders";
@@ -31,15 +33,202 @@ import {
   isTruncatedFinishReason,
 } from "./ai/chatRequestBody";
 import { getModelFamilyConstraints } from "./ai/modelFamilyConstraints";
-import { detectEndpointDialect } from "./ai/thinkingSuppressionDialects";
+import { detectEndpointDialect, type ProviderRequestBody } from "./ai/thinkingSuppressionDialects";
 import { openCodeSessionHeaders } from "./ai/openCodeSession";
 import { createStreamingThinkFilter } from "./ai/streamingThinkFilter";
-import { extractApiErrorMessage } from "./ai/apiErrorMessage";
+import { extractApiErrorMessage, isApiErrorValue, type ApiErrorValue } from "./ai/apiErrorMessage";
 import { clearTinfoilClientCache } from "./ai/tinfoilClient";
 import { resolveChatRoute } from "../helpers/chatRouting";
 import type { BbSelection } from "../contracts/bb";
 
-export type ToolMetadata = Record<string, unknown> | Array<Record<string, unknown>>;
+/**
+ * A content part on a chat turn: the text+image parts the caller builds. Keys
+ * outside the ones this service reads stay JSON so the model contract holds.
+ */
+export interface ChatContentPart {
+  type?: string;
+  text?: string;
+  [key: string]: JSONValue | undefined;
+}
+
+export type ChatMessageContent = string | ChatContentPart[];
+
+export interface ChatMessage {
+  role: string;
+  content: ChatMessageContent;
+}
+
+function isTextPart(part: ChatContentPart): part is ChatContentPart & { text: string } {
+  return part.type === "text" && typeof part.text === "string";
+}
+
+/** Request/stream cancellation surfaces as an `AbortError`-named Error. */
+function isAbortError(error: unknown): error is Error {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function isPrimitiveValue(value: unknown): value is string | number | boolean | bigint {
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  );
+}
+
+/** Normalizes an unknown stream failure into the Error the caller should see. */
+function toError(cause: unknown): Error {
+  if (cause instanceof Error) return cause;
+
+  if (cause === undefined || cause === null || isPrimitiveValue(cause)) {
+    return new Error(cause === undefined || cause === null ? "Stream failed" : String(cause));
+  }
+
+  return new Error("Stream failed");
+}
+
+interface LogErrorDetails {
+  message: string;
+  stack?: string;
+  name: string;
+}
+
+/** Fields read off an unexpected rejection for logging; `undefined` safe. */
+function logErrorDetails(cause: unknown): LogErrorDetails {
+  if (cause instanceof Error) {
+    return { message: cause.message, stack: cause.stack, name: cause.name };
+  }
+
+  return { message: String(cause), name: "UnknownError" };
+}
+
+interface ApiKeyMissingError extends Error {
+  code: "API_KEY_MISSING";
+  provider: string;
+}
+
+/** The error a missing credential throws; callers key off `code`. */
+function apiKeyMissingError(message: string, provider: string): ApiKeyMissingError {
+  return Object.assign(new Error(message), { code: "API_KEY_MISSING" as const, provider });
+}
+
+/** Maps chat turns onto the AI SDK message union. */
+function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
+  // SAFETY: chat callers build turns with ModelMessage roles (system/user/
+  // assistant) and text or image content; both match the union arms this
+  // transport accepted untyped before.
+  const modelMessages = messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+  })) as ModelMessage[];
+
+  return modelMessages;
+}
+
+/** Flattens a turn's text parts, mirroring the old inline filter/join exactly. */
+function chatMessageText(message: ChatMessage): string {
+  if (!Array.isArray(message.content)) return message.content;
+
+  return message.content
+    .filter(isTextPart)
+    .map((part) => part.text)
+    .join("\n");
+}
+
+// A tool's model-facing output: a string payload, or an error envelope. The AI
+// SDK types tool output as JSON; the error arm is read only to describe a failed tool.
+const toolOutputSchema = z.union([
+  z.string(),
+  z.looseObject({
+    error: z
+      .string()
+      .optional()
+      .catch(() => undefined),
+  }),
+]);
+
+type ToolOutput = z.infer<typeof toolOutputSchema>;
+
+function isStringOutput(value: ToolOutput): value is string {
+  return typeof value === "string";
+}
+
+function toolOutputText(value: ToolOutput): string {
+  return isStringOutput(value) ? value : value.error || "Done";
+}
+
+const sseChunkSchema = z.looseObject({
+  choices: z
+    .array(
+      z
+        .looseObject({
+          delta: z
+            .looseObject({
+              content: z
+                .string()
+                .optional()
+                .catch(() => undefined),
+            })
+            .optional()
+            .catch(() => undefined),
+        })
+        .catch(() => ({}))
+    )
+    .optional()
+    .catch(() => undefined),
+});
+
+/** Reads one streamed delta's text; malformed chunks yield undefined. */
+function parseSseContent(data: string): string | undefined {
+  let raw: unknown;
+
+  try {
+    raw = JSON.parse(data);
+  } catch {
+    return undefined;
+  }
+
+  const parsed = sseChunkSchema.safeParse(raw);
+
+  return parsed.success ? parsed.data.choices?.[0]?.delta?.content : undefined;
+}
+
+/**
+ * Chat-completions wire shape: only the fields this service reads, kept
+ * permissive so a malformed field degrades to "missing" like the old reads.
+ */
+const chatCompletionSchema = z.looseObject({
+  choices: z
+    .array(
+      z
+        .looseObject({
+          finish_reason: z
+            .string()
+            .optional()
+            .catch(() => undefined),
+          message: z
+            .looseObject({
+              content: z
+                .string()
+                .nullish()
+                .catch(() => undefined),
+            })
+            .optional()
+            .catch(() => undefined),
+        })
+        .catch(() => ({}))
+    )
+    .optional()
+    .catch(() => undefined),
+  usage: z
+    .looseObject({ total_tokens: z.unknown().optional() })
+    .optional()
+    .catch(() => undefined),
+});
+
+type ChatCompletion = z.infer<typeof chatCompletionSchema>;
+
+export type ToolMetadata = Record<string, JSONValue> | Array<Record<string, JSONValue>>;
 
 const BYOK_STREAM_PROVIDERS = [
   "openai",
@@ -54,12 +243,25 @@ const BYOK_STREAM_PROVIDERS = [
 
 type ByokStreamProvider = (typeof BYOK_STREAM_PROVIDERS)[number];
 
+// Raw Chat Completions base URLs for the BYOK providers that expose one here.
+// anthropic/tinfoil/custom use endpoint overrides or the AI SDK transport.
+const BYOK_CHAT_BASE_URLS: Partial<Record<ByokStreamProvider, string>> = {
+  openai: API_ENDPOINTS.OPENAI_BASE,
+  groq: API_ENDPOINTS.GROQ_BASE,
+  corti: API_ENDPOINTS.CORTI_MODELS_BASE,
+  gemini: API_ENDPOINTS.GEMINI,
+};
+
+function isByokStreamProvider(provider: string): provider is ByokStreamProvider {
+  return BYOK_STREAM_PROVIDERS.some((candidate) => candidate === provider);
+}
+
 function toByokStreamProvider(provider: string): ByokStreamProvider {
-  if (!(BYOK_STREAM_PROVIDERS as readonly string[]).includes(provider)) {
+  if (!isByokStreamProvider(provider)) {
     throw new Error(`Unsupported reasoning provider: ${provider}`);
   }
 
-  return provider as ByokStreamProvider;
+  return provider;
 }
 
 export type AgentStreamChunk =
@@ -94,8 +296,7 @@ class ReasoningService extends BaseReasoningService {
     this.apiKeyCache = new SecureCache();
     this.cacheCleanupStop = this.apiKeyCache.startAutoCleanup();
     this.providerContext = {
-      getApiKey: (provider: string) =>
-        this.getApiKey(provider as Parameters<ReasoningService["getApiKey"]>[0]),
+      getApiKey: (provider: string) => this.getApiKey(toByokStreamProvider(provider)),
       getSystemPrompt: this.getSystemPrompt.bind(this),
       getCustomDictionary: this.getCustomDictionary.bind(this),
       getPreferredLanguage: this.getPreferredLanguage.bind(this),
@@ -132,7 +333,9 @@ class ReasoningService extends BaseReasoningService {
       try {
         customKey = (await window.electronAPI?.getCleanupCustomKey?.()) || "";
       } catch (err) {
-        logger.logReasoning("CUSTOM_KEY_IPC_FALLBACK", { error: (err as Error)?.message });
+        logger.logReasoning("CUSTOM_KEY_IPC_FALLBACK", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
 
       if (!customKey || !customKey.trim()) {
@@ -184,8 +387,8 @@ class ReasoningService extends BaseReasoningService {
       } catch (error) {
         logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCH_ERROR`, {
           provider,
-          error: (error as Error).message,
-          stack: (error as Error).stack,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
         });
       }
     }
@@ -197,9 +400,7 @@ class ReasoningService extends BaseReasoningService {
         provider,
         error: errorMsg,
       });
-      const error = new Error(errorMsg) as Error & { code: string; provider: string };
-      error.code = "API_KEY_MISSING";
-      error.provider = displayName;
+      const error = apiKeyMissingError(errorMsg, displayName);
       throw error;
     }
 
@@ -251,7 +452,7 @@ class ReasoningService extends BaseReasoningService {
       { role: "user", content: userPrompt },
     ];
 
-    const requestBody: any = { model, messages };
+    const requestBody: ProviderRequestBody = { model, messages };
     applyChatCompletionsParams(requestBody, {
       model,
       provider: providerName,
@@ -293,14 +494,11 @@ class ReasoningService extends BaseReasoningService {
       const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
 
       try {
-        const headers: Record<string, string> = {
+        const headers = {
           "Content-Type": "application/json",
           ...openCodeHeaders,
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         };
-
-        if (apiKey) {
-          headers["Authorization"] = `Bearer ${apiKey}`;
-        }
 
         const res = await fetchWithParamFallback(
           () =>
@@ -316,10 +514,12 @@ class ReasoningService extends BaseReasoningService {
 
         if (!res.ok) {
           const errorText = await res.text();
-          let errorData: any = { error: res.statusText };
+          let errorData: ApiErrorValue = { error: res.statusText };
 
           try {
-            errorData = JSON.parse(errorText);
+            const parsed: unknown = JSON.parse(errorText);
+
+            if (isApiErrorValue(parsed)) errorData = parsed;
           } catch {
             errorData = { error: errorText || res.statusText };
           }
@@ -339,19 +539,21 @@ class ReasoningService extends BaseReasoningService {
           throw httpError(errorMessage, res.status);
         }
 
-        const jsonResponse = await res.json();
+        const jsonResponse: unknown = await res.json();
+        const parsed = chatCompletionSchema.safeParse(jsonResponse);
+        const parsedResponse: ChatCompletion = parsed.success ? parsed.data : {};
 
         logger.logReasoning(`${providerName.toUpperCase()}_RAW_RESPONSE`, {
           hasResponse: !!jsonResponse,
-          responseKeys: jsonResponse ? Object.keys(jsonResponse) : [],
-          hasChoices: !!jsonResponse?.choices,
-          choicesLength: jsonResponse?.choices?.length || 0,
+          responseKeys: Object.keys(parsedResponse),
+          hasChoices: !!parsedResponse.choices,
+          choicesLength: parsedResponse.choices?.length || 0,
           fullResponse: JSON.stringify(jsonResponse).substring(0, 500),
         });
 
-        return jsonResponse;
+        return parsedResponse;
       } catch (error) {
-        if ((error as Error).name === "AbortError") {
+        if (isAbortError(error)) {
           if (requestGeneration !== this.requestCancellationGeneration) {
             throw httpError("Request cancelled", 499);
           }
@@ -490,7 +692,7 @@ class ReasoningService extends BaseReasoningService {
       logger.logReasoning("PROVIDER_ERROR", {
         provider: providerId,
         model: trimmedModel,
-        error: (error as Error).message,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -515,7 +717,7 @@ class ReasoningService extends BaseReasoningService {
   }
 
   private async *processTextStreamingRaw(
-    messages: Array<{ role: string; content: string }>,
+    messages: ChatMessage[],
     model: string,
     provider: string,
     config: ReasoningConfig & { systemPrompt: string },
@@ -549,16 +751,7 @@ class ReasoningService extends BaseReasoningService {
       const access = await this.resolveByokAccess(provider, config);
       apiKey = access.apiKey;
 
-      const chatBase =
-        access.baseURL ??
-        (
-          {
-            openai: API_ENDPOINTS.OPENAI_BASE,
-            groq: API_ENDPOINTS.GROQ_BASE,
-            corti: API_ENDPOINTS.CORTI_MODELS_BASE,
-            gemini: API_ENDPOINTS.GEMINI,
-          } as Partial<Record<string, string>>
-        )[provider];
+      const chatBase = access.baseURL ?? BYOK_CHAT_BASE_URLS[toByokStreamProvider(provider)];
 
       // anthropic and tinfoil have no raw Chat Completions transport here.
       if (!chatBase) {
@@ -573,7 +766,7 @@ class ReasoningService extends BaseReasoningService {
 
     if (abortController.signal.aborted) return;
 
-    const requestBody: Record<string, unknown> = {
+    const requestBody: ProviderRequestBody = {
       model,
       messages,
       stream: true,
@@ -596,14 +789,11 @@ class ReasoningService extends BaseReasoningService {
       messageCount: messages.length,
     });
 
-    const headers: Record<string, string> = {
+    const headers = {
       "Content-Type": "application/json",
       ...openCodeSessionHeaders(endpoint),
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     };
-
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-    }
 
     const timeoutSeconds = getLlmRequestTimeoutSeconds({ streaming: true });
     let timeoutTriggered = false;
@@ -631,7 +821,7 @@ class ReasoningService extends BaseReasoningService {
     } catch (error) {
       clearTimeout(timeoutId);
 
-      if ((error as Error).name === "AbortError" && abortController.signal.aborted) {
+      if (isAbortError(error) && abortController.signal.aborted) {
         if (!timeoutTriggered) return;
         throw new Error("Streaming request timed out");
       }
@@ -645,7 +835,12 @@ class ReasoningService extends BaseReasoningService {
       let errorMessage: string;
 
       try {
-        const errorData = JSON.parse(errorText);
+        const parsed: unknown = JSON.parse(errorText);
+
+        const errorData: ApiErrorValue = isApiErrorValue(parsed)
+          ? parsed
+          : { error: errorText || `API error: ${response.status}` };
+
         errorMessage = extractApiErrorMessage(errorData, `API error: ${response.status}`);
       } catch {
         errorMessage = errorText || `API error: ${response.status}`;
@@ -693,18 +888,19 @@ class ReasoningService extends BaseReasoningService {
           }
 
           try {
-            const parsed = JSON.parse(data);
-            let content = parsed.choices?.[0]?.delta?.content;
+            const content = parseSseContent(data);
 
             if (!content) continue;
 
             if (filterThinkTags) {
-              content = filterThinkTags(content);
+              const filtered = filterThinkTags(content);
 
-              if (!content) continue;
+              if (!filtered) continue;
+
+              yield filtered;
+            } else {
+              yield content;
             }
-
-            yield content;
           } catch {
             // skip malformed SSE chunks
           }
@@ -715,7 +911,7 @@ class ReasoningService extends BaseReasoningService {
 
       if (trailing) yield trailing;
     } catch (error) {
-      if ((error as Error).name === "AbortError" && abortController.signal.aborted) {
+      if (isAbortError(error) && abortController.signal.aborted) {
         if (!timeoutTriggered) return;
         throw new Error("Streaming request timed out");
       }
@@ -730,11 +926,11 @@ class ReasoningService extends BaseReasoningService {
   async *processTextStreamingAI(
     // Content is a string, or text+image parts when a screenshot rides along
     // (image-capable BYOK providers only — the caller drops it elsewhere).
-    messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>,
+    messages: ChatMessage[],
     model: string,
     provider: string,
     config: ReasoningConfig & { systemPrompt: string },
-    tools?: Record<string, import("ai").Tool>
+    tools?: Record<string, Tool>
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     if (config.agentSelection) {
       if (!config.agentConversationId)
@@ -768,7 +964,7 @@ class ReasoningService extends BaseReasoningService {
       // Attachments are never routed to local/LAN providers, so content is string-only here.
       try {
         const contentGen = this.processTextStreamingRaw(
-          messages as Array<{ role: string; content: string }>,
+          messages,
           model,
           provider,
           config,
@@ -781,7 +977,7 @@ class ReasoningService extends BaseReasoningService {
 
         yield { type: "done", finishReason: "stop" };
       } catch (error) {
-        if (abortController.signal.aborted && (error as Error).name === "AbortError") return;
+        if (abortController.signal.aborted && isAbortError(error)) return;
         throw error;
       } finally {
         if (this.streamAbortController === abortController) {
@@ -857,7 +1053,9 @@ class ReasoningService extends BaseReasoningService {
     const hasProviderOptions = Object.keys(providerOptions).length > 0;
 
     const aiModel = isEnterprise
-      ? createEnterpriseChatModel(provider as EnterpriseProvider, model)
+      ? // SAFETY: resolveChatRoute only returns the enterprise route after
+        // isEnterpriseProvider(provider) passed, so the narrowed type holds.
+        createEnterpriseChatModel(provider as EnterpriseProvider, model)
       : await getAIModel(aiProvider, model, apiKey, baseURL, {
           disableThinking: openrouterDisableThinking,
         });
@@ -880,10 +1078,7 @@ class ReasoningService extends BaseReasoningService {
 
     const result = streamText({
       model: aiModel,
-      messages: messages.map((m) => ({
-        role: m.role as "system" | "user" | "assistant",
-        content: m.content,
-      })) as import("ai").ModelMessage[],
+      messages: toModelMessages(messages),
       tools: tools || undefined,
       stopWhen: stepCountIs(tools ? ReasoningService.MAX_TOOL_STEPS : 1),
       abortSignal: abortController.signal,
@@ -922,16 +1117,13 @@ class ReasoningService extends BaseReasoningService {
             ],
           };
         } else if (chunk.type === "tool-result") {
-          const output = chunk.output;
-
-          const displayText =
-            typeof output === "string" ? output : output?.error ? String(output.error) : "Done";
+          const parsedOutput = toolOutputSchema.safeParse(chunk.output);
 
           yield {
             type: "tool_result",
             callId: chunk.toolCallId,
             toolName: chunk.toolName,
-            displayText,
+            displayText: parsedOutput.success ? toolOutputText(parsedOutput.data) : "Done",
           };
         } else if (chunk.type === "abort") {
           canFlushFilteredText = false;
@@ -944,8 +1136,7 @@ class ReasoningService extends BaseReasoningService {
           finishFilteredText();
 
           if (!abortController.signal.aborted) {
-            const cause = (chunk as { error?: unknown }).error;
-            throw cause instanceof Error ? cause : new Error(String(cause ?? "Stream failed"));
+            throw toError(chunk.error);
           }
         } else if (chunk.type === "finish") {
           const trailing = finishFilteredText();
@@ -973,7 +1164,7 @@ class ReasoningService extends BaseReasoningService {
   }
 
   private async *processBbStreaming(
-    messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>,
+    messages: ChatMessage[],
     selection: BbSelection,
     conversationId: number,
     onThreadTitle?: (title: string) => void
@@ -1015,22 +1206,14 @@ class ReasoningService extends BaseReasoningService {
     controller.signal.addEventListener("abort", onAbort, { once: true });
 
     try {
-      const messageText = (message: (typeof messages)[number]) =>
-        typeof message.content === "string"
-          ? message.content
-          : message.content
-              .filter((part) => part.type === "text" && typeof part.text === "string")
-              .map((part) => part.text)
-              .join("\n");
-
-      const formatMessage = (message: (typeof messages)[number]) =>
-        `${message.role.toUpperCase()}:\n${messageText(message)}`;
+      const formatMessage = (message: ChatMessage) =>
+        `${message.role.toUpperCase()}:\n${chatMessageText(message)}`;
 
       const initialPrompt = messages.map(formatMessage).join("\n\n");
       const latestUser = messages.filter((message) => message.role === "user").at(-1);
 
       if (!latestUser) throw new Error("A Chat user message is required for bb");
-      const prompt = messageText(latestUser);
+      const prompt = chatMessageText(latestUser);
       await window.electronAPI.bbStreamStart({
         streamId,
         conversationId,
@@ -1166,11 +1349,7 @@ class ReasoningService extends BaseReasoningService {
         localAvailable
       );
     } catch (error) {
-      logger.logReasoning("API_KEY_CHECK_ERROR", {
-        error: (error as Error).message,
-        stack: (error as Error).stack,
-        name: (error as Error).name,
-      });
+      logger.logReasoning("API_KEY_CHECK_ERROR", logErrorDetails(error));
 
       return false;
     }

@@ -1,4 +1,9 @@
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import {
+  readString,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
 import { resolveFolderId, resolveSpace } from "./utils";
 
 export const createNoteTool: ToolDefinition = {
@@ -32,11 +37,11 @@ export const createNoteTool: ToolDefinition = {
   },
   readOnly: false,
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const title = args.title as string;
-    const content = args.content as string;
-    const folderName = args.folder as string | undefined;
-    const spaceName = args.space as string | undefined;
+  async execute(args: ToolArguments): Promise<ToolResult> {
+    const title = readString(args, "title") ?? "";
+    const content = readString(args, "content") ?? "";
+    const folderName = readString(args, "folder");
+    const spaceName = readString(args, "space");
 
     try {
       let spaceId: number | null = null;
@@ -96,7 +101,7 @@ export const createNoteTool: ToolDefinition = {
       return {
         success: false,
         data: null,
-        displayText: `Failed to create note: ${(error as Error).message}`,
+        displayText: `Failed to create note: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   },

@@ -257,7 +257,9 @@ export function ChatInput({
               </button>
             ) : isIdle ? (
               <button
-                onClick={voice.start}
+                onClick={() => {
+                  voice.start().catch(() => {});
+                }}
                 disabled={voice.streamingOnlyProvider}
                 aria-label={t("notes.editor.transcribe")}
                 title={

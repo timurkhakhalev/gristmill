@@ -36,8 +36,8 @@ export function clear(name: string): void {
   }
 }
 
-// The pid file is untrusted on-disk state: raw contents are read as unknown
-// and only integer-looking positive values become entries.
+// The pid file is untrusted on-disk state: raw contents are read and only
+// integer-looking positive values become entries.
 export function readAll(): SidecarPidEntry[] {
   const dir = pidDir();
   let files: string[];
@@ -55,8 +55,8 @@ export function readAll(): SidecarPidEntry[] {
 
     try {
       const name = path.basename(file, ".pid");
-      const raw: unknown = fs.readFileSync(path.join(dir, file), "utf-8");
-      const pid = typeof raw === "string" ? Number(raw.trim()) : NaN;
+      const raw = fs.readFileSync(path.join(dir, file), "utf-8");
+      const pid = Number(raw.trim());
 
       if (!Number.isInteger(pid) || pid <= 0) continue;
       entries.push({ name, pid });

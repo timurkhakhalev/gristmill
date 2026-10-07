@@ -140,4 +140,6 @@ export class MenuManager {
 
 module.exports = MenuManager;
 
-module.exports.MenuManager = MenuManager;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named class.
+Object.assign(module.exports, { MenuManager });

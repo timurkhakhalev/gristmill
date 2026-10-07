@@ -33,6 +33,9 @@ import path from "path";
 import { isDevelopmentChannel } from "./appChannel.js";
 import type { TrayManager } from "./tray.js";
 import { MeetingCompanionWindow } from "./meetingCompanionWindow.js";
+import type { PendingNoteNavigation } from "../contracts/transcriptionData.js";
+import type { PendingMeetingNoteNavigation } from "../contracts/meetingCoordinator.js";
+import type { CalendarEvent } from "../contracts/calendar.js";
 
 const AUTO_END_NOTIFICATION_LOAD_TIMEOUT_MS = 10_000;
 
@@ -101,7 +104,7 @@ export class WindowManager {
     ] as const) {
       const value = prefs[key];
 
-      if (typeof value === "boolean") this.notificationPrefs[key] = value;
+      if (value === true || value === false) this.notificationPrefs[key] = value;
     }
   }
 
@@ -119,8 +122,8 @@ export class WindowManager {
   meetingCaptureQuitGuard: MeetingCaptureQuitGuard | null = null;
   _quitConfirmationPromise: Promise<void> | null = null;
   loadErrorShown = false;
-  _pendingMeetingNoteNavigation: unknown = null;
-  _pendingNoteNavigation: unknown = null;
+  _pendingMeetingNoteNavigation: PendingMeetingNoteNavigation | null = null;
+  _pendingNoteNavigation: PendingNoteNavigation = null;
   meetingDetectionEngine: MeetingDetectionEngineCallbacks | null = null;
   _pendingNotificationData: MeetingNotificationPrompt | null = null;
   _notificationReadyFallback: NodeJS.Timeout | null = null;
@@ -202,7 +205,7 @@ export class WindowManager {
         this.hotkeyManager.unregisterAll();
         app.quit();
       })()
-        .catch((error: unknown) => {
+        .catch((error) => {
           debugLogger.error(
             "Meeting recording prevented safe quit",
             {
@@ -222,7 +225,7 @@ export class WindowManager {
   }
 
   stopMeetingCaptureFromMenu(): void {
-    void this.meetingCaptureQuitGuard?.stop().catch((error: unknown) => {
+    void this.meetingCaptureQuitGuard?.stop().catch((error) => {
       debugLogger.error(
         "Failed to stop meeting capture from the app menu",
         {
@@ -258,8 +261,17 @@ export class WindowManager {
   }
 
   async loadWindowContent(window: BrowserWindow | null, isControlPanel = false): Promise<void> {
+    if (!window || window.isDestroyed()) {
+      throw new Error("Cannot load content into a missing window");
+    }
+
     if (process.env.NODE_ENV === "development") {
       const appUrl = DevServerManager.getAppUrl(isControlPanel);
+
+      if (!appUrl) {
+        throw new Error("Dev server app URL is unavailable");
+      }
+
       await DevServerManager.waitForDevServer();
 
       if (
@@ -268,10 +280,10 @@ export class WindowManager {
         isDevelopmentChannel() &&
         !app.commandLine.getSwitchValue("user-data-dir")
       ) {
-        const release = await this.seedDevRendererSettings(window!, appUrl as string);
+        const release = await this.seedDevRendererSettings(window, appUrl);
 
         try {
-          await window!.loadURL(appUrl as string);
+          await window.loadURL(appUrl);
           this.devRendererSettingsSeeded = true;
         } finally {
           release();
@@ -280,7 +292,7 @@ export class WindowManager {
         return;
       }
 
-      await window!.loadURL(appUrl as string);
+      await window.loadURL(appUrl);
     } else {
       const fileInfo = DevServerManager.getAppFilePath(isControlPanel);
 
@@ -292,7 +304,7 @@ export class WindowManager {
         throw new Error(`HTML file not found: ${fileInfo.path}`);
       }
 
-      await window!.loadFile(fileInfo.path, { query: fileInfo.query });
+      await window.loadFile(fileInfo.path, { query: fileInfo.query });
     }
   }
 
@@ -307,6 +319,8 @@ export class WindowManager {
     const bridge = path.join(app.getAppPath(), "src", "dev-storage-bridge.html");
     await window.loadFile(bridge);
 
+    // SAFETY: executeJavaScript returns `any`; the bridge page is app-owned and
+    // builds the entries array, which the seed loop below reads as [key, value].
     const entries = (await window.webContents.executeJavaScript(
       "Array.from({ length: localStorage.length }, (_, i) => { const key = localStorage.key(i); return [key, localStorage.getItem(key)]; })"
     )) as Array<[string, string]>;
@@ -373,11 +387,14 @@ export class WindowManager {
   }
 
   openExternalUrl(url: string, showError = true): void {
-    openUrlInExternalBrowser(url).catch((error: unknown) => {
+    openUrlInExternalBrowser(url).catch((error) => {
       if (showError) {
         dialog.showErrorBox(
           i18nMain.t("dialog.openLink.title"),
-          i18nMain.t("dialog.openLink.message", { url, error: (error as Error).message })
+          i18nMain.t("dialog.openLink.message", {
+            url,
+            error: error instanceof Error ? error.message : String(error),
+          })
         );
       }
     });
@@ -422,9 +439,11 @@ export class WindowManager {
 
     this.controlPanelWindow.webContents.on("will-navigate", (event, url) => {
       // getAppUrl() is null in packaged builds; exactly one of the two is set.
+      const appFilePath = DevServerManager.getAppFilePath(true);
+
       const appUrl =
         DevServerManager.getAppUrl(true) ??
-        pathToFileURL(DevServerManager.getAppFilePath(true)!.path).href;
+        (appFilePath ? pathToFileURL(appFilePath.path).href : null);
 
       if (isAllowedAppNavigation(url, appUrl)) {
         return;
@@ -483,7 +502,15 @@ export class WindowManager {
       dockManager.setControlPanelVisible(false);
     });
 
-    MenuManager.setupControlPanelMenu(this.controlPanelWindow, () => this.openSettings());
+    MenuManager.setupControlPanelMenu(this.controlPanelWindow, () => {
+      this.openSettings().catch((error) =>
+        debugLogger.error(
+          "Failed to open settings",
+          { error: error instanceof Error ? error.message : String(error) },
+          "window"
+        )
+      );
+    });
 
     this.controlPanelWindow.webContents.on("did-finish-load", () => {
       if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) return;
@@ -520,14 +547,28 @@ export class WindowManager {
         );
         // The renderer owned any running demo; without this, its stale session
         // keeps swallowing dictations after the reload.
-        setTimeout(() => this.loadControlPanel(), 1000);
+        setTimeout(() => {
+          this.loadControlPanel().catch((error) =>
+            debugLogger.error(
+              "Failed to reload the control panel",
+              { error: error instanceof Error ? error.message : String(error) },
+              "window"
+            )
+          );
+        }, 1000);
       }
     });
 
     this.controlPanelWindow.on("show", () => {
       if (this.controlPanelWindow?.webContents.isCrashed()) {
         debugLogger.error("Control panel crashed, reloading on show", undefined, "window");
-        this.loadControlPanel();
+        this.loadControlPanel().catch((error) =>
+          debugLogger.error(
+            "Failed to reload the crashed control panel",
+            { error: error instanceof Error ? error.message : String(error) },
+            "window"
+          )
+        );
       }
     });
 
@@ -539,7 +580,7 @@ export class WindowManager {
       this.setOnboardingActive(true);
       debugLogger.error(
         "Hidden control panel failed to load",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "window"
       );
     }
@@ -561,7 +602,7 @@ export class WindowManager {
     }
   }
 
-  setOnboardingActive(active: unknown): boolean {
+  setOnboardingActive(active: boolean): boolean {
     this._onboardingActive = active === true;
 
     if (this._onboardingActive) this._hideNormalAppSurfaces();
@@ -574,7 +615,8 @@ export class WindowManager {
   }
 
   _clearControlPanelVisibilityTimer(): void {
-    clearTimeout(this._controlPanelVisibilityTimer as NodeJS.Timeout);
+    if (this._controlPanelVisibilityTimer) clearTimeout(this._controlPanelVisibilityTimer);
+
     this._controlPanelVisibilityTimer = null;
   }
 
@@ -613,7 +655,7 @@ export class WindowManager {
       Math.min(floor.height, workArea.height)
     );
 
-    if (process.platform === "darwin" && typeof win.setWindowButtonVisibility === "function") {
+    if (process.platform === "darwin" && "setWindowButtonVisibility" in win) {
       win.setWindowButtonVisibility(true);
     }
   }
@@ -661,7 +703,7 @@ export class WindowManager {
         );
       }
 
-      if (process.platform === "darwin" && typeof win.setWindowButtonVisibility === "function") {
+      if (process.platform === "darwin" && "setWindowButtonVisibility" in win) {
         win.setWindowButtonVisibility(true);
       }
 
@@ -845,7 +887,12 @@ export class WindowManager {
           return;
         }
 
-        const fileInfo = DevServerManager.getAppFilePath(false)!;
+        const fileInfo = DevServerManager.getAppFilePath(false);
+
+        if (!fileInfo) {
+          throw new Error("Failed to get the notification app file path");
+        }
+
         await win.loadFile(fileInfo.path, {
           query: { ...fileInfo.query, "meeting-notification": "true" },
         });
@@ -964,7 +1011,11 @@ export class WindowManager {
     if (win && !win.isDestroyed()) win.close();
 
     if (notifyEngine && notification?.kind === "detection") {
-      this.meetingDetectionEngine?.handleDetectionNotificationClosed?.(notification.detectionId!, {
+      // SAFETY: a detection-kind prompt is only built alongside its detectionId
+      // (meetingDetectionEngine sets both together), so it is present here.
+      const detectionId = notification.detectionId as string;
+
+      this.meetingDetectionEngine?.handleDetectionNotificationClosed?.(detectionId, {
         flushQueued,
       });
     }
@@ -1025,26 +1076,26 @@ export class WindowManager {
     }
   }
 
-  async queueMeetingNoteNavigation(payload: unknown): Promise<void> {
+  async queueMeetingNoteNavigation(payload: PendingMeetingNoteNavigation): Promise<void> {
     this._pendingMeetingNoteNavigation = payload;
     await this.createControlPanelWindow();
     this.sendToControlPanel("meeting-note-navigation-pending");
   }
 
-  consumePendingMeetingNoteNavigation(): unknown {
+  consumePendingMeetingNoteNavigation(): PendingMeetingNoteNavigation | null {
     const payload = this._pendingMeetingNoteNavigation;
     this._pendingMeetingNoteNavigation = null;
 
     return payload;
   }
 
-  async queueNoteNavigation(payload: unknown): Promise<void> {
+  async queueNoteNavigation(payload: NonNullable<PendingNoteNavigation>): Promise<void> {
     this._pendingNoteNavigation = payload;
     await this.createControlPanelWindow();
     this.sendToControlPanel("note-navigation-pending");
   }
 
-  consumePendingNoteNavigation(): unknown {
+  consumePendingNoteNavigation(): PendingNoteNavigation {
     const payload = this._pendingNoteNavigation;
     this._pendingNoteNavigation = null;
 
@@ -1077,17 +1128,31 @@ export class WindowManager {
       win.setBounds(this._preMeetingBounds);
       this._preMeetingBounds = null;
     } else {
-      const { width, height } = CONTROL_PANEL_CONFIG;
-      win.setSize(width as number, height as number);
+      // CONTROL_PANEL_CONFIG declares both; the constructor options type keeps
+      // them optional, so the documented defaults backstop an absent value.
+      win.setSize(
+        CONTROL_PANEL_CONFIG.width ?? CONTROL_PANEL_MIN_SIZE.width,
+        CONTROL_PANEL_CONFIG.height ?? CONTROL_PANEL_MIN_SIZE.height
+      );
       win.center();
     }
   }
 
   refreshLocalizedUi(): void {
-    MenuManager.setupMainMenu(() => this.openSettings());
+    const openSettings = () => {
+      this.openSettings().catch((error) =>
+        debugLogger.error(
+          "Failed to open settings",
+          { error: error instanceof Error ? error.message : String(error) },
+          "window"
+        )
+      );
+    };
+
+    MenuManager.setupMainMenu(openSettings);
 
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
-      MenuManager.setupControlPanelMenu(this.controlPanelWindow, () => this.openSettings());
+      MenuManager.setupControlPanelMenu(this.controlPanelWindow, openSettings);
       this.controlPanelWindow.setTitle(i18nMain.t("window.controlPanelTitle"));
     }
   }
@@ -1097,7 +1162,7 @@ export class WindowManager {
     this.sendToControlPanel("tray-new-note");
   }
 
-  async requestOpenCalendarEvent(event: unknown): Promise<void> {
+  async requestOpenCalendarEvent(event: CalendarEvent): Promise<void> {
     await this.createControlPanelWindow();
     this.sendToControlPanel("tray-open-event", event);
   }
@@ -1126,15 +1191,27 @@ export class WindowManager {
       i18nMain.t("dialog.loadFailure.detail.hint"),
     ].filter(Boolean);
 
-    dialog.showMessageBox({
-      type: "error",
-      title: i18nMain.t("dialog.loadFailure.title"),
-      message: i18nMain.t("dialog.loadFailure.message"),
-      detail: detailLines.join("\n"),
-    });
+    // Fire-and-forget by contract: the failure dialog has no second failure
+    // path, and showMessageBox resolves once the user dismisses it.
+    dialog
+      .showMessageBox({
+        type: "error",
+        title: i18nMain.t("dialog.loadFailure.title"),
+        message: i18nMain.t("dialog.loadFailure.message"),
+        detail: detailLines.join("\n"),
+      })
+      .catch((error) =>
+        debugLogger.error(
+          "Failed to show the load failure dialog",
+          { error: error instanceof Error ? error.message : String(error) },
+          "window"
+        )
+      );
   }
 }
 
 module.exports = WindowManager;
 
-module.exports.WindowManager = WindowManager;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named class.
+Object.assign(module.exports, { WindowManager });

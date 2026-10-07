@@ -3,21 +3,34 @@
 // thinking cleanup; the model manager keeps owning llama-server lifecycle.
 import modelManagerBundle from "../helpers/modelManagerBridge.js";
 import debugLogger from "../helpers/debugLogger.js";
+import type { RunInferenceOptions } from "../helpers/modelManagerBridge.js";
+import type { ModelManager } from "../helpers/modelManagerBridge.js";
 import type { LocalReasoningConfig } from "../contracts/reasoning.js";
-
-interface LocalModelManager {
-  getAllModels(): Promise<Array<{ isDownloaded?: boolean }>>;
-  runInference(modelId: string, prompt: string, options: Record<string, unknown>): Promise<string>;
-}
 
 // The bundle's `default` is the singleton under every loader: the tsx ESM
 // graph resolves the default import to module.exports itself, the CJS graphs
-// interop to the same object. Drill in once, here.
-const modelManager: LocalModelManager = (
-  modelManagerBundle as unknown as {
-    default: LocalModelManager;
-  }
-).default;
+// interop to the same object. A real ESM loader instead resolves it to the
+// `export default` singleton. Accept both: the wrapper carries `default`.
+interface ModelManagerWrapper {
+  default: ModelManager;
+}
+
+function isModelManagerWrapper(value: ModelManager): value is ModelManager & ModelManagerWrapper {
+  return "default" in value;
+}
+
+const modelManager: ModelManager = isModelManagerWrapper(modelManagerBundle)
+  ? modelManagerBundle.default
+  : modelManagerBundle;
+
+// The sampling fields ride along in the debug log only; runInference reads the
+// budget fields and ignores the rest. Keep them so the logged config is the
+// same object the pre-cutover JS bridge produced.
+interface LocalInferenceOptions extends RunInferenceOptions {
+  topK: number;
+  topP: number;
+  repeatPenalty: number;
+}
 
 export class LocalReasoningService {
   private isProcessing = false;
@@ -52,7 +65,7 @@ export class LocalReasoningService {
     const startTime = Date.now();
 
     try {
-      const inferenceConfig = {
+      const inferenceConfig: LocalInferenceOptions = {
         maxTokens: config.maxTokens ?? this.calculateMaxTokens(text.length),
         temperature: config.temperature ?? 0.7,
         topK: config.topK ?? 40,
@@ -76,13 +89,11 @@ export class LocalReasoningService {
       const result = await modelManager.runInference(modelId, text, inferenceConfig);
       const stripThinking = config.disableThinking !== false;
 
-      const stripped: unknown = stripThinking
+      const stripped: string = stripThinking
         ? (await import("../helpers/stripThinking.js")).stripThinkingTags(result)
         : result.trim();
 
-      // runInference returns text; the guard only keeps the historical
-      // pass-through from producing a non-string return type.
-      const cleanResult = typeof stripped === "string" ? stripped : result.trim();
+      const cleanResult = stripped;
 
       const processingTime = Date.now() - startTime;
 
@@ -95,14 +106,13 @@ export class LocalReasoningService {
 
       return cleanResult;
     } catch (error) {
-      const err = error as { message?: string; stack?: string };
       const processingTime = Date.now() - startTime;
 
       debugLogger.logReasoning("LOCAL_BRIDGE_ERROR", {
         modelId,
         processingTimeMs: processingTime,
-        error: err.message,
-        stack: err.stack,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
 
       throw error;

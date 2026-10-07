@@ -1,6 +1,13 @@
 import type { SpaceItem } from "../../contracts/containers";
 import type { ContainerScope } from "../../types/chat";
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import {
+  readNumber,
+  readString,
+  type JsonObject,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
 import { resolveSpace } from "./utils";
 
 const MAX_CONTENT_LENGTH = 500;
@@ -13,7 +20,7 @@ interface SearchToolOptions {
 export function createSearchNotesTool(options: SearchToolOptions): ToolDefinition {
   const { fixedScope } = options;
 
-  const spaceParameter = fixedScope
+  const spaceParameter: JsonObject = fixedScope
     ? {}
     : {
         space: {
@@ -45,10 +52,10 @@ export function createSearchNotesTool(options: SearchToolOptions): ToolDefinitio
     },
     readOnly: true,
 
-    async execute(args: Record<string, unknown>): Promise<ToolResult> {
-      const query = args.query as string;
-      const limit = typeof args.limit === "number" ? args.limit : 5;
-      const spaceName = fixedScope ? undefined : (args.space as string | undefined);
+    async execute(args: ToolArguments): Promise<ToolResult> {
+      const query = readString(args, "query") ?? "";
+      const limit = readNumber(args, "limit") ?? 5;
+      const spaceName = fixedScope ? undefined : readString(args, "space");
 
       const spaces = (await window.electronAPI.getSpaces?.()) ?? [];
       let space: SpaceItem | undefined;
@@ -74,7 +81,7 @@ export function createSearchNotesTool(options: SearchToolOptions): ToolDefinitio
         return {
           success: false,
           data: null,
-          displayText: `Failed to search notes: ${(error as Error).message}`,
+          displayText: `Failed to search notes: ${error instanceof Error ? error.message : String(error)}`,
         };
       }
     },

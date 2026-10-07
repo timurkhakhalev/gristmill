@@ -34,12 +34,14 @@ export function createToolRegistry(settings: ToolRegistrySettings): ToolRegistry
   registry.register(clipboardTool);
 
   if (settings.vocabulary) {
-    if (settings.vocabulary.getSnippets().length > 0) {
-      registry.register(createSnippetTool(settings.vocabulary.getSnippets));
+    const vocabulary = settings.vocabulary;
+
+    if (vocabulary.getSnippets().length > 0) {
+      registry.register(createSnippetTool(() => vocabulary.getSnippets()));
     }
 
-    registry.register(createUpdateDictionaryTool(settings.vocabulary));
-    registry.register(createUpdateSnippetsTool(settings.vocabulary));
+    registry.register(createUpdateDictionaryTool(vocabulary));
+    registry.register(createUpdateSnippetsTool(vocabulary));
   }
 
   if (settings.calendarConnected) {

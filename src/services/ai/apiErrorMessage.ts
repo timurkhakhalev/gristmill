@@ -4,16 +4,45 @@
  */
 const MAX_STRINGIFIED_LENGTH = 500;
 
-function asNonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+// The most a provider error body can be: JSON scalars, nested objects and
+// arrays. Callers hand over parsed JSON, so a named owner contract replaces the
+// bare `unknown` boundary without importing a parser.
+export interface ApiErrorRecord {
+  [key: string]: ApiErrorValue;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export type ApiErrorValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ApiErrorRecord
+  | ApiErrorValue[];
+
+/** Type predicate for a value decoded from provider JSON. */
+export function isApiErrorValue(value: unknown): value is ApiErrorValue {
+  if (value === null || typeof value !== "object") return true;
+
+  if (Array.isArray(value)) return value.every(isApiErrorValue);
+
+  return Object.values(value).every(isApiErrorValue);
+}
+
+function isNonEmptyString(value: ApiErrorValue): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function asNonEmptyString(value: ApiErrorValue): string | null {
+  return isNonEmptyString(value) ? value.trim() : null;
+}
+
+function isRecord(value: ApiErrorValue): value is ApiErrorRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** FastAPI/Pydantic error payloads: {detail: "..."} or {detail: [{loc, msg}]}. */
-function fromDetail(container: unknown): string | null {
+function fromDetail(container: ApiErrorValue): string | null {
   if (!isRecord(container)) return null;
 
   const direct = asNonEmptyString(container.detail);
@@ -37,7 +66,7 @@ function fromDetail(container: unknown): string | null {
   return parts.length ? parts.join("; ") : null;
 }
 
-function stringify(value: unknown): string | null {
+function stringify(value: ApiErrorValue): string | null {
   try {
     const json = JSON.stringify(value);
 
@@ -51,7 +80,7 @@ function stringify(value: unknown): string | null {
   }
 }
 
-export function extractApiErrorMessage(errorData: unknown, fallback: string): string {
+export function extractApiErrorMessage(errorData: ApiErrorValue, fallback: string): string {
   const safeFallback = asNonEmptyString(fallback) || "Unknown API error";
 
   if (!isRecord(errorData)) return safeFallback;

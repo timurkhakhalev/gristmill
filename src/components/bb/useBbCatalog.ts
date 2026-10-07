@@ -25,7 +25,7 @@ function loadCatalog(): Promise<BbHarness[]> {
 
       return items;
     },
-    (error: unknown) => {
+    (error: Error) => {
       catalogRequest = null;
       throw error;
     }
@@ -44,7 +44,7 @@ function loadModels(provider: string): Promise<BbModel[]> {
 
         return models;
       },
-      (error: unknown) => {
+      (error: Error) => {
         modelRequests.delete(provider);
         throw error;
       }

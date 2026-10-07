@@ -1,4 +1,5 @@
-const { net } = require("electron");
+// SAFETY: lazy CommonJS seam; Electron's `net.fetch` is a drop-in fetch at runtime.
+const { net } = require("electron") as { net: ElectronNetLike };
 
 import { createHash } from "crypto";
 
@@ -28,10 +29,13 @@ interface MinimalFetchResponse {
   json(): Promise<{ access_token?: string; expires_in?: number }>;
 }
 
-export type CortiFetch = (
-  url: string,
-  init?: Record<string, unknown>
-) => Promise<MinimalFetchResponse>;
+// Electron's `net.fetch` returns the global Response; this seam types it to the
+// subset this module reads so the CJS require does not widen to `any`.
+interface ElectronNetLike {
+  fetch(url: string, init?: RequestInit): Promise<MinimalFetchResponse>;
+}
+
+export type CortiFetch = (url: string, init?: RequestInit) => Promise<MinimalFetchResponse>;
 
 const tokenCache = new Map<string, { value: string; expiresAt: number }>();
 
@@ -63,7 +67,7 @@ export async function getCortiToken(
     return cached.value;
   }
 
-  const doFetch: CortiFetch = fetchImpl || ((url, init) => net.fetch(url, init as RequestInit));
+  const doFetch: CortiFetch = fetchImpl || ((url, init) => net.fetch(url, init));
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), TOKEN_FETCH_TIMEOUT_MS);
   // A cancelled upload aborts the token request together with the work it

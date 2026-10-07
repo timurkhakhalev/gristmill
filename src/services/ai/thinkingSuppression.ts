@@ -1,9 +1,13 @@
 import type { ReasoningConfig } from "../BaseReasoningService";
 import { getCloudModel, getLocalModel } from "../../models/ModelRegistry";
-import { detectEndpointDialect, suppressThinking } from "./thinkingSuppressionDialects";
+import {
+  detectEndpointDialect,
+  suppressThinking,
+  type ProviderRequestBody,
+} from "./thinkingSuppressionDialects";
 
 export function applyThinkingSuppression(
-  requestBody: Record<string, unknown>,
+  requestBody: ProviderRequestBody,
   model: string,
   provider: string,
   config: ReasoningConfig,

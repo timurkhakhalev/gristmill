@@ -1,20 +1,38 @@
 import type { InferenceProvider } from "./types";
+import { z } from "zod";
 import { getCloudModel } from "../../../models/ModelRegistry";
 import { withRetry, createApiRetryStrategy, httpError } from "../../../utils/retry";
 import { API_ENDPOINTS, TOKEN_LIMITS } from "../../../config/constants.mts";
 import { getLlmRequestTimeoutSeconds } from "../../../helpers/llmRequestTimeout.js";
 import { extractGeminiText } from "../../../helpers/geminiResponse.js";
 import { wrapCleanupTranscript } from "../../../config/prompts";
-import { extractApiErrorMessage } from "../apiErrorMessage";
+import { extractApiErrorMessage, isApiErrorValue, type ApiErrorValue } from "../apiErrorMessage";
 import logger from "../../../utils/logger";
 
-interface GeminiResponse {
-  candidates?: Array<{
-    content?: { parts?: Array<{ text?: string; thought?: boolean }> };
-    finishReason?: string;
-  }>;
-  usageMetadata?: { totalTokenCount?: number };
-}
+// generateContent reply, narrowed to the fields this provider reads. `content`
+// stays raw so `extractGeminiText` applies its own part guards; the scalar
+// fields are permissive (`.catch`) so a mistyped value degrades to "missing"
+// exactly as the old unvalidated reads did.
+const geminiCandidateSchema = z.looseObject({
+  content: z.unknown().optional(),
+  finishReason: z
+    .string()
+    .optional()
+    .catch(() => undefined),
+});
+
+const geminiResponseSchema = z.looseObject({
+  candidates: z
+    .array(geminiCandidateSchema.catch({}))
+    .optional()
+    .catch(() => undefined),
+  usageMetadata: z
+    .looseObject({ totalTokenCount: z.unknown().optional() })
+    .optional()
+    .catch(() => undefined),
+});
+
+type GeminiResponse = z.infer<typeof geminiResponseSchema>;
 
 interface GeminiGenerationConfig {
   temperature: number;
@@ -105,12 +123,12 @@ export const geminiProvider: InferenceProvider = {
         if (!res.ok) {
           const errorText = await res.text();
 
-          let errorData: { error?: { message?: string } | string; message?: string } = {
-            error: res.statusText,
-          };
+          let errorData: ApiErrorValue = { error: res.statusText };
 
           try {
-            errorData = JSON.parse(errorText);
+            const parsed: unknown = JSON.parse(errorText);
+
+            if (isApiErrorValue(parsed)) errorData = parsed;
           } catch {
             errorData = { error: errorText || res.statusText };
           }
@@ -126,7 +144,8 @@ export const geminiProvider: InferenceProvider = {
           throw httpError(errMsg, res.status);
         }
 
-        const jsonResponse = (await res.json()) as GeminiResponse;
+        const parsed = geminiResponseSchema.safeParse(await res.json());
+        const jsonResponse: GeminiResponse = parsed.success ? parsed.data : {};
         logger.logReasoning("GEMINI_RAW_RESPONSE", {
           hasResponse: !!jsonResponse,
           hasCandidates: !!jsonResponse?.candidates,
@@ -135,7 +154,7 @@ export const geminiProvider: InferenceProvider = {
 
         return jsonResponse;
       } catch (error) {
-        if ((error as Error).name === "AbortError") {
+        if (error instanceof Error && error.name === "AbortError") {
           throw new Error(`Request timed out after ${timeoutSeconds}s`);
         }
 

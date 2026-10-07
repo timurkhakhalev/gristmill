@@ -1,13 +1,9 @@
 // Attested access to Tinfoil.
 // The SDK's SecureClient verifies the enclave and pins the connection to the attested key;
 // one client is held per session so attestation is paid once and shared by every caller.
-interface SecureClientLike {
-  fetch(path: string, init?: Record<string, unknown>): Promise<Response>;
-  createWebSocket(
-    path: string,
-    options?: { wsOptions?: { headers?: Record<string, string> } }
-  ): unknown;
-}
+import type { WebSocket } from "ws";
+
+type SecureClientLike = InstanceType<typeof import("tinfoil").SecureClient>;
 
 let clientPromise: Promise<SecureClientLike> | null = null;
 
@@ -30,7 +26,7 @@ export async function createTinfoilRealtimeSocket({
 }: {
   model: string;
   apiKey: string;
-}): Promise<unknown> {
+}): Promise<WebSocket> {
   const client = await getSecureClient();
   const path = `/v1/realtime?model=${encodeURIComponent(model)}&intent=transcription`;
 
@@ -40,10 +36,7 @@ export async function createTinfoilRealtimeSocket({
 }
 
 /** Fetches an enclave path over the attested transport. Needs no API key. */
-export async function tinfoilSecureFetch(
-  path: string,
-  init?: Record<string, unknown>
-): Promise<Response> {
+export async function tinfoilSecureFetch(path: string, init?: RequestInit): Promise<Response> {
   const client = await getSecureClient();
 
   return client.fetch(path, init);

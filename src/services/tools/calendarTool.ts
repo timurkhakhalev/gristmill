@@ -1,7 +1,16 @@
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
+import {
+  readString,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
 import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
 
 type TimeRange = "today" | "tomorrow" | "week";
+
+function isTimeRange(value: string | undefined): value is TimeRange {
+  return value === "today" || value === "tomorrow" || value === "week";
+}
 
 function getWindowMinutes(timeRange: TimeRange): number {
   if (timeRange === "week") return 10080;
@@ -41,8 +50,11 @@ export const calendarTool: ToolDefinition = {
   },
   readOnly: true,
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const timeRange = (args.timeRange as TimeRange) || "today";
+  async execute(args: ToolArguments): Promise<ToolResult> {
+    const requested = readString(args, "timeRange");
+
+    const timeRange: TimeRange = isTimeRange(requested) ? requested : "today";
+
     const windowMinutes = getWindowMinutes(timeRange);
 
     try {
@@ -83,7 +95,7 @@ export const calendarTool: ToolDefinition = {
       return {
         success: false,
         data: null,
-        displayText: `Failed to fetch calendar events: ${(error as Error).message}`,
+        displayText: `Failed to fetch calendar events: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   },

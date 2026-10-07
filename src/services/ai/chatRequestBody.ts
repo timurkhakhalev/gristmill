@@ -1,6 +1,6 @@
 import type { ReasoningConfig } from "../BaseReasoningService";
 import { getOpenAiApiConfig } from "../../models/ModelRegistry";
-import { detectEndpointDialect } from "./thinkingSuppressionDialects";
+import { detectEndpointDialect, type ProviderRequestBody } from "./thinkingSuppressionDialects";
 import { getModelFamilyConstraints } from "./modelFamilyConstraints";
 import { applyThinkingSuppression } from "./thinkingSuppression";
 
@@ -22,7 +22,7 @@ const LEGACY_CHAT_COMPLETIONS_PROVIDERS = new Set(["local", "lan", "groq", "tinf
  * at once instead of one call site at a time (#1611).
  */
 export function applyChatCompletionsParams(
-  requestBody: Record<string, unknown>,
+  requestBody: ProviderRequestBody,
   {
     model,
     provider,
@@ -68,7 +68,7 @@ export function applyChatCompletionsParams(
 }
 
 /** Finish reasons that mean the output hit the token cap, across providers. */
-export function isTruncatedFinishReason(reason: unknown): boolean {
+export function isTruncatedFinishReason(reason: string | undefined): boolean {
   return reason === "length" || reason === "max_tokens";
 }
 
@@ -96,7 +96,7 @@ const STRIPPABLE_SHAPED_PARAMS = [
  */
 export async function fetchWithParamFallback(
   doFetch: () => Promise<Response>,
-  requestBody: Record<string, unknown>,
+  requestBody: ProviderRequestBody,
   logRejection: (details: { status: number; stripped: string[] }) => void
 ): Promise<Response> {
   let res = await doFetch();
@@ -106,7 +106,7 @@ export async function fetchWithParamFallback(
   if (requestBody.reasoning) {
     logRejection({ status: res.status, stripped: ["reasoning"] });
     delete requestBody.reasoning;
-    void res.body?.cancel();
+    res.body?.cancel().catch(() => {});
     res = await doFetch();
 
     if (res.ok || (res.status !== 400 && res.status !== 422)) return res;
@@ -123,7 +123,7 @@ export async function fetchWithParamFallback(
     logRejection({ status: res.status, stripped: named });
 
     for (const param of named) delete requestBody[param];
-    void res.body?.cancel();
+    res.body?.cancel().catch(() => {});
     res = await doFetch();
   }
 

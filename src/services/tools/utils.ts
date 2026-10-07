@@ -5,11 +5,11 @@ type ResolveFolderResult =
   | { folderId?: undefined; created?: undefined; error: string };
 
 export async function resolveFolderId(
-  folderName: string,
+  folderName: string | null | undefined,
   options: { createIfMissing?: boolean } = {},
   spaceId: number | null = null
 ): Promise<ResolveFolderResult> {
-  const normalized = typeof folderName === "string" ? folderName.trim() : "";
+  const normalized = (folderName ?? "").trim();
 
   if (!normalized) {
     return { error: "Folder name cannot be empty" };
@@ -45,7 +45,7 @@ type ResolveSpaceResult =
   | { space?: undefined; error: string };
 
 export function resolveSpace(spaces: SpaceItem[], spaceName: string): ResolveSpaceResult {
-  const normalized = typeof spaceName === "string" ? spaceName.trim() : "";
+  const normalized = (spaceName ?? "").trim();
 
   if (!normalized) {
     return { error: "Space name cannot be empty" };

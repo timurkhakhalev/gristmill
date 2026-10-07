@@ -40,7 +40,8 @@ export const anthropicProvider: InferenceProvider = {
       throw new Error(result.error);
     }
 
-    // success:true results always carry the completed output text.
+    // SAFETY: the Anthropic IPC contract's success arm carries the completed
+    // output text; `success === false` was handled above.
     const outputText = result.text as string;
     logger.logReasoning("ANTHROPIC_SUCCESS", {
       model,

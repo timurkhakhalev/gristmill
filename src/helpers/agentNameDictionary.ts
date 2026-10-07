@@ -1,7 +1,18 @@
-function findStoredWord(words: string[], word: string): string | undefined {
+export interface DictionaryChanges {
+  add: string[];
+  remove: string[];
+}
+
+// The snapshot comes from settings/localStorage and can be stale or
+// hand-edited; the guards keep the historical degradation to an empty delta.
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
+function findStoredWord(words: readonly string[], word: string): string | undefined {
   const needle = word.toLowerCase();
 
-  return words.find((w) => typeof w === "string" && w.trim().toLowerCase() === needle);
+  return words.find((w) => isString(w) && w.trim().toLowerCase() === needle);
 }
 
 /**
@@ -18,13 +29,13 @@ function findStoredWord(words: string[], word: string): string | undefined {
  * @returns {{ add: string[], remove: string[] }}
  */
 export function agentNameDictionaryChanges(
-  dictionary: unknown,
-  newName: unknown,
-  oldName?: unknown
-): { add: string[]; remove: string[] } {
-  const words = Array.isArray(dictionary) ? (dictionary as string[]) : [];
-  const trimmedNew = typeof newName === "string" ? newName.trim() : "";
-  const trimmedOld = typeof oldName === "string" ? oldName.trim() : "";
+  dictionary: string[] | null | undefined,
+  newName: string | null | undefined,
+  oldName?: string | null
+): DictionaryChanges {
+  const words = Array.isArray(dictionary) ? dictionary : [];
+  const trimmedNew = isString(newName) ? newName.trim() : "";
+  const trimmedOld = isString(oldName) ? oldName.trim() : "";
   const storedNew = trimmedNew ? findStoredWord(words, trimmedNew) : undefined;
   const storedOld = trimmedOld ? findStoredWord(words, trimmedOld) : undefined;
 

@@ -26,7 +26,7 @@ interface ModelSummary {
 function profileIdByModelId(
   inferenceProfileSummaries: InferenceProfileSummary[] | undefined | null
 ): Map<string, string> {
-  const map = new Map();
+  const map = new Map<string, string>();
 
   for (const profile of inferenceProfileSummaries || []) {
     if (!profile?.inferenceProfileId) continue;

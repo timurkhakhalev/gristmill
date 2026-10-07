@@ -16,12 +16,149 @@ import {
   enterpriseReasoningArgsSchema,
   enterpriseStreamStartRequestSchema,
   reasoningChannels,
-  type EnterpriseReasoningConfig,
+  type AnthropicReasoningResult,
   type EnterpriseReasoningResult,
+  type EnterpriseStreamEnvelope,
   type EnterpriseTechnicalDetails,
   type LocalReasoningConfig,
+  type LocalReasoningResult,
 } from "../contracts/reasoning.js";
 import type { LanguageModelV3, LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { Event as ElectronEvent, WebContentsDidStartNavigationEventParams } from "electron";
+
+// --- Inbound payload shapes -------------------------------------------------
+//
+// Every IPC argument is decoded by a contract schema before these helpers run
+// (see the tuple/stream-start schemas above). The interfaces below only name
+// the fields main reads off already-decoded values or off SDK-owned contracts;
+// they are not open dictionaries.
+
+interface AnthropicResponseBody {
+  content?: unknown;
+  stop_reason?: unknown;
+  error?: unknown;
+  message?: unknown;
+}
+
+interface LocalReasoningFailure extends Record<string, unknown> {
+  message?: unknown;
+  code?: unknown;
+  details?: unknown;
+}
+
+interface LocalErrorDetails extends Record<string, unknown> {}
+
+interface MessageCarrier extends Record<string, unknown> {
+  message?: unknown;
+}
+
+// The Bedrock/Azure/Vertex error mapper receives the parsed request config,
+// optionally enriched with the runtime region. An index signature keeps the
+// passthrough credential/generation fields flowing through untouched.
+interface EnterpriseMappingConfig extends Record<string, unknown> {
+  bedrockRegion?: string;
+}
+
+// `pickEnterpriseConfig` normalizes the credential subset; the raw config this
+// runtime reads carries the model/apiKey overrides alongside it.
+interface EnterpriseRuntimeSource extends Record<string, unknown> {
+  model?: unknown;
+  apiKey?: unknown;
+}
+
+interface SenderEvent {
+  sender: unknown;
+}
+
+interface EnterpriseStreamMessage {
+  part?: unknown;
+  done?: boolean;
+  error?: string;
+}
+
+// --- Runtime type guards ----------------------------------------------------
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isAnthropicResponseBody(value: unknown): value is AnthropicResponseBody {
+  return typeof value === "object" && value !== null;
+}
+
+function isLocalReasoningFailure(value: unknown): value is LocalReasoningFailure {
+  return typeof value === "object" && value !== null;
+}
+
+function isLocalErrorDetails(value: unknown): value is LocalErrorDetails {
+  return typeof value === "object" && value !== null;
+}
+
+function isMessageCarrier(value: unknown): value is MessageCarrier {
+  return typeof value === "object" && value !== null;
+}
+
+function isSenderEvent<T>(value: T): value is T & SenderEvent {
+  return typeof value === "object" && value !== null && "sender" in value;
+}
+
+function isSenderIdentity(value: unknown): value is SenderIdentity {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "number" &&
+    "isDestroyed" in value &&
+    typeof value.isDestroyed === "function"
+  );
+}
+
+function isSenderLifecycle(value: unknown): value is SenderLifecycle {
+  return (
+    isSenderIdentity(value) &&
+    "once" in value &&
+    typeof value.once === "function" &&
+    "removeListener" in value &&
+    typeof value.removeListener === "function"
+  );
+}
+
+function isSenderLike(value: unknown): value is SenderLike {
+  return (
+    isSenderLifecycle(value) &&
+    "on" in value &&
+    typeof value.on === "function" &&
+    "send" in value &&
+    typeof value.send === "function"
+  );
+}
+
+// IPC events are structured-cloned external input; decode the sender before
+// dispatching to the sender-scoped registries. The cleanup lifecycle needs
+// only, and therefore accepts, the identity + once/removeListener subset.
+function senderFrom<T>(event: T): SenderLifecycle {
+  if (isSenderEvent(event) && isSenderLifecycle(event.sender)) return event.sender;
+
+  throw new TypeError("IPC event is missing a sender");
+}
+
+// Enterprise streaming additionally emits parts and listens for navigation.
+function senderStreamFrom<T>(event: T): SenderLike {
+  if (isSenderEvent(event) && isSenderLike(event.sender)) return event.sender;
+
+  throw new TypeError("IPC event is missing a sender");
+}
+
+// A non-JSON error body must degrade to the raw text, not throw a second time.
+function parseAnthropicError(text: string): AnthropicResponseBody | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+
+    return isAnthropicResponseBody(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 // --- Narrow dependency interfaces -------------------------------------------
 
@@ -30,12 +167,21 @@ export interface LocalReasoningServiceLike {
   processText(text: string, modelId: string, config: LocalReasoningConfig): Promise<string>;
 }
 
-export interface ProxyFetchResponse {
+// The response body stays a generic so the composition root can pass Electron's
+// `net.fetch` Response (whose `json()` is `Promise<unknown>`) unchanged; every
+// body is decoded with a guard before it is read.
+export interface ProxyFetchResponse<Body = unknown> {
   ok: boolean;
   status: number;
   statusText: string;
   text(): Promise<string>;
-  json(): Promise<unknown>;
+  json(): Promise<Body>;
+}
+
+export interface ProxyFetchInit extends Record<string, unknown> {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
 }
 
 export interface EnterpriseRuntime {
@@ -62,11 +208,19 @@ export interface EnterpriseModelStream {
   };
 }
 
+// The SDK call options the shim actually relays are serializable fields plus
+// the main-injected abortSignal; the open index keeps the passthrough options
+// (prompt, tools, providerOptions, …) flowing to the provider unchanged.
+export interface EnterpriseStreamCallOptions extends Record<string, unknown> {
+  prompt?: unknown;
+  abortSignal?: AbortSignal;
+}
+
 // The slice of LanguageModelV3 main actually drives: doStream + a reader.
 // PromiseLike mirrors the SDK's doStream return so the interface stays
 // structurally assignable from the real model.
 export interface EnterpriseStreamModel {
-  doStream(options: Record<string, unknown>): PromiseLike<{ stream: EnterpriseModelStream }>;
+  doStream(options: EnterpriseStreamCallOptions): PromiseLike<{ stream: EnterpriseModelStream }>;
 }
 
 export interface MappedEnterpriseError {
@@ -80,26 +234,43 @@ export interface MappedEnterpriseError {
   technicalDetails?: EnterpriseTechnicalDetails;
 }
 
-export interface SenderLike {
+export interface SenderIdentity {
   id: number;
   isDestroyed(): boolean;
-  send(channel: string, payload: unknown): void;
-  on(event: string, listener: (...args: unknown[]) => void): void;
-  once(event: string, listener: (...args: unknown[]) => void): void;
-  removeListener(event: string, listener: (...args: unknown[]) => void): void;
+}
+
+// The Bedrock cleanup lifecycle only needs to observe destroy.
+export interface SenderLifecycle extends SenderIdentity {
+  once(event: string, listener: (...args: never[]) => void): void;
+  removeListener(event: string, listener: (...args: never[]) => void): void;
+}
+
+export interface SenderLike extends SenderLifecycle {
+  send(channel: string, payload: EnterpriseStreamEnvelope): void;
+  on(event: string, listener: (...args: never[]) => void): void;
+}
+
+export interface GenerateTextOptions extends Record<string, unknown> {
+  model?: EnterpriseStreamModel;
+  system?: string;
+  prompt?: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  abortSignal?: AbortSignal;
+  maxRetries?: number;
 }
 
 export interface ReasoningHandlerDeps {
   localService: LocalReasoningServiceLike;
   getAnthropicKey: () => string;
-  proxyFetch: (url: string, init?: Record<string, unknown>) => Promise<ProxyFetchResponse>;
-  extractAnthropicText: (data: unknown) => string | null;
-  describeMissingAnthropicText: (data: unknown) => string;
-  isEnterpriseProvider: (value: unknown) => boolean;
-  mapEnterpriseError: (
+  proxyFetch: (url: string, init?: ProxyFetchInit) => Promise<ProxyFetchResponse>;
+  extractAnthropicText: <T>(data: T) => string | null;
+  describeMissingAnthropicText: <T>(data: T) => string;
+  isEnterpriseProvider: (value: string) => boolean;
+  mapEnterpriseError: <T>(
     provider: string,
-    error: unknown,
-    config: Record<string, unknown>
+    error: T,
+    config: EnterpriseMappingConfig
   ) => MappedEnterpriseError;
   runAbortableOperation: <T>(operation: () => Promise<T>, signal?: AbortSignal) => Promise<T>;
   runBedrockRequest: <T>(
@@ -107,7 +278,7 @@ export interface ReasoningHandlerDeps {
     options?: { signal?: AbortSignal }
   ) => Promise<T>;
   validateEnterpriseEndpoint: (endpoint?: string) => void;
-  generateText: (options: Record<string, unknown>) => Promise<{
+  generateText: (options: GenerateTextOptions) => Promise<{
     text: string;
     finishReason: string;
   }>;
@@ -121,12 +292,12 @@ export interface ReasoningHandlerDeps {
   // streaming registry, so cancelling one operation never touches the other.
   bedrockCleanupRequests: AgentStreamRequestRegistry;
   enterpriseStreams: AgentStreamRequestRegistry;
-  logError: (message: string, data?: unknown) => void;
+  logError: <T>(message: string, data?: T) => void;
 }
 
 export interface ReasoningIpcMain {
-  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): void;
+  handle<Result>(channel: string, listener: (...args: unknown[]) => Result): void;
+  on(channel: string, listener: (...args: unknown[]) => void): void;
 }
 
 // Compile-time pins: the narrow model/reader interfaces above must stay
@@ -141,19 +312,19 @@ void _sdkModelIsStreamModel;
 export function resolveEnterpriseRuntime(
   provider: string,
   modelId: string,
-  config: Record<string, unknown> = {}
+  config: EnterpriseRuntimeSource = {}
 ): EnterpriseRuntime {
   return {
     provider,
-    model: (config.model as string) || modelId,
-    apiKey: (config.apiKey as string) || "",
+    model: isString(config.model) && config.model ? config.model : modelId,
+    apiKey: isString(config.apiKey) ? config.apiKey : "",
     enterprise: pickEnterpriseConfig(config),
   };
 }
 
 // --- Structured-clone adapter for stream parts ------------------------------
 
-function describeUnclearError(value: unknown): Error {
+function describeUnclearError<T>(value: T): Error {
   if (value instanceof Error) return new Error(value.message);
 
   return new Error(String(value));
@@ -168,15 +339,11 @@ export function toCloneableStreamPart(part: LanguageModelV3StreamPart): Language
     return structuredClone(part);
   } catch {
     if (part.type === "raw") {
-      const raw = part as { type: "raw"; rawValue: unknown };
-
-      return { type: "raw", rawValue: describeUnclearError(raw.rawValue).message };
+      return { type: "raw", rawValue: describeUnclearError(part.rawValue).message };
     }
 
     if (part.type === "error") {
-      const errored = part as { type: "error"; error: unknown };
-
-      return { type: "error", error: describeUnclearError(errored.error) };
+      return { type: "error", error: describeUnclearError(part.error) };
     }
 
     return {
@@ -188,15 +355,11 @@ export function toCloneableStreamPart(part: LanguageModelV3StreamPart): Language
 
 // --- Helpers -----------------------------------------------------------------
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-function enterpriseFailure(
+function enterpriseFailure<T>(
   deps: ReasoningHandlerDeps,
   provider: string,
-  error: unknown,
-  config: Record<string, unknown>,
+  error: T,
+  config: EnterpriseMappingConfig,
   runtime?: EnterpriseRuntime
 ): EnterpriseReasoningResult {
   deps.logError("Enterprise reasoning error:", error);
@@ -224,33 +387,40 @@ function enterpriseFailure(
 // --- Local one-shot ----------------------------------------------------------
 
 function registerLocalHandlers(ipcMain: ReasoningIpcMain, deps: ReasoningHandlerDeps): void {
-  ipcMain.handle(reasoningChannels.processLocalReasoning, async (_event, ...args: unknown[]) => {
-    const parsed = localReasoningArgsSchema.safeParse(args);
+  ipcMain.handle(
+    reasoningChannels.processLocalReasoning,
+    async (_event, ...args: unknown[]): Promise<LocalReasoningResult> => {
+      const parsed = localReasoningArgsSchema.safeParse(args);
 
-    if (!parsed.success) {
-      return { success: false, error: "Invalid local reasoning request" };
+      if (!parsed.success) {
+        return { success: false, error: "Invalid local reasoning request" };
+      }
+
+      const [text, modelId, , config] = parsed.data;
+
+      try {
+        const result = await deps.localService.processText(text, modelId, config ?? {});
+
+        return { success: true, text: result };
+      } catch (error) {
+        const err = isLocalReasoningFailure(error) ? error : null;
+        const message = err !== null && isString(err.message) ? err.message : undefined;
+        const code = err !== null && isString(err.code) ? err.code : undefined;
+
+        const details = err !== null && isLocalErrorDetails(err.details) ? err.details : undefined;
+
+        // code/details carry the machine-readable failure across to the
+        // renderer, which owns the translation keys. Flattening to a bare
+        // string is how llama.cpp JSON used to reach users (#2142).
+        return {
+          success: false,
+          ...(message !== undefined ? { error: message } : {}),
+          ...(code !== undefined ? { code } : {}),
+          ...(details !== undefined ? { details } : {}),
+        };
+      }
     }
-
-    const [text, modelId, , config] = parsed.data;
-
-    try {
-      const result = await deps.localService.processText(text, modelId, config ?? {});
-
-      return { success: true, text: result };
-    } catch (error) {
-      const err = error as { message?: string; code?: string; details?: Record<string, unknown> };
-
-      // code/details carry the machine-readable failure across to the
-      // renderer, which owns the translation keys. Flattening to a bare
-      // string is how llama.cpp JSON used to reach users (#2142).
-      return {
-        success: false,
-        ...(err.message !== undefined ? { error: err.message } : {}),
-        ...(err.code !== undefined ? { code: err.code } : {}),
-        ...(err.details !== undefined ? { details: err.details } : {}),
-      };
-    }
-  });
+  );
 
   ipcMain.handle(reasoningChannels.checkLocalReasoningAvailable, async () => {
     try {
@@ -266,7 +436,7 @@ function registerLocalHandlers(ipcMain: ReasoningIpcMain, deps: ReasoningHandler
 function registerAnthropicHandler(ipcMain: ReasoningIpcMain, deps: ReasoningHandlerDeps): void {
   ipcMain.handle(
     reasoningChannels.processAnthropicReasoning,
-    async (_event, ...args: unknown[]) => {
+    async (_event, ...args: unknown[]): Promise<AnthropicReasoningResult> => {
       const parsed = anthropicReasoningArgsSchema.safeParse(args);
 
       if (!parsed.success) {
@@ -329,28 +499,28 @@ function registerAnthropicHandler(ipcMain: ReasoningIpcMain, deps: ReasoningHand
 
         if (!response.ok) {
           const errorText = await response.text();
-          let errorData: Record<string, unknown> = { error: response.statusText };
+          const errorBody = parseAnthropicError(errorText);
 
-          try {
-            errorData = asRecord(JSON.parse(errorText)) ?? {
-              error: errorText || response.statusText,
-            };
-          } catch {
-            errorData = { error: errorText || response.statusText };
-          }
-
-          const errorField = errorData.error;
+          const errorField =
+            errorBody !== null ? errorBody.error : errorText || response.statusText;
 
           const message =
-            (typeof errorField === "string" && errorField) ||
-            (asRecord(errorField)?.message as string | undefined);
+            isString(errorField) && errorField
+              ? errorField
+              : isAnthropicResponseBody(errorField) && isString(errorField.message)
+                ? errorField.message
+                : undefined;
 
           throw new Error(message || `Anthropic API error: ${response.status}`);
         }
 
         const data = await response.json();
 
-        if (config.requireCompleteOutput && asRecord(data)?.stop_reason === "max_tokens") {
+        if (
+          config.requireCompleteOutput &&
+          isAnthropicResponseBody(data) &&
+          data.stop_reason === "max_tokens"
+        ) {
           throw new Error("Model output was truncated before the selection edit completed");
         }
 
@@ -362,10 +532,13 @@ function registerAnthropicHandler(ipcMain: ReasoningIpcMain, deps: ReasoningHand
 
         return { success: true, text: outputText };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = isMessageCarrier(error) ? error : null;
         deps.logError("Anthropic reasoning error:", error);
 
-        return { success: false, ...(err.message !== undefined ? { error: err.message } : {}) };
+        return {
+          success: false,
+          ...(err !== null && isString(err.message) ? { error: err.message } : {}),
+        };
       }
     }
   );
@@ -386,9 +559,9 @@ function registerEnterpriseOneShotHandlers(
         return { success: false, error: "Invalid enterprise reasoning request" };
       }
 
-      const [text, modelId, , config = {} as EnterpriseReasoningConfig] = parsed.data;
+      const [text, modelId, , config] = parsed.data;
       const provider = config.provider;
-      let runtime;
+      let runtime: EnterpriseRuntime | undefined;
 
       try {
         if (!deps.isEnterpriseProvider(provider)) {
@@ -397,22 +570,23 @@ function registerEnterpriseOneShotHandlers(
 
         const isBedrockCleanup = provider === "bedrock" && config.inferenceScope === "cleanup";
 
-        const sender = isBedrockCleanup ? (event as { sender: SenderLike }).sender : null;
-        const senderId = sender?.id;
+        const sender = isBedrockCleanup ? senderFrom(event) : null;
         const requestId = isBedrockCleanup ? randomUUID() : null;
 
-        const controller = isBedrockCleanup
-          ? deps.bedrockCleanupRequests.begin(senderId as number, requestId as string)
-          : null;
+        const controller =
+          sender !== null && requestId !== null
+            ? deps.bedrockCleanupRequests.begin(sender.id, requestId)
+            : null;
 
-        const cancelSenderRequests = () =>
-          deps.bedrockCleanupRequests.cancelSender(senderId as number);
+        const cancelSenderRequests = () => {
+          if (sender !== null) deps.bedrockCleanupRequests.cancelSender(sender.id);
+        };
 
         try {
-          if (controller) {
-            sender?.once("destroyed", cancelSenderRequests);
+          if (controller && sender) {
+            sender.once("destroyed", cancelSenderRequests);
 
-            if (sender?.isDestroyed()) controller.abort();
+            if (sender.isDestroyed()) controller.abort();
           }
 
           controller?.signal.throwIfAborted();
@@ -456,11 +630,11 @@ function registerEnterpriseOneShotHandlers(
 
           let result;
 
-          if (isBedrockCleanup) {
+          if (isBedrockCleanup && controller) {
             result = await deps.runBedrockRequest(
               async () => {
                 const abortSignal = AbortSignal.any([
-                  (controller as AbortController).signal,
+                  controller.signal,
                   AbortSignal.timeout(timeoutMs),
                 ]);
 
@@ -468,7 +642,7 @@ function registerEnterpriseOneShotHandlers(
 
                 return generate(model, abortSignal, true);
               },
-              { signal: (controller as AbortController).signal }
+              { signal: controller.signal }
             );
           } else {
             const model = await resolveModel();
@@ -486,13 +660,9 @@ function registerEnterpriseOneShotHandlers(
 
           return { success: true, text: (generated || "").trim() };
         } finally {
-          if (controller) {
-            sender?.removeListener("destroyed", cancelSenderRequests);
-            deps.bedrockCleanupRequests.complete(
-              senderId as number,
-              requestId as string,
-              controller
-            );
+          if (controller && sender && requestId) {
+            sender.removeListener("destroyed", cancelSenderRequests);
+            deps.bedrockCleanupRequests.complete(sender.id, requestId, controller);
           }
         }
       } catch (err) {
@@ -502,7 +672,7 @@ function registerEnterpriseOneShotHandlers(
   );
 
   ipcMain.on(reasoningChannels.cancelEnterpriseReasoning, (event) => {
-    deps.bedrockCleanupRequests.cancelSender((event as { sender: SenderLike }).sender.id);
+    deps.bedrockCleanupRequests.cancelSender(senderFrom(event).id);
   });
 }
 
@@ -524,9 +694,9 @@ function registerEnterpriseStreamHandlers(
       }
 
       const { streamId, provider, modelId, config = {}, options } = parsed.data;
-      const sender = (event as { sender: SenderLike }).sender;
+      const sender = senderStreamFrom(event);
 
-      const send = (message: { part?: unknown; done?: boolean; error?: string }) => {
+      const send = (message: EnterpriseStreamMessage) => {
         if (!sender.isDestroyed()) {
           sender.send(reasoningChannels.enterpriseStreamPart, { streamId, ...message });
         }
@@ -544,20 +714,21 @@ function registerEnterpriseStreamHandlers(
 
       // isDestroyed() stays false across reload/navigation, which wipes the
       // renderer listeners — abort so the provider request isn't billed for
-      // a generation nobody receives.
+      // a generation nobody receives. The listener matches WebContents'
+      // did-start-navigation signature: (details, url, isInPlace, isMainFrame).
       const abortOnGone = (
-        _event: unknown,
-        _url: unknown,
-        isInPlace: unknown,
-        isMainFrame: unknown
-      ) => {
+        _details: ElectronEvent<WebContentsDidStartNavigationEventParams>,
+        _url: string,
+        isInPlace: boolean,
+        isMainFrame: boolean
+      ): void => {
         if (isMainFrame && !isInPlace) controller.abort();
       };
 
       const abortOnDestroyed = () => controller.abort();
       sender.on("did-start-navigation", abortOnGone);
       sender.once("destroyed", abortOnDestroyed);
-      let runtime;
+      let runtime: EnterpriseRuntime | undefined;
 
       try {
         if (!deps.isEnterpriseProvider(provider)) {
@@ -637,13 +808,13 @@ function registerEnterpriseStreamHandlers(
     }
   );
 
-  ipcMain.handle(reasoningChannels.enterpriseStreamCancel, async (event, ...args: unknown[]) => {
+  ipcMain.handle(reasoningChannels.enterpriseStreamCancel, (event, ...args: unknown[]) => {
     const streamId = args[0];
 
-    if (typeof streamId !== "string" || !streamId) return;
+    if (!isString(streamId) || !streamId) return;
     // Cancel looks up the stream by the sender of THIS event, so one renderer
     // can never abort another renderer's stream.
-    deps.enterpriseStreams.cancel((event as { sender: SenderLike }).sender.id, streamId);
+    deps.enterpriseStreams.cancel(senderFrom(event).id, streamId);
   });
 }
 

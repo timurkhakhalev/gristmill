@@ -65,7 +65,7 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
 
   useEffect(() => {
     let stale = false;
-    void fetchConversations(() => stale);
+    fetchConversations(() => stale).catch(() => {});
 
     return () => {
       stale = true;

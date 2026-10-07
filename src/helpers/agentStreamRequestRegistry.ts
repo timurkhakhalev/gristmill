@@ -4,6 +4,10 @@
 // aborts the previous controller so a replacement always starts fresh, and
 // completion is identity-guarded so a late finish never removes a
 // replacement. Pure seam: no Electron imports.
+function isNonEmptyString<T>(value: T): value is T & string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export class AgentStreamRequestRegistry {
   private readonly requestsBySender = new Map<number, Map<string, AbortController>>();
 
@@ -12,7 +16,7 @@ export class AgentStreamRequestRegistry {
       throw new TypeError("senderId must be an integer");
     }
 
-    if (typeof requestId !== "string" || !requestId.trim()) {
+    if (!isNonEmptyString(requestId)) {
       throw new TypeError("requestId must be a non-empty string");
     }
 

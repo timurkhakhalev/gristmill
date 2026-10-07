@@ -104,8 +104,8 @@ export function observeFloatingChatLayout(
 
     if (!scroller || scroller.scrollHeight - scroller.clientHeight <= 1) return;
 
-    // Cast, not `instanceof Node`: this module runs under node:test, which has
-    // no DOM globals; wheel/touch targets are always nodes in the renderer.
+    // SAFETY: wheel/touch targets are always DOM nodes in the renderer; the
+    // cast avoids `instanceof Node`, which is absent under node:test.
     if (target == null || !scroller.contains(target as Node)) return;
     follower.leaveBottom();
     forcePinPending = false;

@@ -9,12 +9,19 @@ import {
   USER_CORRECTABLE_ERRORS,
   isExplicitOffsetRfc3339,
 } from "../../helpers/calendarAvailability";
-import type { ToolDefinition, ToolResult } from "./ToolRegistry";
-import type {
-  AvailabilityInterval,
-  AvailabilityResult,
-  AvailabilitySlot,
-  CalendarAvailabilityRequestWire,
+import {
+  isJsonNumber,
+  readString,
+  type ToolArguments,
+  type ToolDefinition,
+  type ToolResult,
+} from "./ToolRegistry";
+import {
+  availabilityResultSchema,
+  type AvailabilityCoverage,
+  type AvailabilityInterval,
+  type AvailabilityResult,
+  type CalendarAvailabilityRequestWire,
 } from "../../contracts/calendarAvailability";
 
 const ALLOWED_ARGUMENTS = new Set([
@@ -34,13 +41,14 @@ const failure = (displayText: string): ToolResult => ({
   displayText,
 });
 
-function parseRequest(args: Record<string, unknown>): CalendarAvailabilityRequestWire | null {
-  if (!args || typeof args !== "object" || Array.isArray(args)) return null;
+function parseRequest(args: ToolArguments): CalendarAvailabilityRequestWire | null {
+  // The model can hand over a non-object tool input; fail closed before reading keys.
+  if (Array.isArray(args) || args === null) return null;
 
   if (Object.keys(args).some((key) => !ALLOWED_ARGUMENTS.has(key))) return null;
 
-  const start = typeof args.start === "string" ? args.start.trim() : "";
-  const end = typeof args.end === "string" ? args.end.trim() : "";
+  const start = readString(args, "start")?.trim() ?? "";
+  const end = readString(args, "end")?.trim() ?? "";
 
   if (!isExplicitOffsetRfc3339(start) || !isExplicitOffsetRfc3339(end)) return null;
 
@@ -60,83 +68,78 @@ function parseRequest(args: Record<string, unknown>): CalendarAvailabilityReques
     if (value === undefined || value === null) continue;
 
     if (
+      !isJsonNumber(value) ||
       !Number.isSafeInteger(value) ||
-      (value as number) < bounds.minimum ||
-      (value as number) > bounds.maximum
+      value < bounds.minimum ||
+      value > bounds.maximum
     ) {
       return null;
     }
 
-    request[key] = value as number;
+    request[key] = value;
   }
 
   return request;
 }
 
-function toInterval(value: unknown): AvailabilityInterval | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const { start, end } = value as Record<string, unknown>;
+// Re-validates the IPC payload through the shared wire schema (the renderer
+// type is the contract; the runtime value is still external), then rejects any
+// interval that is not a real ordered date pair.
+function projectAvailability(value: AvailabilityResult): AvailabilityResult | null {
+  const parsed = availabilityResultSchema.safeParse(value);
 
-  if (typeof start !== "string" || typeof end !== "string") return null;
-  const startMs = Date.parse(start);
-  const endMs = Date.parse(end);
+  if (!parsed.success) return null;
+  const availability = parsed.data;
 
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs >= endMs) return null;
+  const isOrderedInterval = (interval: AvailabilityInterval): boolean => {
+    const startMs = Date.parse(interval.start);
+    const endMs = Date.parse(interval.end);
 
-  return { start, end };
-}
-
-// Projects the IPC payload onto known privacy-safe fields; anything malformed fails closed.
-function projectAvailability(value: unknown): AvailabilityResult | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const payload = value as Record<string, unknown>;
-  const range = toInterval(payload.range);
-
-  const lookaheadDays =
-    payload.coverage && typeof payload.coverage === "object"
-      ? (payload.coverage as Record<string, unknown>).lookaheadDays
-      : null;
-
-  if (
-    !range ||
-    typeof payload.timezone !== "string" ||
-    !payload.timezone ||
-    typeof payload.hasMore !== "boolean" ||
-    typeof payload.isEntireRangeFree !== "boolean" ||
-    !Array.isArray(payload.availableSlots) ||
-    !Number.isSafeInteger(lookaheadDays) ||
-    (lookaheadDays as number) < 1
-  ) {
-    return null;
-  }
-
-  const availableSlots: AvailabilitySlot[] = [];
-
-  for (const item of payload.availableSlots) {
-    const interval = toInterval(item);
-    const durationMinutes = (item as Record<string, unknown> | null)?.durationMinutes;
-
-    if (!interval || !Number.isSafeInteger(durationMinutes) || (durationMinutes as number) < 1) {
-      return null;
-    }
-
-    availableSlots.push({ ...interval, durationMinutes: durationMinutes as number });
-  }
-
-  return {
-    range,
-    timezone: payload.timezone,
-    availableSlots,
-    hasMore: payload.hasMore,
-    isEntireRangeFree: payload.isEntireRangeFree,
-    coverage: { source: "local-calendar-cache", lookaheadDays: lookaheadDays as number },
+    return Number.isFinite(startMs) && Number.isFinite(endMs) && startMs < endMs;
   };
+
+  if (!isOrderedInterval(availability.range)) return null;
+
+  for (const slot of availability.availableSlots) {
+    if (!isOrderedInterval(slot) || !Number.isSafeInteger(slot.durationMinutes)) return null;
+  }
+
+  return availability;
 }
 
-function localizeInstant(
-  instant: string,
-  formatter: Intl.DateTimeFormat
-): { date: string; weekday: string; time: string; timeZoneName: string } {
+interface LocalizedInstant {
+  date: string;
+  weekday: string;
+  time: string;
+  timeZoneName: string;
+}
+
+interface AvailabilityQueryFacts {
+  start: LocalizedInstant;
+  end: LocalizedInstant;
+  minimumSlotMinutes: number;
+  bufferMinutes: number;
+  maxResults: number;
+}
+
+interface AvailabilitySlotFacts {
+  start: LocalizedInstant;
+  end: LocalizedInstant;
+  durationMinutes: number;
+}
+
+interface CalendarAvailabilityFacts {
+  type: "calendar_availability_facts";
+  timezone: string;
+  query: AvailabilityQueryFacts;
+  slotCount: number;
+  availableSlots: AvailabilitySlotFacts[];
+  hasMore: boolean;
+  isEntireRangeFree: boolean;
+  coverage: AvailabilityCoverage;
+}
+
+function localizeInstant(instant: string, formatter: Intl.DateTimeFormat): LocalizedInstant {
   const parts = Object.fromEntries(
     formatter
       .formatToParts(new Date(instant))
@@ -155,7 +158,7 @@ function localizeInstant(
 function toModelFacts(
   availability: AvailabilityResult,
   request: CalendarAvailabilityRequestWire
-): Record<string, unknown> {
+): CalendarAvailabilityFacts {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: availability.timezone,
     year: "numeric",
@@ -228,7 +231,7 @@ export const calendarAvailabilityTool: ToolDefinition = {
   },
   readOnly: true,
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: ToolArguments): Promise<ToolResult> {
     const request = parseRequest(args);
 
     if (!request) {
@@ -237,12 +240,12 @@ export const calendarAvailabilityTool: ToolDefinition = {
       );
     }
 
-    const getAvailability = window.electronAPI.calendarGetAvailability;
-
-    if (!getAvailability) return failure("Calendar availability is unavailable");
+    if (!window.electronAPI.calendarGetAvailability) {
+      return failure("Calendar availability is unavailable");
+    }
 
     try {
-      const response = await getAvailability(request);
+      const response = await window.electronAPI.calendarGetAvailability(request);
 
       if (!response?.success) {
         const error = response && response.success === false ? response.error : "";

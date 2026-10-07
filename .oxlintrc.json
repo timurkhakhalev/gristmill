@@ -197,15 +197,6 @@
         "quality/no-unknown-parameters": "off"
       }
     },
-    // Opaque completion seams: hideWindow/settleBounds are injected callbacks
-    // whose resolved value is discarded, so their Promise<unknown> returns name
-    // "wait for this" without a value contract the caller could parse.
-    {
-      "files": ["src/utils/pillVisibilityHandoff.ts"],
-      "rules": {
-        "quality/no-unknown-returns": "off"
-      }
-    },
     {
       "files": ["src/helpers/downloadUtils.ts"],
       "rules": {

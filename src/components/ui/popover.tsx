@@ -121,7 +121,7 @@ function PopoverContent({
       offset={sideOffset}
       isNonModal={isNonModal}
       shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
-      triggerRef={anchorRef ?? undefined}
+      triggerRef={anchorRef?.current ? anchorRef : undefined}
       // A popover opening under the frameless titlebar would otherwise be swallowed by its native drag region.
       // SAFETY: WebkitAppRegion is Electron's window-drag CSS seam; React's
       // CSSProperties type does not declare it.

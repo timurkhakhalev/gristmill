@@ -116,6 +116,7 @@ import { DEFAULT_RETENTION_SETTINGS, type RetentionSettings } from "./retentionS
 import { registerCalendarAvailabilityHandler } from "./calendarAvailabilityIpcHandler.js";
 import { registerCalendarIntegrationHandlers } from "./calendarIpcHandlers.js";
 import { registerNoteFilesHandlers } from "./noteFilesIpcHandlers.js";
+import type { GranolaImportState } from "./noteFilesIpcHandlers.js";
 import { registerLocalModelLifecycleHandlers } from "./localModelLifecycleIpcHandlers.js";
 import { registerLocalLlmModelHandlers } from "./localLlmModelIpcHandlers.js";
 import {
@@ -298,7 +299,7 @@ export class IPCHandlers {
   _retentionSettings: RetentionSettings; // Synced from renderer
   _retentionSettingsSynced: boolean;
   _noteFilesEnabled: boolean;
-  _granolaImportPending: import("./noteFilesIpcHandlers.js").GranolaImportState | null;
+  _granolaImportPending: GranolaImportState | null;
   whisperVadSettings: WhisperVadWireConfig;
   _meetingCoordinator: MeetingCoordinatorRuntime | null = null;
   _meetingProcessing: MeetingProcessingWorker | null = null;
@@ -1940,8 +1941,13 @@ export class IPCHandlers {
     // Note files (markdown mirror), reveal and Granola import live in the
     // typed module; the mirror stays a projection of SQLite-owned content.
     // The getter/setter below run with the state object as their receiver, so
-    // the instance is captured here rather than read from `this`.
-    const ipcState = { owner: this };
+    // they delegate to closures that hold this instance.
+    const readGranolaPending = () => this._granolaImportPending;
+
+    const writeGranolaPending = (value: GranolaImportState | null) => {
+      this._granolaImportPending = value;
+    };
+
     registerNoteFilesHandlers(ipcMain, {
       mirror: markdownMirror,
       getDefaultNotesPath: () => path.join(app.getPath("userData"), "notes"),
@@ -1984,10 +1990,10 @@ export class IPCHandlers {
       importNotes: (notes) => this.databaseManager.importNotes(notes),
       granolaState: {
         get pending() {
-          return ipcState.owner._granolaImportPending;
+          return readGranolaPending();
         },
         set pending(value) {
-          ipcState.owner._granolaImportPending = value;
+          writeGranolaPending(value);
         },
       },
       logError: (message, data, tag) => debugLogger.error(message, data, tag),

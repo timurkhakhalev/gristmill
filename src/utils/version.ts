@@ -6,7 +6,7 @@ function isString<T>(value: T): value is T & string {
   return typeof value === "string";
 }
 
-function parseCanonicalAppVersion<T>(value: T): AppVersionParts | null {
+function parseCanonicalAppVersion(value: unknown): AppVersionParts | null {
   if (!isString(value)) return null;
 
   const match = CANONICAL_APP_VERSION.exec(value);
@@ -18,7 +18,7 @@ function parseCanonicalAppVersion<T>(value: T): AppVersionParts | null {
   return parts.every(Number.isSafeInteger) ? parts : null;
 }
 
-export function isCanonicalAppVersion<T>(value: T): value is T & string {
+export function isCanonicalAppVersion(value: unknown): value is string {
   return parseCanonicalAppVersion(value) !== null;
 }
 

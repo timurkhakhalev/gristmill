@@ -70,7 +70,7 @@ export function formatTime(
   });
 }
 
-export function parseEventDate<T>(value: T): Date | null {
+export function parseEventDate(value: unknown): Date | null {
   if (!isString(value) || !value) return null;
   const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
 
@@ -81,7 +81,7 @@ export function parseEventDate<T>(value: T): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export function normalizeDbDate<T>(dateStr: T): Date {
+export function normalizeDbDate(dateStr: unknown): Date {
   if (!isString(dateStr) || !dateStr.trim()) return new Date(NaN);
   const trimmed = dateStr.trim();
   const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed);

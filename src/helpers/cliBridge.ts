@@ -41,19 +41,6 @@ async function findPortInRange(): Promise<number> {
   throw new Error(`No available ports in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
 }
 
-// The JSON values the bridge can place on the wire: every response payload is
-// built from these and serialized with JSON.stringify.
-type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
-
-interface JsonObject {
-  [key: string]: JsonValue;
-}
-
-// A single decoded JSON body field. The routes narrow each value through the
-// helpers below before it reaches a domain call, so the body itself stays the
-// honest JSON boundary type.
-type JsonField = JsonValue;
-
 // The narrow operations the CLI adapter runs on top of — the same notes/
 // dictionary/snippets operations and event senders the IPC handlers use. The
 // input types mirror DatabaseManager; only the read surfaces the CLI returns
@@ -74,8 +61,10 @@ export interface CliBridgeOperations {
     ): NoteRow[];
     getNote(id: number | bigint): NoteRow | null;
     getFolders(spaceId?: number | null): FolderRow[];
+    // JSON-boundary input: createFolder itself owns the `String(name || "")`
+    // coercion, so the bridge forwards the raw body field unchanged.
     createFolder(
-      name: string | null | undefined,
+      name: unknown,
       spaceId?: number | null
     ): { success: boolean; error?: string; folder?: FolderRow };
     getDictionary(): string[];
@@ -126,60 +115,38 @@ function routeError(message: string, code: string): CodedRouteError {
   return Object.assign(new Error(message), { code });
 }
 
-function isString<T>(value: T): value is T & string {
+function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-function isJsonObject<T>(value: T): value is T & JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isStringArray<T>(value: T): value is T & string[] {
+function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => isString(entry));
 }
 
-function isNumber<T>(value: T): value is T & number {
-  return typeof value === "number";
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isBoolean<T>(value: T): value is T & boolean {
-  return typeof value === "boolean";
-}
-
-function errorMessage<T>(error: T): string {
+function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function errorCode<T>(error: T): string | undefined {
+function errorCode(error: unknown): string | undefined {
   if (!(error instanceof Error) || !("code" in error)) return undefined;
   const code: unknown = error.code;
 
   return isString(code) ? code : undefined;
 }
 
-// Decodes one JSON field the routes read from a request body. Missing fields
-// resolve to undefined; a wrong-typed field is kept as-is so each route's own
-// validation rejects it with its existing message.
-function bodyField(body: JsonObject, key: string): JsonField {
-  return body[key];
+// Reads one field from a decoded JSON body. The body stays the honest
+// `unknown`/record JSON boundary type; a missing field resolves to undefined
+// and a wrong-typed field is kept as-is so each route's own validation rejects
+// it with its existing message.
+function bodyField(body: unknown, key: string): unknown {
+  return isJsonObject(body) ? body[key] : undefined;
 }
 
-// createFolder coerces its input with `String(name || "")`. This reproduces
-// that coercion for a JSON body field, including the falsy cases (0/false/null)
-// that become an empty name and are rejected.
-function folderNameValue(value: JsonField): string {
-  if (isString(value)) return value;
-
-  if (isNumber(value) || isBoolean(value)) return String(value || "");
-
-  if (Array.isArray(value)) return value.map((entry) => folderNameValue(entry)).join(",");
-
-  if (value === null || value === undefined) return "";
-
-  return "[object Object]";
-}
-
-function readJsonBody(req: http.IncomingMessage): Promise<JsonObject> {
+function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     // Buffer the raw chunks and decode once at the end: decoding per chunk
     // corrupts multibyte sequences split across chunk boundaries.
@@ -208,11 +175,9 @@ function readJsonBody(req: http.IncomingMessage): Promise<JsonObject> {
       if (!raw) return resolve({});
 
       try {
-        const parsed: unknown = JSON.parse(raw);
-
-        // The routes below validate every field they read, so a non-object
-        // body degrades to the empty record the same way a missing one does.
-        resolve(isJsonObject(parsed) ? parsed : {});
+        // The raw decoded value stays `unknown`: the routes (or the update
+        // schema) reject a non-object body before any domain call.
+        resolve(JSON.parse(raw));
       } catch {
         reject(new Error("Invalid JSON payload"));
       }
@@ -221,7 +186,7 @@ function readJsonBody(req: http.IncomingMessage): Promise<JsonObject> {
   });
 }
 
-function sendJson<T>(res: http.ServerResponse, statusCode: number, payload: T): void {
+function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
@@ -285,7 +250,7 @@ function unwrapFolder(result: FolderMutationLike): FolderRow {
 interface RouteParams {
   params: Record<string, string>;
   query: URLSearchParams;
-  body: JsonObject;
+  body: unknown;
 }
 
 interface RouteEntry {
@@ -466,7 +431,7 @@ export class CliBridge {
       return;
     }
 
-    let body: JsonObject = {};
+    let body: unknown = {};
 
     if (req.method !== "GET" && req.method !== "DELETE") {
       try {
@@ -641,7 +606,7 @@ export class CliBridge {
       return id;
     };
 
-    const requireWordList = (value: JsonField, field: string): string[] => {
+    const requireWordList = (value: unknown, field: string): string[] => {
       if (value === undefined || value === null) return [];
 
       if (!isStringArray(value)) {
@@ -651,9 +616,7 @@ export class CliBridge {
       return value;
     };
 
-    const isSnippetField = (
-      value: JsonField
-    ): value is { trigger: string; replacement: string } => {
+    const isSnippetField = (value: unknown): value is { trigger: string; replacement: string } => {
       if (!isJsonObject(value)) return false;
       const trigger = value.trigger;
       const replacement = value.replacement;
@@ -667,7 +630,7 @@ export class CliBridge {
     };
 
     const requireSnippetList = (
-      value: JsonField
+      value: unknown
     ): Array<{ trigger: string; replacement: string }> => {
       if (value === undefined || value === null) return [];
 
@@ -681,7 +644,7 @@ export class CliBridge {
       return value;
     };
 
-    const requireAudioFile = (value: JsonField): string => {
+    const requireAudioFile = (value: unknown): string => {
       if (!isString(value) || !value.trim()) {
         throw routeError("'path' must be the path of an audio file", "VALIDATION");
       }
@@ -705,7 +668,7 @@ export class CliBridge {
     // anything not on disk so the engines' own errors stay genuine failures.
     const requireLocalModel = (
       models: Array<{ model: string; default?: boolean; downloaded?: boolean; provider?: string }>,
-      requested: JsonField
+      requested: unknown
     ) => {
       if (requested !== undefined && !isString(requested)) {
         throw routeError("'model' must be a string", "VALIDATION");
@@ -847,7 +810,7 @@ export class CliBridge {
         "POST",
         "/v1/folders/create",
         ({ body }) => {
-          const folder = unwrapFolder(db.createFolder(folderNameValue(bodyField(body, "name"))));
+          const folder = unwrapFolder(db.createFolder(bodyField(body, "name")));
           setImmediate(() => sendFolderCreated(folder));
 
           return { data: folder };

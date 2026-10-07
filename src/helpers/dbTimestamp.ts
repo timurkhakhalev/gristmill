@@ -13,12 +13,12 @@ function isString<T>(value: T): value is T & string {
   return typeof value === "string";
 }
 
-export function hasExplicitTimeZone<T>(value: T): boolean {
+export function hasExplicitTimeZone(value: unknown): boolean {
   return isString(value) && EXPLICIT_TIME_ZONE.test(value.trim());
 }
 
 /** Returns null for anything unreadable, so callers can fall back explicitly. */
-export function parseDbTimestamp<T>(value: T): Date | null {
+export function parseDbTimestamp(value: unknown): Date | null {
   if (!isString(value)) return null;
   const trimmed = value.trim();
 
@@ -40,6 +40,6 @@ export function parseDbTimestamp<T>(value: T): Date | null {
  * above every other row from the same day. Returns null for anything
  * unreadable, so callers can fall back to CURRENT_TIMESTAMP.
  */
-export function toDbTimestamp<T>(value: T): string | null {
+export function toDbTimestamp(value: unknown): string | null {
   return parseDbTimestamp(value)?.toISOString().replace("T", " ") ?? null;
 }

@@ -149,12 +149,16 @@ test("auto-hide closes the native window before releasing DOM suppression", asyn
   const handoff = createPillVisibilityHandoff({
     onSuppressedChange: (suppressed) => order.push(suppressed ? "suppress" : "release"),
     shouldAutoHide: () => true,
-    hideWindow: async () => order.push("hide"),
+    hideWindow: async () => {
+      order.push("hide");
+    },
     waitForFrames: async () => assert.fail("visible-frame wait should not run"),
   });
 
   handoff.suppress();
-  await handoff.releaseAfter(async () => order.push("bounds"));
+  await handoff.releaseAfter(async () => {
+    order.push("bounds");
+  });
 
   assert.deepEqual(order, ["suppress", "bounds", "hide", "release"]);
 });

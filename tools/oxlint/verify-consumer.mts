@@ -13,72 +13,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import ts from "typescript";
 import { z } from "zod";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
 const binary = path.join(root, "node_modules/.bin/oxlint");
-
-// The root config is JSONC: exact-file overrides carry their reason as a
-// comment next to the setting (type-safety.md). oxlint reads JSONC natively,
-// but this verifier re-serializes the config, so strip comments before parse.
-function stripJsonComments(text: string): string {
-  let stripped = "";
-  let inString = false;
-  let inLineComment = false;
-  let inBlockComment = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    const next = text[index + 1];
-
-    if (inLineComment) {
-      if (character === "\n") {
-        inLineComment = false;
-        stripped += character;
-      }
-
-      continue;
-    }
-
-    if (inBlockComment) {
-      if (character === "*" && next === "/") {
-        inBlockComment = false;
-        index += 1;
-      }
-
-      continue;
-    }
-
-    if (inString) {
-      stripped += character;
-
-      if (character === "\\") {
-        stripped += next;
-        index += 1;
-      } else if (character === '"') {
-        inString = false;
-      }
-
-      continue;
-    }
-
-    if (character === '"') {
-      inString = true;
-      stripped += character;
-    } else if (character === "/" && next === "/") {
-      inLineComment = true;
-      index += 1;
-    } else if (character === "/" && next === "*") {
-      inBlockComment = true;
-      index += 1;
-    } else {
-      stripped += character;
-    }
-  }
-
-  return stripped;
-}
 
 const configSchema = z.looseObject({
   extends: z.array(z.string()),
@@ -126,9 +66,21 @@ await test("project consumer preserves type, Promise and runtime boundary rules"
     })
   );
 
-  const configuration = configSchema.parse(
-    JSON.parse(stripJsonComments(readFileSync(path.join(root, ".oxlintrc.json"), "utf8")))
+  // The root config is JSONC: each exact-file override carries its reason as a
+  // comment next to the setting (type-safety.md). Parse it with the TypeScript
+  // config parser — the same JSONC grammar oxlint's own loader accepts (comments
+  // and trailing commas) — rather than a hand-rolled stripper that could drift
+  // from the loader. A malformed config is surfaced, never passed as empty.
+  const parsedConfig = ts.parseConfigFileTextToJson(
+    ".oxlintrc.json",
+    readFileSync(path.join(root, ".oxlintrc.json"), "utf8")
   );
+
+  if (parsedConfig.error) {
+    throw new Error(ts.flattenDiagnosticMessageText(parsedConfig.error.messageText, "\n"));
+  }
+
+  const configuration = configSchema.parse(parsedConfig.config);
 
   // configuration keeps the documented relative extends; the bundle above is
   // copied so the resolution graph matches a real consumer checkout.

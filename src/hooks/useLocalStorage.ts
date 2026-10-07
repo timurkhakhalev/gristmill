@@ -1,5 +1,13 @@
 import { useState, useCallback } from "react";
 
+// Module-level defaults keep a stable identity across renders so the setValue
+// callback's dependency array does not churn (react/exhaustive-deps is error).
+const defaultSerialize = <T>(value: T): string => JSON.stringify(value);
+
+// SAFETY: JSON.parse returns the same T the hook was parameterized with; the
+// caller owns T's serializability, matching the options.deserialize contract.
+const defaultDeserialize = <T>(value: string): T => JSON.parse(value) as T;
+
 export function useLocalStorage<T>(
   key: string,
   defaultValue: T,
@@ -8,8 +16,8 @@ export function useLocalStorage<T>(
     deserialize?: (value: string) => T;
   }
 ) {
-  const serialize = options?.serialize || JSON.stringify;
-  const deserialize = options?.deserialize || JSON.parse;
+  const serialize = options?.serialize || defaultSerialize;
+  const deserialize = options?.deserialize || defaultDeserialize<T>;
 
   const [state, setState] = useState<T>(() => {
     try {

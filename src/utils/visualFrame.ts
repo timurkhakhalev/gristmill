@@ -26,7 +26,6 @@ export function waitForVisualFrames(
       }
 
       let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
 
       const advance = () => {
         if (settled) return;
@@ -35,7 +34,8 @@ export function waitForVisualFrames(
         wait(remaining - 1);
       };
 
-      timer = setTimeout(advance, frameTimeoutMs);
+      const timer = setTimeout(advance, frameTimeoutMs);
+
       scheduleFrame(advance);
     };
 

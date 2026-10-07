@@ -64,12 +64,20 @@ export function useControlPanelWindowDrag(enabled: boolean): void {
     let origin: { x: number; y: number } | null = null;
     let dragging = false;
 
+    // Fire-and-forget by contract: the drag manager owns stop failures, and
+    // these listeners cannot await.
+    const stopDrag = (): void => {
+      api.stopControlPanelDrag?.().catch(() => {
+        // The native window may already be gone; nothing to recover.
+      });
+    };
+
     const stop = (): void => {
       origin = null;
 
       if (!dragging) return;
       dragging = false;
-      void api.stopControlPanelDrag?.();
+      stopDrag();
     };
 
     const onMouseDown = (event: MouseEvent): void => {
@@ -112,7 +120,11 @@ export function useControlPanelWindowDrag(enabled: boolean): void {
       // beginning here rather than at mousedown costs no fidelity — the window
       // picks up exactly under the cursor.
       dragging = true;
-      void api.startControlPanelDrag();
+      // Fire-and-forget by contract: the drag manager owns start failures, and
+      // the mousemove listener cannot await.
+      api.startControlPanelDrag().catch(() => {
+        dragging = false;
+      });
     };
 
     // Capture phase: a step's own mousedown handling must not be able to

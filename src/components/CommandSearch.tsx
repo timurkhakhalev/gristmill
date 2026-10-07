@@ -4,7 +4,7 @@ import { useUiLocale } from "../hooks/useUiLocale";
 import { Search, FileText, Mic, Folder, Lock, Users, Upload, ChevronDown } from "./icons";
 import { cn } from "./lib/utils";
 import { Dropdown, Label, Modal, Separator } from "@heroui/react";
-import type { FolderItem, SpaceItem } from "../contracts/containers";
+import type { SpaceItem } from "../contracts/containers";
 import type { TranscriptionItem } from "../contracts/transcriptionData.js";
 import type { NoteItem, TranscriptSearchHit } from "../contracts/notes";
 import { formatRelativeTime } from "../utils/dateFormatting";
@@ -613,7 +613,7 @@ function NoteRow({
   isSelected: boolean;
   onSelect: () => void;
   onHover: () => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: (key: string) => string;
   locale?: string;
 }) {
   const { dateFormat } = useDateTimePreferences();
@@ -687,7 +687,7 @@ function TranscriptRow({
   isSelected: boolean;
   onSelect: () => void;
   onHover: () => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: (key: string) => string;
   locale?: string;
 }) {
   const { dateFormat } = useDateTimePreferences();

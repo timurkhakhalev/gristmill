@@ -1,5 +1,6 @@
 import { app } from "electron";
 import path from "path";
+import debugLogger from "./debugLogger.js";
 import { resolveDockVisibility } from "./dockPolicy.js";
 
 // Single owner of the macOS Dock icon. Every caller that wants the icon shown
@@ -42,7 +43,13 @@ class DockManager {
     if (visible === null || !app.dock) return;
 
     if (visible) {
-      app.dock.show();
+      // Fire-and-forget by contract: the Dock icon has no failure UI, so the
+      // rejection is logged rather than floated.
+      app.dock.show().catch((error) => {
+        debugLogger.warn("Failed to show the Dock icon", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     } else {
       // Electron swallows dock.hide() within 1s of a dock.show() (see DockHide
       // in browser_mac.mm), so closing the control panel right after opening it

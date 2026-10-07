@@ -15,7 +15,7 @@ export type SystemSettingType =
   | "loginItems"
   | "calendars";
 
-const SYSTEM_SETTINGS_URLS: Record<string, Partial<Record<SystemSettingType, string>>> = {
+const SYSTEM_SETTINGS_URLS = {
   darwin: {
     microphone: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
     sound: "x-apple.systempreferences:com.apple.preference.sound?input",
@@ -26,13 +26,12 @@ const SYSTEM_SETTINGS_URLS: Record<string, Partial<Record<SystemSettingType, str
     calendars: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars",
     loginItems: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
   },
-};
+} satisfies Record<string, Partial<Record<SystemSettingType, string>>>;
 
 export async function openSystemSettings(
   settingType: SystemSettingType
 ): Promise<{ success: boolean; error?: string }> {
-  const platform = process.platform;
-  const url = SYSTEM_SETTINGS_URLS[platform]?.[settingType];
+  const url = process.platform === "darwin" ? SYSTEM_SETTINGS_URLS.darwin[settingType] : undefined;
 
   if (!url) {
     // macOS is the only supported runtime platform.
@@ -58,6 +57,6 @@ export async function openSystemSettings(
   } catch (error) {
     debugLogger.error(`Failed to open ${settingType} settings:`, error);
 
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

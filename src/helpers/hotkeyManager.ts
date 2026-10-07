@@ -73,6 +73,14 @@ function isUnsupportedFnCombination(hotkey: string): boolean {
   return /^Fn\+/i.test(hotkey || "");
 }
 
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
 // Suggested alternative hotkeys when registration fails
 const SUGGESTED_HOTKEYS = {
   single: ["F8", "F9", "F10", "Pause", "ScrollLock"],
@@ -119,7 +127,29 @@ interface SingleHotkeyFailureRecord {
   suggestions?: string[];
 }
 
+interface HotkeyFailureReason {
+  reason: "already_registered" | "registration_failed";
+  message: string;
+  suggestions: string[];
+}
+
+// What the macOS native listener needs to swallow for these slots.
+export interface MacNativeListenerConfig {
+  mouseButtons: string[];
+  suppressGlobeAction: boolean;
+}
+
 type EnvironmentManagerCtor = new () => EnvironmentManager;
+
+// Lazy require: the renderer graph imports this module without touching
+// environment.ts (and its Electron/Keychain deps) until a hotkey is persisted.
+function createEnvironmentManager(): EnvironmentManager {
+  // SAFETY: lazy CommonJS seam; environment.ts exports EnvironmentManager as
+  // the module value (its dual export also names the constructor).
+  const EnvironmentManagerCtor = require("./environment") as EnvironmentManagerCtor;
+
+  return new EnvironmentManagerCtor();
+}
 
 export class HotkeyManager extends EventEmitter {
   slots = new Map<string, HotkeySlot>();
@@ -181,11 +211,7 @@ export class HotkeyManager extends EventEmitter {
     return this.isListeningMode;
   }
 
-  getFailureReason(hotkey: string): {
-    reason: "already_registered" | "registration_failed";
-    message: string;
-    suggestions: string[];
-  } {
+  getFailureReason(hotkey: string): HotkeyFailureReason {
     if (globalShortcut.isRegistered(hotkey)) {
       return {
         reason: "already_registered",
@@ -330,10 +356,7 @@ export class HotkeyManager extends EventEmitter {
   // Which mouse buttons the macOS listener must swallow for these slots, and
   // whether Gristmill owns Globe — if it does, macOS's own standalone Globe
   // action has to stand down.
-  getMacNativeListenerConfig(slotNames: string[]): {
-    mouseButtons: string[];
-    suppressGlobeAction: boolean;
-  } {
+  getMacNativeListenerConfig(slotNames: string[]): MacNativeListenerConfig {
     const mouseButtons = new Set<string>();
     let suppressGlobeAction = false;
 
@@ -411,9 +434,9 @@ export class HotkeyManager extends EventEmitter {
         suggestions: failureInfo.suggestions,
       };
     } catch (error) {
-      debugLogger.error("Error setting up shortcut", { error: (error as Error).message }, "hotkey");
+      debugLogger.error("Error setting up shortcut", { error: errorMessage(error) }, "hotkey");
 
-      return { success: false, hotkey, error: (error as Error).message };
+      return { success: false, hotkey, error: errorMessage(error) };
     }
   }
 
@@ -470,7 +493,7 @@ export class HotkeyManager extends EventEmitter {
         globalShortcut.unregister(prevAccel);
       } catch (error) {
         debugLogger.warn(
-          `[HotkeyManager] Skipping previous unregister for "${prevAccel}": ${(error as Error).message}`
+          `[HotkeyManager] Skipping previous unregister for "${prevAccel}": ${errorMessage(error)}`
         );
       }
     }
@@ -608,7 +631,7 @@ export class HotkeyManager extends EventEmitter {
         }
       } catch (err) {
         debugLogger.warn(
-          `[HotkeyManager] Exception restoring previous hotkey "${previousHotkey}": ${(err as Error).message}`
+          `[HotkeyManager] Exception restoring previous hotkey "${previousHotkey}": ${errorMessage(err)}`
         );
       }
     });
@@ -636,10 +659,10 @@ export class HotkeyManager extends EventEmitter {
         debugLogger.log(`[HotkeyManager] Hotkey "${envHotkey}" registered from env`);
       } else {
         debugLogger.log(`[HotkeyManager] Env hotkey "${envHotkey}" failed, waiting for page`);
-        this.loadSavedHotkeyOrDefault(mainWindow, callback);
+        this.runSavedHotkeyLoad(mainWindow, callback);
       }
     } else {
-      const loadHotkey = () => this.loadSavedHotkeyOrDefault(mainWindow, callback);
+      const loadHotkey = () => this.runSavedHotkeyLoad(mainWindow, callback);
 
       if (mainWindow.webContents.isLoading()) {
         mainWindow.webContents.once("did-finish-load", loadHotkey);
@@ -649,6 +672,14 @@ export class HotkeyManager extends EventEmitter {
     }
 
     this.isInitialized = true;
+  }
+
+  // Fire-and-forget by contract: the load path records its own failures, and
+  // the did-finish-load listener cannot await a promise.
+  private runSavedHotkeyLoad(mainWindow: BrowserWindow, callback: HotkeyActivationCallback): void {
+    this.loadSavedHotkeyOrDefault(mainWindow, callback).catch((error) =>
+      debugLogger.error("Failed to load saved hotkey", { error: errorMessage(error) }, "hotkey")
+    );
   }
 
   async loadSavedHotkeyOrDefault(
@@ -662,11 +693,15 @@ export class HotkeyManager extends EventEmitter {
       // Fall back to localStorage if env var is empty
       if (!savedHotkey) {
         try {
-          savedHotkey = (await mainWindow.webContents.executeJavaScript(`
+          // executeJavaScript returns `any`; the renderer value is untrusted
+          // here, so it is read as unknown before the string check.
+          const rawSaved: unknown = await mainWindow.webContents.executeJavaScript(`
             localStorage.getItem("dictationKey") || ""
-          `)) as string;
+          `);
+
+          savedHotkey = isString(rawSaved) ? rawSaved : "";
         } catch (jsErr) {
-          debugLogger.log(`[HotkeyManager] executeJavaScript failed: ${(jsErr as Error).message}`);
+          debugLogger.log(`[HotkeyManager] executeJavaScript failed: ${errorMessage(jsErr)}`);
           savedHotkey = "";
         }
 
@@ -736,7 +771,7 @@ export class HotkeyManager extends EventEmitter {
       debugLogger.log("[HotkeyManager] All hotkey fallbacks failed");
       this.notifyHotkeyFailure(defaultHotkey, result);
     } catch (err) {
-      debugLogger.error("Failed to initialize hotkey", { error: (err as Error).message }, "hotkey");
+      debugLogger.error("Failed to initialize hotkey", { error: errorMessage(err) }, "hotkey");
     } finally {
       this.emit("hotkey-loaded", this.currentHotkey);
     }
@@ -746,15 +781,11 @@ export class HotkeyManager extends EventEmitter {
     process.env.DICTATION_KEY = hotkey;
 
     try {
-      const EnvironmentManagerCtor = require("./environment") as EnvironmentManagerCtor;
-      const envManager = new EnvironmentManagerCtor();
+      const envManager = createEnvironmentManager();
       await envManager.saveAllKeysToEnvFile();
       debugLogger.log(`[HotkeyManager] Persisted hotkey "${hotkey}" to .env file`);
     } catch (err) {
-      debugLogger.warn(
-        "[HotkeyManager] Failed to persist hotkey to .env file:",
-        (err as Error).message
-      );
+      debugLogger.warn("[HotkeyManager] Failed to persist hotkey to .env file:", errorMessage(err));
     }
   }
 
@@ -762,15 +793,11 @@ export class HotkeyManager extends EventEmitter {
     // Save via EnvironmentManager (writes to .env file + process.env).
     // This is the authoritative backend store, read by getSavedHotkey() on next startup.
     try {
-      const EnvironmentManagerCtor = require("./environment") as EnvironmentManagerCtor;
-      const envManager = new EnvironmentManagerCtor();
+      const envManager = createEnvironmentManager();
       envManager.saveDictationKey(hotkey);
       debugLogger.log(`[HotkeyManager] Persisted hotkey "${hotkey}" to .env file`);
     } catch (err) {
-      debugLogger.warn(
-        "[HotkeyManager] Failed to save dictation key to env:",
-        (err as Error).message
-      );
+      debugLogger.warn("[HotkeyManager] Failed to save dictation key to env:", errorMessage(err));
     }
 
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -780,10 +807,7 @@ export class HotkeyManager extends EventEmitter {
 
         return true;
       } catch (err) {
-        debugLogger.error(
-          "[HotkeyManager] Failed to send dictationKey update:",
-          (err as Error).message
-        );
+        debugLogger.error("[HotkeyManager] Failed to send dictationKey update:", errorMessage(err));
 
         return false;
       }
@@ -801,30 +825,30 @@ export class HotkeyManager extends EventEmitter {
     // falls back again if the conflict still exists.
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       try {
-        const lsKey = (await this.mainWindow.webContents.executeJavaScript(
+        // executeJavaScript returns `any`; the renderer value is untrusted
+        // here, so it is read as unknown before the string check.
+        const rawKey: unknown = await this.mainWindow.webContents.executeJavaScript(
           `localStorage.getItem("dictationKey") || ""`
-        )) as string;
+        );
+
+        const lsKey = isString(rawKey) ? rawKey : "";
 
         if (lsKey && lsKey.trim() !== "") return lsKey;
       } catch (err) {
         debugLogger.log(
           "[HotkeyManager] Failed to read dictationKey from localStorage:",
-          (err as Error).message
+          errorMessage(err)
         );
       }
     }
 
     try {
-      const EnvironmentManagerCtor = require("./environment") as EnvironmentManagerCtor;
-      const envManager = new EnvironmentManagerCtor();
+      const envManager = createEnvironmentManager();
       const envKey = envManager.getDictationKey();
 
       if (envKey && envKey.trim() !== "") return envKey;
     } catch (err) {
-      debugLogger.log(
-        "[HotkeyManager] Failed to read dictationKey from .env:",
-        (err as Error).message
-      );
+      debugLogger.log("[HotkeyManager] Failed to read dictationKey from .env:", errorMessage(err));
     }
 
     return DEFAULT_HOTKEY;
@@ -936,11 +960,11 @@ export class HotkeyManager extends EventEmitter {
         };
       }
     } catch (error) {
-      debugLogger.error("[HotkeyManager] Failed to update hotkey:", (error as Error).message);
+      debugLogger.error("[HotkeyManager] Failed to update hotkey:", errorMessage(error));
 
       return {
         success: false,
-        message: `Failed to update hotkey: ${(error as Error).message}`,
+        message: `Failed to update hotkey: ${errorMessage(error)}`,
       };
     }
   }
@@ -973,12 +997,12 @@ export class HotkeyManager extends EventEmitter {
 
 module.exports = HotkeyManager;
 
-module.exports.HotkeyManager = HotkeyManager;
-
-module.exports.isGlobeLikeHotkey = isGlobeLikeHotkey;
-
-module.exports.isModifierOnlyHotkey = isModifierOnlyHotkey;
-
-module.exports.isRightSideModifier = isRightSideModifier;
-
-module.exports.isMouseButtonHotkey = isMouseButtonHotkey;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named class and predicates.
+Object.assign(module.exports, {
+  HotkeyManager,
+  isGlobeLikeHotkey,
+  isModifierOnlyHotkey,
+  isRightSideModifier,
+  isMouseButtonHotkey,
+});

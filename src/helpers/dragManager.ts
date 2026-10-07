@@ -7,6 +7,11 @@ export interface DragOperationResult {
   message?: string;
 }
 
+interface DragOffset {
+  x: number;
+  y: number;
+}
+
 export class DragManager {
   isDragging = false;
   dragOffset = { x: 0, y: 0 };
@@ -52,7 +57,7 @@ export class DragManager {
       console.error("Failed to start window drag:", error);
       this.isDragging = false;
 
-      return { success: false, message: (error as Error).message };
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -67,7 +72,7 @@ export class DragManager {
     } catch (error) {
       console.error("Failed to stop window drag:", error);
 
-      return { success: false, message: (error as Error).message };
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -84,10 +89,13 @@ export class DragManager {
   }
 
   updateWindowPosition(): void {
+    const win = this.activeWindow;
+
+    if (!win || win.isDestroyed()) return;
+
     try {
       const cursorPos = screen.getCursorScreenPoint();
-      // Only the tracking interval calls this, and it checks activeWindow first.
-      const { width, height } = this.activeWindow!.getBounds();
+      const { width, height } = win.getBounds();
       const x = cursorPos.x - this.dragOffset.x;
       const y = cursorPos.y - this.dragOffset.y;
 
@@ -101,10 +109,14 @@ export class DragManager {
 
       const clamped = WindowPositionUtil.clampToWorkArea({ x, y, width, height }, display);
 
-      this.activeWindow!.setPosition(clamped.x, clamped.y);
+      win.setPosition(clamped.x, clamped.y);
     } catch (error) {
       console.error("Error updating window position:", error);
-      this.stopWindowDrag();
+      // Fire-and-forget by contract: the caller is the tracking interval, which
+      // has no rejection path. stopWindowDrag already contains its failures.
+      this.stopWindowDrag().catch((stopError) =>
+        console.error("Failed to stop window drag:", stopError)
+      );
     }
   }
 
@@ -119,16 +131,20 @@ export class DragManager {
     return this.isDragging;
   }
 
-  getDragOffset(): { x: number; y: number } {
+  getDragOffset(): DragOffset {
     return { ...this.dragOffset };
   }
 
   cleanup(): void {
-    this.stopWindowDrag();
+    this.stopWindowDrag().catch((error) =>
+      console.error("Failed to stop window drag during cleanup:", error)
+    );
     this.targetWindow = null;
   }
 }
 
 module.exports = DragManager;
 
-module.exports.DragManager = DragManager;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named class.
+Object.assign(module.exports, { DragManager });

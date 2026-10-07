@@ -30,6 +30,20 @@ const MENU_REOPEN_GUARD_MS = 300;
 
 const UPCOMING_WINDOW_MINUTES = 6 * 60;
 
+const MENU_SEPARATOR: MenuItemConstructorOptions = { type: "separator" };
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+// Fire-and-forget by contract: menu clicks cannot await, and these actions
+// already surface their own errors; any unexpected rejection is logged.
+function runMenuAction(action: Promise<void> | undefined): void {
+  action?.catch((error) => {
+    debugLogger.error("Tray menu action failed", { error: errorMessage(error) }, "tray");
+  });
+}
+
 export interface TrayCalendarSource {
   getUpcomingEvents(windowMinutes?: number): CalendarEventRow[];
 }
@@ -105,11 +119,7 @@ export class TrayManager {
         )
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
     } catch (error) {
-      debugLogger.error(
-        "Failed to read upcoming events",
-        { error: (error as Error).message },
-        "tray"
-      );
+      debugLogger.error("Failed to read upcoming events", { error: errorMessage(error) }, "tray");
 
       return [];
     }
@@ -125,8 +135,8 @@ export class TrayManager {
     const open = (): void => {
       const projected = projectCalendarEvent(current);
 
-      if (projected) void this.windowManager?.requestOpenCalendarEvent(projected);
-      else void this.showControlPanelFromTray();
+      if (projected) runMenuAction(this.windowManager?.requestOpenCalendarEvent(projected));
+      else runMenuAction(this.showControlPanelFromTray());
     };
 
     const item: MenuItemConstructorOptions = {
@@ -163,12 +173,12 @@ export class TrayManager {
 
     const currentItem = this.buildCurrentMeetingItem(now);
 
-    if (!events.length) return currentItem ? [currentItem, { type: "separator" }] : [];
+    if (!events.length) return currentItem ? [currentItem, MENU_SEPARATOR] : [];
 
     const [next, ...rest] = events;
 
     const items: MenuItemConstructorOptions[] = [
-      ...(currentItem ? [currentItem, { type: "separator" } as MenuItemConstructorOptions] : []),
+      ...(currentItem ? [currentItem, MENU_SEPARATOR] : []),
       {
         label: i18nMain.t("tray.startsIn", {
           time: this.formatDuration(new Date(next.start_time).getTime() - now),
@@ -188,13 +198,13 @@ export class TrayManager {
 
     if (tomorrowEvent) {
       items.push(
-        { type: "separator" },
+        MENU_SEPARATOR,
         { label: i18nMain.t("tray.tomorrow"), enabled: false },
         this.meetingItem(tomorrowEvent)
       );
     }
 
-    items.push({ type: "separator" });
+    items.push(MENU_SEPARATOR);
 
     return items;
   }
@@ -206,8 +216,8 @@ export class TrayManager {
       click: () => {
         const projected = projectCalendarEvent(event);
 
-        if (projected) void this.windowManager?.requestOpenCalendarEvent(projected);
-        else void this.showControlPanelFromTray();
+        if (projected) runMenuAction(this.windowManager?.requestOpenCalendarEvent(projected));
+        else runMenuAction(this.showControlPanelFromTray());
       },
     };
   }
@@ -288,7 +298,9 @@ export class TrayManager {
     });
 
     // Electron emits "destroyed" from its EventEmitter base but doesn't declare it.
-    (window as unknown as NodeJS.EventEmitter).on("destroyed", () => {
+    // SAFETY: BrowserWindow extends Electron's EventEmitter base at runtime, so
+    // the "destroyed" event the base emits is available on this instance.
+    (window as NodeJS.EventEmitter).on("destroyed", () => {
       this.controlPanelWindow = null;
       this.updateTrayMenu?.();
     });
@@ -333,11 +345,7 @@ export class TrayManager {
       await this.windowManager.createControlPanelWindow();
       this.syncControlPanelWindow();
     } catch (error) {
-      debugLogger.error(
-        "Failed to open control panel",
-        { error: (error as Error)?.message },
-        "tray"
-      );
+      debugLogger.error("Failed to open control panel", { error: errorMessage(error) }, "tray");
     }
   }
 
@@ -361,7 +369,7 @@ export class TrayManager {
       this.setupTrayEventHandlers();
       this.startRefreshTimer();
     } catch (error) {
-      debugLogger.error("Error creating tray icon", { error: (error as Error).message }, "tray");
+      debugLogger.error("Error creating tray icon", { error: errorMessage(error) }, "tray");
     }
   }
 
@@ -427,7 +435,7 @@ export class TrayManager {
       } catch (error) {
         debugLogger.error(
           "Error checking tray icon path",
-          { path: testPath, error: (error as Error).message },
+          { path: testPath, error: errorMessage(error) },
           "tray"
         );
       }
@@ -441,6 +449,9 @@ export class TrayManager {
   createFallbackIcon(): Electron.NativeImage | null {
     try {
       // Create a simple 16x16 PNG icon programmatically
+      // SAFETY: lazy CommonJS seam; the optional bundled "canvas" module's
+      // createCanvas returns the CanvasLike slice used below, and a missing
+      // module throws into the catch that builds the minimal fallback.
       const { createCanvas } = require("canvas") as {
         createCanvas: (width: number, height: number) => CanvasLike;
       };
@@ -485,19 +496,19 @@ export class TrayManager {
           ? i18nMain.t("tray.hideControlPanel")
           : i18nMain.t("tray.openControlPanel"),
         click: () => {
-          void this.toggleControlPanelFromTray();
+          runMenuAction(this.toggleControlPanelFromTray());
         },
       },
       {
         label: i18nMain.t("tray.newNote"),
         click: () => {
-          void this.windowManager?.requestNewNote();
+          runMenuAction(this.windowManager?.requestNewNote());
         },
       },
       {
         label: i18nMain.t("tray.settings"),
         click: () => {
-          void this.windowManager?.openSettings();
+          runMenuAction(this.windowManager?.openSettings());
         },
       },
       ...(this.meetingCaptureActive
@@ -505,15 +516,15 @@ export class TrayManager {
             {
               label: i18nMain.t("tray.recordingStatus"),
               enabled: false,
-            } as MenuItemConstructorOptions,
+            },
             {
               label: i18nMain.t("tray.stopRecording"),
               click: () => this.stopMeetingCapture?.(),
-            } as MenuItemConstructorOptions,
-            { type: "separator" } as MenuItemConstructorOptions,
+            },
+            MENU_SEPARATOR,
           ]
         : []),
-      { type: "separator" },
+      MENU_SEPARATOR,
       {
         label: i18nMain.t("tray.quit"),
         click: () => {
@@ -563,7 +574,7 @@ export class TrayManager {
 
     if (process.platform !== "darwin") {
       this.tray.on("click", () => {
-        void this.toggleControlPanelFromTray();
+        runMenuAction(this.toggleControlPanelFromTray());
       });
     } else {
       const showMenu = () => this.showTrayMenu();
@@ -572,7 +583,9 @@ export class TrayManager {
     }
 
     // Electron emits "destroyed" from its EventEmitter base but doesn't declare it.
-    (this.tray as unknown as NodeJS.EventEmitter).on("destroyed", () => {
+    // SAFETY: Tray extends Electron's EventEmitter base at runtime, so the
+    // "destroyed" event the base emits is available on this instance.
+    (this.tray as NodeJS.EventEmitter).on("destroyed", () => {
       debugLogger.debug("Tray icon destroyed", undefined, "tray");
       this.tray = null;
 
@@ -584,4 +597,6 @@ export class TrayManager {
 
 module.exports = TrayManager;
 
-module.exports.TrayManager = TrayManager;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named class.
+Object.assign(module.exports, { TrayManager });

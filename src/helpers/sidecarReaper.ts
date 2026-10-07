@@ -2,12 +2,16 @@ import { execFileSync } from "child_process";
 import debugLogger from "./debugLogger.js";
 import { clear as clearPidEntry, readAll } from "./sidecarPidFile.js";
 
-const EXPECTED_BINARY_FRAGMENTS: Record<string, string[]> = {
+const EXPECTED_BINARY_FRAGMENTS = {
   parakeet: ["sherpa-onnx-ws-", "sherpa-onnx-online-ws-"],
   whisper: ["whisper-server"],
   llama: ["llama-server"],
   diarization: ["sherpa-onnx-diarize"],
-};
+} satisfies Record<string, string[]>;
+
+function isKnownSidecarName(value: string): value is keyof typeof EXPECTED_BINARY_FRAGMENTS {
+  return Object.prototype.hasOwnProperty.call(EXPECTED_BINARY_FRAGMENTS, value);
+}
 
 // A wedged sidecar can ignore SIGTERM, so reaping must verify death and
 // escalate rather than fire-and-forget.
@@ -23,7 +27,9 @@ function isProcessAlive(pid: number): boolean {
 
     return true;
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
+    // Node's process.kill rejects with a system error carrying `code`; EPERM is
+    // the only failure where the pid is still alive to be reaped.
+    return err instanceof Error && "code" in err && err.code === "EPERM";
   }
 }
 
@@ -108,7 +114,7 @@ export async function reapStaleSidecars({
   const entries = readAll();
   await Promise.all(
     entries.map(async ({ name, pid }) => {
-      const fragments = EXPECTED_BINARY_FRAGMENTS[name];
+      const fragments = isKnownSidecarName(name) ? EXPECTED_BINARY_FRAGMENTS[name] : undefined;
 
       if (fragments && isProcessAlive(pid)) {
         const command = processCommand(pid);

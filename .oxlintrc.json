@@ -172,6 +172,31 @@
         "quality/no-unknown-parameters": "off"
       }
     },
+    // Renderer-measured content heights cross the window boundary as plain
+    // numbers; windowConfig coerces them with Number() and a finite fallback, so
+    // the unknown input is bounded here before it reaches layout math.
+    {
+      "files": ["src/helpers/windowConfig.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    // Main-process broadcast boundary: the channel-specific payload is owned by
+    // its sender's contract, and the preload parses it before any consumer runs.
+    {
+      "files": ["src/helpers/windowBroadcast.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    // Main-to-renderer IPC send boundary: the payload is optionally omitted and
+    // is validated by the receiving preload bridge against its channel contract.
+    {
+      "files": ["src/helpers/windowManager.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
     {
       "files": ["src/helpers/downloadUtils.ts"],
       "rules": {

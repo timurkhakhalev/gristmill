@@ -1,4 +1,4 @@
-const debugLogger = require("./debugLogger");
+import debugLogger from "./debugLogger.js";
 
 const SHUTDOWN_DEADLINE_MS = 8000;
 
@@ -26,7 +26,9 @@ export async function shutdownAll(settleOwnedWork: () => Promise<void>): Promise
     try {
       await settleOwnedWork();
     } catch (error) {
-      debugLogger.error("Shutdown work barrier failed", { error: (error as Error)?.message });
+      debugLogger.error("Shutdown work barrier failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
 
       return false;
     }
@@ -41,7 +43,10 @@ export async function shutdownAll(settleOwnedWork: () => Promise<void>): Promise
 
           return true;
         } catch (error) {
-          debugLogger.error("sidecar stop failed", { name, error: (error as Error)?.message });
+          debugLogger.error("sidecar stop failed", {
+            name,
+            error: error instanceof Error ? error.message : String(error),
+          });
 
           return false;
         }

@@ -89,7 +89,7 @@ export class GlobeKeyManager extends EventEmitter {
       return true;
     } catch (error) {
       debugLogger.warn("[GlobeKeyManager] Failed to send configuration", {
-        error: (error as Error).message,
+        error: error instanceof Error ? error.message : String(error),
       });
 
       return false;
@@ -200,7 +200,7 @@ export class GlobeKeyManager extends EventEmitter {
           try {
             child.kill("SIGKILL");
           } catch (error) {
-            blockListenerStart(error as Error);
+            blockListenerStart(error instanceof Error ? error : new Error(String(error)));
 
             return;
           }
@@ -218,7 +218,7 @@ export class GlobeKeyManager extends EventEmitter {
           }
         }, PREFERENCE_RECOVERY_TIMEOUT_MS);
       } catch (error) {
-        finish(error as Error);
+        finish(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
@@ -287,7 +287,10 @@ export class GlobeKeyManager extends EventEmitter {
     }
 
     this.hasReportedError = false;
-    const child = spawn(listenerPath, this._listenerArgs()) as ListenerChild;
+    // SAFETY: this listener is spawned with default stdio, so its stdin/stdout/
+    // stderr are pipes — exactly the ChildProcessByStdio<Writable, Readable,
+    // Readable> the ListenerChild alias names.
+    const child: ListenerChild = spawn(listenerPath, this._listenerArgs());
     this.process = child;
     debugLogger.info("[GlobeKeyManager] Process spawned", {
       pid: child.pid,
@@ -487,15 +490,17 @@ export class GlobeKeyManager extends EventEmitter {
       }
 
       const cpuType = header.readInt32LE(4);
-      const expectedCpu = ARCH_CPU_TYPE[process.arch as "arm64" | "x64"];
+
+      const expectedCpu =
+        process.arch === "arm64" || process.arch === "x64" ? ARCH_CPU_TYPE[process.arch] : null;
 
       if (expectedCpu && cpuType !== expectedCpu) {
-        const archNames: Record<number, string> = {
-          [ARCH_CPU_TYPE.arm64]: "arm64",
-          [ARCH_CPU_TYPE.x64]: "x86_64",
-        };
+        const archNames = new Map<number, string>([
+          [ARCH_CPU_TYPE.arm64, "arm64"],
+          [ARCH_CPU_TYPE.x64, "x86_64"],
+        ]);
 
-        const binaryArch = archNames[cpuType] || `unknown(0x${cpuType.toString(16)})`;
+        const binaryArch = archNames.get(cpuType) ?? `unknown(0x${cpuType.toString(16)})`;
 
         return (
           `Globe listener binary architecture mismatch: binary is ${binaryArch} ` +
@@ -512,7 +517,7 @@ export class GlobeKeyManager extends EventEmitter {
       return null;
     } catch (err) {
       debugLogger.warn("[GlobeKeyManager] Could not verify binary architecture", {
-        error: (err as Error).message,
+        error: err instanceof Error ? err.message : String(err),
       });
 
       // Don't block startup on verification failure — let spawn attempt proceed
@@ -563,4 +568,6 @@ export class GlobeKeyManager extends EventEmitter {
 
 module.exports = GlobeKeyManager;
 
-module.exports.GlobeKeyManager = GlobeKeyManager;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named class.
+Object.assign(module.exports, { GlobeKeyManager });

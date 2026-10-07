@@ -2,6 +2,8 @@ import path from "path";
 import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 import type { WindowBounds, WindowSize } from "./onboardingWindowBounds.js";
 
+type WindowOrigin = Pick<WindowBounds, "x" | "y">;
+
 // Kept only for legacy resize IPC responses while old preload bundles drain.
 // No assistant or dictation window is created by the current renderer.
 const ASSISTANT_PANEL_SIZE_LIMITS = {
@@ -380,6 +382,9 @@ export class WindowPositionUtil {
   ): WindowBounds {
     const { width, height } = customSize || WINDOW_SIZES.BASE;
     const MARGIN = 4;
+    // SAFETY: Electron's Display always provides workArea (the structural
+    // DisplayGeometry slice lets tests pass a workArea-only object; `bounds` is
+    // the declared fallback), so the resolved value is a full WindowBounds.
     const workArea = (display.workArea || display.bounds) as WindowBounds;
 
     let x: number;
@@ -410,7 +415,9 @@ export class WindowPositionUtil {
   // Keeps a window's whole frame inside one display's work area. Displays of
   // different sizes leave dead space beside the smaller one, and a window parked
   // there is invisible even though the window server still reports it on screen.
-  static clampToWorkArea(bounds: WindowBounds, display: DisplayGeometry): { x: number; y: number } {
+  static clampToWorkArea(bounds: WindowBounds, display: DisplayGeometry): WindowOrigin {
+    // SAFETY: Electron's Display always provides workArea (tests may pass only
+    // that field), so the fallback chain resolves to a full WindowBounds.
     const workArea = (display.workArea || display.bounds) as WindowBounds;
 
     return {
@@ -429,6 +436,8 @@ export class WindowPositionUtil {
     };
 
     const MARGIN = 16;
+    // SAFETY: Electron's Display always provides workArea (tests may pass only
+    // that field), so the fallback chain resolves to a full WindowBounds.
     const workArea = (display.workArea || display.bounds) as WindowBounds;
 
     // Same negative-origin trap as getMainWindowPosition: clamp to the display,

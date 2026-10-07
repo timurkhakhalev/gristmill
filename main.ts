@@ -38,11 +38,28 @@ import { i18nMain, changeLanguage } from "./src/helpers/i18nMain.js";
 import { register as registerSidecar, shutdownAll } from "./src/helpers/sidecarRegistry.js";
 import { reapStaleSidecars } from "./src/helpers/sidecarReaper.js";
 import type { ModelManager } from "./src/helpers/modelManagerBridge.js";
+import type { HotkeyManager } from "./src/helpers/hotkeyManager.js";
 
-require("dotenv").config({ path: path.join(app.getAppPath(), ".env") });
+interface DotenvModule {
+  config(options: { path: string; override?: boolean }): void;
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+function loadDotenv(): DotenvModule {
+  // SAFETY: dotenv is bundled by build-main.js; its config export is the
+  // documented string-map helper, and no wire data crosses this seam.
+  return require("dotenv") as DotenvModule;
+}
+
+loadDotenv().config({ path: path.join(app.getAppPath(), ".env") });
 
 // Electron exposes `defaultApp` on its process object when the app runs from
 // the electron binary; Node's process types don't declare it.
+// SAFETY: Electron sets `defaultApp` on the same process object at runtime;
+// the intersection only names that undeclared optional field.
 const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
 
 // Extend Node's TLS trust with the OS store so ws and https.get see corporate
@@ -56,17 +73,17 @@ try {
   }
 } catch (err) {
   debugLogger.warn("System CA merge failed; using existing CA list", {
-    error: (err as Error | null | undefined)?.message,
+    error: errorMessage(err),
   });
 }
 
 const VALID_CHANNELS = new Set(["development", "staging", "production"]);
 
-const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL: Record<string, string> = {
+const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL = {
   development: "gristmill-dev",
   staging: "gristmill-staging",
   production: "gristmill",
-};
+} satisfies Record<string, string>;
 
 const APP_NAME = "Gristmill";
 
@@ -95,6 +112,8 @@ function inferDefaultChannel(): string {
 function resolveAppChannel(): string {
   if (app.isPackaged) {
     try {
+      // SAFETY: the packaged app's own package.json is trusted local data; only
+      // the optional gristmillChannel field is read and compared to a literal.
       const metadata = JSON.parse(
         fs.readFileSync(path.join(app.getAppPath(), "package.json"), "utf8")
       ) as { gristmillChannel?: string };
@@ -102,7 +121,7 @@ function resolveAppChannel(): string {
       if (metadata.gristmillChannel === "development") return "development";
     } catch (error) {
       debugLogger.warn("Could not read packaged app channel", {
-        error: (error as Error).message,
+        error: errorMessage(error),
       });
     }
   }
@@ -133,7 +152,9 @@ function configureChannelUserDataPath(): void {
   if (APP_CHANNEL !== "production") {
     // Check the resolved root and known writable paths before creating the
     // profile or reading its .env, including explicit smoke profiles.
-    const devSnapshotModule = require("./src/helpers/devSnapshot.js");
+    // SAFETY: lazy CommonJS seam; devSnapshot.js exports the named helpers.
+    const devSnapshotModule =
+      require("./src/helpers/devSnapshot.js") as typeof import("./src/helpers/devSnapshot.js");
 
     if (devSnapshotModule.devProfileHasUnsafePaths(isolatedPath)) {
       console.error("[devSnapshot] dev profile has an unsafe storage path; refusing to start.");
@@ -155,7 +176,7 @@ configureChannelUserDataPath();
 // snapshot refresh flag) read keys that may live in the profile .env. Values
 // are not overridden — the post-snapshot pass below adds the rest (copied
 // credentials) without clobbering anything set here.
-require("dotenv").config({
+loadDotenv().config({
   path: path.join(app.getPath("userData"), ".env"),
   override: false,
 });
@@ -169,9 +190,13 @@ function getOAuthProtocol(): string {
     return fromEnv;
   }
 
-  return (
-    DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL[APP_CHANNEL] || DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL.production
-  );
+  // SAFETY: the `in` guard narrows APP_CHANNEL to the map's own keys before
+  // the lookup, so the assertion only names that checked key.
+  return APP_CHANNEL in DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL
+    ? DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL[
+        APP_CHANNEL as keyof typeof DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL
+      ]
+    : DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL.production;
 }
 
 const OAUTH_PROTOCOL = getOAuthProtocol();
@@ -215,7 +240,9 @@ if (!gotSingleInstanceLock) {
 // concurrent dev launches cannot race it; failures refuse to start (the app
 // would otherwise create an empty dev database and mask the failure forever).
 if (APP_CHANNEL === "development" && gotSingleInstanceLock) {
-  const devSnapshot = require("./src/helpers/devSnapshot.js");
+  // SAFETY: lazy CommonJS seam; devSnapshot.js exports the named helpers.
+  const devSnapshot =
+    require("./src/helpers/devSnapshot.js") as typeof import("./src/helpers/devSnapshot.js");
 
   // Explicit smoke profiles were checked before userData was set; they skip
   // production import. The default profile gets checked again by snapshot.
@@ -232,7 +259,7 @@ if (APP_CHANNEL === "development" && gotSingleInstanceLock) {
 // Second profile .env pass after the dev snapshot: a first dev launch gets
 // the copied credentials without a restart. override:false keeps anything the
 // early pass or the system environment already set.
-require("dotenv").config({
+loadDotenv().config({
   path: path.join(app.getPath("userData"), ".env"),
   override: false,
 });
@@ -249,7 +276,7 @@ process.on("uncaughtException", (error: Error) => {
   console.error("Uncaught Exception:", error);
 
   // Don't exit the process for EPIPE errors as they're harmless
-  if ((error as NodeJS.ErrnoException).code === "EPIPE") {
+  if ("code" in error && error.code === "EPIPE") {
     return;
   }
 
@@ -257,13 +284,11 @@ process.on("uncaughtException", (error: Error) => {
   console.error("Error stack:", error.stack);
 });
 
-process.on("unhandledRejection", (reason: unknown, promise: Promise<unknown>) => {
+process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 // Manager instances - initialized after app.whenReady()
-let environmentManager: EnvironmentManagerWithByok | null = null;
-
 let windowManager: WindowManager | null = null;
 
 let hotkeyManager: WindowManager["hotkeyManager"] | null = null;
@@ -308,6 +333,8 @@ let wakeRewarmTimer: NodeJS.Timeout | null = null;
 type ModelManagerBridgeModule = { default: ModelManager };
 
 function requireModelManager(): ModelManager {
+  // SAFETY: lazy CommonJS seam; the bridge module's dual export carries the
+  // ModelManager singleton on `default`, matching ModelManagerBridgeModule.
   return (require("./src/helpers/modelManagerBridge") as ModelManagerBridgeModule).default;
 }
 
@@ -340,22 +367,32 @@ function wasLaunchedAtLoginHiddenSafe(): boolean {
     return wasLaunchedAtLoginHidden();
   } catch (error) {
     debugLogger.warn("Failed to detect a login launch", {
-      error: (error as Error | null | undefined)?.message,
+      error: errorMessage(error),
     });
 
     return false;
   }
 }
 
-function initializeCoreManagers(): void {
+interface InitializedCoreManagers {
+  environmentManager: EnvironmentManagerWithByok;
+  windowManager: WindowManager;
+  ipcHandlers: IPCHandlers;
+  hotkeyManager: HotkeyManager;
+  whisperManager: WhisperManager;
+  parakeetManager: ParakeetManager;
+}
+
+function initializeCoreManagers(): InitializedCoreManagers {
   setupProductionPath();
 
   debugLogger.ensureFileLogging();
 
   // The BYOK accessors are generated onto the prototype from the key catalog
   // at module load; the intersection type makes that surface visible.
+  // SAFETY: the constructor's prototype carries the generated BYOK accessors,
+  // so the instance satisfies EnvironmentManagerWithByok.
   const initializedEnvironmentManager = new EnvironmentManager() as EnvironmentManagerWithByok;
-  environmentManager = initializedEnvironmentManager;
   const uiLanguage = initializedEnvironmentManager.getUiLanguage(app.getLocale());
   changeLanguage(uiLanguage);
   debugLogger.refreshLogLevel();
@@ -422,7 +459,7 @@ function initializeCoreManagers(): void {
   audioTapManager = initializedAudioTapManager;
 
   // IPC handlers must be registered before window content loads
-  ipcHandlers = new IPCHandlers({
+  const initializedHandlers = new IPCHandlers({
     environmentManager: initializedEnvironmentManager,
     databaseManager: initializedDatabaseManager,
     whisperManager: initializedWhisperManager,
@@ -438,9 +475,20 @@ function initializeCoreManagers(): void {
     oauthProtocolRegistered: protocolRegistered,
     oauthProtocol: OAUTH_PROTOCOL,
   });
-  void ipcHandlers._meetingCoordinator?.startCompanion().catch((error) => {
+
+  ipcHandlers = initializedHandlers;
+  void initializedHandlers._meetingCoordinator?.startCompanion().catch((error) => {
     debugLogger.warn("Meet integration transport unavailable", { error: String(error) }, "meeting");
   });
+
+  return {
+    environmentManager: initializedEnvironmentManager,
+    windowManager: initializedWindowManager,
+    ipcHandlers: initializedHandlers,
+    hotkeyManager: initializedWindowManager.hotkeyManager,
+    whisperManager: initializedWhisperManager,
+    parakeetManager: initializedParakeetManager,
+  };
 }
 
 function registerSidecars(): void {
@@ -462,6 +510,8 @@ function registerSidecars(): void {
   const modelManager = requireModelManager();
   registerSidecar("llama", () => modelManager.stopServer());
 
+  // SAFETY: lazy CommonJS seam; onnxWorkerClient.js exports the named stop
+  // helper, which is the only surface this module reads.
   const onnxWorkerClient = require("./src/helpers/onnxWorkerClient") as {
     stop(): Promise<void>;
   };
@@ -469,16 +519,25 @@ function registerSidecars(): void {
   registerSidecar("onnx", () => onnxWorkerClient.stop());
 }
 
+interface InitializedDeferredManagers {
+  trayManager: TrayManager;
+  globeKeyManager: GlobeKeyManager;
+}
+
 // Phase 2: Non-critical setup after windows are visible
-function initializeDeferredManagers(): void {
-  trayManager = new TrayManager();
-  globeKeyManager = new GlobeKeyManager({
+function initializeDeferredManagers(): InitializedDeferredManagers {
+  const initializedTrayManager = new TrayManager();
+  trayManager = initializedTrayManager;
+
+  const initializedGlobeKeyManager = new GlobeKeyManager({
     // Lets the listener put the user's macOS Globe action back after a crash.
     preferenceStatePath: path.join(app.getPath("userData"), "globe-preference-state.json"),
   });
 
+  globeKeyManager = initializedGlobeKeyManager;
+
   if (process.platform === "darwin") {
-    globeKeyManager.on("error", (error: Error | null | undefined) => {
+    initializedGlobeKeyManager.on("error", (error: Error | null | undefined) => {
       if (globeKeyAlertShown) {
         return;
       }
@@ -496,12 +555,22 @@ function initializeDeferredManagers(): void {
         detailLines.push(i18nMain.t("startup.globeHotkey.details.reinstallHint"));
       }
 
-      dialog.showMessageBox({
-        type: "warning",
-        title: i18nMain.t("startup.globeHotkey.title"),
-        message: i18nMain.t("startup.globeHotkey.message"),
-        detail: detailLines.join("\n\n"),
-      });
+      // Fire-and-forget by contract: the alert is the last resort and has no
+      // second failure path; showMessageBox resolves when dismissed.
+      dialog
+        .showMessageBox({
+          type: "warning",
+          title: i18nMain.t("startup.globeHotkey.title"),
+          message: i18nMain.t("startup.globeHotkey.message"),
+          detail: detailLines.join("\n\n"),
+        })
+        .catch((dialogError) =>
+          debugLogger.error(
+            "Failed to show the Globe hotkey warning",
+            { error: errorMessage(dialogError) },
+            "window"
+          )
+        );
     });
   }
 
@@ -509,6 +578,8 @@ function initializeDeferredManagers(): void {
   microsoftCalendarManager?.start();
   appleCalendarManager?.start();
   meetingDetectionEngine?.start();
+
+  return { trayManager: initializedTrayManager, globeKeyManager: initializedGlobeKeyManager };
 }
 
 app.on("open-url", (event, url) => {
@@ -529,10 +600,13 @@ async function startApp(): Promise<void> {
   await reapStaleSidecars();
 
   // Phase 1: Core managers + IPC handlers before windows
-  initializeCoreManagers();
-  const initializedEnvironmentManager = environmentManager as EnvironmentManager;
-  const initializedWindowManager = windowManager as WindowManager;
-  const initializedHandlers = ipcHandlers as IPCHandlers;
+  const initialized = initializeCoreManagers();
+  const initializedEnvironmentManager = initialized.environmentManager;
+  const initializedWindowManager = initialized.windowManager;
+  const initializedHandlers = initialized.ipcHandlers;
+  const initializedHotkeyManager = initialized.hotkeyManager;
+  const initializedWhisperManager = initialized.whisperManager;
+  const initializedParakeetManager = initialized.parakeetManager;
   await initializedEnvironmentManager.init();
   registerSidecars();
 
@@ -565,7 +639,7 @@ async function startApp(): Promise<void> {
 
     if (connection) writeBbConnection(app.getPath("userData"), connection.port, connection.token);
   } catch (err) {
-    debugLogger.error("CLI bridge failed to start", { error: (err as Error).message });
+    debugLogger.error("CLI bridge failed to start", { error: errorMessage(err) });
     await initializedCliBridge.stop().catch(() => {});
     cliBridge = null;
   }
@@ -576,7 +650,7 @@ async function startApp(): Promise<void> {
       installAgentCli();
     } catch (err) {
       debugLogger.error("Notes CLI launcher could not be installed", {
-        error: (err as Error).message,
+        error: errorMessage(err),
       });
     }
   }
@@ -606,12 +680,20 @@ async function startApp(): Promise<void> {
   const meetingHotkeyCallback = () => {
     if (!isMeetingPress()) return;
 
-    if (!hotkeyManager || hotkeyManager.isInListeningMode()) return;
+    if (initializedHotkeyManager.isInListeningMode()) return;
 
     // Fail closed during onboarding, like every other hotkey slot.
     if (!initializedWindowManager.isMeetingInputAllowed()) return;
     debugLogger.info("Meeting hotkey triggered", {}, "meeting");
-    void meetingDetectionEngine?.startManualMeeting();
+    meetingDetectionEngine
+      ?.startManualMeeting()
+      .catch((error) =>
+        debugLogger.error(
+          "Failed to start a manual meeting",
+          { error: errorMessage(error) },
+          "meeting"
+        )
+      );
   };
 
   // The re-registration handler (settings UI path) lives in the typed owner;
@@ -619,7 +701,7 @@ async function startApp(): Promise<void> {
   // along with the menu/tray/window wiring and the onboarding gate.
   registerMeetingHotkeyHandler({
     ipcMain,
-    hotkeyManager: hotkeyManager as NonNullable<typeof hotkeyManager>,
+    hotkeyManager: initializedHotkeyManager,
     environmentManager: initializedEnvironmentManager,
     meetingHotkeyCallback,
   });
@@ -627,7 +709,7 @@ async function startApp(): Promise<void> {
   const savedMeetingKey = initializedEnvironmentManager.getMeetingKey() || "";
 
   if (savedMeetingKey) {
-    const result = await (hotkeyManager as NonNullable<typeof hotkeyManager>).registerSlot(
+    const result = await initializedHotkeyManager.registerSlot(
       "meeting",
       savedMeetingKey,
       meetingHotkeyCallback
@@ -641,12 +723,12 @@ async function startApp(): Promise<void> {
   }
 
   // Phase 2: Initialize remaining managers after windows are visible
-  initializeDeferredManagers();
+  const initializedDeferred = initializeDeferredManagers();
 
   if (process.platform === "darwin") {
     // Restore a Globe preference marker left by a crash without starting any
     // Accessibility-protected event monitors during onboarding.
-    await (globeKeyManager as GlobeKeyManager).restoreLeftoverSystemPreference();
+    await initializedDeferred.globeKeyManager.restoreLeftoverSystemPreference();
   }
 
   app.on("browser-window-focus", () => {
@@ -665,8 +747,8 @@ async function startApp(): Promise<void> {
     if (wakeRewarmTimer) clearTimeout(wakeRewarmTimer);
     wakeRewarmTimer = setTimeout(() => {
       wakeRewarmTimer = null;
-      whisperManager?.onWakeFromSleep().catch((err: Error) => {
-        debugLogger.debug("whisper wake re-warm error (non-fatal)", { error: err.message });
+      whisperManager?.onWakeFromSleep().catch((err) => {
+        debugLogger.debug("whisper wake re-warm error (non-fatal)", { error: errorMessage(err) });
       });
     }, WHISPER_WAKE_REWARM_DELAY_MS);
   });
@@ -677,8 +759,8 @@ async function startApp(): Promise<void> {
     whisperModel: process.env.LOCAL_WHISPER_MODEL,
   };
 
-  (whisperManager as WhisperManager).initializeAtStartup(whisperSettings).catch((err: Error) => {
-    debugLogger.debug("Whisper startup init error (non-fatal)", { error: err.message });
+  initializedWhisperManager.initializeAtStartup(whisperSettings).catch((err) => {
+    debugLogger.debug("Whisper startup init error (non-fatal)", { error: errorMessage(err) });
   });
 
   const parakeetSettings = {
@@ -687,8 +769,8 @@ async function startApp(): Promise<void> {
     language: process.env.DICTATION_LANGUAGE,
   };
 
-  (parakeetManager as ParakeetManager).initializeAtStartup(parakeetSettings).catch((err: Error) => {
-    debugLogger.debug("Parakeet startup init error (non-fatal)", { error: err.message });
+  initializedParakeetManager.initializeAtStartup(parakeetSettings).catch((err) => {
+    debugLogger.debug("Parakeet startup init error (non-fatal)", { error: errorMessage(err) });
   });
 
   const cleanupProvider = process.env.CLEANUP_PROVIDER;
@@ -696,12 +778,12 @@ async function startApp(): Promise<void> {
 
   if (cleanupProvider === "local" && cleanupLocalModel) {
     const modelManager = requireModelManager();
-    modelManager.prewarmServer(cleanupLocalModel).catch((err: Error) => {
-      debugLogger.debug("llama-server pre-warm error (non-fatal)", { error: err.message });
+    modelManager.prewarmServer(cleanupLocalModel).catch((err) => {
+      debugLogger.debug("llama-server pre-warm error (non-fatal)", { error: errorMessage(err) });
     });
   }
 
-  const initializedTrayManager = trayManager as TrayManager;
+  const initializedTrayManager = initializedDeferred.trayManager;
   initializedTrayManager.setWindows(initializedWindowManager.controlPanelWindow);
   initializedTrayManager.setWindowManager(initializedWindowManager);
 
@@ -711,32 +793,36 @@ async function startApp(): Promise<void> {
 
 // App event handlers
 if (gotSingleInstanceLock) {
-  app.on("second-instance", async (_event, _commandLine) => {
-    await app.whenReady();
+  app.on("second-instance", (_event, _commandLine) => {
+    app
+      .whenReady()
+      .then(() => {
+        if (!windowManager) {
+          return;
+        }
 
-    if (!windowManager) {
-      return;
-    }
-
-    await windowManager.createControlPanelWindow().catch((error: Error) => {
-      debugLogger.error("Failed to open control panel", { error: error.message }, "window");
-    });
+        return windowManager.createControlPanelWindow();
+      })
+      .catch((error) => {
+        debugLogger.error("Failed to open control panel", { error: errorMessage(error) }, "window");
+      });
   });
 
   app
     .whenReady()
     .then(() => {
-      return Promise.resolve();
-    })
-    .then(() => {
-      startApp().catch((error: Error) => {
+      startApp().catch((error) => {
         console.error("Failed to start app:", error);
         dialog.showErrorBox(
           i18nMain.t("startup.error.title"),
-          i18nMain.t("startup.error.message", { error: error.message })
+          i18nMain.t("startup.error.message", { error: errorMessage(error) })
         );
         app.exit(1);
       });
+    })
+    .catch((error) => {
+      console.error("Failed to await app readiness:", error);
+      app.exit(1);
     });
 
   app.on("window-all-closed", () => {
@@ -744,8 +830,8 @@ if (gotSingleInstanceLock) {
   });
 
   app.on("activate", () => {
-    void windowManager?.createControlPanelWindow().catch((error: Error) => {
-      debugLogger.error("Failed to open control panel", { error: error.message }, "window");
+    windowManager?.createControlPanelWindow().catch((error) => {
+      debugLogger.error("Failed to open control panel", { error: errorMessage(error) }, "window");
     });
   });
 
@@ -755,9 +841,16 @@ if (gotSingleInstanceLock) {
     isShuttingDown = true;
     event.preventDefault();
     performSyncTeardown();
-    void shutdownAll(async () => {
+    // Fire-and-forget by contract: the will-quit handler cannot await, and the
+    // shutdown path resolves a completion flag that drives the exit code.
+    shutdownAll(async () => {
       await ipcHandlers?.shutdownMeetingWork();
-    }).then((complete) => app.exit(complete ? 0 : 1));
+    })
+      .then((complete) => app.exit(complete ? 0 : 1))
+      .catch((error) => {
+        debugLogger.error("Shutdown failed", { error: errorMessage(error) }, "window");
+        app.exit(1);
+      });
   });
 }
 

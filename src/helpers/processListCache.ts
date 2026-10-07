@@ -58,4 +58,4 @@ export const processListCache = new ProcessListCache();
 module.exports = processListCache;
 
 // Named re-attach for TS consumers importing { processListCache }.
-module.exports.processListCache = processListCache;
+Object.assign(module.exports, { processListCache });

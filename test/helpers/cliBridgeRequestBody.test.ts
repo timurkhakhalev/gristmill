@@ -34,10 +34,10 @@ function flushImmediates() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function makeRequest(body: string | Buffer[]) {
+function makeRequest(body: string | Buffer[], method = "POST", url = "/v1/notes/create") {
   const request = new EventEmitter();
-  request.method = "POST";
-  request.url = "/v1/notes/create";
+  request.method = method;
+  request.url = url;
   request.headers = { authorization: "Bearer test-token" };
   request.socket = { remoteAddress: "127.0.0.1" };
   request.destroyed = false;
@@ -139,6 +139,42 @@ test("CLI request body limit counts UTF-8 bytes, not JavaScript characters", asy
   });
   assert.equal(request.destroyed, true);
   assert.equal(saveCalls, 0);
+});
+
+test("a non-object JSON update body is rejected with 400, not accepted as an empty update", async () => {
+  let updateCalls = 0;
+
+  const bridge = new CliBridge(
+    {
+      databaseManager: {},
+      noteWrites: {
+        updateNote: () => {
+          updateCalls += 1;
+
+          return { success: true, note: noteRow() };
+        },
+      },
+    },
+    process.cwd()
+  );
+
+  bridge.token = "test-token";
+  bridge.port = 8200;
+
+  for (const raw of ["null", "123", '"junk"', "[1,2,3]", "true", "false", "[]", '""']) {
+    const request = makeRequest(raw, "PATCH", "/v1/notes/1");
+    const response = makeResponse();
+    await bridge._handleRequest(request, response);
+
+    assert.equal(response.statusCode, 400, `body ${raw}`);
+    assert.deepEqual(
+      JSON.parse(response.payload),
+      { error: { code: "validation_error", message: "Invalid Note update fields" } },
+      `body ${raw}`
+    );
+  }
+
+  assert.equal(updateCalls, 0);
 });
 
 test("read token is rejected by the bridge before a write route runs", async () => {

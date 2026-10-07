@@ -9,11 +9,15 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   fatal: 60,
 };
 
+function isLogLevel(value: string): value is LogLevel {
+  return value in LOG_LEVELS;
+}
+
 const normalizeLevel = (value?: string | null): LogLevel | null => {
   if (!value) return null;
   const lower = value.toLowerCase();
 
-  return lower in LOG_LEVELS ? (lower as LogLevel) : null;
+  return isLogLevel(lower) ? lower : null;
 };
 
 const defaultLevel: LogLevel = "info";
@@ -74,7 +78,12 @@ const logToConsole = (level: LogLevel, message: string, meta?: unknown, scope?: 
   }
 };
 
-const log = async (level: LogLevel, message: string, meta?: unknown, scope?: string) => {
+const log = async (
+  level: LogLevel,
+  message: string,
+  meta?: unknown,
+  scope?: string
+): Promise<void> => {
   const currentLevel = await resolveLogLevel();
 
   if (!shouldLog(level, currentLevel)) return;
@@ -101,8 +110,15 @@ const log = async (level: LogLevel, message: string, meta?: unknown, scope?: str
 // Fire-and-forget by contract: log() handles every failure internally
 // (bridge errors fall back to console) and no caller awaits logging, so the
 // public API returns void and the promise is observed here.
-const logFireAndForget = (...args: Parameters<typeof log>): void => {
-  log(...args).catch((error: unknown) => logToConsole("error", String(error)));
+const logFireAndForget = (
+  level: LogLevel,
+  message: string,
+  meta?: unknown,
+  scope?: string
+): void => {
+  log(level, message, meta, scope).catch((error: unknown) =>
+    logToConsole("error", error instanceof Error ? error.message : String(error))
+  );
 };
 
 const logger = {

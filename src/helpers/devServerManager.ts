@@ -1,4 +1,6 @@
 import http from "http";
+import path from "path";
+import { app } from "electron";
 
 const DEFAULT_DEV_SERVER_PORT = 5183;
 
@@ -88,9 +90,6 @@ export class DevServerManager {
       return null; // Use getAppUrl() for dev server
     }
 
-    const path = require("path");
-    const { app } = require("electron");
-
     // In packaged app, files are relative to app.getAppPath()
     const appPath = app.getAppPath();
     const htmlPath = path.join(appPath, "src", "dist", "index.html");
@@ -104,8 +103,6 @@ export class DevServerManager {
 
 module.exports = DevServerManager;
 
-module.exports.DevServerManager = DevServerManager;
-
-module.exports.DEV_SERVER_PORT = DEV_SERVER_PORT;
-
-module.exports.DEV_SERVER_URL = DEV_SERVER_URL;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named export and the port/URL constants.
+Object.assign(module.exports, { DevServerManager, DEV_SERVER_PORT, DEV_SERVER_URL });

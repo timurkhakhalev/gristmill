@@ -46,9 +46,10 @@ export function normalizeUiLanguage(language: string | null | undefined): UiLang
   }
 
   // Fall back to base language code (e.g. "en" from "en-US")
-  const base = lower.split("-")[0] as UiLanguage;
+  const candidateBase = lower.split("-")[0];
+  const base = SUPPORTED_UI_LANGUAGES.find((lang) => lang === candidateBase);
 
-  if (SUPPORTED_UI_LANGUAGES.includes(base)) {
+  if (base) {
     return base;
   }
 
@@ -110,17 +111,25 @@ const storageLanguage =
 
 const initialLanguage = normalizeUiLanguage(storageLanguage || browserLanguage || "en");
 
-void i18n.use(initReactI18next).init({
-  resources,
-  lng: initialLanguage,
-  fallbackLng: "en",
-  ns: ["translation", "prompts"],
-  defaultNS: "translation",
-  interpolation: {
-    escapeValue: false,
-  },
-  returnEmptyString: true,
-  returnNull: false,
-});
+// Fire-and-forget by contract: initializing with an inline resource bundle
+// resolves synchronously and the renderer has no recovery UI, so the rejection
+// is recorded to the console instead of floating.
+i18n
+  .use(initReactI18next)
+  .init({
+    resources,
+    lng: initialLanguage,
+    fallbackLng: "en",
+    ns: ["translation", "prompts"],
+    defaultNS: "translation",
+    interpolation: {
+      escapeValue: false,
+    },
+    returnEmptyString: true,
+    returnNull: false,
+  })
+  .catch((error) => {
+    console.error("[i18n] init failed", error);
+  });
 
 export default i18n;

@@ -1,6 +1,8 @@
 export function openExternalLink(url: string): void {
   if (window.electronAPI?.openExternal) {
-    window.electronAPI.openExternal(url);
+    // Fire-and-forget by contract: the renderer has no failure UI for a link
+    // that fails to open, so the promise settles here instead of floating.
+    window.electronAPI.openExternal(url).catch(() => {});
   } else {
     window.open(url, "_blank", "noopener,noreferrer");
   }

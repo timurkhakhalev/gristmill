@@ -8,8 +8,12 @@ import { saveNoteArgsSchema, updateNoteArgsSchema } from "../contracts/notes.js"
 import type { NoteWriteService } from "./noteWriteService.js";
 import { sendDictionaryUpdated, sendSnippetsUpdated } from "./vocabularyEvents.js";
 import { sendFolderCreated } from "./containerEvents.js";
-import type { NoteRow, FolderRow } from "./database.js";
-import type { TranscriptionResponse } from "../contracts/localFileTranscription.js";
+import type { NoteRow, FolderRow, TranscriptionRow } from "./database.js";
+import type { NoteItem } from "../contracts/notes.js";
+import type {
+  TranscriptionOptions,
+  TranscriptionResponse,
+} from "../contracts/localFileTranscription.js";
 import { NoteReadService } from "./noteReadService.js";
 import { NoteReadError } from "../contracts/noteRead.js";
 
@@ -37,8 +41,23 @@ async function findPortInRange(): Promise<number> {
   throw new Error(`No available ports in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
 }
 
+// The JSON values the bridge can place on the wire: every response payload is
+// built from these and serialized with JSON.stringify.
+type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
+
+interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+// A single decoded JSON body field. The routes narrow each value through the
+// helpers below before it reaches a domain call, so the body itself stays the
+// honest JSON boundary type.
+type JsonField = JsonValue;
+
 // The narrow operations the CLI adapter runs on top of — the same notes/
-// dictionary/snippets operations and event senders the IPC handlers use.
+// dictionary/snippets operations and event senders the IPC handlers use. The
+// input types mirror DatabaseManager; only the read surfaces the CLI returns
+// differ (whole rows for notes and transcriptions).
 export interface CliBridgeOperations {
   databaseManager: {
     getNotes(
@@ -48,7 +67,7 @@ export interface CliBridgeOperations {
       spaceId?: number | null
     ): NoteRow[];
     searchNotes(
-      query: unknown,
+      query: string,
       limit?: number,
       spaceId?: number | null,
       folderId?: number | null
@@ -56,19 +75,21 @@ export interface CliBridgeOperations {
     getNote(id: number | bigint): NoteRow | null;
     getFolders(spaceId?: number | null): FolderRow[];
     createFolder(
-      name: unknown,
+      name: string | null | undefined,
       spaceId?: number | null
     ): { success: boolean; error?: string; folder?: FolderRow };
     getDictionary(): string[];
-    applyDictionaryChanges(delta: { add?: unknown; remove?: unknown }): {
+    applyDictionaryChanges(delta: { add?: string[]; remove?: string[] }): {
       success: boolean;
       added: number;
       removed: number;
     };
     getSnippets(): Array<{ trigger: string; replacement: string }>;
-    setSnippets(snippets: unknown): { success: boolean };
-    getTranscriptions(limit?: number): Array<Record<string, unknown>>;
-    getTranscriptionById(id: number | bigint): Record<string, unknown> | null;
+    setSnippets(snippets: Array<{ trigger: string; replacement: string }>): {
+      success: boolean;
+    };
+    getTranscriptions(limit?: number): TranscriptionRow[];
+    getTranscriptionById(id: number | bigint): TranscriptionRow | null;
     updateTranscriptionAudio(
       id: number,
       audio: {
@@ -85,7 +106,7 @@ export interface CliBridgeOperations {
   approveAudioPath(filePath: string): void;
   transcribeLocalFile(
     filePath: string,
-    options?: Record<string, unknown>
+    options?: TranscriptionOptions
   ): Promise<TranscriptionResponse>;
   listLocalTranscriptionModels(): Array<{
     model: string;
@@ -105,16 +126,67 @@ function routeError(message: string, code: string): CodedRouteError {
   return Object.assign(new Error(message), { code });
 }
 
-void routeError;
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
 
-function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+function isJsonObject<T>(value: T): value is T & JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringArray<T>(value: T): value is T & string[] {
+  return Array.isArray(value) && value.every((entry) => isString(entry));
+}
+
+function isNumber<T>(value: T): value is T & number {
+  return typeof value === "number";
+}
+
+function isBoolean<T>(value: T): value is T & boolean {
+  return typeof value === "boolean";
+}
+
+function errorMessage<T>(error: T): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function errorCode<T>(error: T): string | undefined {
+  if (!(error instanceof Error) || !("code" in error)) return undefined;
+  const code: unknown = error.code;
+
+  return isString(code) ? code : undefined;
+}
+
+// Decodes one JSON field the routes read from a request body. Missing fields
+// resolve to undefined; a wrong-typed field is kept as-is so each route's own
+// validation rejects it with its existing message.
+function bodyField(body: JsonObject, key: string): JsonField {
+  return body[key];
+}
+
+// createFolder coerces its input with `String(name || "")`. This reproduces
+// that coercion for a JSON body field, including the falsy cases (0/false/null)
+// that become an empty name and are rejected.
+function folderNameValue(value: JsonField): string {
+  if (isString(value)) return value;
+
+  if (isNumber(value) || isBoolean(value)) return String(value || "");
+
+  if (Array.isArray(value)) return value.map((entry) => folderNameValue(entry)).join(",");
+
+  if (value === null || value === undefined) return "";
+
+  return "[object Object]";
+}
+
+function readJsonBody(req: http.IncomingMessage): Promise<JsonObject> {
   return new Promise((resolve, reject) => {
     // Buffer the raw chunks and decode once at the end: decoding per chunk
     // corrupts multibyte sequences split across chunk boundaries.
     const chunks: Buffer[] = [];
     let receivedBytes = 0;
     let rejected = false;
-    req.on("data", (chunk) => {
+    req.on("data", (chunk: Buffer | string) => {
       if (rejected) return;
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       receivedBytes += buffer.length;
@@ -136,7 +208,11 @@ function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown
       if (!raw) return resolve({});
 
       try {
-        resolve(JSON.parse(raw));
+        const parsed: unknown = JSON.parse(raw);
+
+        // The routes below validate every field they read, so a non-object
+        // body degrades to the empty record the same way a missing one does.
+        resolve(isJsonObject(parsed) ? parsed : {});
       } catch {
         reject(new Error("Invalid JSON payload"));
       }
@@ -145,7 +221,7 @@ function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown
   });
 }
 
-function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+function sendJson<T>(res: http.ServerResponse, statusCode: number, payload: T): void {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
@@ -176,36 +252,64 @@ function parseIdParam(value: string | undefined): number | null {
   return id;
 }
 
-function unwrapMutationResult<T>(result: unknown, label: string): T {
-  const record = (typeof result === "object" && result !== null ? result : {}) as Record<
-    string,
-    unknown
-  >;
+// Each note/folder mutation returns its domain row through one `success` flag
+// plus the named field; a failed mutation carries an optional message.
+interface NoteMutationLike {
+  success?: boolean;
+  error?: string;
+  note?: NoteItem | null;
+}
 
-  if (!record.success || !record[label]) {
-    throw new Error((record.error as string) || `Failed to write ${label}`);
+interface FolderMutationLike {
+  success?: boolean;
+  error?: string;
+  folder?: FolderRow | null;
+}
+
+function unwrapNote(result: NoteMutationLike): NoteItem {
+  if (!result.success || !result.note) {
+    throw new Error(result.error || "Failed to write note");
   }
 
-  return record[label] as T;
+  return result.note;
+}
+
+function unwrapFolder(result: FolderMutationLike): FolderRow {
+  if (!result.success || !result.folder) {
+    throw new Error(result.error || "Failed to write folder");
+  }
+
+  return result.folder;
 }
 
 interface RouteParams {
   params: Record<string, string>;
   query: URLSearchParams;
-  body: Record<string, unknown>;
+  body: JsonObject;
 }
 
 interface RouteEntry {
   method: string;
   match(pathname: string): Record<string, string> | null;
-  handler(context: RouteParams): unknown;
+  handler(context: RouteParams): RouteResult | Promise<RouteResult>;
   status?: number;
 }
 
 // 204 responses have no body; this sentinel routes them apart from payloads.
 const NO_CONTENT = Symbol("CliBridge.NoContent");
 
-type RouteResult = unknown;
+// Every route returns a serializable value: a domain row/envelope object, a
+// list of them, or a primitive. The union names that wire contract without
+// widening any handler to `unknown`.
+type RouteResult =
+  | object
+  | readonly object[]
+  | string
+  | readonly string[]
+  | number
+  | boolean
+  | null
+  | typeof NO_CONTENT;
 
 export class CliBridge {
   private readonly ops: CliBridgeOperations;
@@ -231,11 +335,7 @@ export class CliBridge {
 
     const server = (this.server = http.createServer((req, res) => {
       this._handleRequest(req, res).catch((err) => {
-        debugLogger.error(
-          "CLI bridge handler error",
-          { error: (err as Error).message },
-          "cli-bridge"
-        );
+        debugLogger.error("CLI bridge handler error", { error: errorMessage(err) }, "cli-bridge");
 
         if (!res.headersSent) {
           sendV1Error(res, 500, "internal_error", "Internal server error");
@@ -250,6 +350,7 @@ export class CliBridge {
       };
 
       server.once("error", onError);
+      // SAFETY: findPortInRange resolved a port before this call, so it is set.
       server.listen(this.port as number, HOST, () => {
         server.removeListener("error", onError);
         resolve();
@@ -296,7 +397,7 @@ export class CliBridge {
     try {
       fs.chmodSync(this.bridgeFilePath, 0o600);
     } catch (err) {
-      debugLogger.debug("CLI bridge chmod failed", { error: (err as Error).message }, "cli-bridge");
+      debugLogger.debug("CLI bridge chmod failed", { error: errorMessage(err) }, "cli-bridge");
     }
   }
 
@@ -304,10 +405,10 @@ export class CliBridge {
     try {
       fs.unlinkSync(this.bridgeFilePath);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      if (errorCode(err) !== "ENOENT") {
         debugLogger.debug(
           "CLI bridge file removal failed",
-          { error: (err as Error).message },
+          { error: errorMessage(err) },
           "cli-bridge"
         );
       }
@@ -365,24 +466,24 @@ export class CliBridge {
       return;
     }
 
-    let body: Record<string, unknown> = {};
+    let body: JsonObject = {};
 
     if (req.method !== "GET" && req.method !== "DELETE") {
       try {
         body = await readJsonBody(req);
       } catch (err) {
-        sendV1Error(res, 400, "validation_error", (err as Error).message);
+        sendV1Error(res, 400, "validation_error", errorMessage(err));
 
         return;
       }
     }
 
     try {
-      const result: RouteResult = await route.handler({
-        params: route.params,
-        query: url.searchParams,
-        body,
-      });
+      // Handlers may be synchronous or return a promise; awaiting a plain value
+      // resolves to that value, matching the prior synchronous callback support.
+      const result: RouteResult = await Promise.resolve(
+        route.handler({ params: route.params, query: url.searchParams, body })
+      );
 
       if (result === NO_CONTENT) {
         sendNoContent(res);
@@ -393,10 +494,15 @@ export class CliBridge {
       const status = route.status || 200;
       sendJson(res, status, result);
     } catch (err) {
+      // SAFETY: route handlers throw routeError()-built errors (or NoteReadError)
+      // whose `code` is read by _sendError; any other Error falls through to the
+      // 500 branch there.
       this._sendError(res, err as CodedRouteError);
     }
   }
 
+  // SAFETY: a thrown route value is an Error subclass or an Error carrying the
+  // conventional `code` field; the branches below read only those fields.
   _sendError(res: http.ServerResponse, err: CodedRouteError): void {
     if (err.code === "NOTE_NOT_FOUND") {
       sendV1Error(res, 404, "note_not_found", err.message);
@@ -444,7 +550,7 @@ export class CliBridge {
     const exact = (
       method: string,
       routePath: string,
-      handler: (context: RouteParams) => unknown,
+      handler: (context: RouteParams) => RouteResult,
       status?: number
     ): RouteEntry => ({
       method,
@@ -458,7 +564,7 @@ export class CliBridge {
       prefix: string,
       suffix: string,
       paramName: string,
-      handler: (context: RouteParams) => unknown,
+      handler: (context: RouteParams) => RouteResult,
       status?: number
     ): RouteEntry => ({
       method,
@@ -535,44 +641,48 @@ export class CliBridge {
       return id;
     };
 
-    const requireWordList = (value: unknown, field: string): string[] => {
+    const requireWordList = (value: JsonField, field: string): string[] => {
       if (value === undefined || value === null) return [];
 
-      if (!Array.isArray(value) || value.some((w) => typeof w !== "string")) {
+      if (!isStringArray(value)) {
         throw routeError(`'${field}' must be an array of strings`, "VALIDATION");
       }
 
       return value;
     };
 
+    const isSnippetField = (
+      value: JsonField
+    ): value is { trigger: string; replacement: string } => {
+      if (!isJsonObject(value)) return false;
+      const trigger = value.trigger;
+      const replacement = value.replacement;
+
+      return (
+        isString(trigger) &&
+        trigger.trim().length > 0 &&
+        isString(replacement) &&
+        replacement.trim().length > 0
+      );
+    };
+
     const requireSnippetList = (
-      value: unknown
+      value: JsonField
     ): Array<{ trigger: string; replacement: string }> => {
       if (value === undefined || value === null) return [];
 
-      const valid =
-        Array.isArray(value) &&
-        value.every(
-          (s) =>
-            s &&
-            typeof (s as { trigger?: unknown }).trigger === "string" &&
-            (s as { trigger: string }).trigger.trim() &&
-            typeof (s as { replacement?: unknown }).replacement === "string" &&
-            (s as { replacement: string }).replacement.trim()
-        );
-
-      if (!valid) {
+      if (!Array.isArray(value) || !value.every(isSnippetField)) {
         throw routeError(
           "'add' must be an array of { trigger, replacement } strings",
           "VALIDATION"
         );
       }
 
-      return value as Array<{ trigger: string; replacement: string }>;
+      return value;
     };
 
-    const requireAudioFile = (value: unknown): string => {
-      if (typeof value !== "string" || !value.trim()) {
+    const requireAudioFile = (value: JsonField): string => {
+      if (!isString(value) || !value.trim()) {
         throw routeError("'path' must be the path of an audio file", "VALIDATION");
       }
 
@@ -595,9 +705,9 @@ export class CliBridge {
     // anything not on disk so the engines' own errors stay genuine failures.
     const requireLocalModel = (
       models: Array<{ model: string; default?: boolean; downloaded?: boolean; provider?: string }>,
-      requested: unknown
+      requested: JsonField
     ) => {
-      if (requested !== undefined && typeof requested !== "string") {
+      if (requested !== undefined && !isString(requested)) {
         throw routeError("'model' must be a string", "VALIDATION");
       }
 
@@ -687,28 +797,28 @@ export class CliBridge {
         "/v1/notes/create",
         ({ body }) => {
           const args = saveNoteArgsSchema.safeParse([
-            body.title ?? "Untitled Note",
-            body.content ?? "",
-            body.note_type ?? "personal",
-            body.source_file ?? null,
-            body.audio_duration_seconds ?? null,
-            body.folder_id ?? null,
+            bodyField(body, "title") ?? "Untitled Note",
+            bodyField(body, "content") ?? "",
+            bodyField(body, "note_type") ?? "personal",
+            bodyField(body, "source_file") ?? null,
+            bodyField(body, "audio_duration_seconds") ?? null,
+            bodyField(body, "folder_id") ?? null,
             null,
           ]);
 
           if (!args.success) throw routeError("Invalid Note creation fields", "VALIDATION");
 
-          const result = ipc.noteWrites.saveNote(
-            args.data[0],
-            args.data[1],
-            args.data[2],
-            args.data[3] ?? null,
-            args.data[4] ?? null,
-            args.data[5] ?? null,
-            args.data[6] ?? null
+          const note = unwrapNote(
+            ipc.noteWrites.saveNote(
+              args.data[0],
+              args.data[1],
+              args.data[2],
+              args.data[3] ?? null,
+              args.data[4] ?? null,
+              args.data[5] ?? null,
+              args.data[6] ?? null
+            )
           );
-
-          const note = unwrapMutationResult<NoteRow>(result, "note");
 
           return { data: note };
         },
@@ -719,8 +829,7 @@ export class CliBridge {
         const args = updateNoteArgsSchema.safeParse([id, body]);
 
         if (!args.success) throw routeError("Invalid Note update fields", "VALIDATION");
-        const result = ipc.noteWrites.updateNote(args.data[0], args.data[1]);
-        const note = unwrapMutationResult<NoteRow>(result, "note");
+        const note = unwrapNote(ipc.noteWrites.updateNote(args.data[0], args.data[1]));
 
         return { data: note };
       }),
@@ -738,8 +847,7 @@ export class CliBridge {
         "POST",
         "/v1/folders/create",
         ({ body }) => {
-          const result = db.createFolder(body?.name);
-          const folder = unwrapMutationResult<FolderRow>(result, "folder");
+          const folder = unwrapFolder(db.createFolder(folderNameValue(bodyField(body, "name"))));
           setImmediate(() => sendFolderCreated(folder));
 
           return { data: folder };
@@ -753,8 +861,8 @@ export class CliBridge {
       // next launch and never reached the cloud (#1295). Takes a delta, so an
       // import cannot delete words it didn't name.
       exact("POST", "/v1/dictionary/update", ({ body }) => {
-        const add = requireWordList(body?.add, "add");
-        const remove = requireWordList(body?.remove, "remove");
+        const add = requireWordList(bodyField(body, "add"), "add");
+        const remove = requireWordList(bodyField(body, "remove"), "remove");
 
         if (add.length === 0 && remove.length === 0) {
           throw routeError("Provide at least one word in 'add' or 'remove'", "VALIDATION");
@@ -772,8 +880,8 @@ export class CliBridge {
       // Same delta shape as the dictionary route: an add with an existing
       // trigger replaces that snippet's text, and removes are by trigger.
       exact("POST", "/v1/snippets/update", ({ body }) => {
-        const add = requireSnippetList(body?.add);
-        const remove = requireWordList(body?.remove, "remove");
+        const add = requireSnippetList(bodyField(body, "add"));
+        const remove = requireWordList(bodyField(body, "remove"), "remove");
 
         if (add.length === 0 && remove.length === 0) {
           throw routeError(
@@ -811,12 +919,15 @@ export class CliBridge {
       // file itself: no audio crosses the bridge and the user's downloaded
       // models do the work.
       exact("POST", "/v1/transcribe", async ({ body }) => {
-        const real = requireAudioFile(body?.path);
+        const real = requireAudioFile(bodyField(body, "path"));
 
-        const selected = requireLocalModel(ipc.listLocalTranscriptionModels(), body?.model);
+        const selected = requireLocalModel(
+          ipc.listLocalTranscriptionModels(),
+          bodyField(body, "model")
+        );
 
-        const language =
-          typeof body?.language === "string" && body.language ? body.language : undefined;
+        const rawLanguage = bodyField(body, "language");
+        const language = isString(rawLanguage) && rawLanguage ? rawLanguage : undefined;
 
         ipc.approveAudioPath(real);
 
@@ -842,7 +953,11 @@ export class CliBridge {
         }
 
         return {
-          data: { text: result.text as string, provider: selected.provider, model: selected.model },
+          data: {
+            text: isString(result.text) ? result.text : "",
+            provider: selected.provider,
+            model: selected.model,
+          },
         };
       }),
       exact("GET", "/v1/transcriptions/list", ({ query }) => {
@@ -896,6 +1011,6 @@ export class CliBridge {
 // plus the discovery-file path helper on the same exports object.
 module.exports = CliBridge;
 
-module.exports.CliBridge = CliBridge;
-
-module.exports.getBridgeFilePath = getBridgeFilePath;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named exports.
+Object.assign(module.exports, { CliBridge, getBridgeFilePath });

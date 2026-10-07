@@ -42,6 +42,14 @@ const VALID_PREFERENCES: ReadonlySet<string> = new Set([
   "as-transcribed",
 ]);
 
+function isChineseScriptPreference<T>(value: T): value is T & ChineseScriptPreference {
+  return typeof value === "string" && VALID_PREFERENCES.has(value);
+}
+
+function isString<T>(value: T): value is T & string {
+  return typeof value === "string";
+}
+
 interface OpenCCConverters {
   toSimplified: (text: string) => string;
   toTraditional: (text: string) => string;
@@ -67,8 +75,8 @@ function getConverters() {
 export function normalizeChineseScriptPreference(
   value: string | null | undefined
 ): ChineseScriptPreference {
-  if (typeof value === "string" && VALID_PREFERENCES.has(value)) {
-    return value as ChineseScriptPreference;
+  if (isChineseScriptPreference(value)) {
+    return value;
   }
 
   return "as-transcribed";
@@ -166,7 +174,7 @@ export function mergeWhisperPrompt(
   target: ChineseScriptTarget | null
 ): string | null {
   const bias = getChineseScriptPromptBias(target);
-  const dict = typeof dictionaryPrompt === "string" ? dictionaryPrompt.trim() : "";
+  const dict = isString(dictionaryPrompt) ? dictionaryPrompt.trim() : "";
 
   if (bias && dict) return `${bias} ${dict}`;
 

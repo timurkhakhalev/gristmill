@@ -8,6 +8,11 @@ const MARKER = "# Gristmill Notes CLI launcher";
 
 const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
+interface AgentCliStatus {
+  installed: boolean;
+  path: string;
+}
+
 function launcher() {
   const script = app.isPackaged
     ? path.join(process.resourcesPath, "cli", "gristmill-cli.cjs")
@@ -19,7 +24,7 @@ function launcher() {
   return { script, target: path.join(os.homedir(), ".local", "bin", "gristmill"), content };
 }
 
-export function getAgentCliStatus(): { installed: boolean; path: string } {
+export function getAgentCliStatus(): AgentCliStatus {
   const { target, content, script } = launcher();
 
   if (!fs.existsSync(target) || !fs.existsSync(script)) return { installed: false, path: target };

@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -38,15 +40,6 @@ const DatabaseManager = require("../../src/helpers/database.ts");
 
 const AudioStorageManager: typeof import("../../src/helpers/audioStorage.ts").AudioStorageManager = require("../../src/helpers/audioStorage.ts");
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 function setup(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-delete-all-audio-"));
   let db;
@@ -56,13 +49,9 @@ function setup(t: import("node:test").TestContext) {
     db = new DatabaseManager();
     audioStorage = new AudioStorageManager();
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 
   const handlers = new Map();

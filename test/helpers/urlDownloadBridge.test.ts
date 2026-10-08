@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 
+const { loadBundledPreload: loadPreload, createListenerRegistry }: typeof import("./harness/bundledPreload.ts") = require("./harness/bundledPreload.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -7,8 +9,6 @@ const fs: typeof import("node:fs") = require("node:fs");
 const os: typeof import("node:os") = require("node:os");
 
 const path: typeof import("node:path") = require("node:path");
-
-const vm: typeof import("node:vm") = require("node:vm");
 
 const { deferred } = require("./harness/deferred.ts") as typeof import("./harness/deferred.js");
 
@@ -22,8 +22,6 @@ import type {
 type UrlAudioDownloadResult = Omit<UrlDownloadSuccess, "success">;
 
 const root = path.resolve(__dirname, "../..");
-
-const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 // Deferred-controlled fake downloader; every call is recorded and can be held
 // open or failed from the test. No network, no real temp writes.
@@ -56,46 +54,9 @@ function resetDownloader() {
 }
 
 function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
-  const listeners = new Map<string, Listener[]>();
-  let api: UrlDownloadApi | undefined;
-  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
-    // The bundle keeps CJS interop for hybrid manifest modules, so the
-    // sandbox needs the same bindings Node's CJS loader provides.
-    module: { exports: {} },
-    exports: {},
-    require(name: string) {
-      assert.equal(name, "electron", "the bundled preload must only require electron");
+  const registry = createListenerRegistry();
 
-      return {
-        contextBridge: {
-          exposeInMainWorld: (_name: string, value: UrlDownloadApi) => {
-            api = value;
-          },
-        },
-        ipcRenderer: {
-          invoke,
-          send() {},
-          on(channel: string, listener: Listener) {
-            const list = listeners.get(channel) || [];
-            list.push(listener);
-            listeners.set(channel, list);
-          },
-          removeListener(channel: string, listener: Listener) {
-            const list = listeners.get(channel) || [];
-            const index = list.indexOf(listener);
-
-            if (index !== -1) list.splice(index, 1);
-          },
-        },
-        webUtils: { getPathForFile: () => "" },
-      };
-    },
-    process: { platform: "darwin", versions: {} },
-    console,
-  });
-  assert.ok(api);
-
-  return { api, listeners };
+  return { api: loadPreload<UrlDownloadApi>({ invoke, ...registry }), listeners: registry.listeners };
 }
 
 async function createFixture(t: import("node:test").TestContext) {

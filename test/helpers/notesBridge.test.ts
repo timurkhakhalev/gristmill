@@ -1,5 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
 
+const { loadBundledPreload: loadPreload, createListenerRegistry }: typeof import("./harness/bundledPreload.ts") = require("./harness/bundledPreload.ts");
+
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -8,15 +12,9 @@ const os: typeof import("node:os") = require("node:os");
 
 const path: typeof import("node:path") = require("node:path");
 
-const vm: typeof import("node:vm") = require("node:vm");
-
 const Module = require("node:module");
 
 import type { NotesApi, NoteItem, NoteDeletedPayload } from "../../src/contracts/notes.js";
-
-const root = path.resolve(__dirname, "../..");
-
-const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 // The real bundled preload talks to a Map of real registered Notes handlers
 // over a temporary SQLite database. Main-side event sends are dispatched back
@@ -74,57 +72,10 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error instanceof Error ? error.message : error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
-  // A channel can have several listeners (Electron supports that); keep arrays.
-  const listeners = new Map<string, Listener[]>();
-  let api: NotesApi | undefined;
-  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
-    // The bundle keeps CJS interop for hybrid manifest modules, so the
-    // sandbox needs the same bindings Node's CJS loader provides.
-    module: { exports: {} },
-    exports: {},
-    require(name: string) {
-      assert.equal(name, "electron", "the bundled preload must only require electron");
+  const registry = createListenerRegistry();
 
-      return {
-        contextBridge: {
-          exposeInMainWorld: (_name: string, value: NotesApi) => {
-            api = value;
-          },
-        },
-        ipcRenderer: {
-          invoke,
-          send() {},
-          on(channel: string, listener: Listener) {
-            const list = listeners.get(channel) || [];
-            list.push(listener);
-            listeners.set(channel, list);
-          },
-          removeListener(channel: string, listener: Listener) {
-            const list = listeners.get(channel) || [];
-            const index = list.indexOf(listener);
-
-            if (index !== -1) list.splice(index, 1);
-          },
-        },
-        webUtils: { getPathForFile: () => "" },
-      };
-    },
-    process: { platform: "darwin", versions: {} },
-    console,
-  });
-  assert.ok(api);
-
-  return { api, listeners };
+  return { api: loadPreload<NotesApi>({ invoke, ...registry }), listeners: registry.listeners };
 }
 
 async function createFixture(t: import("node:test").TestContext) {
@@ -136,13 +87,9 @@ async function createFixture(t: import("node:test").TestContext) {
   try {
     db = new DatabaseManager();
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 
   t.after(() => db.close());

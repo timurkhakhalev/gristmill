@@ -4,19 +4,11 @@
 // unsubscribe and junk command responses rejected at the preload boundary.
 const test: typeof import("node:test") = require("node:test");
 
+const { loadBundledPreload: loadPreload, plain }: typeof import("./harness/bundledPreload.ts") = require("./harness/bundledPreload.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
-const fs: typeof import("node:fs") = require("node:fs");
-
-const path: typeof import("node:path") = require("node:path");
-
-const vm: typeof import("node:vm") = require("node:vm");
-
 const Module = require("node:module");
-
-const root = path.resolve(__dirname, "../..");
-
-const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
 
@@ -71,40 +63,8 @@ function loadBundledPreload(transport: {
   on: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
   removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
 }) {
-  let api: CalendarApi | undefined;
-  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
-    // The bundle keeps CJS interop for hybrid manifest modules, so the
-    // sandbox needs the same bindings Node's CJS loader provides.
-    module: { exports: {} },
-    exports: {},
-    require(name: string) {
-      assert.equal(name, "electron", "the bundled preload must only require electron");
-
-      return {
-        contextBridge: {
-          exposeInMainWorld: (_name: string, value: CalendarApi) => {
-            api = value;
-          },
-        },
-        ipcRenderer: {
-          invoke: (channel: string, ...args: unknown[]) => transport.invoke(channel, ...args),
-          send: () => {},
-          on: (channel: string, listener: (event: unknown, payload: unknown) => void) =>
-            transport.on(channel, listener),
-          removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) =>
-            transport.removeListener(channel, listener),
-        },
-        webUtils: { getPathForFile: () => "" },
-      };
-    },
-    process: { platform: "darwin", versions: {} },
-    console,
-  });
-
-  return api!;
+  return loadPreload<CalendarApi>(transport);
 }
-
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 async function createFixture(
   googleSyncEvents?: () => Promise<{
@@ -114,7 +74,6 @@ async function createFixture(
     errors: string[];
   }>
 ) {
-  assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
 
   const { registerCalendarIntegrationHandlers } =

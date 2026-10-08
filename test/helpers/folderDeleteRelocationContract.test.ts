@@ -2,6 +2,8 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 
 const test: typeof import("node:test") = require("node:test");
 
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const fs: typeof import("node:fs") = require("node:fs");
 
 const os: typeof import("node:os") = require("node:os");
@@ -49,15 +51,6 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String((error as { message?: unknown })?.message || error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 test("deleting a folder keeps its notes and rewrites the released mirrors", async (t: import("node:test").TestContext) => {
   const DatabaseManager = require("../../src/helpers/database.ts");
   let db;
@@ -65,13 +58,9 @@ test("deleting a folder keeps its notes and rewrites the released mirrors", asyn
   try {
     db = new DatabaseManager();
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return;
-    }
-
-    throw error;
+    return;
   }
 
   t.after(() => db.close());
@@ -163,13 +152,9 @@ test("mirror-enabled folder delete cleans up the directory and preserves survivi
   try {
     db = new DatabaseManager();
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return;
-    }
-
-    throw error;
+    return;
   }
 
   t.after(() => db.close());
@@ -293,13 +278,9 @@ test("a live same-named folder in another space keeps the shared mirror director
   try {
     db = new DatabaseManager();
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return;
-    }
-
-    throw error;
+    return;
   }
 
   t.after(() => db.close());
@@ -366,13 +347,9 @@ test("two deletes in one tick keep each delete's own relocated-note ids", async 
   try {
     db = new DatabaseManager();
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return;
-    }
-
-    throw error;
+    return;
   }
 
   t.after(() => db.close());

@@ -16,6 +16,8 @@ const path: typeof import("node:path") = require("node:path");
 
 const test: typeof import("node:test") = require("node:test");
 
+const { skipOrFail }: typeof import("../../../helpers/harness/nativeBinding.ts") = require("../../../helpers/harness/nativeBinding.ts");
+
 const vm: typeof import("node:vm") = require("node:vm");
 
 const Module = require("node:module");
@@ -48,15 +50,6 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error instanceof Error ? error.message : error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 function createDb(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-upload-folder-"));
 
@@ -66,13 +59,9 @@ function createDb(t: import("node:test").TestContext) {
 
     return db;
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 }
 

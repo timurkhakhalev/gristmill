@@ -1,5 +1,9 @@
 const test: typeof import("node:test") = require("node:test");
 
+const { loadBundledPreload: loadPreload, createListenerRegistry, plain }: typeof import("./harness/bundledPreload.ts") = require("./harness/bundledPreload.ts");
+
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -8,13 +12,7 @@ const os: typeof import("node:os") = require("node:os");
 
 const path: typeof import("node:path") = require("node:path");
 
-const vm: typeof import("node:vm") = require("node:vm");
-
 const Module = require("node:module");
-
-const root = path.resolve(__dirname, "../..");
-
-const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 // The real bundled preload talks to a Map of real registered container
 // handlers over a temporary SQLite database. Main-side event sends are
@@ -67,61 +65,15 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String((error as { message?: unknown })?.message || error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 type ContainerApi = { [k: string]: (...args: unknown[]) => Promise<any> } & {
   onFolderDeleted(cb: (p: unknown) => void): () => void;
   onFolderRenamed(cb: (p: unknown) => void): () => void;
 };
 
 function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
-  // A channel can have several listeners (Electron supports that); keep arrays.
-  const listeners = new Map<string, Array<(event: unknown, ...args: unknown[]) => void>>();
-  let api: ContainerApi | undefined;
-  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
-    // The bundle keeps CJS interop for hybrid manifest modules, so the
-    // sandbox needs the same bindings Node's CJS loader provides.
-    module: { exports: {} },
-    exports: {},
-    require(name: string) {
-      assert.equal(name, "electron", "the bundled preload must only require electron");
+  const registry = createListenerRegistry();
 
-      return {
-        contextBridge: {
-          exposeInMainWorld: (_name: string, value: ContainerApi) => {
-            api = value;
-          },
-        },
-        ipcRenderer: {
-          invoke,
-          send() {},
-          on(channel: string, listener: (event: unknown, ...args: unknown[]) => void) {
-            const list = listeners.get(channel) || [];
-            list.push(listener);
-            listeners.set(channel, list);
-          },
-          removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void) {
-            const list = listeners.get(channel) || [];
-            const index = list.indexOf(listener);
-
-            if (index !== -1) list.splice(index, 1);
-          },
-        },
-        webUtils: { getPathForFile: () => "" },
-      };
-    },
-    process: { platform: "darwin", versions: {} },
-    console,
-  });
-
-  return { api: api!, listeners };
+  return { api: loadPreload<ContainerApi>({ invoke, ...registry }), listeners: registry.listeners };
 }
 
 async function createFixture(t: import("node:test").TestContext) {
@@ -141,13 +93,9 @@ async function createFixture(t: import("node:test").TestContext) {
         getFolders(): Array<{ id: unknown; name: string }>;
       };
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 
   t.after(() => db.close());
@@ -191,9 +139,6 @@ async function createFixture(t: import("node:test").TestContext) {
 
   return { db, api, flush };
 }
-
-// Objects from vm.runInNewContext have a different prototype; compare by JSON.
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 test("the full bundled preload chain round-trips folders and spaces", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);

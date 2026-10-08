@@ -5,21 +5,21 @@
 const BUILTIN_PLACEHOLDERS = ["untitled note", "untitled", "new note"];
 
 export function isRegenerableNoteTitle(
-  title: unknown,
+  title: string | null | undefined,
   placeholders: string[] = [],
   calendarEventName: string | null = null
 ): boolean {
-  const trimmed = typeof title === "string" ? title.trim() : "";
+  const trimmed = (title ?? "").trim();
 
   if (trimmed === "") return true;
 
   const set = new Set(BUILTIN_PLACEHOLDERS);
 
   for (const p of placeholders) {
-    if (typeof p === "string" && p.trim()) set.add(p.trim().toLowerCase());
+    if (p.trim()) set.add(p.trim().toLowerCase());
   }
 
   if (set.has(trimmed.toLowerCase())) return true;
 
-  return typeof calendarEventName === "string" && calendarEventName.trim() === trimmed;
+  return calendarEventName != null && calendarEventName.trim() === trimmed;
 }

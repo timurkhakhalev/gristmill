@@ -70,6 +70,16 @@ export function applyNoteDraftMutation(
   };
 }
 
+export interface DroppedDirtyFields {
+  title: boolean;
+  content: boolean;
+}
+
+export interface ExternalNoteUpdateResult {
+  draft: NoteEditorDraft;
+  droppedDirty: DroppedDirtyFields;
+}
+
 // An external update (chat tool, processing) meets the user's dirty fields:
 // a field the user typed keeps the local value and stays dirty (its pending
 // save will land); untouched fields accept the external value, so autosave
@@ -79,9 +89,9 @@ export function applyNoteDraftMutation(
 export function acceptExternalNoteUpdate(
   draft: NoteEditorDraft,
   external: { title?: string; content?: string }
-): { draft: NoteEditorDraft; droppedDirty: { title: boolean; content: boolean } } {
+): ExternalNoteUpdateResult {
   const next = { ...draft };
-  const droppedDirty = { title: false, content: false };
+  const droppedDirty: DroppedDirtyFields = { title: false, content: false };
 
   if (external.title !== undefined) {
     if (draft.dirtyTitle) {
@@ -114,15 +124,13 @@ export function collectPendingNoteWrites(
   const writes: PendingNoteWrite[] = [];
 
   if (document) {
-    const updates: { title?: string; content?: string; enhanced_content?: string | null } = {};
-
-    if (document.title !== undefined) updates.title = document.title;
-
-    if (document.content !== undefined) updates.content = document.content;
-
-    if (enhanced && enhanced.noteId === document.noteId) {
-      updates.enhanced_content = enhanced.enhancedContent;
-    }
+    const updates: PendingNoteUpdates = {
+      ...(document.title === undefined ? {} : { title: document.title }),
+      ...(document.content === undefined ? {} : { content: document.content }),
+      ...(enhanced && enhanced.noteId === document.noteId
+        ? { enhanced_content: enhanced.enhancedContent }
+        : {}),
+    };
 
     writes.push({ noteId: document.noteId, updates });
 

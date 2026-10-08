@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { folderContainerKey, spaceContainerKey } from "../stores/noteStore";
+import { folderContainerKey, runInBackground, spaceContainerKey } from "../stores/noteStore";
 
 export interface NoteMoveTarget {
   spaceId: number;
@@ -139,7 +139,7 @@ export function useNoteDragAndDrop({
           prev.dropSuccessKey === key ? { ...prev, dropSuccessKey: null } : prev
         );
       }, 800);
-      void onMoveToTarget(noteId, target);
+      runInBackground(Promise.resolve(onMoveToTarget(noteId, target)), "Note move failed");
     },
     [onMoveToTarget]
   );

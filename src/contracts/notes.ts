@@ -95,7 +95,12 @@ export const updateNoteArgsSchema = z.tuple([idArg, noteUpdateSchema]);
 
 export const deleteNoteArgsSchema = z.tuple([idArg]);
 
-export const searchNotesArgsSchema = z.tuple([z.string(), optionalLimit, optionalId, z.boolean().optional()]);
+export const searchNotesArgsSchema = z.tuple([
+  z.string(),
+  optionalLimit,
+  optionalId,
+  z.boolean().optional(),
+]);
 
 export const saveNoteResultSchema = z.object({
   success: z.literal(true),
@@ -163,11 +168,7 @@ export interface NotesApi {
     folderId?: number | null
   ): Promise<NoteMutationResult>;
   getNote(id: number): Promise<NoteItem | null>;
-  getNotes(
-    noteType?: string | null,
-    limit?: number,
-    folderId?: number | null
-  ): Promise<NoteItem[]>;
+  getNotes(noteType?: string | null, limit?: number, folderId?: number | null): Promise<NoteItem[]>;
   getRootNotes(limit?: number): Promise<NoteItem[]>;
   updateNote(id: number, updates: NoteUpdate): Promise<NoteMutationResult>;
   deleteNote(id: number): Promise<NoteDeleteResult>;

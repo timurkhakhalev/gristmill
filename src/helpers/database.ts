@@ -1518,7 +1518,9 @@ export class DatabaseManager {
       }
 
       if (isNewProfile)
-        this.sql.prepare("INSERT INTO folders (name, is_default, sort_order) VALUES ('Personal', 1, 0)").run();
+        this.sql
+          .prepare("INSERT INTO folders (name, is_default, sort_order) VALUES ('Personal', 1, 0)")
+          .run();
 
       const insertAction = this.sql.prepare(
         "INSERT INTO actions (name, description, prompt, icon, is_builtin, sort_order, translation_key) VALUES (?, ?, ?, ?, 1, ?, ?)"
@@ -3733,9 +3735,7 @@ export class DatabaseManager {
 
   /** The list position becomes sort_order. */
   reorderFolders(folderIds: number[]): SuccessResult {
-    const update = this.sql.prepare(
-      "UPDATE folders SET sort_order = ? WHERE id = ?"
-    );
+    const update = this.sql.prepare("UPDATE folders SET sort_order = ? WHERE id = ?");
 
     this.sql.transaction(() => {
       folderIds.forEach((folderId, index) => update.run(index, folderId));
@@ -4069,9 +4069,8 @@ export class DatabaseManager {
     { noteType = "meeting", folderName = "Imported" } = {}
   ): ImportNotesResult {
     let folderId: number | null =
-      this.sql
-        .prepare("SELECT id FROM folders WHERE name = ?")
-        .get<{ id: number }>(folderName)?.id ?? null;
+      this.sql.prepare("SELECT id FROM folders WHERE name = ?").get<{ id: number }>(folderName)
+        ?.id ?? null;
 
     if (!folderId) folderId = this.createFolder(folderName).folder?.id ?? null;
     let imported = 0;
@@ -4122,11 +4121,7 @@ export class DatabaseManager {
     return raw ? hydrateNote(raw) : null;
   }
 
-  getNotes(
-    noteType: string | null = null,
-    limit = 100,
-    folderId: number | null = null
-  ): NoteRow[] {
+  getNotes(noteType: string | null = null, limit = 100, folderId: number | null = null): NoteRow[] {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
@@ -4304,8 +4299,10 @@ export class DatabaseManager {
         values.push(updates[key]);
       }
 
-    if (updates.folder_id != null &&
-      !this.sql.prepare("SELECT 1 FROM folders WHERE id = ?").get(updates.folder_id))
+    if (
+      updates.folder_id != null &&
+      !this.sql.prepare("SELECT 1 FROM folders WHERE id = ?").get(updates.folder_id)
+    )
       return { success: false, error: "Folder not found" };
 
     if (!fields.length) return { success: false };
@@ -4420,9 +4417,7 @@ export class DatabaseManager {
     folderId: number | null = null
   ): AgentConversationRow | null {
     const result = this.sql
-      .prepare(
-        "INSERT INTO agent_conversations (title, note_id, folder_id) VALUES (?, ?, ?)"
-      )
+      .prepare("INSERT INTO agent_conversations (title, note_id, folder_id) VALUES (?, ?, ?)")
       .run(title, noteId, folderId);
 
     return this.getAgentConversation(result.lastInsertRowid);

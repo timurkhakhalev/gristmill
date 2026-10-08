@@ -28,14 +28,14 @@ It has no backend. All data is in the local application profile.
 
 ## Sections
 
-| Section                                | Contents                                                                | Read it when                                                                         |
-| -------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [product/](product/index.md)           | Product overview, principles, guarantees, user journeys                 | You change behavior or the product surface                                           |
+| Section                                | Contents                                                                                | Read it when                                                                         |
+| -------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [product/](product/index.md)           | Product overview, principles, guarantees, user journeys                                 | You change behavior or the product surface                                           |
 | [architecture/](architecture/index.md) | C4 overview, recording and processing, storage, speakers, Companion, BB, feature limits | You change code in that area                                                         |
-| [adr/](adr/index.md)                   | Accepted decisions and their reasons                                    | You want to change a deliberate decision                                             |
-| [steerings/](steerings/index.md)       | Quality policy, commands, scripts, documentation rules                  | Before each change; when you select or run checks, change tooling or write documents |
-| [runbooks/](runbooks/index.md)         | Local builds, signing, profiles, troubleshooting                        | You build, install or diagnose the app                                               |
-| [references.md](references.md)         | Documents outside the Memory Bank and external sources                  | You need upstream, brand, issues or provider documentation                           |
+| [adr/](adr/index.md)                   | Accepted decisions and their reasons                                                    | You want to change a deliberate decision                                             |
+| [steerings/](steerings/index.md)       | Quality policy, commands, scripts, documentation rules                                  | Before each change; when you select or run checks, change tooling or write documents |
+| [runbooks/](runbooks/index.md)         | Local builds, signing, profiles, troubleshooting                                        | You build, install or diagnose the app                                               |
+| [references.md](references.md)         | Documents outside the Memory Bank and external sources                                  | You need upstream, brand, issues or provider documentation                           |
 
 ## Reading paths
 

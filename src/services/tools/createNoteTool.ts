@@ -23,8 +23,7 @@ export const createNoteTool: ToolDefinition = {
       },
       folder: {
         type: "string",
-        description:
-          "Folder name for the note. Created automatically if it does not exist.",
+        description: "Folder name for the note. Created automatically if it does not exist.",
       },
     },
     required: ["title", "content"],

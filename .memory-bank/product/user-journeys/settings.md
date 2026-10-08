@@ -12,12 +12,12 @@ As a Gristmill user, I want to configure the application, its recording and its 
 
 Settings has four groups:
 
-| Group    | Sections                                     |
-| -------- | -------------------------------------------- |
-| General  | Profile, Preferences, Notes                  |
-| Meetings | Recording, Calendar                          |
-| AI       | Models, Providers, On-device, Dictionary     |
-| System   | Privacy & Data, Advanced                     |
+| Group    | Sections                                 |
+| -------- | ---------------------------------------- |
+| General  | Profile, Preferences, Notes              |
+| Meetings | Recording, Calendar                      |
+| AI       | Models, Providers, On-device, Dictionary |
+| System   | Privacy & Data, Advanced                 |
 
 ### Set your name and preferences
 

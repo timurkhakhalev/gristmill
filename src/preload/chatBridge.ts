@@ -33,11 +33,7 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
 // this implementation and the contract fails compilation instead of review.
 export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatPersistenceApi {
   return {
-    createAgentConversation: (
-      title?: string,
-      noteId?: number | null,
-      folderId?: number | null
-    ) =>
+    createAgentConversation: (title?: string, noteId?: number | null, folderId?: number | null) =>
       ipcRenderer
         .invoke(chatPersistenceChannels.createAgentConversation, title, noteId, folderId)
         .then((raw) =>

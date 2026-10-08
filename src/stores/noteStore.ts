@@ -218,9 +218,7 @@ export function contextContainerKey(context: ActiveContext): string {
 
 /** Every tree container listing the note: each of its folders, or Notes root. */
 function noteContainerKeys(note: NoteItem): string[] {
-  return note.folder_ids.length
-    ? note.folder_ids.map(folderContainerKey)
-    : [ROOT_CONTAINER_KEY];
+  return note.folder_ids.length ? note.folder_ids.map(folderContainerKey) : [ROOT_CONTAINER_KEY];
 }
 
 const sameContainers = (a: NoteItem, b: NoteItem) =>

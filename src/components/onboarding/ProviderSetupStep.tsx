@@ -100,8 +100,7 @@ export function ByokProviderStep({
   }, []);
 
   const initialProvider =
-    providers.find((item) => item.id === store.cloudTranscriptionProvider)?.id ??
-    "";
+    providers.find((item) => item.id === store.cloudTranscriptionProvider)?.id ?? "";
 
   const [selectedProvider, setSelectedProvider] = useState(initialProvider);
 

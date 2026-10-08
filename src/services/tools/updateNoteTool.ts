@@ -67,10 +67,7 @@ export const updateNoteTool: ToolDefinition = {
       let folderCreated = false;
 
       if (folderName) {
-        const resolved = await resolveFolderId(
-          folderName,
-          { createIfMissing: true }
-        );
+        const resolved = await resolveFolderId(folderName, { createIfMissing: true });
 
         if (resolved.error !== undefined) {
           return { success: false, data: null, displayText: resolved.error };

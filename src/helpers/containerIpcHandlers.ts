@@ -23,7 +23,6 @@ import {
   spaceMutationResultSchema,
   updateSpaceArgsSchema,
   type FolderDeletedPayload,
-  type FolderItem,
 } from "../contracts/containers.js";
 import type { NoteItem } from "../contracts/notes.js";
 import {
@@ -106,11 +105,13 @@ export function registerContainerHandlers(
     );
 
     if (result.success && result.folder) {
+      const folder = result.folder;
+
       setImmediate(() => {
-        sendFolderCreated(result.folder as FolderItem);
+        sendFolderCreated(folder);
 
         if (deps.noteFilesEnabled()) {
-          deps.mirrorEnsureFolder(result.folder!.name);
+          deps.mirrorEnsureFolder(folder.name);
         }
       });
     }
@@ -156,11 +157,13 @@ export function registerContainerHandlers(
     );
 
     if (result.success && result.folder) {
+      const folder = result.folder;
+
       setImmediate(() => {
-        sendFolderRenamed(result.folder as FolderItem);
+        sendFolderRenamed(folder);
 
         if (deps.noteFilesEnabled() && oldName) {
-          deps.mirrorRenameFolder(oldName, result.folder!.name);
+          deps.mirrorRenameFolder(oldName, folder.name);
         }
       });
     }
@@ -178,7 +181,9 @@ export function registerContainerHandlers(
     );
 
     if (result.success && result.folder) {
-      setImmediate(() => sendFolderSynced(result.folder as FolderItem));
+      const folder = result.folder;
+
+      setImmediate(() => sendFolderSynced(folder));
     }
 
     return result;
@@ -204,7 +209,9 @@ export function registerContainerHandlers(
     );
 
     if (result.success && result.folder) {
-      setImmediate(() => sendFolderSynced(result.folder as FolderItem));
+      const folder = result.folder;
+
+      setImmediate(() => sendFolderSynced(folder));
     }
 
     return result;

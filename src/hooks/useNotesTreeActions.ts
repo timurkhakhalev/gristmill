@@ -14,8 +14,8 @@ import {
   loadFolders,
   openNoteRow,
   revealContainer,
+  runInBackground,
   setActiveContext,
-  setActiveNoteId,
   useActiveContext,
   useActiveFolderId,
   useActiveNoteId,
@@ -75,10 +75,12 @@ export function useNotesTreeActions() {
         setActiveContext(result.note.space_id, result.note.folder_id);
         revealContainer(result.note.space_id, result.note.folder_id);
         // Hold the full row in case the container is not loaded (#185).
-        void openNoteRow(result.note);
+        await openNoteRow(result.note);
 
         // A new note is a recording waiting to happen: start it unless one is already live.
-        if (!isTranscribing) void startRecordingForNote(result.note);
+        if (!isTranscribing) {
+          runInBackground(startRecordingForNote(result.note), "Recording start failed");
+        }
 
         return result.note;
       }
@@ -110,20 +112,23 @@ export function useNotesTreeActions() {
       await initializeNotes(null, 50, activeFolderId);
     }
 
-    loadFolders();
+    await loadFolders();
   }, [activeFolderId]);
 
   const handleDelete = useCallback(async (id: number) => {
-    await window.electronAPI.deleteNote(id);
+    return window.electronAPI.deleteNote(id);
   }, []);
 
   const handleMoveNote = useCallback(
     async (noteId: number, target: NoteMoveTarget) => {
       // A move takes the note out of all its folders, like moving a file.
-      await window.electronAPI.updateNote(noteId, {
+      const result = await window.electronAPI.updateNote(noteId, {
         folder_ids: target.folderIds ?? (target.folderId != null ? [target.folderId] : []),
         space_id: target.spaceId,
       });
+
+      // A rejected move leaves the note where it was; do not follow it.
+      if (!result.success) return;
 
       if (noteId === activeNoteId) {
         setActiveContext(target.spaceId, target.folderId);

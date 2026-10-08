@@ -8,7 +8,11 @@ export type LocalMutationErrorKey =
   | "notes.mutationErrors.privateSpaceImmutable"
   | "notes.mutationErrors.generic";
 
-const ERROR_KEYS: Record<string, LocalMutationErrorKey> = {
+interface LocalMutationErrorKeyTable {
+  readonly [message: string]: LocalMutationErrorKey;
+}
+
+const ERROR_KEYS: LocalMutationErrorKeyTable = {
   "Folder name is required": "notes.mutationErrors.folderNameRequired",
   "A folder with that name already exists": "notes.mutationErrors.folderAlreadyExists",
   "Folder not found": "notes.mutationErrors.folderNotFound",

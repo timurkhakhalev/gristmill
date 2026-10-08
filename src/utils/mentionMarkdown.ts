@@ -1,9 +1,17 @@
+import { z } from "zod";
+
 export interface MentionPerson {
   name: string;
   email: string | null;
 }
 
 export const MENTION_HREF_PREFIX = "mention:";
+
+// Mention attributes come from the editor's node JSON; malformed values fall back.
+export const mentionAttrsSchema = z.object({
+  label: z.string().catch(""),
+  email: z.string().nullable().catch(null),
+});
 
 const sanitizeLabel = (name: string) =>
   name
@@ -96,12 +104,11 @@ export function tagActionItemOwners(markdown: string, people: MentionPerson[]): 
 
       if (parts.length === 0) return line;
       const owners = parts.map((part) => matchOwner(part, index));
+      const people = owners.filter((owner): owner is MentionPerson => owner != null);
 
-      if (owners.some((owner) => owner == null)) return line;
+      if (people.length !== owners.length) return line;
 
-      return `${task}${separator}${owners
-        .map((owner) => buildMentionMarkdown(owner as MentionPerson))
-        .join(", ")}`;
+      return `${task}${separator}${people.map((owner) => buildMentionMarkdown(owner)).join(", ")}`;
     })
     .join("\n");
 }

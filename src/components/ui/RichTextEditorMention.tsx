@@ -2,6 +2,7 @@ import { mergeAttributes } from "@tiptap/core";
 import Mention, { type MentionNodeAttrs } from "@tiptap/extension-mention";
 import { ReactNodeViewRenderer, ReactRenderer, type NodeViewProps } from "@tiptap/react";
 import type { SuggestionOptions } from "@tiptap/suggestion";
+import { z } from "zod";
 import MentionChip from "./MentionChip";
 import MentionSuggestions, {
   type MentionSuggestionItem,
@@ -11,11 +12,19 @@ import MentionSuggestions, {
 import {
   MENTION_HREF_PREFIX,
   buildMentionMarkdown,
+  mentionAttrsSchema,
   parseMentionEmail,
   type MentionPerson,
 } from "../../utils/mentionMarkdown";
 
 const SUGGESTION_WIDTH = 240;
+
+const mentionItemSchema = z.object({ label: z.string(), email: z.string().nullable() });
+
+// Only an HTML element can be styled; the suggestion renderer is a DOM node.
+function htmlElementOf(renderer: { element: Element } | null): HTMLElement | undefined {
+  return renderer?.element instanceof HTMLElement ? renderer.element : undefined;
+}
 
 const suggestionRender: SuggestionOptions<
   MentionSuggestionItem,
@@ -24,7 +33,7 @@ const suggestionRender: SuggestionOptions<
   let component: ReactRenderer<MentionSuggestionsHandle, MentionSuggestionsProps> | null = null;
 
   const position = (clientRect?: (() => DOMRect | null) | null) => {
-    const element = component?.element as HTMLElement | undefined;
+    const element = htmlElementOf(component);
     const rect = clientRect?.();
 
     if (!element || !rect) return;
@@ -45,13 +54,17 @@ const suggestionRender: SuggestionOptions<
     },
     onUpdate: (props) => {
       if (!component) return;
-      (component.element as HTMLElement).style.display = "";
+      const element = htmlElementOf(component);
+
+      if (element) element.style.display = "";
       component.updateProps({ items: props.items, command: props.command });
       position(props.clientRect);
     },
     onKeyDown: (props) => {
       if (props.event.key === "Escape") {
-        if (component) (component.element as HTMLElement).style.display = "none";
+        const element = htmlElementOf(component);
+
+        if (element) element.style.display = "none";
 
         return true;
       }
@@ -105,8 +118,7 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
       ];
     },
     renderHTML({ node, HTMLAttributes }) {
-      const label = node.attrs.label as string;
-      const email = node.attrs.email as string | null;
+      const { label, email } = mentionAttrsSchema.parse(node.attrs);
 
       return [
         "a",
@@ -118,7 +130,7 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
       ];
     },
     renderText({ node }) {
-      return `@${node.attrs.label}`;
+      return `@${mentionAttrsSchema.parse(node.attrs).label}`;
     },
     addNodeView() {
       return ReactNodeViewRenderer(MentionChip);
@@ -127,12 +139,8 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
       return {
         markdown: {
           serialize(state: { write: (content: string) => void }, node: NodeViewProps["node"]) {
-            state.write(
-              buildMentionMarkdown({
-                name: node.attrs.label as string,
-                email: node.attrs.email as string | null,
-              })
-            );
+            const { label, email } = mentionAttrsSchema.parse(node.attrs);
+            state.write(buildMentionMarkdown({ name: label, email }));
           },
           parse: {},
         },
@@ -142,7 +150,7 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
     suggestion: {
       items: ({ query }) => toSuggestionItems(getPeople(), query),
       command: ({ editor, range, props }) => {
-        const item = props as MentionSuggestionItem;
+        const item = mentionItemSchema.parse(props);
         editor
           .chain()
           .focus()

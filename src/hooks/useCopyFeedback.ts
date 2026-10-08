@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function useCopyFeedback(
-  text: string,
-  { resetMs = 1800 }: { resetMs?: number } = {}
-): {
-  copied: boolean;
-  copy: () => Promise<void>;
-  copyText: (textToCopy: string) => Promise<boolean>;
-  confirmCopied: (copiedText: string, durationMs?: number) => void;
-} {
+export function useCopyFeedback(text: string, { resetMs = 1800 }: { resetMs?: number } = {}) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmedTextRef = useRef<string | null>(null);

@@ -19,7 +19,7 @@ import {
 import { Button } from "../ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
 import { EmojiIconGrid } from "./EmojiIconPicker";
-import { FOLDER_COLOR_HEX } from "./folderColors";
+import { folderColorHex } from "./folderColors";
 import { InlineRename } from "./InlineRename";
 import { Dropdown, Label, Separator } from "@heroui/react";
 import { MENU_ITEM_CLASS } from "../ui/surfaceStyles";
@@ -64,9 +64,17 @@ import {
   deleteFolder,
   moveFolderToSpace,
   getNoteFromStore,
+  runInBackground,
 } from "../../stores/noteStore";
 
-type TFn = (key: string, options?: Record<string, unknown>) => string;
+// Custom properties are outside React.CSSProperties; the row reads them in CSS.
+function tintStyle(
+  tint: string
+): React.CSSProperties & { "--tint": string; "--tint-strong": string } {
+  return { "--tint": `${tint}26`, "--tint-strong": `${tint}40` };
+}
+
+type TFn = (key: string, options?: Record<string, string | number>) => string;
 
 type RowA11y = {
   tabIndex: number;
@@ -503,7 +511,11 @@ function NoteRow({
             onAction={(key) => {
               if (key === "rename") setRenaming(true);
               else if (key === "icon") setIconOpen(true);
-              else if (key === "show") window.electronAPI?.showNoteFile?.(note.id);
+              else if (key === "show")
+                runInBackground(
+                  Promise.resolve(window.electronAPI?.showNoteFile?.(note.id)),
+                  "Show note file failed"
+                );
               else if (key === "move") setMoveOpen(true);
               else if (key === "delete") onDelete(note.id);
             }}
@@ -613,7 +625,7 @@ function FolderRow({
   const [iconOpen, setIconOpen] = useState(false);
   const [contextPoint, setContextPoint] = useState<ContextPoint | null>(null);
   // Pastel row background from the folder colour; a hex plus 2-digit alpha.
-  const tint = folder.color ? FOLDER_COLOR_HEX[folder.color] : undefined;
+  const tint = folder.color ? folderColorHex(folder.color) : undefined;
 
   return (
     <>
@@ -644,11 +656,7 @@ function FolderRow({
             onKeyDown={a11y.onKeyDown}
             onFocus={a11y.onFocus}
             onClick={onOpen}
-            style={
-              tint
-                ? ({ "--tint": `${tint}26`, "--tint-strong": `${tint}40` } as React.CSSProperties)
-                : undefined
-            }
+            style={tint ? tintStyle(tint) : undefined}
             className={cn(
               rowClass,
               "ps-2",
@@ -690,7 +698,11 @@ function FolderRow({
               onContextPointChange={setContextPoint}
               onAction={(key) => {
                 if (key === "icon") setIconOpen(true);
-                else if (key === "show") window.electronAPI?.showFolderInExplorer?.(folder.name);
+                else if (key === "show")
+                  runInBackground(
+                    Promise.resolve(window.electronAPI?.showFolderInExplorer?.(folder.name)),
+                    "Show folder failed"
+                  );
                 else if (key === "rename") onRename();
                 else if (key === "delete") onDelete();
                 else if (key.startsWith("space:")) {
@@ -789,11 +801,13 @@ export default function SpacesTree({
   const { t, i18n } = useTranslation();
   const { toast, dismiss } = useToast();
 
-  const onNewNote = async (spaceId: number, folderId: number | null) => {
-    const note = await onNewNoteProp(spaceId, folderId);
-
-    if (note) onNavigate?.();
-  };
+  const onNewNote = (spaceId: number, folderId: number | null) =>
+    runInBackground(
+      onNewNoteProp(spaceId, folderId).then((note) => {
+        if (note) onNavigate?.();
+      }),
+      "Create note failed"
+    );
 
   const spaces = useSpaces().filter((space) => space.kind === "private");
   const folders = useFolders();
@@ -981,7 +995,7 @@ export default function SpacesTree({
             variant="ghost"
             size="sm"
             onClick={() => {
-              void onMoveNote(id, previous);
+              runInBackground(onMoveNote(id, previous), "Undo note move failed");
             }}
             className="h-6 px-2 text-xs"
           >
@@ -1039,16 +1053,18 @@ export default function SpacesTree({
       }),
       confirmText: t("notes.folders.deleteConfirm"),
       variant: "destructive",
-      onConfirm: async () => {
-        const result = await deleteFolder(folder.id);
-
-        if (!result.success && result.error)
-          toast({
-            title: t("notes.folders.couldNotDelete"),
-            description: t(localMutationErrorKey(result.error)),
-            variant: "destructive",
-          });
-      },
+      onConfirm: () =>
+        runInBackground(
+          deleteFolder(folder.id).then((result) => {
+            if (!result.success && result.error)
+              toast({
+                title: t("notes.folders.couldNotDelete"),
+                description: t(localMutationErrorKey(result.error)),
+                variant: "destructive",
+              });
+          }),
+          "Delete folder failed"
+        ),
     });
 
   if (loading && spaces.length === 0)
@@ -1073,7 +1089,7 @@ export default function SpacesTree({
         onNavigate?.();
       }}
       onMove={(target) => {
-        void moveNote(note.id, target);
+        runInBackground(moveNote(note.id, target), "Note move failed");
       }}
       onCreateFolderAndMove={onCreateFolderAndMove}
       onRename={(title) => void window.electronAPI.updateNote(note.id, { title })}
@@ -1094,25 +1110,34 @@ export default function SpacesTree({
           description: t("meetingResults.deleteActiveNoteDescription"),
           confirmText: t("meetingResults.deleteAudioConfirm"),
           variant: "destructive",
-          onConfirm: async () => {
-            try {
-              const result = await storeStopRecording(undefined, { suppressProcessing: true });
+          onConfirm: () =>
+            runInBackground(
+              (async () => {
+                try {
+                  const result = await storeStopRecording(undefined, {
+                    suppressProcessing: true,
+                  });
 
-              if (!result.stopped) {
-                toast({ title: t("meetingResults.stopBeforeDeleteError"), variant: "destructive" });
+                  if (!result.stopped) {
+                    toast({
+                      title: t("meetingResults.stopBeforeDeleteError"),
+                      variant: "destructive",
+                    });
 
-                return;
-              }
+                    return;
+                  }
 
-              await onDeleteNote(note.id);
-            } catch (error) {
-              toast({
-                title: t("meetingResults.stopBeforeDeleteError"),
-                description: error instanceof Error ? error.message : String(error),
-                variant: "destructive",
-              });
-            }
-          },
+                  onDeleteNote(note.id);
+                } catch (error) {
+                  toast({
+                    title: t("meetingResults.stopBeforeDeleteError"),
+                    description: error instanceof Error ? error.message : String(error),
+                    variant: "destructive",
+                  });
+                }
+              })(),
+              "Stop recording before delete failed"
+            ),
         });
       }}
       a11y={a11y(`${containerKey}:n:${note.id}`)}
@@ -1184,7 +1209,7 @@ export default function SpacesTree({
         ids.splice(ids.indexOf(folder.id) + (pos === "after" ? 1 : 0), 0, dragged.id);
         folderDragId.current = null;
         setFolderHint(null);
-        void reorderFolders(folder.space_id, ids);
+        runInBackground(reorderFolders(folder.space_id, ids), "Reorder folders failed");
 
         return true;
       },
@@ -1231,7 +1256,7 @@ export default function SpacesTree({
         onSetStyle={(style) => void updateFolderStyle(folder.id, style)}
         reorder={reorderHandlers(folder)}
         onMove={(target) => {
-          void moveFolderToSpace(folder.id, target.id);
+          runInBackground(moveFolderToSpace(folder.id, target.id), "Move folder failed");
         }}
         onDelete={() => removeFolder(folder)}
         a11y={a11y(key)}
@@ -1317,7 +1342,8 @@ export default function SpacesTree({
                     value={newFolderName}
                     onChange={(e) => setNewFolderName(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") void createFolderIn(space.id);
+                      if (e.key === "Enter")
+                        runInBackground(createFolderIn(space.id), "Create folder failed");
 
                       if (e.key === "Escape") setNewFolderSpace(null);
                     }}
@@ -1343,7 +1369,7 @@ export default function SpacesTree({
 
           if (spaceId == null) return;
 
-          if (key === "note") void onNewNote(spaceId, null);
+          if (key === "note") onNewNote(spaceId, null);
           else if (key === "folder") setNewFolderSpace(spaceId);
           else if (key === "toggle") setAllFoldersExpanded(!anyFolderExpanded);
         }}

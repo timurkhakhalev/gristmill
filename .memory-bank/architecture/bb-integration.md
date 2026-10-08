@@ -75,6 +75,17 @@ Explicit Stop discards partial persistence. Unmount can save a visible partial r
 - Outside BB, the launcher uses the channel of the app that installed it. Explicit `--profile` and `GRISTMILL_PROFILE` override these defaults.
 - A closed workspace profile fails visibly. The CLI does not read a different profile.
 
+### Bridge routes and access limits
+
+- The loopback HTTP bridge is an internal integration contract. It is not a published general-purpose API.
+- The bridge starts with the app. It binds `127.0.0.1` on the first free port in 8200–8219 and requires a Bearer token.
+- The app makes two tokens at each start. Both connection files use mode 0600.
+- The read token permits health and Note list, search, metadata, content, Summary and transcript. It does not permit all GET routes: folders, vocabulary, models and transcriptions stay closed.
+- The write token permits Note create, patch and delete, folder list and create, Dictionary and Snippets list and update, local models, local-file transcription, and separate transcription and audio deletion.
+- There are no folder edit or delete routes. `/v1/transcribe` uses an installed local model and a local file path. It does not run the full meeting and Summary pipeline.
+- The BB tool wrapper has a narrower allowlist than the write token: Note read, create and patch, folder list and create, and Dictionary and Snippets operations. It does not expose Note delete or transcription and audio routes.
+- Do not infer BB tool availability from the full route table. A read-token request to a write route fails as read-only.
+
 ### Chat prompt
 
 - BB Chat gets the current Note ID and a short description of `gristmill` as a helper for more meeting information. `gristmill --help` shows the commands.

@@ -1,42 +1,57 @@
 # Dictionary and Snippets
 
-As a Gristmill user, I want to improve vocabulary and reuse saved text.
-
-## User journey
-
-1. Open Settings → Dictionary and select Dictionary or Snippets.
-2. Add, search, edit or delete words or trigger/replacement pairs.
-3. For Dictionary, paste a bulk import or export the words to a text file.
-4. Use supported chat tools to read or update saved vocabulary and snippets.
-
-## Behavior and limits
-
-- Dictionary import accepts commas and line breaks, trims entries and ignores empty values and case-insensitive duplicates. Quoted exported entries support commas, quotes and line breaks.
-- Export opens a save dialog for dictionary.txt. It includes the stored agent-name entry, although that entry is shown separately in the UI.
-- Clear all requires confirmation and keeps the agent-name entry.
-- There is no record-count cap in the persistence path. The UI warns above 550 characters of words plus snippet triggers; provider prompt budgets are separate limits.
-- Snippets store a nonempty trigger and replacement. Triggers are unique without case. The UI trigger limit is 80 characters; storage and chat tools allow 100.
-- Snippets has no bulk import/export control. No count or replacement-length cap is enforced by the inspected path.
-- Words and snippet triggers contribute vocabulary hints; replacement text is not part of that hint list.
-- Chat tools can read exact snippet text and create/replace/delete snippets or update Dictionary. Availability depends on the route and registered tools. This does not provide global text expansion in external apps.
-
-## What to check
-
-- Dictionary export/import preserves punctuation in entries.
-- Clear all keeps the agent-name entry.
-- Updating an existing snippet trigger replaces its text.
-
-## BDD acceptance criteria
-
-- Given a word contains a comma or quote, when I export and import it, then its text is preserved.
-- Given a snippet trigger exists, when a supported tool updates it, then its replacement text changes.
+As a Gristmill user, I want to teach Gristmill my special words and keep reusable text.
 
 ## Entry points
 
-- [DictionaryView.tsx](../../../src/components/DictionaryView.tsx) — Dictionary and tabs.
-- [SnippetsView.tsx](../../../src/components/SnippetsView.tsx) — snippet editor.
-- [dictionaryImport.ts](../../../src/helpers/dictionaryImport.ts) — import/export format.
-- [transcriptionDataIpcHandlers.ts](../../../src/helpers/transcriptionDataIpcHandlers.ts) — export file.
-- [dictionaryPromptCap.ts](../../../src/utils/dictionaryPromptCap.ts) — prompt budgets.
-- [snippetTool.ts](../../../src/services/tools/snippetTool.ts) — snippet tools.
-- [dictionaryTool.ts](../../../src/services/tools/dictionaryTool.ts) — dictionary tools.
+- **Gristmill app → Settings → Dictionary → Dictionary tab** — words for transcription.
+- **Gristmill app → Settings → Dictionary → Snippets tab** — saved text with a trigger phrase.
+- **Gristmill app → Chat** — ask the chat to read or change the Dictionary and Snippets.
+
+## Paths
+
+### Add words to the Dictionary
+
+1. Open Settings → Dictionary.
+2. Type words in the field, separated by commas, for example `Gristmill, Supabase, John Snow`.
+3. Press Enter or click **Add**. The words appear in **Your dictionary**.
+4. Gristmill sends these words to the transcription provider as hints.
+5. If the list becomes long, Gristmill shows a notice. Some models read only the end of a long list.
+
+### Import or export a word list
+
+1. Click **Import words**. Paste the words, one on each line or separated by commas.
+2. Gristmill shows how many words are ready. Click **Import**. Gristmill removes empty values and duplicates.
+3. To save the list, click **Export dictionary** and select a location for `dictionary.txt`.
+4. You can import the exported file again. Words with commas, quotes or line breaks stay correct.
+
+### Edit or remove words
+
+1. Type in the field to search the list.
+2. Click a word to edit it, or click its remove button.
+3. To remove all words, click **Clear all** and confirm. The agent name entry (**Added by default**) stays.
+
+### Make a snippet
+
+1. Open the **Snippets** tab and click **New snippet**.
+2. Type a **Trigger**, for example `cal link`, and the **Replacement** text.
+3. Click **Create snippet**. A trigger must be unique. Case does not matter.
+4. To change a snippet, click it and edit it. To delete it, click its remove button.
+
+### Use snippets and the Dictionary from the chat
+
+1. In the chat, ask for the text of a snippet, for example "insert my cal link".
+2. The chat reads the exact saved text.
+3. Ask the chat to add or remove Dictionary words, or to create, replace or delete a snippet.
+4. Snippets work only inside Gristmill. They do not expand text in other apps.
+
+## BDD acceptance criteria
+
+- Given a word contains a comma or a quote, when I export and import it, then the word stays the same.
+- Given I click **Clear all** and confirm, when the list clears, then the agent name entry stays.
+- Given a snippet trigger exists, when the chat updates it, then its replacement text changes.
+
+## Related documents
+
+- [Vocabulary architecture](../../architecture/vocabulary.md) — import format, limits and prompt budgets.
+- [AI conversations](chat.md) — chat tools.

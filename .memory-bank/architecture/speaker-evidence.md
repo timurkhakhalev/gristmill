@@ -23,6 +23,21 @@ Platform evidence is a hint. It is never proof of identity.
 - Audio retention keeps names and evidence. Note deletion removes them.
 - Exports use the final names, without raw roster data.
 
+## Manual corrections
+
+User paths: [Correct speakers](../product/user-journeys/speakers.md).
+
+- The dialog selects Only this meeting each time it opens. It does not restore a previously linked email as the initial selection.
+- Participants come from the note. A participant is a candidate, not proof of speaker identity. Only an email of a note participant can be linked.
+- A linked contact name is remembered locally. This does not edit Google contacts.
+- Choosing a voice profile in Results stores its ID in the correction. It does not create a profile or train a voice embedding.
+- Name evidence priority: user, voice, platform, then model. Weaker automatic evidence does not replace a manual name.
+- Corrections change the displayed transcript mapping, not raw provider output. They do not rewrite an existing Summary.
+- Summary staleness follows the correction revision. Dismiss applies to that run and revision. A later correction can show the notice again.
+- For multiple recording groups, the combined transcript does not offer clickable speaker correction.
+- Model names have an auto badge. Platform names show their source. A user correction replaces this provenance.
+- Code locations: `src/components/notes/MeetingResultsPanel.tsx` (dialog and stale notice), `src/helpers/meetingProcessing.ts` (validation), `src/helpers/database.ts` (priority and revisions), `src/helpers/speakerIpcHandlers.ts` (voice-profile operations).
+
 ## Pipeline and priority
 
 ### Collection

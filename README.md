@@ -27,8 +27,8 @@ It also never shows a meeting as complete when a processing stage used only part
 - Gives a chat for each meeting. Answers link to transcript timestamps.
 - Lets you play, export and process the original audio again.
 - Connects meetings to calendars and participants.
-- Links Google Meet and Telemost calls through the [Gristmill Companion](.memory-bank/product/companion.md) Chrome extension.
-- Gives read-only access to notes from the terminal through the [`gristmill` CLI](.memory-bank/product/notes-cli.md).
+- Links Google Meet and Telemost calls through the [Gristmill Companion](.memory-bank/product/user-journeys/companion.md) Chrome extension.
+- Gives read-only access to notes from the terminal through the [`gristmill` CLI](.memory-bank/product/user-journeys/gristmill-cli.md).
 
 ## Getting started
 

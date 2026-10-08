@@ -1,5 +1,11 @@
+import { z } from "zod";
 import { cn } from "../lib/utils";
 import type { FolderItem } from "../../contracts/containers";
+
+// Key tables map a code or name to an i18n key; codes outside a table fall back.
+interface KeyTable {
+  readonly [code: string]: string;
+}
 
 export const DEFAULT_FOLDER_NAME = "Personal";
 
@@ -7,7 +13,7 @@ export const MEETINGS_FOLDER_NAME = "Meetings";
 
 export const VIDEOS_FOLDER_NAME = "Videos";
 
-const DEFAULT_FOLDER_LABEL_KEYS: Record<string, string> = {
+const DEFAULT_FOLDER_LABEL_KEYS: KeyTable = {
   [DEFAULT_FOLDER_NAME]: "notes.folders.defaults.personal",
   [MEETINGS_FOLDER_NAME]: "notes.folders.defaults.meetings",
   [VIDEOS_FOLDER_NAME]: "notes.folders.defaults.videos",
@@ -43,7 +49,7 @@ export function findDefaultFolder(folders: FolderItem[]): FolderItem | undefined
 }
 
 // URL-download error codes → notes.upload.* i18n keys.
-export const DOWNLOAD_ERROR_KEYS: Record<string, string> = {
+export const DOWNLOAD_ERROR_KEYS: KeyTable = {
   INVALID_URL: "urlInvalid",
   VIDEO_UNAVAILABLE: "urlVideoUnavailable",
   PLAYLIST_URL: "urlPlaylistNotSupported",
@@ -56,7 +62,7 @@ export const DOWNLOAD_ERROR_KEYS: Record<string, string> = {
 
 // Transcription error codes → notes.upload.* i18n keys. Codes absent here fall
 // back to the raw main-process message.
-const TRANSCRIPTION_ERROR_KEYS: Record<string, string> = {
+const TRANSCRIPTION_ERROR_KEYS: KeyTable = {
   NO_SPEECH_DETECTED: "noSpeechDetected",
   CHUNK_LOSS_EXCEEDED: "chunkLossExceeded",
   CUSTOM_ENDPOINT_INVALID: "customEndpointInvalid",
@@ -66,8 +72,11 @@ const TRANSCRIPTION_ERROR_KEYS: Record<string, string> = {
 // A coded failure arrives either as a returned result (BYOK, local) or as a
 // thrown error, so every call site resolves the key from whichever shape it
 // is holding.
+const codedFailureSchema = z.object({ code: z.string().optional() });
+
 export function transcriptionErrorKey(failure: unknown): string | undefined {
-  const code = (failure as { code?: string } | null | undefined)?.code;
+  const parsed = codedFailureSchema.safeParse(failure);
+  const code = parsed.success ? parsed.data.code : undefined;
 
   return code ? TRANSCRIPTION_ERROR_KEYS[code] : undefined;
 }

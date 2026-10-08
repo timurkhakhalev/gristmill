@@ -4,10 +4,12 @@ import {
   removeNoteFromLists,
   teardownNoteContainers,
 } from "./noteListOps";
+import { z } from "zod";
 import { findDefaultFolder } from "../components/notes/shared";
 import type { FolderItem, FolderStyle, SpaceItem } from "../contracts/containers";
 import type { PendingNoteUpdates } from "../lib/noteEditorPendingSave";
 import type { NoteItem } from "../contracts/notes";
+import logger from "../utils/logger";
 
 export interface ActiveContext {
   spaceId: number;
@@ -48,11 +50,14 @@ interface NoteState {
 
 const EXPANDED_STORAGE_KEY = "notesTree.expanded";
 
+const expandedKeysSchema = z.array(z.string());
+
 function readExpandedContainers(): Set<string> {
   try {
     const raw = localStorage.getItem(EXPANDED_STORAGE_KEY);
+    const parsed = expandedKeysSchema.safeParse(raw ? JSON.parse(raw) : []);
 
-    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    return new Set(parsed.success ? parsed.data : []);
   } catch {
     return new Set();
   }
@@ -81,6 +86,19 @@ const useNoteStore = create<NoteState>()(() => ({
   isTreeLoading: true,
   noteEventsRevision: 0,
 }));
+
+const PENDING_NOTE_FIELDS = [
+  "title",
+  "content",
+  "enhanced_content",
+] as const satisfies readonly (keyof PendingNoteUpdates)[];
+
+// Fire-and-forget refreshes: a failed background load is logged, not dropped.
+export function runInBackground(load: Promise<unknown>, label: string): void {
+  load.catch((error) =>
+    logger.error(label, { error: error instanceof Error ? error.message : String(error) }, "notes")
+  );
+}
 
 // Keep unsaved fields outside the mounted editor. Navigation cannot discard
 // the only copy of a failed write, and each Note has one in-flight writer.
@@ -129,8 +147,8 @@ export async function flushNoteEditorWrites(noteId: number): Promise<void> {
       if (!latest) return;
       const remaining = { ...latest.updates };
 
-      for (const field of Object.keys(snapshot) as Array<keyof PendingNoteUpdates>) {
-        if (remaining[field] === snapshot[field]) delete remaining[field];
+      for (const field of PENDING_NOTE_FIELDS) {
+        if (field in snapshot && remaining[field] === snapshot[field]) delete remaining[field];
       }
 
       updateNoteInStore(result.note);
@@ -260,11 +278,11 @@ function ensureIpcListeners() {
       if (note) {
         addNote(note);
         bumpNoteEventsRevision();
-        loadFolders();
+        runInBackground(loadFolders(), "Note folders refresh failed");
       }
     });
 
-    if (typeof dispose === "function") {
+    if (dispose) {
       disposers.push(dispose);
     }
   }
@@ -277,12 +295,12 @@ function ensureIpcListeners() {
         bumpNoteEventsRevision();
 
         if (previous && !sameContainers(previous, note)) {
-          loadFolders();
+          runInBackground(loadFolders(), "Note folders refresh failed");
         }
       }
     });
 
-    if (typeof dispose === "function") {
+    if (dispose) {
       disposers.push(dispose);
     }
   }
@@ -293,10 +311,10 @@ function ensureIpcListeners() {
       // Always signal: a note deleted from an unloaded container is not in
       // `lists`, so removeNote no-ops, but the authoritative list still changed.
       bumpNoteEventsRevision();
-      loadFolders();
+      runInBackground(loadFolders(), "Note folders refresh failed");
     });
 
-    if (typeof dispose === "function") {
+    if (dispose) {
       disposers.push(dispose);
     }
   }
@@ -328,11 +346,17 @@ function ensureIpcListeners() {
       const deletedFolder = state.folders.find((folder) => folder.id === id);
       const rootSpaceId = deletedFolder?.space_id ?? fallbackContext?.spaceId;
 
-      if (rootSpaceId != null) void loadContainerNotes(spaceContainerKey(rootSpaceId));
-      void loadFolders();
+      if (rootSpaceId != null) {
+        runInBackground(
+          loadContainerNotes(spaceContainerKey(rootSpaceId)),
+          "Note container load failed"
+        );
+      }
+
+      runInBackground(loadFolders(), "Note folders refresh failed");
     });
 
-    if (typeof dispose === "function") {
+    if (dispose) {
       disposers.push(dispose);
     }
   }
@@ -470,7 +494,7 @@ export function setContainerExpanded(key: string, expanded: boolean): void {
     persistExpandedContainers(next);
   }
 
-  if (expanded) void ensureContainerLoaded(key);
+  if (expanded) runInBackground(ensureContainerLoaded(key), "Note container load failed");
 }
 
 export function toggleContainerExpanded(key: string): void {
@@ -491,7 +515,7 @@ export function setActiveContext(spaceId: number, folderId: number | null): void
     activeContext: { spaceId, folderId },
     notes: state.notesByContainer[key] ?? [],
   });
-  void ensureContainerLoaded(key);
+  runInBackground(ensureContainerLoaded(key), "Note container load failed");
 }
 
 /**
@@ -557,7 +581,8 @@ export async function initializeNotesTree(): Promise<void> {
     ]);
 
     useNoteStore.getState().expandedContainers.forEach((key) => {
-      if (validKeys.has(key)) void ensureContainerLoaded(key);
+      if (validKeys.has(key))
+        runInBackground(ensureContainerLoaded(key), "Note container load failed");
     });
 
     if (getActiveNoteIdValue() == null && notes.length > 0) {

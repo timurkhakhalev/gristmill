@@ -10,7 +10,6 @@ import {
   noteFilesChannels,
   noteFilesSetEnabledArgsSchema,
   noteFilesSetPathArgsSchema,
-  pickFolderResultSchema,
   showFolderInExplorerArgsSchema,
   showNoteFileArgsSchema,
   type GranolaParsedNote,
@@ -19,6 +18,7 @@ import {
   type NoteFilesCommandResult,
   type PickFolderResult,
 } from "../contracts/noteFiles.js";
+import { createGranolaNoteKeyAllocator, parseGranolaCsv } from "./granolaImport.js";
 
 type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
 
@@ -58,17 +58,9 @@ export interface NoteFilesHandlerDeps {
 
 const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
 
-interface GranolaParser {
-  parseGranolaCsv(
-    text: unknown,
-    options?: { allocateNoteKey?: () => string }
-  ): {
-    ok: boolean;
-    error?: { code: string };
-    notes: GranolaParsedNote[];
-    warnings: Array<{ row?: number }>;
-  };
-  createGranolaNoteKeyAllocator(): () => string;
+// Error values arrive as thrown unknowns; only Error instances carry a message.
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function registerNoteFilesHandlers(
@@ -105,11 +97,11 @@ export function registerNoteFilesHandlers(
         deps.setNoteFilesEnabled(false);
         deps.logError(
           "Failed to set note-files enabled",
-          { error: (error as Error).message },
+          { error: errorMessage(error) },
           "note-files"
         );
 
-        return { success: false, error: (error as Error).message };
+        return { success: false, error: errorMessage(error) };
       }
     }
   );
@@ -132,11 +124,11 @@ export function registerNoteFilesHandlers(
         deps.setNoteFilesEnabled(false);
         deps.logError(
           "Failed to set note-files path",
-          { error: (error as Error).message },
+          { error: errorMessage(error) },
           "note-files"
         );
 
-        return { success: false, error: (error as Error).message };
+        return { success: false, error: errorMessage(error) };
       }
     }
   );
@@ -149,13 +141,9 @@ export function registerNoteFilesHandlers(
       return { success: true };
     } catch (error) {
       deps.setNoteFilesEnabled(false);
-      deps.logError(
-        "Failed to rebuild note files",
-        { error: (error as Error).message },
-        "note-files"
-      );
+      deps.logError("Failed to rebuild note files", { error: errorMessage(error) }, "note-files");
 
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage(error) };
     }
   });
 
@@ -180,7 +168,7 @@ export function registerNoteFilesHandlers(
       } catch (error) {
         deps.logError(
           "Failed to show note file",
-          { noteId: (args as number[])[0], error: (error as Error).message },
+          { noteId: parsed.data[0], error: errorMessage(error) },
           "note-files"
         );
 
@@ -206,7 +194,7 @@ export function registerNoteFilesHandlers(
       } catch (error) {
         deps.logError(
           "Failed to show folder",
-          { folderName: (args as string[])[0], error: (error as Error).message },
+          { folderName: parsed.data[0], error: errorMessage(error) },
           "note-files"
         );
 
@@ -219,7 +207,7 @@ export function registerNoteFilesHandlers(
     try {
       return await deps.pickFolder();
     } catch (error) {
-      deps.logError("Failed to pick folder", { error: (error as Error).message }, "note-files");
+      deps.logError("Failed to pick folder", { error: errorMessage(error) }, "note-files");
 
       return { canceled: true };
     }
@@ -236,9 +224,7 @@ export function registerNoteFilesHandlers(
         }
 
         const filePaths = [...result.filePaths].sort();
-        // The parser module is loaded lazily like the JS handler did.
-        const parser = (await import("./granolaImport.js")) as unknown as GranolaParser;
-        const allocateNoteKey = parser.createGranolaNoteKeyAllocator();
+        const allocateNoteKey = createGranolaNoteKeyAllocator();
         const notes: GranolaParsedNote[] = [];
         const seenSourceFiles = new Set<string>();
         let rowIssueCount = 0;
@@ -248,7 +234,7 @@ export function registerNoteFilesHandlers(
             return { canceled: false, success: false, error: "FILE_TOO_LARGE" };
           }
 
-          const parsed = parser.parseGranolaCsv(deps.readFileUtf8(filePath), {
+          const parsed = parseGranolaCsv(deps.readFileUtf8(filePath), {
             allocateNoteKey,
           });
 
@@ -264,7 +250,7 @@ export function registerNoteFilesHandlers(
             // Granola's source key is deterministic and local. It is enough
             // to avoid showing the same row twice when a chunked export is
             // selected twice, without consulting a server identity column.
-            const sourceFile = typeof note.sourceFile === "string" ? note.sourceFile : null;
+            const sourceFile = note.sourceFile;
 
             if (!sourceFile || !seenSourceFiles.has(sourceFile)) {
               if (sourceFile) seenSourceFiles.add(sourceFile);
@@ -294,7 +280,7 @@ export function registerNoteFilesHandlers(
       } catch (error) {
         deps.logError(
           "Granola import preview failed",
-          { error: (error as Error).message },
+          { error: errorMessage(error) },
           "granola-import"
         );
 
@@ -318,7 +304,7 @@ export function registerNoteFilesHandlers(
         } catch (error) {
           // SQLite already committed the import. Report the projection failure
           // alongside its counts instead of reporting that the import failed.
-          const message = (error as Error).message;
+          const message = errorMessage(error);
           deps.logError(
             "Note mirror failed after Granola import",
             { error: message },
@@ -339,11 +325,9 @@ export function registerNoteFilesHandlers(
 
       return run;
     } catch (error) {
-      deps.logError("Granola import failed", { error: (error as Error).message }, "granola-import");
+      deps.logError("Granola import failed", { error: errorMessage(error) }, "granola-import");
 
       return { success: false, error: "IMPORT_FAILED" };
     }
   });
-
-  void pickFolderResultSchema;
 }

@@ -29,9 +29,10 @@ export interface ParseCsvResult {
   warnings: CsvWarning[];
 }
 
-export function parseCsv(text: unknown): ParseCsvResult {
+// A missing CSV cell arrives as null or undefined and parses as empty text.
+export function parseCsv(text: string | null | undefined): ParseCsvResult {
   const warnings: CsvWarning[] = [];
-  let src = String(text ?? "");
+  let src = text ?? "";
 
   if (src.charCodeAt(0) === 0xfeff) src = src.slice(1);
 
@@ -104,6 +105,17 @@ export interface MapHeadersResult {
   warnings: CsvWarning[];
 }
 
+// Matching priority: earlier fields claim their columns first.
+const HEADER_FIELD_ORDER = [
+  "id",
+  "title",
+  "summary",
+  "userNotes",
+  "transcript",
+  "createdAt",
+  "attendees",
+] as const satisfies readonly GranolaField[];
+
 const HEADER_SYNONYMS: Record<GranolaField, string[]> = {
   id: ["id", "noteid", "docid", "documentid"],
   title: ["title", "documenttitle", "notetitle", "name", "meetingtitle"],
@@ -122,10 +134,7 @@ const HEADER_SYNONYMS: Record<GranolaField, string[]> = {
   attendees: ["attendees", "participants", "people", "guests"],
 };
 
-const normalizeHeader = (header: unknown) =>
-  String(header ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+const normalizeHeader = (header: string) => header.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
  * Map a CSV header row onto the note fields the importer understands.
@@ -145,10 +154,8 @@ export function mapHeaders(headerRow: string[]): MapHeadersResult {
   const claimed = new Set<number>();
   const mapping: GranolaHeaderMapping = {};
 
-  for (const [field, synonyms] of Object.entries(HEADER_SYNONYMS) as Array<
-    [GranolaField, string[]]
-  >) {
-    for (const synonym of synonyms) {
+  for (const field of HEADER_FIELD_ORDER) {
+    for (const synonym of HEADER_SYNONYMS[field]) {
       const index = normalized.findIndex((header, i) => header === synonym && !claimed.has(i));
 
       if (index !== -1) {
@@ -190,8 +197,8 @@ const US_DATE_RE =
  * @param {unknown} value
  * @returns {string | null}
  */
-export function normalizeDate(value: unknown): string | null {
-  const raw = String(value ?? "").trim();
+export function normalizeDate(value: string | null | undefined): string | null {
+  const raw = (value ?? "").trim();
 
   if (!raw) return null;
 
@@ -279,10 +286,10 @@ const matchSpeakerLine = (line: string): { speakerName: string; text: string } |
  * @returns {Array<object>}
  */
 export function parseTranscriptToSegments(
-  text: unknown,
+  text: string | null | undefined,
   anchorMs: number
 ): GranolaTranscriptSegment[] {
-  const trimmed = String(text ?? "").trim();
+  const trimmed = (text ?? "").trim();
 
   if (!trimmed) return [];
 
@@ -400,8 +407,8 @@ export interface GranolaAttendee {
   email: string;
 }
 
-const parseAttendees = (cell: unknown): GranolaAttendee[] =>
-  String(cell ?? "")
+const parseAttendees = (cell: string): GranolaAttendee[] =>
+  cell
     .split(/[,;\n]/)
     .map((token) => token.trim())
     .filter(Boolean)
@@ -452,12 +459,12 @@ export interface ParseGranolaCsvResult {
 }
 
 export function parseGranolaCsv(
-  text: unknown,
+  text: string | null | undefined,
   {
     allocateNoteKey = createGranolaNoteKeyAllocator(),
   }: { allocateNoteKey?: GranolaNoteKeyAllocator } = {}
 ): ParseGranolaCsvResult {
-  const src = String(text ?? "");
+  const src = text ?? "";
   const emptyHeaderInfo: ParseGranolaCsvResult["headerInfo"] = { mapped: {}, unknown: [] };
 
   if (!src.trim()) {

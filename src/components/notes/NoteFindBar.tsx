@@ -35,7 +35,8 @@ export default function NoteFindBar({
   }, [open, query, containerRef]);
 
   const clearHighlights = useCallback(() => {
-    const highlights = (CSS as unknown as { highlights?: HighlightRegistry }).highlights;
+    // Runtimes without the Custom Highlight API leave this undefined.
+    const highlights: HighlightRegistry | undefined = CSS.highlights;
     highlights?.delete(MATCH_HIGHLIGHT);
     highlights?.delete(ACTIVE_HIGHLIGHT);
   }, []);
@@ -51,7 +52,8 @@ export default function NoteFindBar({
   }, [query]);
 
   useEffect(() => {
-    const highlights = (CSS as unknown as { highlights?: HighlightRegistry }).highlights;
+    // Runtimes without the Custom Highlight API leave this undefined.
+    const highlights: HighlightRegistry | undefined = CSS.highlights;
     setMatchCount(ranges.length);
 
     if (!highlights) return;

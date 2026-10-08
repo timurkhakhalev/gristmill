@@ -4,10 +4,16 @@ import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
-import { Markdown } from "tiptap-markdown";
+import { Markdown, type MarkdownStorage } from "tiptap-markdown";
 import { cn } from "../lib/utils";
 import { createMentionExtension } from "./RichTextEditorMention";
 import type { MentionPerson } from "../../utils/mentionMarkdown";
+
+declare module "@tiptap/core" {
+  interface Storage {
+    markdown: MarkdownStorage;
+  }
+}
 
 interface RichTextEditorProps {
   value: string;
@@ -65,7 +71,7 @@ export function RichTextEditor({
     onUpdate: ({ editor: ed }) => {
       if (suppressUpdateRef.current) return;
 
-      const md = (ed.storage as any).markdown.getMarkdown() as string;
+      const md = ed.storage.markdown.getMarkdown();
       internalValueRef.current = md;
       onChange?.(md);
     },

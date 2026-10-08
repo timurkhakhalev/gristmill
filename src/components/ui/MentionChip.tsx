@@ -1,10 +1,10 @@
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import PersonAvatar from "./PersonAvatar";
+import { mentionAttrsSchema } from "../../utils/mentionMarkdown";
 
 /** Inline chip rendered for a mention node — avatar + name. */
 export default function MentionChip({ node }: NodeViewProps) {
-  const label = node.attrs.label as string;
-  const email = node.attrs.email as string | null;
+  const { label, email } = mentionAttrsSchema.parse(node.attrs);
 
   return (
     <NodeViewWrapper as="span" className="inline-flex items-baseline align-baseline mx-px">

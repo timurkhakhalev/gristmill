@@ -8,7 +8,7 @@ import { cn } from "../lib/utils";
 import { formatDateGroup, type DateFormat } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import type { NoteItem } from "../../contracts/notes";
-import { getFoldersValue } from "../../stores/noteStore";
+import { getFoldersValue, runInBackground } from "../../stores/noteStore";
 
 interface AddNotesToFolderDialogProps {
   open: boolean;
@@ -53,7 +53,10 @@ export default function AddNotesToFolderDialog({
     if (!open) return;
     setSearch("");
     setSelected(new Set());
-    window.electronAPI.getNotes(null, 500, null).then(setAllNotes);
+    runInBackground(
+      window.electronAPI.getNotes(null, 500, null).then(setAllNotes),
+      "Load notes for folder failed"
+    );
   }, [open]);
 
   const availableNotes = useMemo(
@@ -188,7 +191,7 @@ export default function AddNotesToFolderDialog({
           <Button
             variant="default"
             size="sm"
-            onClick={handleAdd}
+            onClick={() => runInBackground(handleAdd(), "Add notes to folder failed")}
             disabled={selected.size === 0 || isAdding}
             className="h-7 text-xs"
           >

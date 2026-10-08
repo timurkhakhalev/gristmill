@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { NoteOutput } from "../contracts/noteOutput";
+import { runInBackground } from "../stores/noteStore";
 
 type NoteScopeOutput = Extract<NoteOutput, { scope: "note" }>;
 
@@ -50,7 +51,7 @@ export function useNoteOutput(
           noteId,
           runId,
           note,
-          run: run as RunScopeOutput | null,
+          run,
           loading: false,
           error: null,
         });
@@ -60,11 +61,11 @@ export function useNoteOutput(
       }
     };
 
-    void refresh();
+    runInBackground(refresh(), "Note output refresh failed");
     const processing = window.electronAPI.onMeetingProcessingUpdated(() => void refresh());
 
     const notes = window.electronAPI.onNoteUpdated((note) => {
-      if (note.id === noteId) void refresh();
+      if (note.id === noteId) runInBackground(refresh(), "Note output refresh failed");
     });
 
     return () => {

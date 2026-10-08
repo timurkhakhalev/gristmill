@@ -5,7 +5,6 @@
     "src/main.tsx",
     "src/workers/onnxWorker.ts",
     "src/vite.config.mjs",
-    "src/eslint.config.js",
     "electron-builder.dev.cjs",
     "scripts/afterPack.cts",
     "scripts/beforeBuild.cts",

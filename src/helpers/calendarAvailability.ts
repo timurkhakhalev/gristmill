@@ -58,8 +58,7 @@ function hasValidDateParts(year: number, month: number, day: number): boolean {
   return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
 }
 
-export function isExplicitOffsetRfc3339(value: unknown): boolean {
-  if (typeof value !== "string") return false;
+export function isExplicitOffsetRfc3339(value: string): boolean {
   const match = RFC3339_WITH_OFFSET_PATTERN.exec(value);
 
   if (!match) return false;
@@ -97,23 +96,66 @@ export function isExplicitOffsetRfc3339(value: unknown): boolean {
   );
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
+// An event row as stored by the sync: availability reads only these fields
+// and malformed rows are skipped.
+interface AvailabilityEvent {
+  status?: unknown;
+  self_response_status?: unknown;
+  attendees?: unknown;
+  availability_status?: unknown;
+  is_all_day?: unknown;
+  start_time?: unknown;
+  end_time?: unknown;
+}
+
+// The request arrives over the tool/IPC wire as JSON; only these five option
+// keys are read and any other key is rejected by name.
+export interface RawRequest {
+  start: unknown;
+  end: unknown;
+  minimumSlotMinutes?: unknown;
+  bufferMinutes?: unknown;
+  maxResults?: unknown;
+}
+
+interface PlainObjectLike {
+  constructor: unknown;
+}
+
+function hasObjectPrototype(value: PlainObjectLike): boolean {
+  // SAFETY: only plain-object prototypes pass; class instances are rejected
+  // like before, since the wire payloads decode to plain objects.
+  const prototype = Object.getPrototypeOf(value) as PlainObjectLike | null;
 
   return prototype === Object.prototype || prototype === null;
 }
 
+function isPlainObject(value: unknown): value is RawRequest {
+  if (value === null || Array.isArray(value) || typeof value !== "object") return false;
+
+  return hasObjectPrototype(value);
+}
+
+// The events cache stores rows shaped like AvailabilityEvent; anything else
+// in the array is skipped exactly as before.
+function isAvailabilityEvent(value: unknown): value is AvailabilityEvent {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isIntegerOption(value: unknown): value is number {
+  return Number.isSafeInteger(value);
+}
+
 function validateIntegerOption(
-  value: unknown,
+  value: number,
   name: string,
   { minimum, maximum }: { minimum: number; maximum: number }
 ): number {
-  if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
     throw new RangeError(`${name} must be an integer between ${minimum} and ${maximum}`);
   }
 
-  return value as number;
+  return value;
 }
 
 function getLocalAvailabilityHorizonMs(now: Date): number {
@@ -143,11 +185,11 @@ export function validateCalendarAvailabilityRequest(
 
   if (unknownKey) throw new TypeError(`Unknown calendar availability option: ${unknownKey}`);
 
-  if (!isExplicitOffsetRfc3339(request.start)) {
+  if (typeof request.start !== "string" || !isExplicitOffsetRfc3339(request.start)) {
     throw new TypeError("start must be an RFC3339 timestamp with an explicit UTC offset");
   }
 
-  if (!isExplicitOffsetRfc3339(request.end)) {
+  if (typeof request.end !== "string" || !isExplicitOffsetRfc3339(request.end)) {
     throw new TypeError("end must be an RFC3339 timestamp with an explicit UTC offset");
   }
 
@@ -156,23 +198,29 @@ export function validateCalendarAvailabilityRequest(
   }
 
   const nowMs = now.getTime();
-  const requestedStartMs = Date.parse(request.start as string);
-  const endMs = Date.parse(request.end as string);
+  const requestedStartMs = Date.parse(request.start);
+  const endMs = Date.parse(request.end);
+
+  const rawMinimumSlot = request.minimumSlotMinutes ?? DEFAULT_MINIMUM_SLOT_MINUTES;
 
   const minimumSlotMinutes = validateIntegerOption(
-    (request.minimumSlotMinutes ?? DEFAULT_MINIMUM_SLOT_MINUTES) as unknown,
+    isIntegerOption(rawMinimumSlot) ? rawMinimumSlot : Number.NaN,
     "minimumSlotMinutes",
     MINIMUM_SLOT_MINUTES_BOUNDS
   );
 
+  const rawBuffer = request.bufferMinutes ?? DEFAULT_BUFFER_MINUTES;
+
   const bufferMinutes = validateIntegerOption(
-    (request.bufferMinutes ?? DEFAULT_BUFFER_MINUTES) as unknown,
+    isIntegerOption(rawBuffer) ? rawBuffer : Number.NaN,
     "bufferMinutes",
     BUFFER_MINUTES_BOUNDS
   );
 
+  const rawMaxResults = request.maxResults ?? DEFAULT_MAX_RESULTS;
+
   const maxResults = validateIntegerOption(
-    (request.maxResults ?? DEFAULT_MAX_RESULTS) as unknown,
+    isIntegerOption(rawMaxResults) ? rawMaxResults : Number.NaN,
     "maxResults",
     MAX_RESULTS_BOUNDS
   );
@@ -218,59 +266,84 @@ function parseLocalDateOnly(value: string): number | null {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-export function parseEventTime(value: unknown, isAllDay: boolean): number | null {
-  if (typeof value !== "string") return null;
-
+export function parseEventTime(value: string, isAllDay: boolean): number | null {
   if (isAllDay && DATE_ONLY_PATTERN.test(value)) return parseLocalDateOnly(value);
   const timestamp = Date.parse(value);
 
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function isDeclinedResponse(value: unknown): boolean {
-  return typeof value === "string" && value.trim().toLowerCase() === "declined";
+function isDeclinedResponse(value: string | undefined | null): boolean {
+  return value?.trim().toLowerCase() === "declined";
 }
 
-function isSelfDeclined(attendees: unknown): boolean {
+interface RawAttendee {
+  self?: unknown;
+  responseStatus?: unknown;
+  response_status?: unknown;
+}
+
+function parseRawAttendees(attendees: unknown): RawAttendee[] {
   let parsed: unknown = attendees;
 
   if (typeof attendees === "string") {
     try {
       parsed = JSON.parse(attendees);
     } catch {
-      return false;
+      return [];
     }
   }
 
-  if (!Array.isArray(parsed)) return false;
+  if (!Array.isArray(parsed)) return [];
 
-  return parsed.some(
-    (attendee) =>
-      (attendee as Record<string, unknown> | null)?.self === true &&
-      isDeclinedResponse(
-        (attendee as Record<string, unknown>).responseStatus ??
-          (attendee as Record<string, unknown>).response_status
-      )
+  return parsed.filter(
+    (attendee): attendee is RawAttendee => typeof attendee === "object" && attendee !== null
   );
 }
 
-function blocksTime(event: Record<string, unknown>): boolean {
-  const eventStatus = String(event.status ?? "").toLowerCase();
+function attendeeResponse(attendee: RawAttendee): string | undefined {
+  const { responseStatus, response_status } = attendee;
+
+  if (typeof responseStatus === "string") return responseStatus;
+
+  return typeof response_status === "string" ? response_status : undefined;
+}
+
+function isSelfDeclined(attendees: unknown): boolean {
+  return parseRawAttendees(attendees).some(
+    (attendee) => attendee.self === true && isDeclinedResponse(attendeeResponse(attendee))
+  );
+}
+
+function blocksTime(event: AvailabilityEvent): boolean {
+  const eventStatus = typeof event.status === "string" ? event.status.toLowerCase() : "";
 
   if (eventStatus === "cancelled" || eventStatus === "canceled") return false;
 
-  if (isDeclinedResponse(event.self_response_status)) return false;
+  if (typeof event.self_response_status === "string") {
+    if (isDeclinedResponse(event.self_response_status)) return false;
+  }
 
   if (isSelfDeclined(event.attendees)) return false;
 
-  return String(event.availability_status ?? "unknown").toLowerCase() !== "free";
+  const availability =
+    typeof event.availability_status === "string"
+      ? event.availability_status.toLowerCase()
+      : "unknown";
+
+  return availability !== "free";
 }
 
-function toIsoInterval(startMs: number, endMs: number): { start: string; end: string } {
+function toIsoInterval(startMs: number, endMs: number): AvailabilityInterval {
   return {
     start: new Date(startMs).toISOString(),
     end: new Date(endMs).toISOString(),
   };
+}
+
+export interface AvailabilityInterval {
+  start: string;
+  end: string;
 }
 
 export interface AvailabilitySlot {
@@ -280,7 +353,7 @@ export interface AvailabilitySlot {
 }
 
 export interface AvailabilityComputation {
-  busy: { start: string; end: string }[];
+  busy: AvailabilityInterval[];
   availableSlots: AvailabilitySlot[];
   hasMore: boolean;
   isEntireRangeFree: boolean;
@@ -290,24 +363,26 @@ export interface AvailabilityComputation {
 // so callers that validated up front (calendarAvailabilityService.ts needs the
 // normalized window to query the cache first) don't pay for a second pass.
 export function computeCalendarAvailability(
-  events: unknown,
+  events: readonly unknown[],
   normalizedRequest: NormalizedAvailabilityRequest
 ): AvailabilityComputation {
-  if (!Array.isArray(events)) throw new TypeError("events must be an array");
   const windowStartMs = Date.parse(normalizedRequest.start);
   const windowEndMs = Date.parse(normalizedRequest.end);
   const bufferMs = normalizedRequest.bufferMinutes * MINUTE_MS;
 
-  const intervals: { startMs: number; endMs: number }[] = [];
+  const intervals: Array<{ startMs: number; endMs: number }> = [];
 
   for (const event of events) {
-    if (!event || typeof event !== "object" || Array.isArray(event)) continue;
-    const record = event as Record<string, unknown>;
+    if (!isAvailabilityEvent(event)) continue;
 
-    if (!blocksTime(record)) continue;
-    const isAllDay = record.is_all_day === true || record.is_all_day === 1;
-    const eventStartMs = parseEventTime(record.start_time, isAllDay);
-    const eventEndMs = parseEventTime(record.end_time, isAllDay);
+    if (!blocksTime(event)) continue;
+    const isAllDay = event.is_all_day === true || event.is_all_day === 1;
+    const startText = event.start_time;
+    const endText = event.end_time;
+
+    if (typeof startText !== "string" || typeof endText !== "string") continue;
+    const eventStartMs = parseEventTime(startText, isAllDay);
+    const eventEndMs = parseEventTime(endText, isAllDay);
 
     if (eventStartMs === null || eventEndMs === null || eventEndMs <= eventStartMs) continue;
 
@@ -360,8 +435,8 @@ export function computeCalendarAvailability(
 }
 
 export function calculateCalendarAvailability(
-  events: unknown,
-  request: unknown,
+  events: readonly unknown[],
+  request: RawRequest,
   now: Date = new Date()
 ): AvailabilityComputation {
   return computeCalendarAvailability(events, validateCalendarAvailabilityRequest(request, now));

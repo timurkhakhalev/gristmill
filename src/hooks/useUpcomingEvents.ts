@@ -62,7 +62,7 @@ export function useUpcomingEvents(): UseUpcomingEventsReturn {
 
   // Fetch on mount and when connection status changes
   useEffect(() => {
-    fetchEvents();
+    fetchEvents().catch(() => {});
   }, [fetchEvents]);
 
   // Re-fetch when any provider syncs events
@@ -70,15 +70,15 @@ export function useUpcomingEvents(): UseUpcomingEventsReturn {
     if (!isConnected) return;
 
     const unsubGcal = window.electronAPI?.onGcalEventsSynced(() => {
-      fetchEvents();
+      fetchEvents().catch(() => {});
     });
 
     const unsubMcal = window.electronAPI?.onMcalEventsSynced(() => {
-      fetchEvents();
+      fetchEvents().catch(() => {});
     });
 
     const unsubAcal = window.electronAPI?.onAcalEventsSynced(() => {
-      fetchEvents();
+      fetchEvents().catch(() => {});
     });
 
     return () => {

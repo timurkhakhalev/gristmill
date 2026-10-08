@@ -61,12 +61,10 @@ Run all commands from the repository root.
 - A test selection that builds main also examines the main compilation. Other selections do not.
 - `pnpm test` runs compiler probes. It does not replace the renderer or test typecheck.
 - When a full suite is necessary, also run `pnpm run typecheck:renderer` separately.
-- `pnpm run lint` covers the root and main configuration and the renderer configuration.
-- For focused lint, use the configuration that owns the changed file. The root and `src/` have different configurations.
-- `pnpm run lint:oxlint` checks the root Oxlint policy with type-aware rules in one pass. Use `pnpm exec oxlint --format json .` for all diagnostics. The root, test and script `tsconfig.json` files inherit the canonical compiler settings so the type-aware engine can discover them. Renderer and extension already have standard config entry points.
-- `pnpm run lint:oxlint:fix` applies ordinary Oxlint fixes. It does not enable suggestions or dangerous fixes. Unfixed errors still produce a failed command.
+- `pnpm run lint` checks the root Oxlint policy with type-aware rules in one pass. Use `pnpm exec oxlint --format json .` for all diagnostics. The root, test and script `tsconfig.json` files inherit the canonical compiler settings so the type-aware engine can discover them. Renderer and extension already have standard config entry points.
+- `pnpm run lint:fix` applies ordinary Oxlint fixes. It does not enable suggestions or dangerous fixes. Unfixed errors still produce a failed command.
 - `pnpm run lint:policy:test` checks the copied TypeScript quality bundle with valid and invalid consumer examples.
-- `pnpm run format:oxfmt` is check-only. `pnpm run format:oxfmt:write` writes supported files with the root Oxfmt configuration. Temporary task files and the copied quality bundle are excluded.
+- `pnpm run format:check` is check-only. `pnpm run format` writes supported files with the root Oxfmt configuration. Temporary task files and the copied quality bundle are excluded.
 - Oxlint and Oxfmt both exclude `test/**`. This is a decision by the owner, tracked in #278 and deferred to #301; tests keep running and keep passing the compiler. Do not reintroduce test remediation under the old "lint applies to tests" wording, and do not treat an excluded test file as a passing control. Change a test only for the behavior or contract it covers, and select checks for that behavior.
 - Run lint fixes before Oxfmt. A second complete pass must not change files. Preserve the separate typecheck and behavior checks; lint does not prove result ownership or resource cleanup.
 - Do not use auto-fix across unrelated changed files.

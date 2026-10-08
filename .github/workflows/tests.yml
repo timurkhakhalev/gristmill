@@ -19,7 +19,7 @@ jobs:
       - name: Build better-sqlite3 for the runner's node
         run: pnpm --dir node_modules/better-sqlite3 exec prebuild-install
       - name: Quality checks
-        run: pnpm run lint && pnpm run typecheck
+        run: pnpm run lint && pnpm run format:check && pnpm run typecheck
       - name: Check translations
         run: pnpm run i18n:check
       - name: Audit dependencies

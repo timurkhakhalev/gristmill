@@ -194,6 +194,58 @@
         "quality/no-unknown-parameters": "off"
       }
     },
+    // Google conference_data arrives as stored JSON of an external schema;
+    // the video entry-point reader guards every access and degrades to null,
+    // matching the other calendar wire parsers.
+    {
+      "files": ["src/helpers/meetingJoinUrl.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    // Companion window IPC: the Electron event object carries the sender and
+    // the load-failure catch logs thrown unknowns; incoming payloads are
+    // schema-parsed (safeParse) before reaching the window, matching the
+    // other ipcMain handler boundary exceptions.
+    {
+      "files": ["src/helpers/meetingCompanionWindow.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off"
+      }
+    },
+    // Chrome extension typings: the chrome.* messaging surface passes opaque
+    // message values (sendMessage/onMessage/tabs.sendMessage) and storage
+    // dictionaries by contract; receivers schema-parse (safeParse) every
+    // message before use. The typing surface itself is the boundary.
+    {
+      "files": ["extension/src/chrome.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off",
+        "quality/no-unsafe-dictionary-type": "off"
+      }
+    },
+    // Companion frame codec: decoded native-messaging frames are honest
+    // unknown until the receiver's schema parses them, and the writer
+    // serializes schema-checked messages.
+    {
+      "files": ["src/helpers/companionFrames.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    // Auto-end lifecycle handlers receive the Electron invoke event and a
+    // rest spread of raw arguments; each handler narrows the wire shape via
+    // readAutoEndArguments before the engine call, matching the other ipcMain
+    // handler boundary exceptions.
+    {
+      "files": ["src/helpers/meetingAutoEndLifecycle.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off"
+      }
+    },
     // Calendar integration handlers receive unknown over ipcMain and log
     // thrown unknowns; every payload is schema-validated (parseOr/schema
     // .safeParse) before it reaches a manager, matching the other IPC

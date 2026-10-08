@@ -17,8 +17,16 @@ export interface MeetingPlatformEvidenceDatabase {
   setMeetingPlatformCoverage(recordingId: string, coverage: MeetingPlatformCoverage): void;
 }
 
-/** Evidence failure never invokes the capture failure path. All writes are bounded
- * and deferred off PCM delivery. A new instance belongs to exactly one recording. */
+// Zoom helper stdout is newline-delimited JSON; non-objects are unusable.
+function isObservationEnvelope(value: unknown): value is ObservationEnvelope {
+  return typeof value === "object" && value !== null;
+}
+
+interface ObservationEnvelope {
+  type?: unknown;
+  observation?: unknown;
+}
+
 export class ZoomSpeakerCollector {
   private child: ChildProcessWithoutNullStreams | null = null;
   private stopping = false;
@@ -119,14 +127,13 @@ export class ZoomSpeakerCollector {
       try {
         const message: unknown = JSON.parse(line);
 
-        if (!message || typeof message !== "object") throw new Error();
+        if (!isObservationEnvelope(message)) throw new Error();
 
         if ("type" in message && message.type === "observation" && "observation" in message) {
           const raw = message.observation;
 
           if (
-            !raw ||
-            typeof raw !== "object" ||
+            !isObservationEnvelope(raw) ||
             !("sessionId" in raw) ||
             !("instanceKey" in raw) ||
             !("activity" in raw)
@@ -191,7 +198,10 @@ export class ZoomSpeakerCollector {
 
     while (this.queue.length && !this.failure) {
       try {
-        this.queue.shift()!();
+        // shift() under the non-empty while condition above always yields a task.
+        const task = this.queue.shift();
+
+        if (task) task();
       } catch {
         this.fail("metadata-write-failed");
       }
@@ -201,7 +211,7 @@ export class ZoomSpeakerCollector {
   private fail(reason: string): void {
     this.failure ??= reason;
     this.queue.length = 0;
-    void this.closeHelper(false);
+    void this.closeHelper(false).catch(() => undefined);
 
     if (this.watchdog) clearInterval(this.watchdog);
     this.watchdog = null;

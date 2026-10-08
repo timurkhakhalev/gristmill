@@ -12,6 +12,7 @@ import {
   type MeetingAudioActivityMonitor,
 } from "./meetingAudioActivityMonitor.js";
 import { sendNoteAdded, sendNoteUpdated } from "./notesEvents.js";
+import type { PendingMeetingNoteNavigation } from "../contracts/meetingCoordinator.js";
 import type { MeetingNotificationPrompt } from "./windowConfig.js";
 
 export const IMMINENT_THRESHOLD_MS = 5 * 60 * 1000;
@@ -41,7 +42,10 @@ export interface DetectionCalendarEvent {
   attendees?: unknown;
   hangout_link?: string | null;
   conference_data?: string | null;
-  [key: string]: unknown;
+  is_all_day?: number;
+  status?: string | null;
+  organizer_email?: string | null;
+  attendees_count?: number;
 }
 
 export type MeetingAutoEndStopReason =
@@ -65,7 +69,8 @@ interface EngineNotificationCallbacks {
 
 interface DetectionData {
   event?: DetectionCalendarEvent | null;
-  [key: string]: unknown;
+  detectedAt?: number;
+  service?: string;
 }
 
 interface ActiveDetection {
@@ -132,7 +137,7 @@ export interface MeetingProcessDetectorLike extends NodeJS.EventEmitter {
 }
 
 export interface AudioActivityDetectorLike extends NodeJS.EventEmitter {
-  start(): unknown;
+  start(): void;
   stop(): void;
   resetPrompt(): void;
   dismiss(): void;
@@ -163,8 +168,15 @@ export interface MeetingDetectionWindowManager extends EngineNotificationCallbac
   }): Promise<boolean> | boolean | undefined;
   dismissMeetingAutoEndNotification?(sessionId: string): void;
   isMeetingNotificationSender?(sender: WebContents): boolean | undefined;
-  queueMeetingNoteNavigation?(payload: unknown): Promise<void>;
+  queueMeetingNoteNavigation?(payload: PendingMeetingNoteNavigation): Promise<void>;
 }
+
+function isDetectionPreference(value: unknown): value is boolean {
+  return value === true || value === false;
+}
+
+/** Column updates for note mutation; the database layer serializes values. */
+type NoteUpdates = Record<string, string | number | null>;
 
 export interface MeetingDetectionDatabase {
   saveNote(
@@ -180,7 +192,7 @@ export interface MeetingDetectionDatabase {
   ): (DetectionCalendarEvent & { attendees?: unknown }) | null | undefined;
   updateNote?(
     id: number,
-    updates: Record<string, unknown>
+    updates: NoteUpdates & { participants?: string }
   ): { success?: boolean; note?: unknown } | null | undefined;
   getActiveEvents(): DetectionCalendarEvent[];
   getContactProfiles?(emails: string[]): Array<{ email: string; display_name: string | null }>;
@@ -572,7 +584,9 @@ export class MeetingDetectionEngine {
   // Hot path — called for every meeting PCM chunk of both channels.
   recordMeetingAudioChunk(source: string, buffer: Buffer): void {
     if (!this._autoEndActive) return;
-    this._audioActivityMonitor.recordChunk(source as "mic" | "system", buffer);
+    // Only the two capture channels route through the recorder; unexpected
+    // values degrade to the system monitor.
+    this._audioActivityMonitor.recordChunk(source === "mic" ? "mic" : "system", buffer);
   }
 
   preparePlatformLeave(sessionId: string): boolean {
@@ -613,14 +627,14 @@ export class MeetingDetectionEngine {
     );
   }
 
-  _syncAudioActivityDetector(): unknown {
+  _syncAudioActivityDetector(): void {
     if (this.preferences.audioDetection || this._isAutoEndWanted()) {
-      return this.audioActivityDetector.start();
+      this.audioActivityDetector.start();
+
+      return;
     }
 
     this.audioActivityDetector.stop();
-
-    return undefined;
   }
 
   // The process-exit fast path needs the detector even when the user has turned
@@ -645,9 +659,11 @@ export class MeetingDetectionEngine {
         this._autoEndController.tick();
       }, AUTO_END_TICK_MS) ?? null;
 
-    if (this._autoEndTicker && typeof this._autoEndTicker === "object") {
-      this._autoEndTicker.unref?.();
-    }
+    // Browser timers return a number without unref; Node timers can be
+    // detached so they never hold the process open.
+    if (this._autoEndTicker !== null && !(this._autoEndTicker instanceof Object)) return;
+
+    if (this._autoEndTicker !== null && "unref" in this._autoEndTicker) this._autoEndTicker.unref();
   }
 
   _stopAutoEndTicker(): void {
@@ -668,7 +684,7 @@ export class MeetingDetectionEngine {
   }
 
   async _activateAutoEnd(sessionId: string): Promise<void> {
-    await this._syncAudioActivityDetector();
+    this._syncAudioActivityDetector();
 
     if (this._recordingSession?.sessionId !== sessionId || !this._isAutoEndWanted()) return;
 
@@ -983,15 +999,9 @@ export class MeetingDetectionEngine {
       .then((shown) => {
         if (shown === false) releaseUnshownPrompt();
       })
-      .catch((error: unknown) => {
+      .catch((error: Error) => {
         releaseUnshownPrompt();
-        debugLogger.warn(
-          "Meeting notification failed",
-          {
-            reason: error instanceof Error ? error.name : "error",
-          },
-          "meeting"
-        );
+        debugLogger.warn("Meeting notification failed", { reason: error.name }, "meeting");
       });
   }
 
@@ -1025,6 +1035,8 @@ export class MeetingDetectionEngine {
 
         // The response only reaches a shown detection, whose event the prompt
         // populated; the local alias keeps the real-event block narrow.
+        // SAFETY: detection.event is optional only for process-only paths; the
+        // calendar branch above guarantees it here.
         const detectionEvent = detection.event as DetectionCalendarEvent;
 
         if (isRealEvent && (await this._resumeExistingEventNote(detectionEvent, "calendar-join"))) {
@@ -1052,10 +1064,14 @@ export class MeetingDetectionEngine {
 
         if (isRealEvent) {
           const calEvent = this.databaseManager.getCalendarEventById?.(detectionEvent.id);
-          const updates: Record<string, unknown> = { calendar_event_id: detectionEvent.id };
+
+          const updates: NoteUpdates & { participants?: string } = {
+            calendar_event_id: detectionEvent.id,
+          };
 
           if (calEvent?.attendees) {
-            updates.participants = this._participantsWithNames(calEvent.attendees);
+            // SAFETY: attendee columns persist as JSON strings.
+            updates.participants = this._participantsWithNames(calEvent.attendees as string);
           }
 
           const updateResult = this.databaseManager.updateNote?.(noteResult.note.id, updates);
@@ -1152,10 +1168,7 @@ export class MeetingDetectionEngine {
     return true;
   }
 
-  async joinCalendarMeeting(
-    eventId: string,
-    trigger: "calendar-join" | "hotkey" | string = "calendar-join"
-  ): Promise<void> {
+  async joinCalendarMeeting(eventId: string, trigger: string = "calendar-join"): Promise<void> {
     this._meetingModeActive = true;
     debugLogger.info("Joining calendar meeting", { eventId, trigger }, "meeting");
 
@@ -1224,12 +1237,13 @@ export class MeetingDetectionEngine {
    * The event's attendee list with each person's best-known name filled in,
    * so the note, its summaries and speaker naming see "Eli Rum", not "eli.rum".
    */
-  _participantsWithNames(attendees: unknown): unknown {
-    if (typeof attendees !== "string") return attendees;
+  _participantsWithNames(attendees: string): string {
     let list: Array<{ email?: string; displayName?: string | null }>;
 
     try {
-      list = JSON.parse(attendees);
+      // SAFETY: the isArray check below gates every field access of the
+      // decoded attendee row list.
+      list = JSON.parse(attendees) as typeof list;
     } catch {
       return attendees;
     }
@@ -1241,9 +1255,9 @@ export class MeetingDetectionEngine {
       .filter((email): email is string => Boolean(email));
 
     const names = new Map(
-      (this.databaseManager.getContactProfiles?.(emails) ?? [])
-        .filter((profile) => profile.display_name)
-        .map((profile) => [profile.email.toLowerCase(), profile.display_name as string])
+      (this.databaseManager.getContactProfiles?.(emails) ?? []).flatMap((profile) =>
+        profile.display_name ? [[profile.email.toLowerCase(), profile.display_name] as const] : []
+      )
     );
 
     if (names.size === 0) return attendees;
@@ -1277,10 +1291,13 @@ export class MeetingDetectionEngine {
       return null;
     }
 
-    const updates: Record<string, unknown> = { calendar_event_id: calEvent.id };
+    const updates: NoteUpdates & { participants?: string } = {
+      calendar_event_id: calEvent.id,
+    };
 
     if (calEvent.attendees) {
-      updates.participants = this._participantsWithNames(calEvent.attendees);
+      // SAFETY: attendee columns persist as JSON strings.
+      updates.participants = this._participantsWithNames(calEvent.attendees as string);
     }
 
     const updateResult = this.databaseManager.updateNote?.(noteResult.note.id, updates);
@@ -1332,6 +1349,7 @@ export class MeetingDetectionEngine {
     notification: { kind?: string; sessionId?: string } | null = null
   ): void {
     if (notification?.kind === "auto-end") {
+      // SAFETY: auto-end notifications always carry their session id.
       this.handleAutoEndNotificationClosed(notification.sessionId as string);
 
       return;
@@ -1437,7 +1455,7 @@ export class MeetingDetectionEngine {
     let audioChanged = false;
 
     if (
-      typeof prefs?.processDetection === "boolean" &&
+      isDetectionPreference(prefs?.processDetection) &&
       prefs.processDetection !== this.preferences.processDetection
     ) {
       this.preferences.processDetection = prefs.processDetection;
@@ -1445,7 +1463,7 @@ export class MeetingDetectionEngine {
     }
 
     if (
-      typeof prefs?.audioDetection === "boolean" &&
+      isDetectionPreference(prefs?.audioDetection) &&
       prefs.audioDetection !== this.preferences.audioDetection
     ) {
       this.preferences.audioDetection = prefs.audioDetection;
@@ -1469,7 +1487,7 @@ export class MeetingDetectionEngine {
     else this.callDetector?.stop();
   }
 
-  getPreferences(): { processDetection: boolean; audioDetection: boolean } {
+  getPreferences() {
     return { ...this.preferences };
   }
 
@@ -1508,10 +1526,9 @@ module.exports = MeetingDetectionEngine;
 
 // Dual-export contract: bare require returns the class itself, TS named
 // imports (the composition root) drill the same constructor.
-module.exports.MeetingDetectionEngine = MeetingDetectionEngine;
-
-module.exports.AUTO_END_RESTART_WINDOW_MS = AUTO_END_RESTART_WINDOW_MS;
-
-module.exports.AUTO_END_RESTART_GRACE_MS = AUTO_END_RESTART_GRACE_MS;
-
-module.exports.AUTO_END_RESTART_CLAIM_MS = AUTO_END_RESTART_CLAIM_MS;
+Object.assign(module.exports, {
+  MeetingDetectionEngine,
+  AUTO_END_RESTART_WINDOW_MS,
+  AUTO_END_RESTART_GRACE_MS,
+  AUTO_END_RESTART_CLAIM_MS,
+});

@@ -6,7 +6,13 @@ import {
   telemostDocuments,
 } from "./telemostAdapter.js";
 import { callIdentity } from "./callIdentity.js";
+import type { CompanionContext } from "../../src/contracts/companion.js";
 import type { ChromeApi } from "./chrome.js";
+
+type CompanionContentMessage =
+  | { type: "context"; context: CompanionContext }
+  | { type: "clock-probe"; nonce: string; sourceSendNs: string }
+  | { type: "clock-confirm"; nonce: string; sourceReceiveNs: string };
 
 declare const chrome: ChromeApi;
 
@@ -44,7 +50,9 @@ function stop(): void {
   observed.clear();
 }
 
-function send(value: unknown): void {
+// Outgoing context/probe envelopes are built here from scanned DOM state;
+// the worker schema-parses each on arrival.
+function send(value: CompanionContentMessage): void {
   if (stopped) return;
 
   try {
@@ -56,6 +64,8 @@ function send(value: unknown): void {
 }
 
 const onClick = (event: Event) => {
+  // SAFETY: click targets on scanned documents are Elements; other node types
+  // are rejected by the nodeType check below.
   const element = event.target as Element | null;
 
   // The Telemost control belongs to another Window; instanceof Element would
@@ -79,6 +89,7 @@ const onClick = (event: Event) => {
 
 function documents(): Document[] {
   if (telemost) return telemostDocuments(document);
+  // SAFETY: only the documentPictureInPicture capability of this window is read.
   const pip = (window as PiPWindow).documentPictureInPicture?.window;
 
   return pip && !pip.closed ? [document, pip.document] : [document];
@@ -177,6 +188,7 @@ window.addEventListener("pageshow", (event) => {
 
 window.addEventListener("pagehide", stop);
 
+// SAFETY: only the documentPictureInPicture capability of this window is read.
 (window as PiPWindow).documentPictureInPicture?.addEventListener("enter", schedule);
 
 scan();

@@ -38,8 +38,8 @@ export class MeetingCallDetector extends EventEmitter {
   start(): void {
     if (this.timer || process.platform !== "darwin") return;
     this.generation += 1;
-    void this.poll();
-    this.timer = setInterval(() => void this.poll(), POLL_MS);
+    void this.poll().catch(() => undefined);
+    this.timer = setInterval(() => void this.poll().catch(() => undefined), POLL_MS);
     this.timer.unref?.();
   }
 

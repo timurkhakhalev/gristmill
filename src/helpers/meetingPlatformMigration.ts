@@ -32,6 +32,8 @@ export function migrateMeetingPlatformEvidence(database: SqliteDatabase): void {
       ) WHERE EXISTS (SELECT 1 FROM json_each(meeting_run_platform_decisions.decisions_json) WHERE json_type(value, '$.platform') IS NULL);
     `);
 
+    // better-sqlite3's pragma returns plain row objects for table_info.
+    // SAFETY: only the `name` column is read.
     const columns = database.pragma("table_info(meeting_run_speaker_corrections)") as Array<{
       name: string;
     }>;
@@ -45,6 +47,8 @@ export function migrateMeetingPlatformEvidence(database: SqliteDatabase): void {
       );
     }
 
+    // The row exists because the table was created above; only `sql` is read.
+    // SAFETY: sqlite_master rows carry the CREATE statement in `sql`.
     const definition = database
       .prepare("SELECT sql FROM sqlite_master WHERE name = 'meeting_run_speaker_corrections'")
       .get() as { sql: string };

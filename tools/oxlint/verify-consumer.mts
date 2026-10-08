@@ -5,6 +5,7 @@ import {
   mkdirSync,
   writeFileSync,
   readFileSync,
+  realpathSync,
   symlinkSync,
   rmSync,
   cpSync,
@@ -34,7 +35,9 @@ const outputSchema = z.object({
 });
 
 await test("project consumer preserves type, Promise and runtime boundary rules", (t) => {
-  const consumer = mkdtempSync(path.join(tmpdir(), "gristmill-oxlint-consumer-"));
+  // Resolve symlinks (macOS /var -> /private/var): oxlint skips ignorePatterns
+  // for an absolute path that goes through a symlink.
+  const consumer = realpathSync(mkdtempSync(path.join(tmpdir(), "gristmill-oxlint-consumer-")));
   t.after(() => rmSync(consumer, { recursive: true, force: true }));
   symlinkSync(path.join(root, "node_modules"), path.join(consumer, "node_modules"), "dir");
   // The bundle and plugin dirs must exist at their documented relative

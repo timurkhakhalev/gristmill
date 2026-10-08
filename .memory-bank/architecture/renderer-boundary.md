@@ -4,7 +4,7 @@ The renderer calls main through `window.electronAPI` and shared IPC contracts. I
 
 ## Direct imports
 
-The renderer ESLint configuration enforces the boundary for root renderer source files and `components`, `hooks`, `stores`, `services`, `models` and `lib`. The main-only `services/localReasoningBridge.ts` is excluded. Main helpers, preload and ONNX workers retain their own runtime requirements.
+The renderer boundary override in the root `.oxlintrc.json` enforces the boundary for root renderer source files and `components`, `hooks`, `stores`, `services`, `models` and `lib`. The main-only `services/localReasoningBridge.ts` is excluded. Main helpers, preload and ONNX workers retain their own runtime requirements.
 
 `no-restricted-imports` rejects Node built-ins, Electron, preload, workers and unapproved helper imports. It also rejects the main-only process/server utilities, Local reasoning bridge and root main/preload entries. The rule applies to static imports, re-exports and type imports, including `@/` paths. Shared types belong in contracts rather than main implementation.
 

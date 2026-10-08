@@ -43,7 +43,7 @@ export function UploadModelSettingsButton({
 interface UploadCompleteWarningsProps {
   partialWarning: { failed: number; total: number } | null;
   diarizationWarning: boolean;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: (key: string, options?: Record<string, string | number>) => string;
 }
 
 export function UploadCompleteWarnings({

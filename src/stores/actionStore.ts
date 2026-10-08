@@ -22,7 +22,7 @@ function ensureIpcListeners() {
       if (action) addActionToStore(action);
     });
 
-    if (typeof dispose === "function") disposers.push(dispose);
+    disposers.push(dispose);
   }
 
   if (window.electronAPI?.onActionUpdated) {
@@ -30,7 +30,7 @@ function ensureIpcListeners() {
       if (action) updateActionInStore(action);
     });
 
-    if (typeof dispose === "function") disposers.push(dispose);
+    disposers.push(dispose);
   }
 
   if (window.electronAPI?.onActionDeleted) {
@@ -38,7 +38,7 @@ function ensureIpcListeners() {
       removeActionFromStore(id);
     });
 
-    if (typeof dispose === "function") disposers.push(dispose);
+    disposers.push(dispose);
   }
 
   hasBoundIpcListeners = true;

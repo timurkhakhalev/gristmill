@@ -151,15 +151,22 @@ export default function BatchQueueView({
               />
             )}
 
-            {item.status === "done" && item.noteId && onOpenNote && (
-              <button
-                onClick={() => onOpenNote(item.noteId!)}
-                className="text-2xs text-primary/50 hover:text-primary/70"
-                aria-label={t("notes.upload.openNote")}
-              >
-                {t("notes.upload.openNote")}
-              </button>
-            )}
+            {item.status === "done" &&
+              item.noteId != null &&
+              onOpenNote &&
+              (() => {
+                const noteId = item.noteId;
+
+                return (
+                  <button
+                    onClick={() => onOpenNote(noteId)}
+                    className="text-2xs text-primary/50 hover:text-primary/70"
+                    aria-label={t("notes.upload.openNote")}
+                  >
+                    {t("notes.upload.openNote")}
+                  </button>
+                );
+              })()}
 
             {item.status === "error" && item.error && (
               <span

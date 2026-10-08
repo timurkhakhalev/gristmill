@@ -126,6 +126,8 @@ export async function transcribeFile(
   }
 
   if (route.transport === "local") {
+    // SAFETY: local transport means useLocalWhisper was on, and the UI/store
+    // keep localTranscriptionProvider within the local provider union.
     const provider = cfg.localTranscriptionProvider as LocalTranscriptionProvider;
 
     return window.electronAPI.transcribeAudioFile(filePath, {

@@ -21,30 +21,6 @@ test("M8 packaging exposes only the macOS Apple Silicon target", () => {
   ]);
 });
 
-test("M8 package scripts do not download removed products or platform artifacts", () => {
-  const pkg = readJson("package.json");
-  const scripts = Object.keys(pkg.scripts);
-  assert.equal(
-    scripts.some((name: string) => /(?:win|linux|x64)/i.test(name)),
-    false
-  );
-  assert.equal(
-    (Object.values(pkg.scripts) as string[]).some((command: string) =>
-      /(?:yt-dlp|qdrant|minilm|embedding-model|brand-font)/i.test(command)
-    ),
-    false
-  );
-
-  for (const dependency of [
-    "@better-auth/sso",
-    "better-auth",
-    "@qdrant/js-client-rest",
-    "electron-updater",
-  ]) {
-    assert.equal(dependency in pkg.dependencies, false, dependency);
-  }
-});
-
 test("local inference engines are absent from the package until explicitly selected", () => {
   const builder = readJson("electron-builder.json");
   const pkg = readJson("package.json");

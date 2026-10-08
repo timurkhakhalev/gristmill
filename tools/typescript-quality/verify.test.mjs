@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 
-test('copied consumer enforces policy and supports narrow exceptions', () => {
+await test('copied consumer enforces policy and supports narrow exceptions', () => {
   const consumer = mkdtempSync(join(tmpdir(), 'typescript-policy-consumer-'))
 
   try {

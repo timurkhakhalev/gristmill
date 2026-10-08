@@ -11,7 +11,7 @@ We changed it to strict TypeScript in stages: typed IPC boundaries, provider sel
 ## Decision
 
 - `typecheck` and `build:main` use native TypeScript 7 (`tsc`, package `@typescript/native`).
-- The `typescript` package is an alias for TypeScript 6 (`tsc6`). Use it only for Compiler API consumers: type-probe tests and `typescript-eslint`. TypeScript 7.0 does not supply a programmatic API.
+- The `typescript` package is an alias for TypeScript 6 (`tsc6`). Use it only for Compiler API consumers: type-probe tests. TypeScript 7.0 does not supply a programmatic API.
 - Keep the CLI package and the API package separate until TypeScript 7 supplies an API.
 - Node tooling is strict TypeScript. Use `.cts` for native Node CommonJS (Node 24 removes the types). Use `.mts` with `tsx` for provider canaries.
 - Migrated JS, CJS and MJS sources have no legacy copies and no extension shims.

@@ -8,7 +8,7 @@ The renderer ESLint configuration enforces the boundary for root renderer source
 
 `no-restricted-imports` rejects Node built-ins, Electron, preload, workers and unapproved helper imports. It also rejects the main-only process/server utilities, Local reasoning bridge and root main/preload entries. The rule applies to static imports, re-exports and type imports, including `@/` paths. Shared types belong in contracts rather than main implementation.
 
-`helpers` contains both browser and main code. Its permitted renderer entries are listed once in `src/eslint.config.js`. For example, `transcriptionRoute` and `chatRouting` are permitted; `database` and `ipcHandlers` are not. Before adding an entry, trace its runtime dependencies. A directory name alone does not prove browser safety.
+`helpers` contains both browser and main code. Its permitted renderer entries are listed once in the root `.oxlintrc.json` renderer boundary override. For example, `transcriptionRoute` and `chatRouting` are permitted; `database` and `ipcHandlers` are not. Before adding an entry, trace its runtime dependencies. A directory name alone does not prove browser safety.
 
 Literal dynamic imports use the same restrictions through `no-restricted-syntax`. Node globals such as `process`, `Buffer` and `require` are rejected. Arbitrary computed dynamic paths are outside this syntactic guarantee.
 

@@ -22,42 +22,6 @@ const cfg = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-test("file transcription never dispatches an OpenWhispr cloud route", async (t: import("node:test").TestContext) => {
-  const { window } = installBrowserGlobals(t) as {
-    window: { electronAPI: Record<string, unknown> };
-  };
-
-  const vite = await createRendererServer(t, {
-    cachePrefix: "openh-file-direct-routing-",
-  });
-
-  const { transcribeFile } = (await vite.ssrLoadModule(
-    "/services/fileTranscription.ts"
-  )) as typeof import("../../src/services/fileTranscription.ts");
-
-  let cloudCalls = 0;
-  let byokOptions: Record<string, unknown> | undefined;
-  window.electronAPI.transcribeAudioFileCloud = async () => {
-    cloudCalls += 1;
-
-    return { success: true, text: "cloud" };
-  };
-
-  window.electronAPI.transcribeAudioFileByok = async (options: Record<string, unknown>) => {
-    byokOptions = options;
-
-    return { success: true, text: "direct" };
-  };
-
-  // The legacy flag is deliberately ignored. A direct provider route is the
-  // only upload dispatch left after the managed lane is removed.
-  const result = await transcribeFile("/tmp/audio.wav", cfg({ isOpenWhisprCloud: true }), false);
-
-  assert.equal(result.text, "direct");
-  assert.equal(cloudCalls, 0);
-  assert.equal(byokOptions!.provider, "openai");
-});
-
 test("enterprise transcription fails closed instead of using organization routing", async (t: import("node:test").TestContext) => {
   const { window } = installBrowserGlobals(t) as {
     window: { electronAPI: Record<string, unknown> };

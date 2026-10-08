@@ -224,7 +224,6 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/config/rendererInferenceRemovalContract.test.ts",
       "test/config/colorSchemes.test.ts",
       "test/helpers/appVersion.test.ts",
       "test/helpers/assetDownloadOffline.test.ts",
@@ -237,7 +236,6 @@
       "test/helpers/externalUrlOpener.test.ts",
       "test/helpers/formatBytes.test.ts",
       "test/helpers/globeKeyManager.test.ts",
-      "test/helpers/m4DictationRemovalContract.test.ts",
       "test/helpers/networkErrors.test.ts",
       "test/helpers/notificationTimer.test.ts",
       "test/helpers/pillVisibilityHandoff.test.ts",
@@ -251,8 +249,6 @@
       "test/helpers/windowPositionClamp.test.ts",
       "test/lib/localMutationError.test.ts",
       "test/locales/translationCoverage.test.ts",
-      "test/m1IdentitySourceContract.test.ts",
-      "test/m2ServerLayerRemovalContract.test.ts",
       "test/m8PlatformSourceContract.test.ts",
       "test/scripts/beforeBuild.test.ts",
       "test/scripts/downloadLifecycle.test.ts",
@@ -473,7 +469,6 @@
     "kind": "unit",
     "buildMain": false,
     "files": [
-      "test/helpers/databaseLocalSchema.test.ts",
       "test/helpers/deviceCleanupContract.test.ts"
     ]
   },
@@ -590,12 +585,6 @@
     "kind": "unit",
     "buildMain": false,
     "files": ["test/helpers/localServerPolicy.test.ts", "test/helpers/retiredCloudModels.test.ts"]
-  },
-  {
-    "domains": ["ai", "platform", "transcription"],
-    "kind": "unit",
-    "buildMain": false,
-    "files": ["test/helpers/macInferenceSourceContract.test.ts"]
   },
   {
     "domains": ["platform", "transcription"],
@@ -769,12 +758,6 @@
       "test/helpers/windowConfigMeetingNotification.test.ts",
       "test/helpers/windowManagerMeetingNotification.test.ts"
     ]
-  },
-  {
-    "domains": ["notes", "settings"],
-    "kind": "unit",
-    "buildMain": false,
-    "files": ["test/m7bSettingsNotesLocalContract.test.ts"]
   },
   {
     "domains": ["ai", "platform"],

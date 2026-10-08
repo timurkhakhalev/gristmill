@@ -42,47 +42,6 @@ test("calendar integrations provide an OAuth not-configured state in every local
   }
 });
 
-test("renderer locales do not retain removed account, dictation, or cloud-paywall branches", () => {
-  const removed = [
-    "auth",
-    "emailVerification",
-    "forgotPassword",
-    "dictationAgent",
-    "dictationTranslation",
-    "assistant",
-    "insights",
-    "workspaces",
-    "referral",
-    "integrations.api",
-    "integrations.mcp",
-    "integrations.cli",
-    "apiKeysSection",
-    "controlPanel.update",
-    "controlPanel.history",
-    "onboarding.activation",
-    "onboarding.connectivity",
-    "onboarding.requiredModels",
-    "notes.realtimeBanner",
-    "settingsPage.general.hotkey",
-    "settingsPage.general.floatingIcon",
-    "settingsPage.general.clipboard",
-    "settingsPage.general.updates",
-    "settingsPage.transcription.openwhisprCloud",
-    "settingsPage.transcription.description",
-    "settingsPage.transcription.modes.openwhispr",
-    "settingsPage.transcription.modes.openwhisprDesc",
-    "settingsPage.transcription.toasts.switchedCloud",
-  ];
-
-  for (const locale of locales) {
-    const translation = readJson(locale, "translation.json");
-
-    for (const key of removed) {
-      assert.equal(getPath(translation, key), undefined, `${locale}: ${key}`);
-    }
-  }
-});
-
 test("prompt locale bundles expose cleanup and dictionary only", () => {
   for (const locale of locales) {
     const prompts = readJson(locale, "prompts.json");

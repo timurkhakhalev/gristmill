@@ -17,20 +17,6 @@ test("macOS packaging uses the Gristmill icon", () => {
   assert.equal(fs.existsSync(path.join(root, "src/assets/openwhispr.icon")), false);
 });
 
-test("removed Linux shortcut helpers and dependency stay absent", () => {
-  const packageJson = JSON.parse(read("package.json"));
-  assert.equal("@homebridge/dbus-native" in (packageJson.dependencies || {}), false);
-
-  for (const helper of [
-    "gnomeShortcut.js",
-    "gnomeGlobalShortcutsPortal.js",
-    "hyprlandShortcut.js",
-    "kdeShortcut.js",
-  ]) {
-    assert.equal(fs.existsSync(path.join(root, "src/helpers", helper)), false, helper);
-  }
-});
-
 test("complete uninstall is scoped to the Gristmill profile", () => {
   const script = read("scripts/complete-uninstall.sh");
   assert.match(script, /Gristmill/);

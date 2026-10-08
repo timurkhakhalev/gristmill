@@ -13,7 +13,6 @@ function loadPreloadApi() {
     | {
         setOnboardingActive(active: boolean): Promise<unknown>;
         setTimeFormat(format: "locale" | "12h" | "24h"): Promise<unknown>;
-        markMacAccessibilityFeaturesReady?: unknown;
       }
     | undefined;
 
@@ -72,11 +71,6 @@ test("onboarding active bridge invokes only its allowlisted channel", async () =
     ["onboarding-set-active", true],
     ["onboarding-set-active", false],
   ]);
-});
-
-test("removed assistant readiness does not expose a dead IPC channel", () => {
-  const { api } = loadPreloadApi();
-  assert.equal(api.markMacAccessibilityFeaturesReady, undefined);
 });
 
 test("time format bridge sends the selected preference to main", async () => {

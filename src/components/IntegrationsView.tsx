@@ -6,18 +6,11 @@ import { BIDI_VALUE_TOKEN, BidiInterpolatedText } from "./ui/BidiInterpolatedTex
 import { Chip } from "@heroui/react";
 import { SettingsPanel, SettingsPanelRow, SettingsRow } from "./ui/SettingsSection";
 import { Toggle } from "./ui/toggle";
-import {
-  AlertDialog,
-  ConfirmDialog,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
+import { AlertDialog, ConfirmDialog } from "./ui/dialog";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useSystemAudioPermission } from "../hooks/useSystemAudioPermission";
 import { canManageSystemAudioInApp } from "../utils/systemAudioAccess";
+import { runInBackground } from "../stores/noteStore";
 import type { CalendarAccount } from "../contracts/calendar";
 import googleCalendarIcon from "../assets/icons/google-calendar.svg";
 import microsoftCalendarIcon from "../assets/icons/microsoft-calendar.svg";
@@ -357,15 +350,21 @@ export default function IntegrationsView() {
 
   useEffect(() => {
     const refreshGoogleStatus = () =>
-      void window.electronAPI?.gcalGetConnectionStatus().then((status) => {
-        setGoogleConfigured(Boolean(status.configured));
-        setPeopleAccessMissing(status.peopleAccessMissing ?? []);
-      });
+      runInBackground(
+        window.electronAPI?.gcalGetConnectionStatus().then((status) => {
+          setGoogleConfigured(Boolean(status.configured));
+          setPeopleAccessMissing(status.peopleAccessMissing ?? []);
+        }) ?? Promise.resolve(),
+        "Google calendar status refresh failed"
+      );
 
     refreshGoogleStatus();
-    void window.electronAPI?.mcalGetConnectionStatus().then((status) => {
-      setMicrosoftConfigured(Boolean(status.configured));
-    });
+    runInBackground(
+      window.electronAPI?.mcalGetConnectionStatus().then((status) => {
+        setMicrosoftConfigured(Boolean(status.configured));
+      }) ?? Promise.resolve(),
+      "Microsoft calendar status refresh failed"
+    );
 
     // The typed gcal-connection-changed event always carries the full
     // account list; the legacy no-accounts payload shape no longer exists.
@@ -387,12 +386,15 @@ export default function IntegrationsView() {
 
   useEffect(() => {
     if (!isMac) return;
-    window.electronAPI?.acalGetConnectionStatus().then((status) => {
-      if (status) {
-        setAppleCalendarConnected(status.connected);
-        setAppleSourceNames(status.sourceNames);
-      }
-    });
+    runInBackground(
+      window.electronAPI?.acalGetConnectionStatus().then((status) => {
+        if (status) {
+          setAppleCalendarConnected(status.connected);
+          setAppleSourceNames(status.sourceNames);
+        }
+      }) ?? Promise.resolve(),
+      "Apple calendar status refresh failed"
+    );
 
     const unsub = window.electronAPI?.onAcalConnectionChanged((data) => {
       setAppleCalendarConnected(data.connected);
@@ -415,7 +417,7 @@ export default function IntegrationsView() {
             connected={hasAccounts}
             configured={googleConfigured}
             isConnecting={isConnecting}
-            onConnect={handleConnect}
+            onConnect={() => void handleConnect()}
           />
           <CalendarAccountRows
             i18nKey="integrations.googleCalendar"
@@ -425,7 +427,7 @@ export default function IntegrationsView() {
             primaryOnly={gcalPrimaryOnly}
             onPrimaryOnlyChange={setGcalPrimaryOnly}
             isConnecting={isConnecting}
-            onAddAnother={handleConnect}
+            onAddAnother={() => void handleConnect()}
           />
           {peopleAccessMissing.length > 0 && (
             <div className="flex items-center gap-3 px-4 py-2.5">
@@ -434,7 +436,12 @@ export default function IntegrationsView() {
                   emails: peopleAccessMissing.join(", "),
                 })}
               </p>
-              <Button size="sm" variant="outline" disabled={isConnecting} onClick={handleConnect}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isConnecting}
+                onClick={() => void handleConnect()}
+              >
                 {t("integrations.googleCalendar.reconnect")}
               </Button>
             </div>
@@ -446,7 +453,7 @@ export default function IntegrationsView() {
             connected={mcalAccounts.length > 0}
             configured={microsoftConfigured}
             isConnecting={isMsConnecting}
-            onConnect={handleMicrosoftConnect}
+            onConnect={() => void handleMicrosoftConnect()}
           />
           <CalendarAccountRows
             i18nKey="integrations.microsoftCalendar"
@@ -456,7 +463,7 @@ export default function IntegrationsView() {
             primaryOnly={mcalPrimaryOnly}
             onPrimaryOnlyChange={setMcalPrimaryOnly}
             isConnecting={isMsConnecting}
-            onAddAnother={handleMicrosoftConnect}
+            onAddAnother={() => void handleMicrosoftConnect()}
           />
 
           {isMac && (
@@ -465,7 +472,7 @@ export default function IntegrationsView() {
               i18nKey="integrations.appleCalendar"
               connected={appleCalendarConnected}
               isConnecting={isAppleConnecting}
-              onConnect={handleAppleConnect}
+              onConnect={() => void handleAppleConnect()}
             />
           )}
 
@@ -518,7 +525,11 @@ export default function IntegrationsView() {
         confirmText={t("integrations.googleCalendar.disconnect")}
         variant="destructive"
         onConfirm={() => {
-          if (confirmDisconnectEmail) handleDisconnect(confirmDisconnectEmail);
+          if (confirmDisconnectEmail)
+            runInBackground(
+              handleDisconnect(confirmDisconnectEmail),
+              "Google account disconnect failed"
+            );
         }}
       />
 
@@ -539,7 +550,11 @@ export default function IntegrationsView() {
         confirmText={t("integrations.microsoftCalendar.disconnect")}
         variant="destructive"
         onConfirm={() => {
-          if (confirmMsDisconnectEmail) handleMicrosoftDisconnect(confirmMsDisconnectEmail);
+          if (confirmMsDisconnectEmail)
+            runInBackground(
+              handleMicrosoftDisconnect(confirmMsDisconnectEmail),
+              "Microsoft account disconnect failed"
+            );
         }}
       />
 
@@ -553,7 +568,9 @@ export default function IntegrationsView() {
             ? t("integrations.googleCalendar.openSettings")
             : t("onboarding.permissions.grantAccess")
         }
-        onConfirm={systemAudio.mode === "native" ? systemAudio.openSettings : systemAudio.request}
+        onConfirm={() =>
+          void (systemAudio.mode === "native" ? systemAudio.openSettings() : systemAudio.request())
+        }
       />
 
       <ConfirmDialog
@@ -563,7 +580,7 @@ export default function IntegrationsView() {
         description={t("integrations.appleCalendar.disconnectDescription")}
         confirmText={t("integrations.appleCalendar.disconnect")}
         variant="destructive"
-        onConfirm={handleAppleDisconnect}
+        onConfirm={() => void handleAppleDisconnect()}
       />
 
       <ConfirmDialog
@@ -572,7 +589,7 @@ export default function IntegrationsView() {
         title={t("integrations.appleCalendar.permissionDenied")}
         description={t("integrations.appleCalendar.permissionDeniedDescription")}
         confirmText={t("integrations.appleCalendar.openSettings")}
-        onConfirm={() => window.electronAPI?.openCalendarPrivacySettings?.()}
+        onConfirm={() => void window.electronAPI?.openCalendarPrivacySettings?.()}
       />
 
       <AlertDialog

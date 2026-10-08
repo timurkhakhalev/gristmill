@@ -20,8 +20,8 @@ export interface OAuthFlowResult {
 }
 
 export interface LoopbackFlowHandlers<T = OAuthFlowResult> {
-  buildAuthUrl(redirectUri: string, state: string, codeChallenge: string): string;
-  handleCallback(code: string, redirectUri: string, codeVerifier: string): Promise<T>;
+  buildAuthUrl(this: void, redirectUri: string, state: string, codeChallenge: string): string;
+  handleCallback(this: void, code: string, redirectUri: string, codeVerifier: string): Promise<T>;
 }
 
 interface MinimalServerResponse {
@@ -57,7 +57,7 @@ export function runOAuthLoopbackFlow<T = OAuthFlowResult>({
     let callbackClaimed = false;
 
     const server = http.createServer((req, res) => {
-      void (async () => {
+      (async () => {
         // Accepted requests can outlive server.close(), so only the first
         // terminal callback may settle the flow or exchange a code.
         if (callbackClaimed) {
@@ -105,7 +105,10 @@ export function runOAuthLoopbackFlow<T = OAuthFlowResult>({
 
           callbackClaimed = true;
           const address = server.address();
-          const redirectUri = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+          // SAFETY: the callback only runs after listen() succeeded on a TCP
+          // server, where Node reports an AddressInfo — never a string or null.
+          const port = (address as { port: number }).port;
+          const redirectUri = `http://127.0.0.1:${port}`;
           const result = await handleCallback(code, redirectUri, codeVerifier);
 
           respond(res, 200, "Calendar connected. You can close this window.");
@@ -113,18 +116,22 @@ export function runOAuthLoopbackFlow<T = OAuthFlowResult>({
           resolve(result);
         } catch (err) {
           callbackClaimed = true;
-          respond(
-            res,
-            400,
-            `OAuth error: ${(err as OAuthFlowError).redirectCode || "server_error"}`
-          );
+          const redirectCode = err instanceof OAuthFlowError ? err.redirectCode : "server_error";
+
+          respond(res, 400, `OAuth error: ${redirectCode}`);
           cleanup();
           reject(err);
         }
-      })();
+      })().catch(() => {
+        // The handler settles the flow itself; a rejection here would double-settle.
+      });
     });
 
-    let timeoutId: NodeJS.Timeout;
+    const timeoutId: NodeJS.Timeout = setTimeout(() => {
+      callbackClaimed = true;
+      server.close();
+      reject(new Error("OAuth flow timed out"));
+    }, OAUTH_TIMEOUT_MS);
 
     const cleanup = () => {
       clearTimeout(timeoutId);
@@ -133,18 +140,14 @@ export function runOAuthLoopbackFlow<T = OAuthFlowResult>({
 
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
-      const port = typeof address === "object" && address ? address.port : 0;
+      // SAFETY: the listen callback only runs after listen() succeeded on a
+      // TCP server, where Node reports an AddressInfo — never a string or null.
+      const port = (address as { port: number }).port;
       const redirectUri = `http://127.0.0.1:${port}`;
       // Fire-and-forget like the shell.openExternal call it replaced: a failed
       // browser launch surfaces as the flow timeout.
       openExternalUrl(buildAuthUrl(redirectUri, state, codeChallenge)).catch(() => {});
     });
-
-    timeoutId = setTimeout(() => {
-      callbackClaimed = true;
-      server.close();
-      reject(new Error("OAuth flow timed out"));
-    }, OAUTH_TIMEOUT_MS);
 
     server.on("error", (err) => {
       cleanup();

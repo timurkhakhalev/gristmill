@@ -35,7 +35,7 @@ export interface MicrosoftOAuthDb {
     refresh_token: string;
     expires_at: number;
     scope: string;
-  }): unknown;
+  }): void;
 }
 
 export class MicrosoftCalendarOAuth {
@@ -55,7 +55,9 @@ export class MicrosoftCalendarOAuth {
   }
 
   startOAuthFlow(): Promise<{ success: boolean; email: string }> {
-    if (!this.isConfigured()) {
+    const clientId = this.getClientId();
+
+    if (!clientId) {
       // Fail fast instead of opening the browser on a client_id=undefined URL
       // and hanging until the loopback flow times out.
       throw Object.assign(new Error("Microsoft Calendar OAuth is not configured"), {
@@ -66,7 +68,7 @@ export class MicrosoftCalendarOAuth {
     return runOAuthLoopbackFlow({
       buildAuthUrl: (redirectUri, state, codeChallenge) => {
         const params = new URLSearchParams({
-          client_id: this.getClientId() as string,
+          client_id: clientId,
           redirect_uri: redirectUri,
           response_type: "code",
           scope: CALENDAR_SCOPE,
@@ -111,9 +113,17 @@ export class MicrosoftCalendarOAuth {
     redirectUri: string,
     codeVerifier: string
   ): Promise<MicrosoftTokenResponse> {
+    const clientId = this.getClientId();
+
+    if (!clientId) {
+      throw Object.assign(new Error("Microsoft Calendar OAuth is not configured"), {
+        code: "CALENDAR_NOT_CONFIGURED",
+      });
+    }
+
     const body = new URLSearchParams({
       code,
-      client_id: this.getClientId() as string,
+      client_id: clientId,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
       code_verifier: codeVerifier,
@@ -123,8 +133,16 @@ export class MicrosoftCalendarOAuth {
   }
 
   async refreshAccessToken(refreshToken: string): Promise<MicrosoftTokenResponse> {
+    const clientId = this.getClientId();
+
+    if (!clientId) {
+      throw Object.assign(new Error("Microsoft Calendar OAuth is not configured"), {
+        code: "CALENDAR_NOT_CONFIGURED",
+      });
+    }
+
     const body = new URLSearchParams({
-      client_id: this.getClientId() as string,
+      client_id: clientId,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
       scope: CALENDAR_SCOPE,
@@ -166,9 +184,13 @@ export class MicrosoftCalendarOAuth {
       throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
     }
 
+    const accessToken = refreshed.access_token;
+
+    if (!accessToken) throw new Error("Token refresh response missing access_token");
+
     // Persist the rotated refresh token or the old one stops working within 24h.
     const result = this.databaseManager.refreshMicrosoftTokens(tokens.id, {
-      access_token: refreshed.access_token as string,
+      access_token: accessToken,
       expires_at: Date.now() + (refreshed.expires_in ?? 0) * 1000,
       refresh_token: refreshed.refresh_token || tokens.refresh_token,
       scope: refreshed.scope || tokens.scope,
@@ -176,14 +198,20 @@ export class MicrosoftCalendarOAuth {
 
     if (!result.success) throw new Error("Microsoft account changed during token refresh");
 
-    return refreshed.access_token as string;
+    return accessToken;
   }
 
   private _saveTokens(email: string, tokenData: MicrosoftTokenResponse): void {
+    const { access_token: accessToken, refresh_token: refreshToken } = tokenData;
+
+    if (!accessToken || !refreshToken) {
+      throw new OAuthFlowError("token_exchange_failed", "Token response missing tokens");
+    }
+
     this.databaseManager.saveMicrosoftTokens({
       microsoft_email: email,
-      access_token: tokenData.access_token as string,
-      refresh_token: tokenData.refresh_token as string,
+      access_token: accessToken,
+      refresh_token: refreshToken,
       expires_at: Date.now() + (tokenData.expires_in ?? 0) * 1000,
       scope: tokenData.scope || CALENDAR_SCOPE,
     });
@@ -194,25 +222,39 @@ export class MicrosoftCalendarOAuth {
   private async _resolveEmail(tokenData: MicrosoftTokenResponse): Promise<string | null> {
     if (tokenData.id_token) {
       try {
-        const payload = JSON.parse(
-          Buffer.from(tokenData.id_token.split(".")[1] as string, "base64url").toString()
-        ) as { email?: string; preferred_username?: string };
+        const segment = tokenData.id_token.split(".")[1];
 
-        if (payload.email) return payload.email;
+        if (segment) {
+          // SAFETY: a JWT payload segment decodes to a JSON object; the
+          // optional claim reads degrade to the Graph /me fallback.
+          const payload = JSON.parse(Buffer.from(segment, "base64url").toString()) as {
+            email?: string;
+            preferred_username?: string;
+          };
 
-        if (payload.preferred_username?.includes("@")) return payload.preferred_username;
+          if (payload.email) return payload.email;
+
+          if (payload.preferred_username?.includes("@")) return payload.preferred_username;
+        }
       } catch {
         // Fall through to the Graph /me probe.
       }
     }
 
     try {
-      const response = await net.fetch("https://graph.microsoft.com/v1.0/me", {
+      // Electron's RequestInit typing predates useSessionCookies; the runtime
+      // honors it, and a typed variable carries the extra flag past excess-property
+      // checks without a cast.
+      const fetchInit: RequestInit & { useSessionCookies?: boolean } = {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
         signal: AbortSignal.timeout(10000),
         useSessionCookies: false,
-      } as RequestInit);
+      };
 
+      const response = await net.fetch("https://graph.microsoft.com/v1.0/me", fetchInit);
+
+      // SAFETY: Graph /me answers a JSON object; the optional claim reads
+      // degrade to null, which the caller already treats as no email.
       const me = (await response.json()) as { mail?: string; userPrincipalName?: string };
 
       return me.mail || me.userPrincipalName || null;
@@ -222,17 +264,24 @@ export class MicrosoftCalendarOAuth {
   }
 
   private async _httpsPost(urlString: string, body: string): Promise<MicrosoftTokenResponse> {
-    const response = await net.fetch(urlString, {
+    // Electron's RequestInit typing predates useSessionCookies; the runtime
+    // honors it, and a typed variable carries the extra flag past excess-property
+    // checks without a cast.
+    const fetchInit: RequestInit & { useSessionCookies?: boolean } = {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
-    } as RequestInit);
+    };
+
+    const response = await net.fetch(urlString, fetchInit);
 
     const text = await response.text();
 
     try {
+      // SAFETY: the token endpoint answers JSON on both success and error;
+      // the optional response fields are probed below, not shape-assumed.
       return JSON.parse(text) as MicrosoftTokenResponse;
     } catch {
       throw new Error(`Invalid JSON response: ${text.slice(0, 200)}`);
@@ -242,4 +291,6 @@ export class MicrosoftCalendarOAuth {
 
 module.exports = MicrosoftCalendarOAuth;
 
-module.exports.MicrosoftCalendarOAuth = MicrosoftCalendarOAuth;
+// Named export must stay reachable through the CJS surface for the
+// emitted interop requires used by the migrated managers.
+Object.assign(module.exports, { MicrosoftCalendarOAuth });

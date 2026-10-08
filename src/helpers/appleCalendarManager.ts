@@ -30,11 +30,6 @@ const RESPONSE_STATUSES: ReadonlySet<string> = new Set([
 
 // The EventKit helper's newline-delimited JSON messages, validated before any
 // DB mutation.
-interface HelperPermissionMessage {
-  type: "permission";
-  status: string;
-}
-
 interface HelperSnapshotMessage {
   type: "snapshot";
   calendars: AppleCalendarInput[];
@@ -62,30 +57,83 @@ interface HelperSnapshotEvent {
   }>;
 }
 
-function isPermissionMessage(message: unknown): message is HelperPermissionMessage {
-  const record = message as Record<string, unknown>;
+type HelperMessage =
+  | { kind: "permission"; status: string }
+  | { kind: "snapshot"; message: HelperSnapshotMessage }
+  | { kind: "unknown" };
 
-  return record?.type === "permission" && typeof record.status === "string";
-}
-
-function isSnapshotMessage(message: unknown): message is HelperSnapshotMessage {
-  const record = message as Record<string, unknown>;
-
+// The helper's stdout lines are the I/O boundary: each line is narrowed here,
+// once, before any domain call sees it.
+function isPermissionLike(parsed: unknown): parsed is { status: string } {
   return (
-    record?.type === "snapshot" &&
-    Array.isArray((record as { calendars?: unknown }).calendars) &&
-    Array.isArray((record as { events?: unknown }).events)
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "status" in parsed &&
+    typeof parsed.status === "string"
   );
 }
 
-function isHelperSnapshotEvent(value: unknown): value is HelperSnapshotEvent {
-  const record = value as Record<string, unknown>;
-
+function hasArrayFields(parsed: unknown): parsed is {
+  calendars: HelperSnapshotMessage["calendars"];
+  events: HelperSnapshotMessage["events"];
+} {
   return (
-    typeof record?.id === "string" &&
-    typeof record.calendar_id === "string" &&
-    typeof record.start === "string" &&
-    typeof record.end === "string"
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "calendars" in parsed &&
+    Array.isArray(parsed.calendars) &&
+    "events" in parsed &&
+    Array.isArray(parsed.events)
+  );
+}
+
+function parseHelperMessage(line: string): HelperMessage {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return { kind: "unknown" };
+  }
+
+  if (parsed === null || Array.isArray(parsed)) return { kind: "unknown" };
+
+  // SAFETY: the in-checks below probe the decoded JSON object's message type;
+  // unrecognized shapes degrade to the unknown message.
+  const { type } = parsed as { type?: unknown };
+
+  if (type === "permission" && isPermissionLike(parsed)) {
+    return { kind: "permission", status: parsed.status };
+  }
+
+  if (type === "snapshot" && hasArrayFields(parsed)) {
+    return {
+      kind: "snapshot",
+      message: {
+        type: "snapshot",
+        // SAFETY: hasArrayFields above proved both fields are the arrays the
+        // snapshot contract requires.
+        calendars: parsed.calendars,
+        events: parsed.events,
+      },
+    };
+  }
+
+  return { kind: "unknown" };
+}
+
+function isHelperSnapshotEvent(value: unknown): value is HelperSnapshotEvent {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "calendar_id" in value &&
+    typeof value.calendar_id === "string" &&
+    "start" in value &&
+    typeof value.start === "string" &&
+    "end" in value &&
+    typeof value.end === "string"
   );
 }
 
@@ -111,12 +159,21 @@ interface PendingConnect {
   awaitingSnapshot: boolean;
 }
 
+export interface AppleDisconnectResult {
+  success: boolean;
+}
+
+export interface AppleConnectionStatus {
+  connected: boolean;
+  sourceNames: string[];
+}
+
 export interface AppleManagerDb {
   getAppleCalendars(): AppleCalendarRow[];
-  saveAppleCalendars(calendars: AppleCalendarInput[]): unknown;
-  replaceAppleCalendarEvents(events: CalendarEventInput[]): unknown;
-  clearAppleCalendarData(): unknown;
-  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
+  saveAppleCalendars(calendars: AppleCalendarInput[]): void;
+  replaceAppleCalendarEvents(events: CalendarEventInput[]): void;
+  clearAppleCalendarData(): void;
+  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): void;
 }
 
 // Reads the local EventKit store (all accounts Calendar.app aggregates) via a
@@ -151,7 +208,7 @@ export class AppleCalendarManager {
     return this.databaseManager.getAppleCalendars().length > 0;
   }
 
-  getConnectionStatus(): { connected: boolean; sourceNames: string[] } {
+  getConnectionStatus(): AppleConnectionStatus {
     const calendars = this.databaseManager.getAppleCalendars();
 
     return {
@@ -190,7 +247,7 @@ export class AppleCalendarManager {
     });
   }
 
-  disconnect(): { success: boolean } {
+  disconnect(): AppleDisconnectResult {
     this.stop();
     this._clearStoredCalendarData();
 
@@ -239,7 +296,7 @@ export class AppleCalendarManager {
     } catch (err) {
       debugLogger.debug(
         "Calendar listener sync request failed",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "acal"
       );
     }
@@ -305,11 +362,11 @@ export class AppleCalendarManager {
           if (!line) continue;
 
           try {
-            this._handleMessage(JSON.parse(line));
+            this._handleMessage(line);
           } catch (err) {
             debugLogger.warn(
               "Unparseable calendar listener output",
-              { line, error: (err as Error).message },
+              { line, error: err instanceof Error ? err.message : String(err) },
               "acal"
             );
           }
@@ -338,7 +395,7 @@ export class AppleCalendarManager {
     } catch (err) {
       debugLogger.warn(
         "Failed to spawn macos-calendar-listener",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "acal"
       );
 
@@ -368,7 +425,7 @@ export class AppleCalendarManager {
     } catch (err) {
       debugLogger.warn(
         "Could not determine whether calendar listener should restart",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "acal"
       );
 
@@ -394,11 +451,13 @@ export class AppleCalendarManager {
     }, delay);
   }
 
-  private _handleMessage(message: unknown): void {
-    if (isPermissionMessage(message)) {
-      this._handlePermission(message.status);
-    } else if (isSnapshotMessage(message)) {
-      this._applySnapshot(message);
+  private _handleMessage(line: string): void {
+    const parsed = parseHelperMessage(line);
+
+    if (parsed.kind === "permission") {
+      this._handlePermission(parsed.status);
+    } else if (parsed.kind === "snapshot") {
+      this._applySnapshot(parsed.message);
     }
     // Unknown message types are ignored like before: the helper's protocol
     // may grow without every consumer needing each message.
@@ -468,7 +527,7 @@ export class AppleCalendarManager {
     } catch (err) {
       debugLogger.error(
         "Error applying calendar snapshot",
-        { error: (err as Error).message },
+        { error: err instanceof Error ? err.message : String(err) },
         "acal"
       );
 
@@ -536,4 +595,6 @@ export class AppleCalendarManager {
 
 module.exports = AppleCalendarManager;
 
-module.exports.AppleCalendarManager = AppleCalendarManager;
+// Named export must stay reachable through the CJS surface for the
+// emitted interop requires used by the migrated managers.
+Object.assign(module.exports, { AppleCalendarManager });

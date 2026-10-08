@@ -76,7 +76,9 @@ const reminderDeps = {
 };
 
 async function useAll(): Promise<string> {
-  const google = new GoogleCalendarManager(db, null, reminderDeps);
+  // The manager keeps the historical WindowManagerLike parameter (all-optional
+  // members); main.ts passes the real manager, the probe passes the shape.
+  const google = new GoogleCalendarManager(db, {}, reminderDeps);
   const microsoft = new MicrosoftCalendarManager(db, reminderDeps);
   const apple = new AppleCalendarManager(db, reminderDeps);
 

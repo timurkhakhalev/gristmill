@@ -245,9 +245,10 @@ async function createFixture({
 
     if (!handler) throw new Error(`No handler for ${channel}`);
 
-    // Sender-scoped channels (auto-end ack/respond) read event.sender; the
-    // fixture's engine fakes ignore it.
-    return handler({ sender: null }, ...args);
+    // Sender-scoped channels (auto-end ack/respond) read event.sender; real
+    // invoke events always carry one, so the fixture provides a stand-in and
+    // the engine fakes ignore it.
+    return handler({ sender: { isDestroyed: () => false } }, ...args);
   };
 
   const transport = {

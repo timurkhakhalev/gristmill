@@ -122,6 +122,54 @@
         "quality/no-unsafe-dictionary-type": "off"
       }
     },
+    // Notes/folder/action event senders: the payload arrives from JS-land
+    // producers (meeting detection, CLI bridge, chat tools) before any schema
+    // has run. Each sender validates it with its channel schema and drops a
+    // malformed payload with a diagnostic; the unknown input is that contract.
+    {
+      "files": [
+        "src/helpers/notesEvents.ts",
+        "src/helpers/containerEvents.ts",
+        "src/helpers/actionsEvents.ts"
+      ],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    // IPC handler modules: positional arguments and the DatabaseManager/notes
+    // service results cross as honest unknown. Every handler parses its
+    // arguments with the shared tuple schemas and its results with the shared
+    // result schemas before any value reaches the renderer.
+    {
+      "files": [
+        "src/helpers/containerIpcHandlers.ts",
+        "src/helpers/actionsIpcHandlers.ts",
+        "src/helpers/notesIpcHandlers.ts",
+        "src/helpers/noteFilesIpcHandlers.ts"
+      ],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off"
+      }
+    },
+    // Search text from the DatabaseManager.searchNotes boundary, which passes
+    // the raw query through unchanged. Non-text input yields no FTS query, so
+    // the text check stays at this boundary.
+    {
+      "files": ["src/helpers/noteSearch.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-runtime-typeof": "off"
+      }
+    },
+    // Coded failures arrive as thrown unknowns or returned results; the key
+    // lookup parses only the optional string `code` before indexing.
+    {
+      "files": ["src/components/notes/shared.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
     // Honest unknown at the JSON/HTTP request boundary: the decoded body and
     // its fields stay unknown until each route's schema or predicate validates
     // them before any domain call; responses are serialized opaque payloads.

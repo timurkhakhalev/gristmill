@@ -21,20 +21,29 @@ export interface TeardownContainersResult extends NoteContainerState {
 }
 
 export function createClearedAccountNoteState<TSpace, TFolder, TShare, TConflict>() {
+  const notes: NoteItem[] = [];
+  const spaces: TSpace[] = [];
+  const folders: TFolder[] = [];
+  const folderCounts: Record<number, number> = {};
+  const spaceRootCounts: Record<number, number> = {};
+  const notesByContainer: Record<string, NoteItem[]> = {};
+  const shareByCloudId = new Map<string, TShare>();
+  const noteConflicts: Record<string, TConflict> = {};
+
   return {
-    notes: [] as NoteItem[],
-    spaces: [] as TSpace[],
-    folders: [] as TFolder[],
-    folderCounts: {} as Record<number, number>,
-    spaceRootCounts: {} as Record<number, number>,
-    notesByContainer: {} as Record<string, NoteItem[]>,
+    notes,
+    spaces,
+    folders,
+    folderCounts,
+    spaceRootCounts,
+    notesByContainer,
     expandedContainers: new Set<string>(),
     activeContext: null,
     activeNoteId: null,
     isTreeLoading: true,
     migration: null,
-    shareByCloudId: new Map<string, TShare>(),
-    noteConflicts: {} as Record<string, TConflict>,
+    shareByCloudId,
+    noteConflicts,
   };
 }
 

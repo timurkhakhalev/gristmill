@@ -43,7 +43,7 @@ export interface GoogleOAuthDb {
     refresh_token: string;
     expires_at: number;
     scope: string;
-  }): unknown;
+  }): void;
 }
 
 function isConfiguredError(): Error & { code: string } {
@@ -73,14 +73,17 @@ export class GoogleCalendarOAuth {
   }
 
   startOAuthFlow(): Promise<{ success: boolean; email: string }> {
-    if (!this.isConfigured()) {
+    const clientId = this.getClientId();
+    const clientSecret = this.getClientSecret();
+
+    if (!clientId || !clientSecret) {
       throw isConfiguredError();
     }
 
     return runOAuthLoopbackFlow({
       buildAuthUrl: (redirectUri, state, codeChallenge) => {
         const params = new URLSearchParams({
-          client_id: this.getClientId() as string,
+          client_id: clientId,
           redirect_uri: redirectUri,
           response_type: "code",
           scope: CALENDAR_SCOPE,
@@ -108,11 +111,17 @@ export class GoogleCalendarOAuth {
 
         if (tokenData.id_token) {
           try {
-            const payload = JSON.parse(
-              Buffer.from(tokenData.id_token.split(".")[1] as string, "base64url").toString()
-            ) as { email?: string };
+            const segment = tokenData.id_token.split(".")[1];
 
-            email = payload.email ?? null;
+            if (segment) {
+              // SAFETY: a JWT payload segment decodes to a JSON object; the
+              // optional email read degrades to the no_email flow error.
+              const payload = JSON.parse(Buffer.from(segment, "base64url").toString()) as {
+                email?: string;
+              };
+
+              email = payload.email ?? null;
+            }
           } catch {
             // A malformed id_token falls through to the no_email error.
           }
@@ -125,10 +134,16 @@ export class GoogleCalendarOAuth {
           );
         }
 
+        const { access_token: accessToken, refresh_token: refreshToken } = tokenData;
+
+        if (!accessToken || !refreshToken) {
+          throw new OAuthFlowError("token_exchange_failed", "Token response missing tokens");
+        }
+
         this.databaseManager.saveGoogleTokens({
           google_email: email,
-          access_token: tokenData.access_token as string,
-          refresh_token: tokenData.refresh_token as string,
+          access_token: accessToken,
+          refresh_token: refreshToken,
           expires_at: Date.now() + (tokenData.expires_in ?? 0) * 1000,
           scope: tokenData.scope || CALENDAR_SCOPE,
         });
@@ -143,10 +158,15 @@ export class GoogleCalendarOAuth {
     redirectUri: string,
     codeVerifier: string
   ): Promise<GoogleTokenResponse> {
+    const clientId = this.getClientId();
+    const clientSecret = this.getClientSecret();
+
+    if (!clientId || !clientSecret) throw isConfiguredError();
+
     const body = new URLSearchParams({
       code,
-      client_id: this.getClientId() as string,
-      client_secret: this.getClientSecret() as string,
+      client_id: clientId,
+      client_secret: clientSecret,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
       code_verifier: codeVerifier,
@@ -156,9 +176,14 @@ export class GoogleCalendarOAuth {
   }
 
   async refreshAccessToken(refreshToken: string): Promise<GoogleTokenResponse> {
+    const clientId = this.getClientId();
+    const clientSecret = this.getClientSecret();
+
+    if (!clientId || !clientSecret) throw isConfiguredError();
+
     const body = new URLSearchParams({
-      client_id: this.getClientId() as string,
-      client_secret: this.getClientSecret() as string,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }).toString();
@@ -192,11 +217,14 @@ export class GoogleCalendarOAuth {
   private async _refreshAndSaveTokens(tokens: GoogleTokenRow): Promise<string> {
     const refreshed = await this.refreshAccessToken(tokens.refresh_token);
 
-    if (refreshed.error)
+    const accessToken = refreshed.access_token;
+
+    if (refreshed.error || !accessToken) {
       throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
+    }
 
     const result = this.databaseManager.refreshGoogleTokens(tokens.id, {
-      access_token: refreshed.access_token as string,
+      access_token: accessToken,
       refresh_token: refreshed.refresh_token || tokens.refresh_token,
       expires_at: Date.now() + (refreshed.expires_in ?? 0) * 1000,
       scope: refreshed.scope || tokens.scope,
@@ -204,7 +232,7 @@ export class GoogleCalendarOAuth {
 
     if (!result.success) throw new Error("Google account changed during token refresh");
 
-    return refreshed.access_token as string;
+    return accessToken;
   }
 
   async revokeToken(token: string): Promise<void> {
@@ -218,17 +246,26 @@ export class GoogleCalendarOAuth {
   }
 
   async _httpsPost(urlString: string, body: string): Promise<GoogleTokenResponse> {
-    const response = await net.fetch(urlString, {
+    // Electron's RequestInit typing predates useSessionCookies; the runtime
+    // honors it, and a typed variable carries the extra flag past excess-property
+    // checks without a cast.
+    const fetchInit: RequestInit & { useSessionCookies?: boolean } = {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
-    } as RequestInit);
+    };
+
+    const response = await net.fetch(urlString, fetchInit);
 
     const text = await response.text();
 
+    // SAFETY: the token endpoint answers JSON on both success and error;
+    // the optional response fields are probed below, not shape-assumed.
     try {
+      // SAFETY: the token endpoint answers JSON on both success and error;
+      // the optional response fields are probed below, not shape-assumed.
       return JSON.parse(text) as GoogleTokenResponse;
     } catch {
       throw new Error(`Invalid JSON response: ${text.slice(0, 200)}`);
@@ -240,4 +277,4 @@ module.exports = GoogleCalendarOAuth;
 
 // Named export must stay reachable through the CJS surface for the
 // emitted interop requires used by the migrated managers.
-module.exports.GoogleCalendarOAuth = GoogleCalendarOAuth;
+Object.assign(module.exports, { GoogleCalendarOAuth });

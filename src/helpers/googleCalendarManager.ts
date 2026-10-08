@@ -1,7 +1,13 @@
 import { net } from "electron";
 import debugLogger from "./debugLogger.js";
 import { GoogleCalendarOAuth } from "./googleCalendarOAuth.js";
-import { fetchGooglePeople, lacksPeopleAccess, type GooglePersonProfile } from "./googlePeople.js";
+import {
+  fetchGooglePeople,
+  lacksPeopleAccess,
+  type GooglePersonProfile,
+  type PeoplePage,
+  type PeoplePerson,
+} from "./googlePeople.js";
 import { CalendarSyncInterval, type CalendarSyncOutcome } from "./calendarSyncInterval.js";
 import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
 import { extractMeetingUrl } from "./meetingJoinUrl.js";
@@ -66,6 +72,10 @@ interface GoogleEventItem {
   organizer?: { email?: string };
 }
 
+interface GoogleCalendarListPage {
+  items?: GoogleCalendarListItem[];
+}
+
 interface GoogleEventsPage {
   items?: GoogleEventItem[];
   nextPageToken?: string;
@@ -76,34 +86,49 @@ class ApiGetError extends Error {
   statusCode?: number;
 }
 
+// SAFETY: Calendar API endpoints answer JSON envelopes; callers narrow the
+// specific page shape they read from the named fields below.
+interface GoogleApiPayload {
+  error?: { message?: string };
+}
+
 export interface GoogleManagerDb {
   getGoogleAccounts(): CalendarAccountRow[];
   getAllGoogleTokens(): Array<{ access_token: string }>;
-  removeGoogleAccount(email: string): unknown;
-  clearGoogleCalendarData(): unknown;
-  saveGoogleCalendars(calendars: GoogleCalendarInput[], accountEmail: string): unknown;
+  removeGoogleAccount(email: string): void;
+  clearGoogleCalendarData(): void;
+  saveGoogleCalendars(calendars: GoogleCalendarInput[], accountEmail: string): void;
   getGoogleCalendars(accountEmail?: string | null): GoogleCalendarRow[];
   getSelectedCalendars(accountEmail?: string | null): GoogleCalendarRow[];
-  applyPrimaryOnlyToSelection(primaryOnly: boolean): unknown;
-  updateCalendarSelection(id: string, selected: boolean): unknown;
-  removeEventsFromDeselectedCalendars(provider: string): unknown;
-  upsertCalendarEvents(events: CalendarEventInput[]): unknown;
-  removeCalendarEvents(ids: string[]): unknown;
-  removeStaleCalendarEvents(provider: string, calendarId: string, freshIds: string[]): unknown;
-  updateCalendarSyncToken(
-    id: string,
-    token: string,
-    expiresAt: number,
-    accountEmail: string
-  ): unknown;
-  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): unknown;
-  upsertGooglePeople(profiles: GooglePersonProfile[]): unknown;
+  applyPrimaryOnlyToSelection(primaryOnly: boolean): void;
+  updateCalendarSelection(id: string, selected: boolean): void;
+  removeEventsFromDeselectedCalendars(provider: string): void;
+  upsertCalendarEvents(events: CalendarEventInput[]): void;
+  removeCalendarEvents(ids: string[]): void;
+  removeStaleCalendarEvents(provider: string, calendarId: string, freshIds: string[]): void;
+  updateCalendarSyncToken(id: string, token: string, expiresAt: number, accountEmail: string): void;
+  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): void;
+  upsertGooglePeople(profiles: GooglePersonProfile[]): void;
   getGoogleTokensByEmail(email: string): { id: number; scope: string } | null;
   getUpcomingEvents(windowMinutes?: number): unknown[];
 }
 
+export interface GoogleConnectionStatus {
+  connected: boolean;
+  configured: boolean;
+  accounts: CalendarAccountRow[];
+  peopleAccessMissing: string[];
+  email: string | null;
+}
+
 // Contacts change slowly; names and photos refresh a few times a day.
 const PEOPLE_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+// Historically the window manager was injected here; the manager never
+// calls into it, but main.ts still passes the instance.
+interface WindowManagerLike {
+  openExternalUrl?(url: string, showError?: boolean): void;
+}
 
 export interface ReminderSchedulerLike {
   scheduleNextMeeting(): void;
@@ -122,7 +147,9 @@ export class GoogleCalendarManager {
 
   constructor(
     databaseManager: GoogleManagerDb & ConstructorParameters<typeof GoogleCalendarOAuth>[0],
-    _windowManager: unknown,
+    // Historically the window manager was injected here; the manager no
+    // longer touches it, but main.ts still passes it.
+    _windowManager: WindowManagerLike,
     reminderScheduler: ReminderSchedulerLike
   ) {
     this.databaseManager = databaseManager;
@@ -144,7 +171,11 @@ export class GoogleCalendarManager {
       .then(() => this.syncEvents())
       .then(() => this.reminderScheduler.scheduleNextMeeting())
       .catch((err) =>
-        debugLogger.error("Initial calendar sync failed", { error: (err as Error).message }, "gcal")
+        debugLogger.error(
+          "Initial calendar sync failed",
+          { error: err instanceof Error ? err.message : String(err) },
+          "gcal"
+        )
       );
 
     this.syncRunner.start();
@@ -200,7 +231,11 @@ export class GoogleCalendarManager {
       const allTokens = this.databaseManager.getAllGoogleTokens();
       await Promise.allSettled(allTokens.map((t) => this.oauth.revokeToken(t.access_token)));
     } catch (err) {
-      debugLogger.error("Error revoking Google tokens", { error: (err as Error).message }, "gcal");
+      debugLogger.error(
+        "Error revoking Google tokens",
+        { error: err instanceof Error ? err.message : String(err) },
+        "gcal"
+      );
     }
 
     this.disconnect();
@@ -219,13 +254,7 @@ export class GoogleCalendarManager {
     }
   }
 
-  getConnectionStatus(): {
-    connected: boolean;
-    configured: boolean;
-    accounts: CalendarAccountRow[];
-    peopleAccessMissing: string[];
-    email: string | null;
-  } {
+  getConnectionStatus(): GoogleConnectionStatus {
     const accounts = this.databaseManager.getGoogleAccounts();
 
     return {
@@ -255,9 +284,12 @@ export class GoogleCalendarManager {
         const accountId = this.databaseManager.getGoogleTokensByEmail(email)?.id;
         this._assertAccountCurrent(email, accountId);
 
-        const data = (await this._apiGet("/users/me/calendarList", email)) as {
-          items?: GoogleCalendarListItem[];
-        };
+        // SAFETY: _apiGet returns the parsed Calendar API envelope; the
+        // calendarList page carries the items array read below.
+        const data = (await this._apiGet(
+          "/users/me/calendarList",
+          email
+        )) as GoogleCalendarListPage;
 
         const calendars: GoogleCalendarInput[] = (data.items || []).map((item) => ({
           id: item.id,
@@ -273,7 +305,7 @@ export class GoogleCalendarManager {
       } catch (err) {
         debugLogger.error(
           "Error fetching calendars",
-          { email, error: (err as Error).message },
+          { email, error: err instanceof Error ? err.message : String(err) },
           "gcal"
         );
       }
@@ -301,10 +333,13 @@ export class GoogleCalendarManager {
         await this._syncCalendar(calendar);
         succeeded++;
       } catch (err) {
-        errors.push((err as Error).message);
+        errors.push(err instanceof Error ? err.message : String(err));
         debugLogger.error(
           "Error syncing calendar",
-          { calendarId: calendar.id, error: (err as Error).message },
+          {
+            calendarId: calendar.id,
+            error: err instanceof Error ? err.message : String(err),
+          },
           "gcal"
         );
       }
@@ -312,7 +347,13 @@ export class GoogleCalendarManager {
 
     sendGcalEventsSynced();
     this.reminderScheduler.scheduleNextMeeting();
-    void this.syncPeople();
+    this.syncPeople().catch((err) =>
+      debugLogger.error(
+        "Google People sync failed",
+        { error: err instanceof Error ? err.message : String(err) },
+        "gcal"
+      )
+    );
 
     return { total: selectedCalendars.length, succeeded, failed: errors.length, errors };
   }
@@ -338,7 +379,11 @@ export class GoogleCalendarManager {
 
       try {
         const profiles = await fetchGooglePeople(
-          (url) => this._apiGet(url, email),
+          async (url) => {
+            // SAFETY: _apiGet returns the parsed People API JSON envelope;
+            // the optional fields are read defensively in googlePeople.
+            return (await this._apiGet(url, email)) as PeoplePage & PeoplePerson;
+          },
           scope,
           (source, error) =>
             debugLogger.warn(
@@ -357,7 +402,11 @@ export class GoogleCalendarManager {
 
         debugLogger.info("Google People synced", { profiles: profiles.length }, "gcal");
       } catch (err) {
-        debugLogger.error("Google People sync failed", { error: (err as Error).message }, "gcal");
+        debugLogger.error(
+          "Google People sync failed",
+          { error: err instanceof Error ? err.message : String(err) },
+          "gcal"
+        );
       }
     }
 
@@ -366,7 +415,10 @@ export class GoogleCalendarManager {
 
   private async _syncCalendar(calendar: GoogleCalendarRow): Promise<void> {
     const accountEmail = calendar.account_email;
-    const accountId = this.databaseManager.getGoogleTokensByEmail(accountEmail as string)?.id;
+
+    if (!accountEmail) throw new Error("Calendar row without an account email");
+
+    const accountId = this.databaseManager.getGoogleTokensByEmail(accountEmail)?.id;
     this._assertAccountCurrent(accountEmail, accountId);
 
     const buildFullParams = () =>
@@ -388,14 +440,14 @@ export class GoogleCalendarManager {
     let isFullSync = !hasFreshToken;
 
     let tokenExpiresAt = hasFreshToken
-      ? (calendar.sync_token_expires_at as number)
+      ? (calendar.sync_token_expires_at ?? 0)
       : Date.now() + SYNC_TOKEN_TTL_MS;
 
     let baseParams = isFullSync
       ? buildFullParams()
       : new URLSearchParams({
           singleEvents: "true",
-          syncToken: calendar.sync_token as string,
+          syncToken: calendar.sync_token ?? "",
         });
 
     let pageToken: string | null = null;
@@ -410,13 +462,15 @@ export class GoogleCalendarManager {
       let data: GoogleEventsPage;
 
       try {
+        // SAFETY: _apiGet returns the parsed Calendar API envelope; the
+        // events page carries the items/nextPageToken/nextSyncToken fields.
         data = (await this._apiGet(
           `/calendars/${encodeURIComponent(calendar.id)}/events?${params.toString()}`,
           accountEmail
         )) as GoogleEventsPage;
       } catch (err) {
         // 410 Gone means syncToken is invalid; fall back to full sync
-        if ((err as ApiGetError).statusCode === 410 && !pageToken && !isFullSync) {
+        if (err instanceof ApiGetError && err.statusCode === 410 && !pageToken && !isFullSync) {
           isFullSync = true;
           tokenExpiresAt = Date.now() + SYNC_TOKEN_TTL_MS;
           baseParams = buildFullParams();
@@ -458,8 +512,8 @@ export class GoogleCalendarManager {
         calendar_id: calendar.id,
         provider: "google",
         summary: item.summary || null,
-        start_time: item.start?.dateTime || (item.start?.date as string),
-        end_time: item.end?.dateTime || (item.end?.date as string),
+        start_time: item.start?.dateTime || item.start?.date || "",
+        end_time: item.end?.dateTime || item.end?.date || "",
         is_all_day: isAllDay,
         status: item.status || "confirmed",
         availability_status: item.transparency === "transparent" ? "free" : "busy",
@@ -514,7 +568,7 @@ export class GoogleCalendarManager {
         calendar.id,
         nextSyncToken,
         tokenExpiresAt,
-        accountEmail as string
+        accountEmail
       );
     }
 
@@ -525,7 +579,11 @@ export class GoogleCalendarManager {
     this.syncEvents()
       .then((outcome) => this.syncRunner.notifyOutcome(outcome))
       .catch((err) =>
-        debugLogger.error("Post-wake sync failed", { error: (err as Error).message }, "gcal")
+        debugLogger.error(
+          "Post-wake sync failed",
+          { error: err instanceof Error ? err.message : String(err) },
+          "gcal"
+        )
       );
   }
 
@@ -590,35 +648,42 @@ export class GoogleCalendarManager {
     }
   }
 
-  private async _apiGet(path: string, accountEmail: string | null = null): Promise<unknown> {
-    const accountId = this.databaseManager.getGoogleTokensByEmail(accountEmail as string)?.id;
+  private async _apiGet(
+    path: string,
+    accountEmail: string | null = null
+  ): Promise<GoogleApiPayload> {
+    const accountId = this.databaseManager.getGoogleTokensByEmail(accountEmail ?? "")?.id;
     this._assertAccountCurrent(accountEmail, accountId);
     const accessToken = await this.oauth.getValidAccessToken(accountEmail);
     this._assertAccountCurrent(accountEmail, accountId);
     const urlString = path.startsWith("http") ? path : `${CALENDAR_API_BASE}${path}`;
 
-    const response = await net.fetch(urlString, {
+    // Electron's RequestInit typing predates useSessionCookies; the runtime
+    // honors it, and a typed variable carries the extra flag past excess-property
+    // checks without a cast.
+    const fetchInit: RequestInit & { useSessionCookies?: boolean } = {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(10000),
       useSessionCookies: false,
-    } as RequestInit);
+    };
+
+    const response = await net.fetch(urlString, fetchInit);
 
     const text = await response.text();
-    let parsed: unknown = null;
+    let parsed: GoogleApiPayload | null = null;
 
     try {
-      parsed = JSON.parse(text);
+      // SAFETY: Calendar API endpoints answer JSON envelopes; each caller
+      // narrows the specific page shape it reads.
+      parsed = JSON.parse(text) as GoogleApiPayload;
     } catch {
       // Error statuses can arrive with empty or non-JSON bodies; surface the
       // status below instead of masking it as a parse failure.
     }
 
     if (response.status >= 400) {
-      const err = new ApiGetError(
-        (parsed as { error?: { message?: string } } | null)?.error?.message ||
-          `API error ${response.status}`
-      );
+      const err = new ApiGetError(parsed?.error?.message || `API error ${response.status}`);
 
       err.statusCode = response.status;
       throw err;
@@ -634,4 +699,6 @@ export class GoogleCalendarManager {
 
 module.exports = GoogleCalendarManager;
 
-module.exports.GoogleCalendarManager = GoogleCalendarManager;
+// Named export must stay reachable through the CJS surface for the
+// emitted interop requires used by the migrated managers.
+Object.assign(module.exports, { GoogleCalendarManager });

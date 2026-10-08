@@ -56,7 +56,7 @@ Run all commands from the repository root.
 - `pnpm run typecheck:main`, `pnpm run typecheck:renderer`, `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select compiler targets for the native TypeScript 7 `tsc`.
 - `pnpm run typecheck` runs those targets, `typecheck:companion`, `typecheck:scripts` and `typecheck:lint-tools` in sequence.
 - `pnpm run build:main` uses the same native compiler for emitted Electron code.
-- The `typescript` dependency is an alias for TypeScript 6. Compiler API consumers (test probes and ESLint) use it. Its executable is `tsc6`. Keep the CLI and API packages separate until TypeScript 7 supplies a supported programmatic API.
+- The `typescript` dependency is an alias for TypeScript 6. Compiler API consumers (test probes and the Oxlint tooling in `tools/oxlint`) use it. Its executable is `tsc6`. Keep the CLI and API packages separate until TypeScript 7 supplies a supported programmatic API.
 - The test target automatically includes ordinary TypeScript tests and helpers. It excludes intentionally invalid type-probe fixtures.
 - A test selection that builds main also examines the main compilation. Other selections do not.
 - `pnpm test` runs compiler probes. It does not replace the renderer or test typecheck.

@@ -71,8 +71,8 @@ export class CalendarSyncInterval {
   // clean pass. Unlike an interval tick, an explicit call is not racing a stop
   // and always reschedules.
   notifyOutcome(outcome: CalendarSyncOutcome | void): void {
-    if (isCalendarSyncFailure(outcome)) {
-      this._recordFailure(outcome as CalendarSyncOutcome);
+    if (outcome && isCalendarSyncFailure(outcome)) {
+      this._recordFailure(outcome);
 
       return;
     }
@@ -105,7 +105,7 @@ export class CalendarSyncInterval {
           total: 0,
           succeeded: 0,
           failed: 1,
-          errors: [(err as Error).message],
+          errors: [err instanceof Error ? err.message : String(err)],
         });
       });
   }
@@ -136,7 +136,7 @@ export class CalendarSyncInterval {
             total: 0,
             succeeded: 0,
             failed: 1,
-            errors: [(err as Error).message],
+            errors: [err instanceof Error ? err.message : String(err)],
           });
         });
     }, interval);
@@ -169,8 +169,10 @@ function describeOutcome(outcome: CalendarSyncOutcome): string {
 
 module.exports = CalendarSyncInterval;
 
-module.exports.CalendarSyncInterval = CalendarSyncInterval;
-
-module.exports.FOCUS_SYNC_THROTTLE_MS = FOCUS_SYNC_THROTTLE_MS;
-
-module.exports.isCalendarSyncFailure = isCalendarSyncFailure;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named exports.
+Object.assign(module.exports, {
+  CalendarSyncInterval,
+  FOCUS_SYNC_THROTTLE_MS,
+  isCalendarSyncFailure,
+});

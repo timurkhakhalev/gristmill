@@ -13,6 +13,8 @@ import {
 } from "../contracts/calendar.js";
 import type { ZodType } from "zod";
 
+// Senders build payloads from DB rows; the schema is the wire boundary, so
+// unknown input is expected here and malformed payloads are dropped.
 function parseOrDrop<T>(channel: string, payload: unknown, schema: ZodType<T>): T | null {
   const result = schema.safeParse(payload);
 

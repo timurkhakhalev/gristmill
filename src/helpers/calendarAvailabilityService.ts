@@ -18,7 +18,11 @@ export interface CalendarProviderEntry {
 
 export interface CalendarAvailabilityServiceDeps {
   databaseManager: {
-    getCalendarEventsInRange: (start: string, end: string, providers: string[]) => unknown;
+    getCalendarEventsInRange: (
+      start: string,
+      end: string,
+      providers: string[]
+    ) => readonly unknown[];
   };
 }
 

@@ -162,6 +162,60 @@
         "quality/no-runtime-typeof": "off"
       }
     },
+    // Email display parsing for calendar/attendee UI: values historically
+    // arrive from auth/contact rows typed as string, but the parser keeps the
+    // runtime string check so malformed input degrades to "no domain"
+    // instead of throwing at a render boundary.
+    {
+      "files": ["src/utils/personalEmailDomains.ts"],
+      "rules": {
+        "quality/no-runtime-typeof": "off"
+      }
+    },
+    // Availability requests, event rows and attendee payloads arrive as
+    // unknown JSON over the tool/IPC wire and from the events cache. The
+    // parsers here branch on the decoded value's type and skip malformed
+    // entries; the string checks are the boundary, not representation
+    // narrowing of a typed value.
+    {
+      "files": ["src/helpers/calendarAvailability.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-runtime-typeof": "off",
+        "quality/no-unsafe-dictionary-type": "off"
+      }
+    },
+    // Outgoing calendar broadcast payloads are built from DB rows and
+    // validated against the channel schema right here; unknown input is the
+    // contract and malformed payloads are dropped with a diagnostic.
+    {
+      "files": ["src/helpers/calendarEvents.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off"
+      }
+    },
+    // Calendar integration handlers receive unknown over ipcMain and log
+    // thrown unknowns; every payload is schema-validated (parseOr/schema
+    // .safeParse) before it reaches a manager, matching the other IPC
+    // handler modules' boundary exceptions.
+    {
+      "files": ["src/helpers/calendarIpcHandlers.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off",
+        "quality/no-runtime-typeof": "off"
+      }
+    },
+    // Same ipcMain boundary as calendarIpcHandlers: the request is unknown
+    // until the service validates it, and the response is schema-checked
+    // before it crosses back to the renderer.
+    {
+      "files": ["src/helpers/calendarAvailabilityIpcHandler.ts"],
+      "rules": {
+        "quality/no-unknown-parameters": "off",
+        "quality/no-unknown-returns": "off"
+      }
+    },
     // Coded failures arrive as thrown unknowns or returned results; the key
     // lookup parses only the optional string `code` before indexing.
     {

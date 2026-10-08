@@ -31,6 +31,24 @@ const contentMessage = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
+// The popup's status request is a plain envelope; content contexts are only
+// distinguished here before the full zod parse.
+function isStatusEnvelope(value: unknown): value is { type: "status" } {
+  if (typeof value !== "object" || value === null || !("type" in value)) return false;
+  // SAFETY: the `type` key is confirmed present above; only its value is read.
+  const type = (value as { type: unknown }).type;
+
+  return type === "status";
+}
+
+function isContextEnvelope(value: unknown): value is { type: "context" } {
+  if (typeof value !== "object" || value === null || !("type" in value)) return false;
+  // SAFETY: the `type` key is confirmed present above; only its value is read.
+  const type = (value as { type: unknown }).type;
+
+  return type === "context";
+}
+
 /** Native connection and main snapshots are authoritative; storage carries identifiers only. */
 export function startCompanionWorker(api: ChromeApi, hostName: string): void {
   let port: ChromePort | null = null;
@@ -51,29 +69,28 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
   const probes = new Map<string, { tabId: number; documentId: string }>();
 
   const refFor = (sender: ChromeSender): CompanionCallRef | null => {
+    const tabId = sender.tab?.id;
+
     if (
       sender.id !== api.runtime.id ||
       sender.frameId !== 0 ||
-      !Number.isInteger(sender.tab?.id) ||
-      !companionDocumentIdSchema.safeParse(sender.documentId).success
+      tabId === undefined ||
+      !Number.isInteger(tabId) ||
+      !companionDocumentIdSchema.safeParse(sender.documentId).success ||
+      sender.documentId === undefined
     )
       return null;
+
+    const documentId = sender.documentId;
 
     try {
       const url = new URL(sender.url ?? "");
       const identity = callIdentity(url.href);
 
-      if (identity)
-        return {
-          ...identity,
-          installationId,
-          sessionId,
-          tabId: sender.tab!.id!,
-          documentId: sender.documentId!,
-        };
+      if (identity) return { ...identity, installationId, sessionId, tabId, documentId };
       // Telemost returns to its home screen without replacing the top document.
       // Retain only this document's known room for the terminal observation.
-      const previous = contexts.get(sender.tab!.id!);
+      const previous = contexts.get(tabId);
 
       if (
         url.origin === "https://telemost.yandex.ru" &&
@@ -167,10 +184,7 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
       sender.id === api.runtime.id &&
       !sender.tab &&
       sender.url === api.runtime.getURL("popup.html") &&
-      value &&
-      typeof value === "object" &&
-      "type" in value &&
-      value.type === "status"
+      isStatusEnvelope(value)
     ) {
       respond({
         connected: snapshot !== null,
@@ -227,17 +241,19 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
     }
 
     const reject = (reason: string) => {
+      const tabId = sender.tab?.id;
+
       if (
         sender.id === api.runtime.id &&
         sender.frameId === 0 &&
-        Number.isInteger(sender.tab?.id) &&
-        value &&
-        typeof value === "object" &&
-        "type" in value &&
-        value.type === "context"
+        Number.isInteger(tabId) &&
+        isContextEnvelope(value)
       ) {
-        if (contextErrors.size >= 32) contextErrors.delete(contextErrors.keys().next().value!);
-        contextErrors.set(sender.tab!.id!, reason);
+        const oldest = contextErrors.keys().next();
+
+        if (contextErrors.size >= 32 && !oldest.done) contextErrors.delete(oldest.value);
+
+        if (tabId !== undefined) contextErrors.set(tabId, reason);
       }
 
       respond({ accepted: false });
@@ -279,8 +295,12 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
     if (message.type === "context") {
       contextErrors.delete(ref.tabId);
 
-      if (contexts.size >= 32 && !contexts.has(ref.tabId))
-        contexts.delete(contexts.keys().next().value!);
+      if (contexts.size >= 32 && !contexts.has(ref.tabId)) {
+        const oldest = contexts.keys().next();
+
+        if (!oldest.done) contexts.delete(oldest.value);
+      }
+
       contexts.set(ref.tabId, { ref, context: message.context, receivedAt: Date.now() });
     }
 
@@ -291,7 +311,12 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
     }
 
     if (message.type === "clock-probe") {
-      if (probes.size >= 16) probes.delete(probes.keys().next().value!);
+      if (probes.size >= 16) {
+        const oldest = probes.keys().next();
+
+        if (!oldest.done) probes.delete(oldest.value);
+      }
+
       probes.set(message.nonce, { tabId: ref.tabId, documentId: ref.documentId });
     }
 
@@ -321,10 +346,12 @@ export function startCompanionWorker(api: ChromeApi, hostName: string): void {
     }
   });
   api.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === "gristmill-connect") void connect();
+    if (alarm.name === "gristmill-connect") void connect().catch(() => undefined);
   });
-  void api.alarms.create("gristmill-connect", { periodInMinutes: 0.5 });
-  void connect();
+
+  void api.alarms.create("gristmill-connect", { periodInMinutes: 0.5 }).catch(() => undefined);
+
+  void connect().catch(() => undefined);
 }
 
 declare const chrome: ChromeApi;

@@ -52,7 +52,8 @@ export default function MeetingNotificationOverlay(): ReactElement {
       onData: setData,
       onVisible: () => setIsVisible(true),
       onReady: () => {
-        void window.electronAPI?.meetingNotificationReady?.();
+        // Fire-and-forget ready ping; failures only delay main's cleanup.
+        void window.electronAPI?.meetingNotificationReady?.().catch(() => undefined);
       },
     });
   }, []);
@@ -70,7 +71,11 @@ export default function MeetingNotificationOverlay(): ReactElement {
       if (data?.kind !== "detection") return;
       setIsVisible(false);
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
-      window.electronAPI?.meetingNotificationRespond?.(data.detectionId, action);
+      // Best-effort response; a dropped IPC leaves the detection card state
+      // in main unchanged.
+      void window.electronAPI
+        ?.meetingNotificationRespond?.(data.detectionId, action)
+        .catch(() => undefined);
     },
     [data]
   );
@@ -116,14 +121,15 @@ export default function MeetingNotificationOverlay(): ReactElement {
   );
 
   const dismiss = useCallback((): void => {
-    if (data?.kind === "meet-context-lost") void respondToContext("dismiss");
-    else if (data?.kind === "auto-end") void respondToAutoEnd("dismiss");
-    else void respond("dismiss");
+    if (data?.kind === "meet-context-lost") void respondToContext("dismiss").catch(() => undefined);
+    else if (data?.kind === "auto-end") void respondToAutoEnd("dismiss").catch(() => undefined);
+    else void respond("dismiss").catch(() => undefined);
   }, [data, respond, respondToAutoEnd, respondToContext]);
 
   const handleMouseEnter = useCallback((): void => {
     setIsHovered(true);
-    window.electronAPI?.setNotificationInteractivity?.(true);
+    // Interactivity toggles are cosmetic; a failed IPC leaves the window as-is.
+    void window.electronAPI?.setNotificationInteractivity?.(true).catch(() => undefined);
   }, []);
 
   const handleMouseLeave = useCallback((): void => {
@@ -132,7 +138,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
     // A captured pointer keeps dragging outside the card, so the window has to
     // stay interactive until the swipe finishes.
     if (pointerSwipeRef.current) return;
-    window.electronAPI?.setNotificationInteractivity?.(false);
+    void window.electronAPI?.setNotificationInteractivity?.(false).catch(() => undefined);
   }, []);
 
   const handlePointerDown = useCallback(
@@ -183,7 +189,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
         setExitDirection(distance < 0 ? -1 : 1);
         dismiss();
       } else if (!isHovered) {
-        window.electronAPI?.setNotificationInteractivity?.(false);
+        void window.electronAPI?.setNotificationInteractivity?.(false).catch(() => undefined);
       }
     },
     [dismiss, isHovered, presentation.dismissible]
@@ -195,24 +201,30 @@ export default function MeetingNotificationOverlay(): ReactElement {
       pointerSwipeRef.current = null;
       setDragX(null);
 
-      if (!isHovered) window.electronAPI?.setNotificationInteractivity?.(false);
+      if (!isHovered)
+        void window.electronAPI?.setNotificationInteractivity?.(false).catch(() => undefined);
     },
     [isHovered]
   );
 
-  const title = "title" in presentation ? presentation.title : t(presentation.titleKey as string);
+  // presentation.titleKey is a literal union of existing i18n keys; t() takes
+  // a plain string, so the cast only widens the key for the i18n call.
+  // SAFETY: titleKey is one of the meetingNotification i18n keys declared in
+  // meetingNotificationModel.
+  const title: string | undefined =
+    "title" in presentation ? presentation.title : t(presentation.titleKey as string);
 
   const body =
     "bodyValues" in presentation
       ? t(presentation.bodyKey, presentation.bodyValues)
       : t(presentation.bodyKey);
 
-  const handleAction =
-    presentation.action === "stop"
-      ? () => void respondToContext("stop")
-      : presentation.action === "restart"
-        ? () => void respondToAutoEnd("restart")
-        : () => respond(presentation.action);
+  const handleAction = (): void => {
+    if (presentation.action === "stop") void respondToContext("stop").catch(() => undefined);
+    else if (presentation.action === "restart")
+      void respondToAutoEnd("restart").catch(() => undefined);
+    else void respond(presentation.action).catch(() => undefined);
+  };
 
   const countdownMs = useMemo(
     () => (data?.kind === "auto-end" ? Math.max(0, data.expiresAt - Date.now()) : undefined),
@@ -250,7 +262,7 @@ export default function MeetingNotificationOverlay(): ReactElement {
         style={motionStyle}
       >
         <MeetingNotificationCard
-          title={title as string}
+          title={title ?? ""}
           body={body}
           startLabel={t(presentation.actionKey)}
           onStart={handleAction}

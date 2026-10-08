@@ -1,4 +1,4 @@
-// The eight container (folders/spaces) DB channels, moved out of
+// The folder DB channels, moved out of
 // ipcHandlers.js. Registration order, positional arguments, return shapes and
 // side effects match the previous JS implementations; SQL stays in
 // DatabaseManager. Arguments are accepted as unknown, validated with the
@@ -9,19 +9,13 @@ import {
   deleteFolderArgsSchema,
   folderDeleteResultSchema,
   folderListResultSchema,
-  folderMoveResultSchema,
   folderMutationResultSchema,
   getFolderNoteCountsArgsSchema,
   folderNoteCountsResultSchema,
   getFoldersArgsSchema,
-  getSpacesArgsSchema,
-  moveFolderToSpaceArgsSchema,
   renameFolderArgsSchema,
   updateFolderStyleArgsSchema,
   reorderFoldersArgsSchema,
-  spaceListResultSchema,
-  spaceMutationResultSchema,
-  updateSpaceArgsSchema,
   type FolderDeletedPayload,
 } from "../contracts/containers.js";
 import type { NoteItem } from "../contracts/notes.js";
@@ -30,21 +24,17 @@ import {
   sendFolderDeleted,
   sendFolderRenamed,
   sendFolderSynced,
-  sendSpaceSynced,
 } from "./containerEvents.js";
 
 export interface ContainerHandlerDeps {
   database: {
-    getFolders(spaceId: unknown): unknown;
-    createFolder(name: unknown, spaceId: unknown): unknown;
+    getFolders(): unknown;
+    createFolder(name: unknown): unknown;
     deleteFolder(id: unknown): unknown;
     renameFolder(id: unknown, name: unknown): unknown;
     updateFolderStyle(id: unknown, style: unknown): unknown;
-    reorderFolders(spaceId: unknown, folderIds: unknown): unknown;
-    moveFolderToSpace(id: unknown, spaceId: unknown): unknown;
+    reorderFolders(folderIds: unknown): unknown;
     getFolderNoteCounts(): unknown;
-    getSpaces(): unknown;
-    updateSpace(id: unknown, updates: unknown): unknown;
   };
   noteFilesEnabled: () => boolean;
   // Mirrors: folder names are resolved before the delete/rename (the row is
@@ -86,21 +76,21 @@ export function registerContainerHandlers(
   const { database } = deps;
 
   ipcMain.handle("db-get-folders", async (_event, ...args: unknown[]) => {
-    const [spaceId] = parseArgs(getFoldersArgsSchema, args);
+    parseArgs(getFoldersArgsSchema, args);
 
     return parseResult(
       folderListResultSchema,
-      database.getFolders(spaceId ?? null),
+      database.getFolders(),
       "folder list shape"
     );
   });
 
   ipcMain.handle("db-create-folder", async (_event, ...args: unknown[]) => {
-    const [name, spaceId] = parseArgs(createFolderArgsSchema, args);
+    const [name] = parseArgs(createFolderArgsSchema, args);
 
     const result = parseResult(
       folderMutationResultSchema,
-      database.createFolder(name, spaceId ?? null),
+      database.createFolder(name),
       "folder mutation result"
     );
 
@@ -190,31 +180,13 @@ export function registerContainerHandlers(
   });
 
   ipcMain.handle("db-reorder-folders", async (_event, ...args: unknown[]) => {
-    const [spaceId, folderIds] = parseArgs(reorderFoldersArgsSchema, args);
+    const [folderIds] = parseArgs(reorderFoldersArgsSchema, args);
 
     return parseResult(
       folderDeleteResultSchema,
-      database.reorderFolders(spaceId, folderIds),
+      database.reorderFolders(folderIds),
       "folder reorder result"
     );
-  });
-
-  ipcMain.handle("db-move-folder-to-space", async (_event, ...args: unknown[]) => {
-    const [id, spaceId] = parseArgs(moveFolderToSpaceArgsSchema, args);
-
-    const result = parseResult(
-      folderMoveResultSchema,
-      database.moveFolderToSpace(id, spaceId),
-      "folder move result"
-    );
-
-    if (result.success && result.folder) {
-      const folder = result.folder;
-
-      setImmediate(() => sendFolderSynced(folder));
-    }
-
-    return result;
   });
 
   ipcMain.handle("db-get-folder-note-counts", async (_event, ...args: unknown[]) => {
@@ -227,25 +199,4 @@ export function registerContainerHandlers(
     );
   });
 
-  ipcMain.handle("db-get-spaces", async (_event, ...args: unknown[]) => {
-    parseArgs(getSpacesArgsSchema, args);
-
-    return parseResult(spaceListResultSchema, database.getSpaces(), "space list shape");
-  });
-
-  ipcMain.handle("db-update-space", async (_event, ...args: unknown[]) => {
-    const [id, updates] = parseArgs(updateSpaceArgsSchema, args);
-
-    const result = parseResult(
-      spaceMutationResultSchema,
-      database.updateSpace(id, updates),
-      "space mutation result"
-    );
-
-    if (result.success && result.space) {
-      setImmediate(() => sendSpaceSynced(result.space));
-    }
-
-    return result;
-  });
 }

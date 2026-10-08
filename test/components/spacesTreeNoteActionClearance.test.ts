@@ -36,32 +36,26 @@ async function renderTree(t: TestContext, direction: string) {
     cachePrefix: `openwhispr-spaces-tree-note-clearance-${direction}-`,
     mockModules: {
       "/stores/noteStore": `
-        const spaces = [
-          { id: 1, kind: "private", name: "Personal", sync_status: "synced" },
-          { id: 2, kind: "private", name: "Engineering", sync_status: "synced" },
-        ];
         const folders = [
-          { id: 11, space_id: 1, name: "Private folder", is_default: 0 },
-          { id: 22, space_id: 2, name: "Team folder", is_default: 0 },
+          { id: 11, name: "Private folder", is_default: 0 },
+          { id: 22, name: "Team folder", is_default: 0 },
         ];
         const notes = [
-          { id: 101, space_id: 1, folder_id: 11, folder_ids: [11], title: ${JSON.stringify(PRIVATE_NOTE_TITLE)} },
-          { id: 202, space_id: 2, folder_id: 22, folder_ids: [22], title: ${JSON.stringify(TEAM_NOTE_TITLE)} },
+          { id: 101, folder_id: 11, folder_ids: [11], title: ${JSON.stringify(PRIVATE_NOTE_TITLE)} },
+          { id: 202, folder_id: 22, folder_ids: [22], title: ${JSON.stringify(TEAM_NOTE_TITLE)} },
         ];
         export const folderContainerKey = (id) => "folder:" + id;
-        export const spaceContainerKey = (id) => "space:" + id;
-        export const useSpaces = () => spaces;
+        export const ROOT_CONTAINER_KEY = "root";
         export const useFolders = () => folders;
         export const useFolderCounts = () => ({ 11: 1, 22: 1 });
-        export const useSpaceRootCounts = () => ({ 1: 0, 2: 0 });
+        export const useRootNoteCount = () => 0;
         export const useNotesByContainer = () => ({
-          "space:1": [],
-          "space:2": [],
+          "root": [],
           "folder:11": [notes[0]],
           "folder:22": [notes[1]],
         });
         export const useExpandedContainers = () => new Set([
-          "space:1", "space:2", "folder:11", "folder:22"
+          "root", "folder:11", "folder:22"
         ]);
         export const useActiveContext = () => null;
         export const useActiveNoteId = () => null;
@@ -69,7 +63,6 @@ async function renderTree(t: TestContext, direction: string) {
         export const useShareCache = () => new Map();
         export const getNoteFromStore = (id) => notes.find((note) => note.id === id);
         export const getFoldersValue = () => folders;
-        export const getSpacesValue = () => spaces;
         export const setActiveContext = () => {};
         export const setActiveNoteId = () => {};
         export const setContainerExpanded = () => {};
@@ -80,7 +73,6 @@ async function renderTree(t: TestContext, direction: string) {
         export const updateFolderStyle = async () => ({ success: true });
         export const reorderFolders = async () => {};
         export const deleteFolder = async () => ({ success: true });
-        export const moveFolderToSpace = async () => ({ success: true });
       `,
       "/hooks/useNoteDragAndDrop": `
         export const useNoteDragAndDrop = () => ({
@@ -140,7 +132,7 @@ async function renderTree(t: TestContext, direction: string) {
   });
 
   const { I18nextProvider } = await vite.ssrLoadModule("react-i18next");
-  const { default: SpacesTree } = await vite.ssrLoadModule("/components/notes/SpacesTree.tsx");
+  const { default: NotesTree } = await vite.ssrLoadModule("/components/notes/NotesTree.tsx");
 
   return renderToStaticMarkup(
     React.createElement(
@@ -149,7 +141,7 @@ async function renderTree(t: TestContext, direction: string) {
       React.createElement(
         I18nextProvider,
         { i18n },
-        React.createElement(SpacesTree, {
+        React.createElement(NotesTree, {
           onDeleteNote: () => {},
           onMoveNote: async () => {},
           onCreateFolderAndMove: () => {},

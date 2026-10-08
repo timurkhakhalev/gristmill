@@ -35,6 +35,8 @@ Settings → Models has four tasks:
 
 ### Use a self-hosted server or a custom endpoint
 
+These options are in Settings → Models. The first-run provider step offers meeting transcription providers only.
+
 1. For Meeting summary or Chat, select the **Self-hosted** tab and add the server URL.
 2. For Audio upload, Meeting summary or Chat, select **Custom endpoint** on the **Cloud** tab to use any OpenAI-compatible API. For Meeting summary and Chat, you can also select OpenRouter.
 3. Meeting recording does not offer a custom or self-hosted route.

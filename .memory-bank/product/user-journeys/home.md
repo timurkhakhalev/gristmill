@@ -5,7 +5,7 @@ As a Gristmill user, I want to find upcoming meetings and return to my notes.
 ## Entry points
 
 - **Gristmill app → sidebar → Home** — the default main view.
-- **Gristmill app → sidebar → Actions, Upload file, Settings, spaces tree** — the other main areas.
+- **Gristmill app → sidebar → Actions, Upload file, Settings, Notes tree** — the other main areas.
 - **macOS menu bar → Gristmill tray icon** — New Note, upcoming events and Settings.
 
 ## Paths
@@ -51,7 +51,7 @@ As a Gristmill user, I want to find upcoming meetings and return to my notes.
 ### Move between areas
 
 1. Use the sidebar to open Home, Actions, Upload file or Settings.
-2. Use the spaces tree in the sidebar to open a folder or a note.
+2. Use the Notes tree in the sidebar to open a folder or a note.
 
 ## BDD acceptance criteria
 

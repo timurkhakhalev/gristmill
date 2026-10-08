@@ -14,8 +14,7 @@ export interface NoteWriteDeps {
       noteType?: string,
       sourceFile?: string | null,
       audioDuration?: number | null,
-      folderId?: number | null,
-      spaceId?: number | null
+      folderId?: number | null
     ): { success: boolean; note: NoteRow | null };
     updateNote(
       id: number,
@@ -37,8 +36,7 @@ export class NoteWriteService {
     noteType?: string,
     sourceFile: string | null = null,
     audioDuration: number | null = null,
-    folderId: number | null = null,
-    spaceId: number | null = null
+    folderId: number | null = null
   ): NoteMutationResult {
     const result = this.deps.database.saveNote(
       title,
@@ -46,8 +44,7 @@ export class NoteWriteService {
       noteType,
       sourceFile,
       audioDuration,
-      folderId,
-      spaceId
+      folderId
     );
 
     if (!result.success || !result.note) return { success: false, error: "Note not found" };

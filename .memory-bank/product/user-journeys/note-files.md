@@ -5,7 +5,7 @@ As a Gristmill user, I want a local Markdown copy of my notes that I can open wi
 ## Entry points
 
 - **Gristmill app → Settings → Notes → Store note files** — turn the copy on or off.
-- **Gristmill app → sidebar spaces tree → note or folder menu → Show in Finder** — open the files.
+- **Gristmill app → sidebar → Notes → note or folder menu → Show in Finder** — open the files.
 
 ## Paths
 
@@ -18,7 +18,7 @@ As a Gristmill user, I want a local Markdown copy of my notes that I can open wi
 
 ### Open the files of a note or a folder
 
-1. In the spaces tree, open the menu of a note or a folder.
+1. In the Notes tree, open the menu of a note or a folder.
 2. Click **Show in Finder**. Finder opens the file or the folder.
 3. Each note has a Markdown file with its details and its Summary or your notes. The transcript is in a separate file.
 4. Notes without a folder are in the Personal folder.

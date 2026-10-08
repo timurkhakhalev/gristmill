@@ -3,9 +3,6 @@ export type LocalMutationErrorKey =
   | "notes.mutationErrors.folderAlreadyExists"
   | "notes.mutationErrors.folderNotFound"
   | "notes.mutationErrors.defaultFolderImmutable"
-  | "notes.mutationErrors.spaceNameRequired"
-  | "notes.mutationErrors.spaceNotFound"
-  | "notes.mutationErrors.privateSpaceImmutable"
   | "notes.mutationErrors.generic";
 
 interface LocalMutationErrorKeyTable {
@@ -19,10 +16,6 @@ const ERROR_KEYS: LocalMutationErrorKeyTable = {
   "Cannot delete default folders": "notes.mutationErrors.defaultFolderImmutable",
   "Cannot rename default folders": "notes.mutationErrors.defaultFolderImmutable",
   "Cannot move default folders": "notes.mutationErrors.defaultFolderImmutable",
-  "Space name is required": "notes.mutationErrors.spaceNameRequired",
-  "Space not found": "notes.mutationErrors.spaceNotFound",
-  "Cannot rename the private space": "notes.mutationErrors.privateSpaceImmutable",
-  "Cannot purge the private space": "notes.mutationErrors.privateSpaceImmutable",
 };
 
 /**

@@ -12,10 +12,10 @@ As a Gristmill user, I want to turn saved audio into a note.
 
 1. Open **Upload file**.
 2. Drop an audio file on the screen, or click to browse. Gristmill accepts MP3, WAV, M4A, WebM, OGG, FLAC, AAC and Opus.
-3. Select the destination folder. Personal is selected first. Select **No folder** to keep the note at the top of the space.
-4. Optionally turn on **Speaker detection** and set the number of speakers, or keep **Auto-detect**.
-5. Click **Transcribe**. The screen shows the progress.
-6. When you see **Transcription complete**, click **Open Note**, or click **Upload Another**.
+3. Optionally turn on **Speaker detection** and set the number of speakers, or keep **Auto-detect**.
+4. Click **Transcribe**. The screen shows the progress.
+5. When you see **Transcription complete**, select the destination folder. Personal is selected first. Select **No folder** to keep the note directly under **Notes**.
+6. Click **Open Note**, or click **Upload Another**.
 
 ### Transcribe several files
 
@@ -25,12 +25,19 @@ As a Gristmill user, I want to turn saved audio into a note.
 4. Read the status of each item. Remove an item with **Remove from queue**, or click **Cancel all**.
 5. Open the notes of the items that completed. If you quit Gristmill, the queue is lost.
 
-### Download audio from a link
+### Transcribe one link
 
-1. Click **Paste file URLs** and paste one direct HTTPS link to an audio or video file on each line.
-2. Click **Download**. Gristmill downloads each file and adds it to the transcription.
-3. If a link is not a direct HTTPS file link, Gristmill skips it and shows **Some links were skipped.** YouTube links and links to private network addresses are always rejected.
-4. Click **Cancel download** to stop a download.
+1. Paste one direct HTTPS audio or video file URL into the link field and click **Download**.
+2. Wait for the download. Click **Cancel download** if you want to stop it.
+3. Click **Transcribe**. When the transcription completes, select the destination folder. This uses the single-file flow.
+4. If the URL is invalid or the file cannot be downloaded, Gristmill shows an error. YouTube links and links to private network addresses are rejected.
+
+### Transcribe several links
+
+1. Paste direct HTTPS audio or video file URLs into the link field, one per line. The multiline field opens when you paste multiple lines.
+2. Click **Add to queue**. Gristmill skips invalid, duplicate and YouTube links and shows **Some links were skipped.** Private network addresses are rejected during download.
+3. Select the destination folder and click **Transcribe**. Gristmill downloads and transcribes the queued files one at a time.
+4. Add more links while the queue runs, or click **Cancel all** to stop it. A link submitted while a queue exists also joins the queue.
 
 ### Recover from a failed save
 
@@ -46,6 +53,8 @@ As a Gristmill user, I want to turn saved audio into a note.
 ## BDD acceptance criteria
 
 - Given I add several audio files, when I start the queue, then Gristmill transcribes them one at a time.
+- Given I submit one valid link with an empty queue, when the download completes, then I can transcribe it in the single-file flow.
+- Given I submit several links, when I click **Add to queue**, then valid links join the queue and invalid links are skipped.
 - Given I submit a YouTube link, when the download is requested, then Gristmill rejects the link.
 - Given the transcription completed but the note did not save, when I click **Retry**, then the note saves without a new provider request.
 

@@ -67,12 +67,9 @@ export const updateNoteTool: ToolDefinition = {
       let folderCreated = false;
 
       if (folderName) {
-        // Folder resolution stays within the note's space so a move by name
-        // never drags the note into another space.
         const resolved = await resolveFolderId(
           folderName,
-          { createIfMissing: true },
-          note.space_id
+          { createIfMissing: true }
         );
 
         if (resolved.error !== undefined) {

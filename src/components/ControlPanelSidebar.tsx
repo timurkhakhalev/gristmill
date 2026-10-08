@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "./lib/utils";
 import { GristmillLogo } from "./ui/GristmillLogo";
 import ActionManagerDialog from "./notes/ActionManagerDialog";
-import SpacesTree from "./notes/SpacesTree";
+import NotesTree from "./notes/NotesTree";
 import { useNotesTreeActions } from "../hooks/useNotesTreeActions";
 import type { ControlPanelView } from "./controlPanelNav";
 
@@ -76,7 +76,7 @@ export default function ControlPanelSidebar({
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
-        <SpacesTree
+        <NotesTree
           onDeleteNote={(id) => {
             // The tree prop is void; observe the rejection so a failed delete
             // is recorded instead of floating.

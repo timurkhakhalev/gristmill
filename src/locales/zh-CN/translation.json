@@ -270,18 +270,12 @@
         "description": "选择服务商，添加凭据，然后测试连接。",
         "descriptionLineOne": "选择服务商并添加",
         "descriptionLineTwo": "你的 API Key。",
-        "selfHosted": "我有自托管模型的密钥",
         "providerLabel": "服务商",
         "providerPlaceholder": "选择模型服务商",
         "modelLabel": "模型",
         "modelPlaceholder": "选择模型",
         "apiKey": "API 密钥",
         "apiKeyPlaceholder": "粘贴你的 API Key",
-        "endpointUrl": "端点 URL",
-        "endpointPlaceholder": "粘贴你的端点 URL",
-        "optional": "可选",
-        "modelId": "模型 ID",
-        "modelIdPlaceholder": "填写你的模型 ID",
         "testConnection": "测试连接",
         "proceed": "继续",
         "clinical": "用于临床转录",
@@ -1427,26 +1421,12 @@
       "folderAlreadyExists": "已存在同名文件夹。",
       "folderNotFound": "找不到该文件夹。",
       "defaultFolderImmutable": "无法更改默认文件夹。",
-      "spaceNameRequired": "请输入空间名称。",
-      "spaceNotFound": "找不到该空间。",
-      "privateSpaceImmutable": "无法更改你的个人空间。",
       "generic": "无法完成更改，请重试。"
     },
     "sidebar": {
       "newNote": "新建笔记",
       "searchNotes": "搜索笔记",
       "actions": "操作"
-    },
-    "structureIntro": {
-      "title": "笔记存放在哪里",
-      "description": "Gristmill 将个人想法与协作内容分开，让合适的人看到合适的笔记。",
-      "personal": {
-        "title": "个人空间",
-        "description": "只有你能看到这里的文件夹和笔记。"
-      },
-      "contents": "每个空间都可以包含文件夹和笔记。",
-      "done": "知道了",
-      "reopen": "了解空间的组织方式"
     },
     "folders": {
       "defaults": {
@@ -1461,7 +1441,7 @@
       "couldNotRename": "无法重命名文件夹",
       "couldNotDelete": "无法删除文件夹",
       "deleteTitle": "删除文件夹？",
-      "deleteDescription": "删除“{{name}}”？笔记将保留在其他文件夹中，或移到空间根目录。",
+      "deleteDescription": "删除“{{name}}”？笔记将保留在其他文件夹中，或移到笔记根目录。",
       "deleteDescriptionEmpty": "这将永久删除「{{name}}」。此操作无法撤销。",
       "deleteConfirm": "删除文件夹"
     },
@@ -1807,14 +1787,10 @@
       },
       "consentNotice": "录制他人时请务必征得同意"
     },
-    "spaces": {
-      "personal": "个人",
-      "moveToSpace": "移动到空间…",
+    "moves": {
       "moved": "已将“{{title}}”移动到 {{target}}",
       "couldNotMoveNote": "无法移动笔记",
-      "undo": "撤销",
-      "noteCount_one": "{{count}} 条笔记",
-      "noteCount_other": "{{count}} 条笔记"
+      "undo": "撤销"
     },
     "dateGroups": {
       "today": "今天",
@@ -2123,7 +2099,6 @@
   "commandSearch": {
     "searchError": "搜索失败",
     "searchingTranscripts": "正在搜索转录文本…",
-    "allSpaces": "所有空间",
     "title": "搜索",
     "description": "搜索笔记和转录",
     "placeholder": "搜索笔记和转录…",

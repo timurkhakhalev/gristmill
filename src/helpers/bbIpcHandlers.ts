@@ -7,7 +7,6 @@ import {
 import { AgentStreamRequestRegistry } from "./agentStreamRequestRegistry.js";
 import { ensureBbWorkspace } from "./bbWorkspace.js";
 import {
-  assertBbVersion,
   BbCliError,
   getBbHostPreferences,
   getBbThreadHistory,
@@ -129,7 +128,6 @@ export function registerBbHandlers(
 
         if (!database.getAgentConversation(request.conversationId))
           throw new Error("Chat conversation no longer exists");
-        await assertBbVersion();
 
         if (controller.signal.aborted) return;
         const saved = database.getAgentBbThread(request.conversationId);

@@ -3234,7 +3234,6 @@ function failureFromUnknown(value: unknown): MeetingProcessingFailure {
       "LLAMASERVER_NOT_FOUND",
       "LOCAL_SERVER_UNAVAILABLE",
       "bb-not-installed",
-      "bb-version-unsupported",
       "bb-project-mismatch",
     ].includes(code)
   ) {

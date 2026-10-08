@@ -489,12 +489,6 @@ export class IPCHandlers {
   _mirrorDeleteFolderIfUnshared(folderName: string, relocatedNoteIds: number[]): void {
     if (!this._noteFilesEnabled) return;
 
-    // Folder rows are hard-deleted (no deleted_at column): a live same-named
-    // folder in another space shares the mirror directory, so leave it on disk.
-    const stillLive = this.databaseManager.db
-      .prepare("SELECT 1 FROM folders WHERE name = ?")
-      .get(folderName);
-
     // Notes whose primary folder was the deleted one survive with a moved
     // folder_id (next extra folder) or NULL (falls back to the Personal
     // directory). Queue reprojection at the surviving location. Personal is
@@ -510,7 +504,7 @@ export class IPCHandlers {
       }
     }
 
-    if (!stillLive && folderName !== "Personal") markdownMirror.deleteFolder(folderName);
+    if (folderName !== "Personal") markdownMirror.deleteFolder(folderName);
   }
 
   _mirrorRenameFolder(oldName: string, newName: string): void {
@@ -1424,33 +1418,29 @@ export class IPCHandlers {
     registerNotesHandlers(ipcMain, {
       noteWrites: this.noteWrites,
       getNote: (id) => this.databaseManager.getNote(id),
-      getNotes: (noteType, limit, folderId, spaceId) =>
-        this.databaseManager.getNotes(noteType, limit, folderId, spaceId),
-      getNotesForSpace: (spaceId, limit) => this.databaseManager.getNotesForSpace(spaceId, limit),
+      getNotes: (noteType, limit, folderId) =>
+        this.databaseManager.getNotes(noteType, limit, folderId),
+      getRootNotes: (limit) => this.databaseManager.getRootNotes(limit),
       deleteNoteInternal: (id) => this.deleteNoteInternal(id),
-      searchNotes: (query, limit, spaceId, folderId) =>
-        this.databaseManager.searchNotes(query, limit, spaceId, folderId),
-      searchNoteContent: (query, spaceId) =>
+      searchNotes: (query, limit, folderId, rootOnly) =>
+        this.databaseManager.searchNotes(query, limit, folderId, rootOnly),
+      searchNoteContent: (query) =>
         noteReader.searchNotes(query).flatMap((hit) => {
           const note = this.databaseManager.getNote(hit.note_id);
 
-          return note && (spaceId === null || note.space_id === spaceId)
-            ? [{ note, matches: hit.matches }]
-            : [];
+          return note ? [{ note, matches: hit.matches }] : [];
         }),
-      searchNoteTranscripts: (query, spaceId) =>
+      searchNoteTranscripts: (query) =>
         noteReader.searchTranscripts(query).flatMap((hit) => {
           const note = this.databaseManager.getNote(hit.note_id);
 
-          return note && (spaceId === null || note.space_id === spaceId)
-            ? [{ note, matches: hit.matches }]
-            : [];
+          return note ? [{ note, matches: hit.matches }] : [];
         }),
       getNoteTranscript: (noteId) => noteReader.transcript(noteId),
       getNoteOutput: (request) => noteReader.readOutput(request),
     });
 
-    // Container (folders/spaces) channels live in the typed module.
+    // Folder channels live in the typed module.
     registerContainerHandlers(ipcMain, {
       database: this.databaseManager,
       noteFilesEnabled: () => this._noteFilesEnabled,

@@ -6,13 +6,12 @@ import {
 } from "./noteListOps";
 import { z } from "zod";
 import { findDefaultFolder } from "../components/notes/shared";
-import type { FolderItem, FolderStyle, SpaceItem } from "../contracts/containers";
+import type { FolderItem, FolderStyle } from "../contracts/containers";
 import type { PendingNoteUpdates } from "../lib/noteEditorPendingSave";
 import type { NoteItem } from "../contracts/notes";
 import logger from "../utils/logger";
 
 export interface ActiveContext {
-  spaceId: number;
   folderId: number | null;
 }
 
@@ -25,12 +24,9 @@ interface EditorSave {
 interface NoteState {
   editorSaves: Record<number, EditorSave>;
   notes: NoteItem[];
-  spaces: SpaceItem[];
   folders: FolderItem[];
   folderCounts: Record<number, number>;
-  // Notes sitting at a space root (folder_id NULL), keyed by space id — the
-  // tree's space rows show true totals without loading containers.
-  spaceRootCounts: Record<number, number>;
+  rootNoteCount: number;
   notesByContainer: Record<string, NoteItem[]>;
   expandedContainers: Set<string>;
   activeContext: ActiveContext | null;
@@ -42,7 +38,7 @@ interface NoteState {
   isTreeLoading: boolean;
   // Bumped on every confirmed Note event (added/updated/deleted), whether or
   // not the row was cached. Consumers that read the authoritative list from
-  // main (Home's cross-space recent list) react to this instead of the cache
+  // main (Home's recent list) react to this instead of the cache
   // identity, which does not change when a note is deleted from an unloaded
   // container.
   noteEventsRevision: number;
@@ -74,10 +70,9 @@ function persistExpandedContainers(expanded: Set<string>): void {
 const useNoteStore = create<NoteState>()(() => ({
   editorSaves: {},
   notes: [],
-  spaces: [],
   folders: [],
   folderCounts: {},
-  spaceRootCounts: {},
+  rootNoteCount: 0,
   notesByContainer: {},
   expandedContainers: readExpandedContainers(),
   activeContext: null,
@@ -206,8 +201,6 @@ let loadGeneration = 0;
 
 let treeLoadGeneration = 0;
 
-let spacesLoadGeneration = 0;
-
 let foldersLoadGeneration = 0;
 
 // Folder navigation requested before folders load; consumed once by initializeNotesTree.
@@ -217,21 +210,17 @@ export function folderContainerKey(folderId: number): string {
   return `f:${folderId}`;
 }
 
-export function spaceContainerKey(spaceId: number): string {
-  return `s:${spaceId}`;
-}
+export const ROOT_CONTAINER_KEY = "root";
 
 export function contextContainerKey(context: ActiveContext): string {
-  return context.folderId != null
-    ? folderContainerKey(context.folderId)
-    : spaceContainerKey(context.spaceId);
+  return context.folderId != null ? folderContainerKey(context.folderId) : ROOT_CONTAINER_KEY;
 }
 
-/** Every tree container listing the note: each of its folders, or its space root. */
+/** Every tree container listing the note: each of its folders, or Notes root. */
 function noteContainerKeys(note: NoteItem): string[] {
   return note.folder_ids.length
     ? note.folder_ids.map(folderContainerKey)
-    : [spaceContainerKey(note.space_id)];
+    : [ROOT_CONTAINER_KEY];
 }
 
 const sameContainers = (a: NoteItem, b: NoteItem) =>
@@ -336,22 +325,13 @@ function ensureIpcListeners() {
       let fallbackContext: ActiveContext | null = null;
 
       if (state.activeContext?.folderId === id) {
-        // The active folder vanished under us — degrade to its space root.
-        fallbackContext = { spaceId: state.activeContext.spaceId, folderId: null };
+        fallbackContext = { folderId: null };
         extra.activeContext = fallbackContext;
         extra.notes = teardown.notesByContainer[contextContainerKey(fallbackContext)] ?? [];
       }
 
       useNoteStore.setState({ notesByContainer: teardown.notesByContainer, ...extra });
-      const deletedFolder = state.folders.find((folder) => folder.id === id);
-      const rootSpaceId = deletedFolder?.space_id ?? fallbackContext?.spaceId;
-
-      if (rootSpaceId != null) {
-        runInBackground(
-          loadContainerNotes(spaceContainerKey(rootSpaceId)),
-          "Note container load failed"
-        );
-      }
+      runInBackground(loadContainerNotes(ROOT_CONTAINER_KEY), "Note container load failed");
 
       runInBackground(loadFolders(), "Note folders refresh failed");
     });
@@ -368,17 +348,6 @@ function ensureIpcListeners() {
   });
 }
 
-export async function loadSpaces(): Promise<SpaceItem[]> {
-  const gen = ++spacesLoadGeneration;
-  const items = (await window.electronAPI.getSpaces?.()) ?? [];
-
-  // A newer load may have resolved first.
-  if (gen !== spacesLoadGeneration) return items;
-  useNoteStore.setState({ spaces: items });
-
-  return items;
-}
-
 export async function loadFolders(): Promise<FolderItem[]> {
   const gen = ++foldersLoadGeneration;
 
@@ -389,12 +358,12 @@ export async function loadFolders(): Promise<FolderItem[]> {
 
   if (gen !== foldersLoadGeneration) return items;
   const folderCounts: Record<number, number> = {};
-  const spaceRootCounts: Record<number, number> = {};
+  let rootNoteCount = 0;
   counts.forEach((c) => {
     if (c.folder_id != null) folderCounts[c.folder_id] = c.count;
-    else if (c.space_id != null) spaceRootCounts[c.space_id] = c.count;
+    else rootNoteCount = c.count;
   });
-  useNoteStore.setState({ folders: items, folderCounts, spaceRootCounts });
+  useNoteStore.setState({ folders: items, folderCounts, rootNoteCount });
 
   return items;
 }
@@ -412,7 +381,6 @@ export function resetForAccountChange(): void {
   currentLimit = DEFAULT_LIMIT;
   loadGeneration += 1;
   treeLoadGeneration += 1;
-  spacesLoadGeneration += 1;
   foldersLoadGeneration += 1;
   pendingFolderPreset = null;
 
@@ -427,10 +395,9 @@ export function resetForAccountChange(): void {
 
   useNoteStore.setState({
     notes: [],
-    spaces: [],
     folders: [],
     folderCounts: {},
-    spaceRootCounts: {},
+    rootNoteCount: 0,
     notesByContainer: {},
     expandedContainers: new Set(),
     activeContext: null,
@@ -449,13 +416,10 @@ export async function loadContainerNotes(
   containerLoadGenerations.set(key, gen);
 
   const load = (async (): Promise<NoteItem[]> => {
-    const [kind, idStr] = key.split(":");
-    const id = Number(idStr);
-
     const items =
-      kind === "f"
-        ? ((await window.electronAPI.getNotes(noteType, limit, id)) ?? [])
-        : ((await window.electronAPI.getNotes(noteType, limit, null, id)) ?? []);
+      key === ROOT_CONTAINER_KEY
+        ? ((await window.electronAPI.getRootNotes(limit)) ?? [])
+        : ((await window.electronAPI.getNotes(noteType, limit, Number(key.slice(2)))) ?? []);
 
     // A newer load for this container may have resolved first.
     if (containerLoadGenerations.get(key) === gen) {
@@ -501,25 +465,25 @@ export function toggleContainerExpanded(key: string): void {
   setContainerExpanded(key, !useNoteStore.getState().expandedContainers.has(key));
 }
 
-/** Expand the containers that make a space/folder (and its notes) visible in the tree. */
-export function revealContainer(spaceId: number, folderId: number | null): void {
-  setContainerExpanded(spaceContainerKey(spaceId), true);
+/** Expand the Notes root and selected folder. */
+export function revealContainer(folderId: number | null): void {
+  setContainerExpanded(ROOT_CONTAINER_KEY, true);
 
   if (folderId != null) setContainerExpanded(folderContainerKey(folderId), true);
 }
 
-export function setActiveContext(spaceId: number, folderId: number | null): void {
+export function setActiveContext(folderId: number | null): void {
   const state = useNoteStore.getState();
-  const key = folderId != null ? folderContainerKey(folderId) : spaceContainerKey(spaceId);
+  const key = folderId != null ? folderContainerKey(folderId) : ROOT_CONTAINER_KEY;
   useNoteStore.setState({
-    activeContext: { spaceId, folderId },
+    activeContext: { folderId },
     notes: state.notesByContainer[key] ?? [],
   });
   runInBackground(ensureContainerLoaded(key), "Note container load failed");
 }
 
 /**
- * Loads spaces, folders and counts, resolves the initial active context
+ * Loads folders and counts, resolves the initial active context
  * (honoring a pending folder preset or a prior activeContext, e.g. navigating
  * from search), loads the active container and auto-selects its first note
  * when none is pre-set.
@@ -530,7 +494,7 @@ export async function initializeNotesTree(): Promise<void> {
   useNoteStore.setState({ isTreeLoading: true });
 
   try {
-    const [spaces, folders] = await Promise.all([loadSpaces(), loadFolders()]);
+    const folders = await loadFolders();
 
     if (gen !== treeLoadGeneration) return;
 
@@ -543,28 +507,22 @@ export async function initializeNotesTree(): Promise<void> {
     const preset = useNoteStore.getState().activeContext;
 
     const presetContext =
-      preset &&
-      spaces.some((s) => s.id === preset.spaceId) &&
-      (preset.folderId == null || folders.some((f) => f.id === preset.folderId))
+      preset && (preset.folderId == null || folders.some((f) => f.id === preset.folderId))
         ? preset
         : null;
 
-    const privateSpace = spaces.find((s) => s.kind === "private") ?? spaces[0];
-    let context: ActiveContext | null = null;
+    let context: ActiveContext;
 
     if (presetFolder) {
-      context = { spaceId: presetFolder.space_id, folderId: presetFolder.id };
+      context = { folderId: presetFolder.id };
     } else if (presetContext) {
       context = presetContext;
-    } else if (privateSpace) {
-      const privateFolders = folders.filter((f) => f.space_id === privateSpace.id);
-      const initialFolder = findDefaultFolder(privateFolders) ?? privateFolders[0];
-      context = { spaceId: privateSpace.id, folderId: initialFolder?.id ?? null };
+    } else {
+      const initialFolder = findDefaultFolder(folders) ?? folders[0];
+      context = { folderId: initialFolder?.id ?? null };
     }
 
-    if (!context) return;
-
-    revealContainer(context.spaceId, context.folderId);
+    revealContainer(context.folderId);
     useNoteStore.setState({ activeContext: context });
     // The store stays IPC-maintained across mounts, so an existing container
     // entry is current — reuse it (or revealContainer's in-flight load)
@@ -576,7 +534,7 @@ export async function initializeNotesTree(): Promise<void> {
     // Containers restored as expanded from a previous session must load their
     // notes too, or they render expanded-but-empty until re-toggled.
     const validKeys = new Set<string>([
-      ...spaces.map((s) => spaceContainerKey(s.id)),
+      ROOT_CONTAINER_KEY,
       ...folders.map((f) => folderContainerKey(f.id)),
     ]);
 
@@ -653,7 +611,7 @@ export function updateNoteInStore(note: NoteItem): void {
       next[idx] = note;
       notesByContainer[key] = next;
     } else {
-      // The note left this container (folder/space change) — drop it here.
+      // The note left this folder or the Notes root — drop it here.
       notesByContainer[key] = items.filter((existing) => existing.id !== note.id);
     }
   }
@@ -708,10 +666,9 @@ export function removeNote(id: number): void {
 }
 
 export async function createFolder(
-  name: string,
-  spaceId: number
+  name: string
 ): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
-  const result = await window.electronAPI.createFolder(name, spaceId);
+  const result = await window.electronAPI.createFolder(name);
 
   if (result.success && result.folder) {
     await loadFolders();
@@ -744,8 +701,8 @@ export async function updateFolderStyle(
   return result;
 }
 
-export async function reorderFolders(spaceId: number, folderIds: number[]): Promise<void> {
-  const result = await window.electronAPI.reorderFolders(spaceId, folderIds);
+export async function reorderFolders(folderIds: number[]): Promise<void> {
+  const result = await window.electronAPI.reorderFolders(folderIds);
 
   if (result.success) await loadFolders();
 }
@@ -756,7 +713,6 @@ export async function deleteFolder(id: number): Promise<{ success: boolean; erro
   if (!result.success) return result;
 
   const state = useNoteStore.getState();
-  const folder = state.folders.find((f) => f.id === id);
   const key = folderContainerKey(id);
   const teardown = teardownNoteContainers(state, [key]);
   persistExpandedContainers(teardown.expandedContainers);
@@ -768,56 +724,16 @@ export async function deleteFolder(id: number): Promise<{ success: boolean; erro
 
   await loadFolders();
 
-  if (folder) await loadContainerNotes(spaceContainerKey(folder.space_id));
+  await loadContainerNotes(ROOT_CONTAINER_KEY);
 
-  if (getActiveFolderIdValue() === id && folder) {
-    setActiveContext(folder.space_id, null);
+  if (getActiveFolderIdValue() === id) {
+    setActiveContext(null);
 
     if (getActiveNoteIdValue() == null) {
-      const notes = await ensureContainerLoaded(spaceContainerKey(folder.space_id));
+      const notes = await ensureContainerLoaded(ROOT_CONTAINER_KEY);
 
       if (notes.length > 0) setActiveNoteId(notes[0].id);
     }
-  }
-
-  return result;
-}
-
-export async function moveFolderToSpace(
-  folderId: number,
-  spaceId: number
-): Promise<{ success: boolean; folder?: FolderItem | null; error?: string }> {
-  const result = await window.electronAPI.moveFolderToSpace(folderId, spaceId);
-
-  if (!result.success) return result;
-
-  await loadFolders();
-  const key = folderContainerKey(folderId);
-
-  if (useNoteStore.getState().notesByContainer[key]) {
-    // Refresh the container so its notes carry the new space_id.
-    await loadContainerNotes(key);
-  }
-
-  const { activeContext } = useNoteStore.getState();
-
-  if (activeContext?.folderId === folderId && activeContext.spaceId !== spaceId) {
-    useNoteStore.setState({ activeContext: { spaceId, folderId } });
-  }
-
-  return result;
-}
-
-export async function updateSpaceMeta(
-  id: number,
-  updates: { name?: string; emoji?: string | null }
-): Promise<{ success: boolean; space?: SpaceItem | null; error?: string }> {
-  const result = (await window.electronAPI.updateSpace?.(id, updates)) ?? { success: false };
-
-  if (result.success && result.space) {
-    const updated = result.space;
-    const { spaces } = useNoteStore.getState();
-    useNoteStore.setState({ spaces: spaces.map((s) => (s.id === id ? updated : s)) });
   }
 
   return result;
@@ -872,10 +788,10 @@ let selectedNoteFetchGeneration = 0;
 
 /**
  * Jump navigation (CommandSearch/ControlPanel): activate and reveal a
- * space/folder. Works both with a mounted tree and as a preset that
+ * folder or Notes root. Works both with a mounted tree and as a preset that
  * initializeNotesTree resolves on mount.
  */
-export function navigateToContainer(spaceId: number, folderId: number | null): void {
+export function navigateToContainer(folderId: number | null): void {
   // Container jumps land on the overview; flows that open a note afterwards
   // (e.g. CommandSearch note select) re-set activeNoteId themselves.
   setActiveNoteId(null);
@@ -886,8 +802,8 @@ export function navigateToContainer(spaceId: number, folderId: number | null): v
     return;
   }
 
-  setActiveContext(spaceId, null);
-  revealContainer(spaceId, null);
+  setActiveContext(null);
+  revealContainer(null);
 }
 
 export function setActiveFolderId(id: number | null): void {
@@ -895,8 +811,8 @@ export function setActiveFolderId(id: number | null): void {
 
   if (folder) {
     pendingFolderPreset = null;
-    setActiveContext(folder.space_id, folder.id);
-    revealContainer(folder.space_id, folder.id);
+    setActiveContext(folder.id);
+    revealContainer(folder.id);
 
     return;
   }
@@ -930,16 +846,8 @@ export function getFoldersValue(): FolderItem[] {
   return useNoteStore.getState().folders;
 }
 
-export function getSpacesValue(): SpaceItem[] {
-  return useNoteStore.getState().spaces;
-}
-
 export function useNotes(): NoteItem[] {
   return useNoteStore((state) => state.notes);
-}
-
-export function useSpaces(): SpaceItem[] {
-  return useNoteStore((state) => state.spaces);
 }
 
 export function useFolders(): FolderItem[] {
@@ -950,8 +858,8 @@ export function useFolderCounts(): Record<number, number> {
   return useNoteStore((state) => state.folderCounts);
 }
 
-export function useSpaceRootCounts(): Record<number, number> {
-  return useNoteStore((state) => state.spaceRootCounts);
+export function useRootNoteCount(): number {
+  return useNoteStore((state) => state.rootNoteCount);
 }
 
 export function useNotesByContainer(): Record<string, NoteItem[]> {

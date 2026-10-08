@@ -270,18 +270,12 @@
         "description": "Choose a provider, add your credentials, and test the connection.",
         "descriptionLineOne": "Choose a provider and add",
         "descriptionLineTwo": "your API key.",
-        "selfHosted": "Have a self-hosted model key",
         "providerLabel": "Provider",
         "providerPlaceholder": "Choose the model provider",
         "modelLabel": "Model",
         "modelPlaceholder": "Choose the model",
         "apiKey": "API Key",
         "apiKeyPlaceholder": "Paste your API key",
-        "endpointUrl": "Endpoint URL",
-        "endpointPlaceholder": "Paste your endpoint URL",
-        "optional": "Optional",
-        "modelId": "Model ID",
-        "modelIdPlaceholder": "Write your model ID",
         "testConnection": "Test Connection",
         "proceed": "Proceed",
         "clinical": "FOR CLINICAL TRANSCRIPTION",
@@ -1503,26 +1497,12 @@
       "folderAlreadyExists": "A folder with that name already exists.",
       "folderNotFound": "That folder could not be found.",
       "defaultFolderImmutable": "Default folders cannot be changed.",
-      "spaceNameRequired": "Enter a space name.",
-      "spaceNotFound": "That space could not be found.",
-      "privateSpaceImmutable": "Your Personal space cannot be changed.",
       "generic": "The change could not be completed. Please try again."
     },
     "sidebar": {
       "newNote": "New note",
       "searchNotes": "Search notes",
       "actions": "Actions"
-    },
-    "structureIntro": {
-      "title": "Where your notes live",
-      "description": "Gristmill separates private thoughts from shared work so the right people see the right notes.",
-      "personal": {
-        "title": "Personal space",
-        "description": "Only you can see the folders and notes here."
-      },
-      "contents": "Each space can contain folders and notes.",
-      "done": "Got it",
-      "reopen": "Learn how spaces are organized"
     },
     "folders": {
       "defaults": {
@@ -1537,7 +1517,7 @@
       "couldNotRename": "Couldn't rename folder",
       "couldNotDelete": "Couldn't delete folder",
       "deleteTitle": "Delete folder?",
-      "deleteDescription": "Delete \"{{name}}\"? Notes will stay in their other folders or move to the space root.",
+      "deleteDescription": "Delete \"{{name}}\"? Notes will stay in their other folders or move to the Notes root.",
       "deleteDescriptionEmpty": "This will permanently delete \"{{name}}\". This cannot be undone.",
       "deleteConfirm": "Delete folder"
     },
@@ -1883,14 +1863,10 @@
       },
       "consentNotice": "Always get consent when recording others"
     },
-    "spaces": {
-      "personal": "Personal",
-      "moveToSpace": "Move to space…",
+    "moves": {
       "moved": "Moved “{{title}}” to {{target}}",
       "couldNotMoveNote": "Couldn't move note",
-      "undo": "Undo",
-      "noteCount_one": "{{count}} note",
-      "noteCount_other": "{{count}} notes"
+      "undo": "Undo"
     },
     "dateGroups": {
       "today": "Today",
@@ -2123,7 +2099,6 @@
   "commandSearch": {
     "searchError": "Search failed",
     "searchingTranscripts": "Searching transcripts…",
-    "allSpaces": "All spaces",
     "title": "Search",
     "description": "Search across notes and transcripts",
     "placeholder": "Search notes and transcripts…",

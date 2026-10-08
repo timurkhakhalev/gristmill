@@ -8,7 +8,6 @@ import {
   containerEventChannels,
   folderCreatedRenamedSyncedPayloadSchema,
   folderDeletedPayloadSchema,
-  spaceSyncedPayloadSchema,
 } from "../contracts/containers.js";
 import type { ZodType } from "zod";
 
@@ -66,10 +65,4 @@ export function sendFolderSynced(folder: unknown): void {
   );
 
   if (valid) broadcastToWindows(containerEventChannels.folderSynced, valid);
-}
-
-export function sendSpaceSynced(space: unknown): void {
-  const valid = parseOrDrop(containerEventChannels.spaceSynced, space, spaceSyncedPayloadSchema);
-
-  if (valid) broadcastToWindows(containerEventChannels.spaceSynced, valid);
 }

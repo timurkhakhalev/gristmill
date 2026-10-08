@@ -14,17 +14,16 @@ As a Gristmill user, I want to see my meetings in Gristmill and get a prompt to 
 ### Connect Google Calendar or Microsoft Calendar
 
 1. Open Settings → Calendar.
-2. If Gristmill asks for System Audio permission, allow it. Without it, Settings cannot connect the calendar.
-3. Click **Connect Google Calendar** or **Connect Microsoft Calendar**. The browser opens the account sign-in.
-4. Sign in and allow access. The account appears as **Connected**.
-5. To add another account, click **Add another calendar**.
-6. If the provider shows **Set up OAuth to connect**, this build cannot connect it.
+2. Click **Connect Google Calendar** or **Connect Microsoft Calendar**.
+3. The browser opens the account sign-in. Sign in and allow access. The account appears as **Connected**. System Audio permission is not required to connect a calendar.
+4. To add another account, click **Add another calendar**.
+5. If the provider shows **Set up OAuth to connect**, this build cannot connect it.
 
 ### Connect Apple Calendar
 
 1. Open Settings → Calendar and click **Connect Apple Calendar**.
-2. Allow calendar access in the macOS prompt. Gristmill reads the accounts of Calendar.app.
-3. If you refused access, Gristmill shows **Calendar Access Required**. Click **Open System Settings** and allow access.
+2. Allow calendar access in the macOS prompt. Gristmill reads the accounts of Calendar.app. System Audio permission is not required.
+3. If you refused calendar access, Gristmill shows **Calendar Access Required**. Click **Open System Settings** and allow access.
 
 ### Select which calendars to read
 
@@ -34,9 +33,10 @@ As a Gristmill user, I want to see my meetings in Gristmill and get a prompt to 
 ### See meetings and get a reminder
 
 1. Open Home. **Coming up** shows the events of the connected calendars. See [Home and navigation](home.md).
-2. One minute before an event with other people or with a meeting link, Gristmill shows a notification with the event title and **Your meeting is starting. Want to take notes?** Notifications must be on.
-3. Click **Join & transcribe** for an event with a meeting link, or **Take notes** for other events. Gristmill does not start a recording without your action.
-4. During another meeting, Gristmill does not show the reminder.
+2. If System Audio access is missing and Gristmill can request it, **Coming up** explains that the meeting recorder needs it to capture other participants and offers **Open System Settings**. Calendar events remain available.
+3. One minute before an event with other people or with a meeting link, Gristmill shows a notification with the event title and **Your meeting is starting. Want to take notes?** Notifications must be on.
+4. Click **Join & transcribe** for an event with a meeting link, or **Take notes** for other events. Gristmill does not start a recording without your action.
+5. During another meeting, Gristmill does not show the reminder.
 
 ### Use participants in a meeting note
 
@@ -51,6 +51,8 @@ As a Gristmill user, I want to see my meetings in Gristmill and get a prompt to 
 
 ## BDD acceptance criteria
 
+- Given System Audio access is refused, when I connect a calendar in Settings, then Gristmill starts the calendar connection without another System Audio request.
+- Given a connected calendar has meetings and Gristmill can request missing System Audio access, when I open Home, then **Coming up** shows the System Audio action with the meetings.
 - Given OAuth is not set up for a provider, when I open Settings → Calendar, then I cannot connect that provider.
 - Given a qualifying event approaches and notifications are on, when the reminder is due, then Gristmill offers to record and does not start a recording.
 - Given I disconnect Apple Calendar, when the disconnection completes, then the macOS permission stays.

@@ -22,7 +22,7 @@ User paths: [Import audio](../product/user-journeys/upload.md). Provider size li
 
 ## Destination and speakers
 
-- Folder choices come from the private space. Personal is initially selected when available. No folder saves the note at the space root.
+- Folder choices come from the Notes tree. Personal is initially selected when available. No folder saves the note at the Notes root.
 - Speaker detection is optional and off by default. Depending on the route, it uses provider diarization or downloaded local models.
 
 ## Results

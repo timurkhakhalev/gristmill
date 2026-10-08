@@ -47,26 +47,11 @@ async function findPortInRange(): Promise<number> {
 // differ (whole rows for notes and transcriptions).
 export interface CliBridgeOperations {
   databaseManager: {
-    getNotes(
-      noteType?: string | null,
-      limit?: number,
-      folderId?: number | null,
-      spaceId?: number | null
-    ): NoteRow[];
-    searchNotes(
-      query: string,
-      limit?: number,
-      spaceId?: number | null,
-      folderId?: number | null
-    ): NoteRow[];
+    getNotes(noteType?: string | null, limit?: number, folderId?: number | null): NoteRow[];
+    searchNotes(query: string, limit?: number, folderId?: number | null): NoteRow[];
     getNote(id: number | bigint): NoteRow | null;
-    getFolders(spaceId?: number | null): FolderRow[];
-    // JSON-boundary input: createFolder itself owns the `String(name || "")`
-    // coercion, so the bridge forwards the raw body field unchanged.
-    createFolder(
-      name: unknown,
-      spaceId?: number | null
-    ): { success: boolean; error?: string; folder?: FolderRow };
+    getFolders(): FolderRow[];
+    createFolder(name: unknown): { success: boolean; error?: string; folder?: FolderRow };
     getDictionary(): string[];
     applyDictionaryChanges(delta: { add?: string[]; remove?: string[] }): {
       success: boolean;
@@ -766,7 +751,6 @@ export class CliBridge {
             bodyField(body, "source_file") ?? null,
             bodyField(body, "audio_duration_seconds") ?? null,
             bodyField(body, "folder_id") ?? null,
-            null,
           ]);
 
           if (!args.success) throw routeError("Invalid Note creation fields", "VALIDATION");
@@ -778,8 +762,7 @@ export class CliBridge {
               args.data[2],
               args.data[3] ?? null,
               args.data[4] ?? null,
-              args.data[5] ?? null,
-              args.data[6] ?? null
+              args.data[5] ?? null
             )
           );
 

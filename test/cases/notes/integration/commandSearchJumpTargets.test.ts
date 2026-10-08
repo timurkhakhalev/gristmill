@@ -1,11 +1,11 @@
-// Issue #178: CommandSearch loaded folders/spaces once at mount into local
+// Issue #178: CommandSearch loaded folders once at mount into local
 // state while ControlPanel keeps it mounted with search closed — after a
 // folder create/rename/delete the search's jump targets went stale. It now
 // reads the live noteStore references (the same arrays createFolder/
-// renameFolder/deleteFolder/loadFolders/loadSpaces write), so this regression
+// renameFolder/deleteFolder/loadFolders write), so this regression
 // mounts the real component, mutates the store through the real store
 // actions, and asserts the rendered jump targets follow: a renamed folder is
-// found by its new name, a deleted one disappears, a renamed space matches.
+// found by its new name and a deleted one disappears.
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const test: typeof import("node:test") = require("node:test");
@@ -22,31 +22,25 @@ const {
   installHookDom,
 }: typeof import("../../../lib/rendererTestHarness.ts") = require("../../../lib/rendererTestHarness.ts");
 
-import type { FolderItem, SpaceItem } from "../../../../src/contracts/containers";
+import type { FolderItem } from "../../../../src/contracts/containers";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-function folder(id: number, name: string, spaceId = 1): FolderItem {
-  return { id, name, space_id: spaceId, is_default: false } as unknown as FolderItem;
-}
-
-function space(id: number, name: string, kind: "private" | "team" = "private"): SpaceItem {
-  return { id, name, kind } as unknown as SpaceItem;
+function folder(id: number, name: string): FolderItem {
+  return { id, name, is_default: false } as unknown as FolderItem;
 }
 
 interface Harness {
   typeQuery(value: string): Promise<void>;
   targetLabels(): string[];
-  fullText(): string;
   createFolder(name: string): Promise<void>;
   renameFolder(id: number, name: string): Promise<void>;
   deleteFolder(id: number): Promise<void>;
-  renameSpace(id: number, name: string): Promise<void>;
 }
 
 async function mountSearch(
   t: import("node:test").TestContext,
-  { folders: folderRows, spaces: spaceRows }: { folders: FolderItem[]; spaces: SpaceItem[] }
+  { folders: folderRows }: { folders: FolderItem[] }
 ): Promise<Harness> {
   let root: ReturnType<typeof createRoot> | null = null;
   t.after(async () => {
@@ -61,8 +55,8 @@ async function mountSearch(
         // would alias the store and defeat the stale-snapshot regression (an
         // in-place mutation would "fix" even the mount-only component).
         getFolders: async () => folderRows.map((row) => ({ ...row })),
-        createFolder: async (name: string, spaceId: number) => {
-          const created = folder(folderRows.length + 1, name, spaceId);
+        createFolder: async (name: string) => {
+          const created = folder(folderRows.length + 1, name);
           folderRows.push(created);
 
           return { success: true, folder: { ...created } };
@@ -81,16 +75,9 @@ async function mountSearch(
 
           return { success: true };
         },
-        updateSpace: async (id: number, updates: { name?: string }) => {
-          const target = spaceRows.find((sp) => sp.id === id);
-
-          if (target && updates.name != null) (target as { name: string }).name = updates.name;
-
-          return { success: true, space: target ? { ...target } : null };
-        },
         getFolderNoteCounts: async () => [],
-        getSpaces: async () => spaceRows.map((row) => ({ ...row })),
         getNotes: async () => [],
+        getRootNotes: async () => [],
         searchNotes: async () => [],
         searchNoteTranscripts: async () => [],
         onNoteAdded: () => () => {},
@@ -224,7 +211,6 @@ async function mountSearch(
 
   return {
     typeQuery,
-    fullText: () => textOf(captured.tree),
     targetLabels: () =>
       findNodes(
         captured.tree,
@@ -232,7 +218,7 @@ async function mountSearch(
       ).map((row) => textOf((row.props?.target as { label: string }).label)),
     createFolder: async (name: string) => {
       await React.act(async () => {
-        await store.createFolder(name, 1);
+        await store.createFolder(name);
       });
     },
     renameFolder: async (id: number, name: string) => {
@@ -245,18 +231,12 @@ async function mountSearch(
         await store.deleteFolder(id);
       });
     },
-    renameSpace: async (id: number, name: string) => {
-      await React.act(async () => {
-        await store.updateSpaceMeta(id, { name });
-      });
-    },
   };
 }
 
 test("a folder created while search stays mounted is found by its new name", async (t) => {
   const harness = await mountSearch(t, {
     folders: [folder(1, "Work")],
-    spaces: [space(1, "Personal")],
   });
 
   await harness.createFolder("Projects");
@@ -272,7 +252,6 @@ test("a folder created while search stays mounted is found by its new name", asy
 test("a renamed folder is found by the new name and not the old one", async (t) => {
   const harness = await mountSearch(t, {
     folders: [folder(1, "Reports")],
-    spaces: [space(1, "Personal")],
   });
 
   await harness.renameFolder(1, "Client work");
@@ -287,7 +266,6 @@ test("a renamed folder is found by the new name and not the old one", async (t) 
 test("a deleted folder disappears from the jump targets", async (t) => {
   const harness = await mountSearch(t, {
     folders: [folder(1, "Work")],
-    spaces: [space(1, "Personal")],
   });
 
   await harness.typeQuery("work");
@@ -301,30 +279,11 @@ test("a deleted folder disappears from the jump targets", async (t) => {
   assert.deepEqual(harness.targetLabels(), [], "the removed folder is no longer offered");
 });
 
-// A named (non-personal) space's label is its name; renaming it through the
-// store must show the new name both as a jump target and in the scope
-// switcher, which reads the same store references.
-test("a space rename is reflected in jump targets and the scope switcher", async (t) => {
+test("a nonexistent folder is not a search jump target", async (t) => {
   const harness = await mountSearch(t, {
-    folders: [folder(2, "Docs", 7)],
-    spaces: [space(1, "Personal"), space(7, "Team", "team")],
+    folders: [folder(2, "Docs")],
   });
 
-  await harness.typeQuery("team");
-  assert.deepEqual(harness.targetLabels(), ["Team"]);
-
-  await harness.renameSpace(7, "Squad");
-  await harness.typeQuery("");
-  await harness.typeQuery("squad");
-
-  assert.deepEqual(
-    harness.targetLabels(),
-    ["Squad"],
-    "the renamed space is offered under its new name"
-  );
-
-  // The scope switcher (space dropdown items) shows the new name too.
-  const allText = JSON.stringify(harness.fullText());
-  assert.ok(allText.includes("Squad"), "the scope switcher shows the renamed space");
-  assert.ok(!allText.includes('"Team"'), "the old space name is gone from the switcher");
+  await harness.typeQuery("personal");
+  assert.deepEqual(harness.targetLabels(), []);
 });

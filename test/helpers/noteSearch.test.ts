@@ -65,11 +65,8 @@ function createSearchDatabase() {
     CREATE TABLE notes (
       id INTEGER PRIMARY KEY,
       title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      space_id INTEGER NOT NULL DEFAULT 1
+      content TEXT NOT NULL
     );
-    CREATE TABLE spaces (id INTEGER PRIMARY KEY, kind TEXT NOT NULL);
-    INSERT INTO spaces (id, kind) VALUES (1, 'private');
     CREATE TABLE note_folders (note_id INTEGER NOT NULL, folder_id INTEGER NOT NULL, PRIMARY KEY (note_id, folder_id));
     CREATE VIRTUAL TABLE notes_fts USING fts5(title, content);
   `);

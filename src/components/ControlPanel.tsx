@@ -24,7 +24,6 @@ import {
   useActiveContext,
   useActiveNoteId,
   useNotes,
-  useSpaces,
   useIsTreeLoading,
 } from "../stores/noteStore";
 import { useNotesTreeActions } from "../hooks/useNotesTreeActions";
@@ -112,7 +111,6 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const { handleNewNote, startRecordingForNote } = useNotesTreeActions();
   // A calendar event opened before it has a note (see EventNoteDraft).
   const [eventDraft, setEventDraft] = useState<CalendarEvent | null>(null);
-  const spaces = useSpaces();
   const isTreeLoading = useIsTreeLoading();
   const activeContext = useActiveContext();
   const containerNotes = useNotes();
@@ -296,14 +294,14 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   }, [handleNewNote]);
 
   useEffect(() => {
-    if (isTreeLoading || spaces.length === 0) return;
+    if (isTreeLoading) return;
 
     const dispose = window.electronAPI?.onTrayNewNote?.(() =>
       runAction(createAndOpenNote, "create and open a note")
     );
 
     return () => dispose?.();
-  }, [createAndOpenNote, isTreeLoading, spaces.length]);
+  }, [createAndOpenNote, isTreeLoading]);
 
   // Fire-and-forget open: these handlers are synchronous (menu/keyboard/tray
   // callbacks), so the row fetch observes its own rejection and logs it.
@@ -323,7 +321,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   const openNote = useCallback(
     (note: NoteItem) => {
       if (note.folder_id != null) setActiveFolderId(note.folder_id);
-      else navigateToContainer(note.space_id, null);
+      else navigateToContainer(null);
       // Hold the full row: search/chat results can sit outside the newest-50
       // container caches, and the editor needs the row, not just the id (#185).
       openNoteRowSafely(note);
@@ -346,7 +344,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
   );
 
   useEffect(() => {
-    if (isTreeLoading || spaces.length === 0) return;
+    if (isTreeLoading) return;
 
     const dispose = window.electronAPI?.onTrayOpenEvent?.((event) => {
       setActiveView("home");
@@ -354,7 +352,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     });
 
     return () => dispose?.();
-  }, [openCalendarEvent, isTreeLoading, spaces.length]);
+  }, [openCalendarEvent, isTreeLoading]);
 
   // Leaving Home or opening any note drops the draft.
   useEffect(() => {
@@ -406,7 +404,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     if (!name || !activeContext) return;
     setNewFolderDialogOpen(false);
     setNewFolderName("");
-    const result = await createFolder(name, activeContext.spaceId);
+    const result = await createFolder(name);
 
     if (!result.success && result.error) {
       toast({
@@ -436,7 +434,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           runAction(createAndOpenNote, "create and open a note");
           break;
         case "new-folder":
-          if (spaces.length > 0) setNewFolderDialogOpen(true);
+          if (!isTreeLoading) setNewFolderDialogOpen(true);
           break;
         case "next-note":
           goToAdjacentNote(1);
@@ -459,7 +457,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     window.addEventListener("keydown", onKey);
 
     return () => window.removeEventListener("keydown", onKey);
-  }, [showSettings, openSettings, createAndOpenNote, spaces.length, goToAdjacentNote]);
+  }, [showSettings, openSettings, createAndOpenNote, isTreeLoading, goToAdjacentNote]);
 
   const handleExitSidePanel = useCallback(() => {
     if (isMeetingMode)
@@ -646,16 +644,16 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
         <CommandSearch
           open={showSearch}
           onOpenChange={setShowSearch}
-          onNoteSelect={(id, folderId, spaceId) => {
+          onNoteSelect={(id, folderId) => {
             if (folderId != null) setActiveFolderId(folderId);
-            else if (spaceId != null) navigateToContainer(spaceId, null);
+            else navigateToContainer(null);
             // Search can surface Notes past the container caches (#185): the
             // row is held or fetched by id inside openNoteRow.
             openNoteById(id);
             setActiveView("personal-notes");
           }}
-          onContainerSelect={(spaceId, folderId) => {
-            navigateToContainer(spaceId, folderId);
+          onContainerSelect={(folderId) => {
+            navigateToContainer(folderId);
             setActiveView("personal-notes");
           }}
         />

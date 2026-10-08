@@ -1,12 +1,5 @@
 export const LEGACY_ONBOARDING_STEP_KEY = "onboardingCurrentStep";
 
-export interface OnboardingByokDraft {
-  selectedProvider: string;
-  selectedModel: string;
-  baseUrl: string;
-  customModel: string;
-}
-
 export interface OnboardingProgressState {
   /** Zero-based position among the counted setup steps. */
   index: number;

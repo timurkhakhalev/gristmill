@@ -55,8 +55,7 @@ app
       title,
       content: "",
       note_type: "personal",
-      space_id: 1,
-      folder_id: null,
+            folder_id: null,
       folder_ids: [],
       source_file: null,
       audio_duration_seconds: null,
@@ -73,25 +72,12 @@ app
     });
 
     const gate = { release: () => {} };
-    let spaces = Promise.resolve();
-    ipcMain.handle(containerChannels.getSpaces, async () => {
-      await spaces;
-
-      return [
-        {
-          id: 1,
-          name: "Personal",
-          emoji: null,
-          kind: "private",
-          sort_order: 0,
-          created_at: "2026-10-05",
-          updated_at: "2026-10-05",
-        },
-      ];
+    let foldersReady = Promise.resolve();
+    ipcMain.handle(containerChannels.getFolders, async () => {
+      await foldersReady;
+      return [{ id: 1, name: "Personal", is_default: 1, sort_order: 0, created_at: "2026-10-05", updated_at: "2026-10-05" }];
     });
-
-    for (const channel of [containerChannels.getFolders, containerChannels.getFolderNoteCounts])
-      ipcMain.handle(channel, () => []);
+    ipcMain.handle(containerChannels.getFolderNoteCounts, () => []);
     ipcMain.handle(noteChannels.getNotes, () => [row(99, "Existing note")]);
 
     for (const channel of [
@@ -154,8 +140,8 @@ app
         stdin: {
           contents: `import React from "react";import {createRoot} from "react-dom/client";import {flushSync} from "react-dom";
     import ControlPanel from ${JSON.stringify(path.join(repo, "src/components/ControlPanel.tsx"))};
-    import {useIsTreeLoading,useSpaces} from ${JSON.stringify(path.join(repo, "src/stores/noteStore.ts"))};
-    function Fixture(){const loading=useIsTreeLoading();const spaces=useSpaces();React.useEffect(()=>{window.panelReady=!loading&&spaces.length>0;});return React.createElement(ControlPanel);}
+    import {useIsTreeLoading,useFolders} from ${JSON.stringify(path.join(repo, "src/stores/noteStore.ts"))};
+    function Fixture(){const loading=useIsTreeLoading();const folders=useFolders();React.useEffect(()=>{window.panelReady=!loading&&folders.length>0;});return React.createElement(ControlPanel);}
     let root;window.mountPanel=()=>{root=createRoot(document.getElementById("root"));root.render(React.createElement(Fixture));};
     window.flushPanel=()=>flushSync(()=>root.render(React.createElement(Fixture)));
     window.unmountPanel=()=>{root.unmount();};window.bootstrapReady=true;`,
@@ -253,7 +239,7 @@ app
 
       for (const phase of ["before", "after", "reload", "remount"] as const)
         for (const action of ["note", "event", "settings"] as const) {
-          spaces = new Promise<void>((done) => {
+          foldersReady = new Promise<void>((done) => {
             gate.release = done;
           });
 
@@ -282,7 +268,7 @@ app
             await win.webContents.executeJavaScript("window.mountPanel()");
             await waitFor("window.panelReady === true");
             await win.webContents.executeJavaScript("window.unmountPanel()");
-            spaces = new Promise<void>((done) => {
+            foldersReady = new Promise<void>((done) => {
               gate.release = done;
             });
             await send();

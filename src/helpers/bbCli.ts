@@ -15,9 +15,6 @@ import {
   type BbSelection,
 } from "../contracts/bb.js";
 
-// Update this together with the JSON fixtures and the runtime smoke check.
-export const SUPPORTED_BB_VERSION = "0.44.0";
-
 // bb's stdout is opaque JSON until a caller parses it with its operation
 // schema. jsonCommand validates the JSON value shape at its boundary.
 type BbJson = z.infer<ReturnType<typeof z.json>>;
@@ -158,46 +155,22 @@ async function jsonCommand(args: string[], input?: string, signal?: AbortSignal)
   }
 }
 
-// Pickers query the catalog on every open; a short-lived cache keeps that from
-// spawning several bb processes each time while still noticing an upgrade soon.
-const VERSION_TTL_MS = 60_000;
-
 const MODELS_TTL_MS = 5 * 60_000;
-
-let versionCheckedAt = 0;
 
 const modelCache = new Map<string, { at: number; models: BbModel[] }>();
 
 const logoCache = new Map<string, BbLogo | null>();
 
 export function clearBbCaches(): void {
-  versionCheckedAt = 0;
   modelCache.clear();
   logoCache.clear();
 }
 
-export async function assertBbVersion(): Promise<void> {
-  if (Date.now() - versionCheckedAt < VERSION_TTL_MS) return;
-  const version = await execute(["--version"]);
-
-  if (version !== SUPPORTED_BB_VERSION) {
-    throw new BbCliError(
-      "bb-version-unsupported",
-      `bb ${SUPPORTED_BB_VERSION} is required; found ${version}`
-    );
-  }
-
-  versionCheckedAt = Date.now();
-}
-
 export async function listBbProviders(): Promise<BbProvider[]> {
-  await assertBbVersion();
-
   return z.array(bbProviderSchema).parse(await jsonCommand(["provider", "list"]));
 }
 
 export async function listBbModels(provider: string): Promise<BbModel[]> {
-  await assertBbVersion();
   const cached = modelCache.get(provider);
 
   if (cached && Date.now() - cached.at < MODELS_TTL_MS) return cached.models;
@@ -216,8 +189,6 @@ const bbSettingsSchema = z.object({
 });
 
 async function readBbSettings(): Promise<z.infer<typeof bbSettingsSchema>> {
-  await assertBbVersion();
-
   return bbSettingsSchema.parse(await jsonCommand(["settings", "show"]));
 }
 
@@ -349,7 +320,6 @@ export async function spawnBbThread(
   environment: string,
   signal?: AbortSignal
 ): Promise<string> {
-  await assertBbVersion();
   const projectId = await ensureBbProject(environment);
 
   const response = z

@@ -12,7 +12,7 @@ const path: typeof import("node:path") = require("node:path");
 
 const Module = require("node:module");
 
-// Folder deletion relocates notes to the space root in SQL (ON DELETE SET
+// Folder deletion relocates notes to the Notes root in SQL (ON DELETE SET
 // NULL on notes.folder_id) and database.deleteFolder reports only
 // {success}. The handler must defer folder-deleted and delete the folder's
 // mirror directory only when no live same-named folder remains; there is no
@@ -65,26 +65,24 @@ test("deleting a folder keeps its notes and rewrites the released mirrors", asyn
 
   t.after(() => db.close());
 
-  const space = db.getSpaces()[0];
 
-  const folder = db.createFolder("DeletionContract", space.id).folder;
+  const folder = db.createFolder("DeletionContract").folder;
 
   assert.ok(folder, "fixture folder created");
 
-  const saved = db.saveNote("Released note", "body", "personal", null, null, folder.id, space.id);
+  const saved = db.saveNote("Released note", "body", "personal", null, null, folder.id);
 
   assert.equal(saved.success, true);
   assert.equal(saved.note.folder_id, folder.id);
 
   // SQL level: the delete reports only success; the notes row survives with
-  // folder_id cleared (ON DELETE SET NULL) and the same space.
+  // folder_id cleared (ON DELETE SET NULL).
   const deleteResult = db.deleteFolder(folder.id);
   assert.equal(deleteResult.success, true);
   assert.deepEqual(deleteResult.relocatedNoteIds, [saved.note.id]);
   const released = db.getNote(saved.note.id);
   assert.ok(released, "the note survives the folder delete");
   assert.equal(released.folder_id, null);
-  assert.equal(released.space_id, space.id);
 
   // Handler level: registerContainerHandlers defers folder-deleted and asks
   // the mirror layer to rewrite the released note.
@@ -115,9 +113,9 @@ test("deleting a folder keeps its notes and rewrites the released mirrors", asyn
   assert.equal(nameLookups, 1, "the mirror name is resolved before the delete");
 
   // Repeat against a live folder: success path writes the mirror.
-  const folder2 = db.createFolder("DeletionContract2", space.id).folder;
+  const folder2 = db.createFolder("DeletionContract2").folder;
 
-  const saved2 = db.saveNote("Released note 2", "", "personal", null, null, folder2.id, space.id);
+  const saved2 = db.saveNote("Released note 2", "", "personal", null, null, folder2.id);
 
   assert.equal(saved2.success, true);
   const result2 = await handlers.get("db-delete-folder")(null, folder2.id);
@@ -166,14 +164,13 @@ test("mirror-enabled folder delete cleans up the directory and preserves survivi
     fs.rmSync(mirrorBase, { recursive: true, force: true });
   });
 
-  const space = db.getSpaces()[0];
 
   const personal =
     db.getFolders().find((f: { is_default: boolean }) => f.is_default) ??
-    db.createFolder("Personal", space.id).folder;
+    db.createFolder("Personal").folder;
 
-  const doomed = db.createFolder("MirrorDoomed", space.id).folder;
-  const relocatedTo = db.createFolder("MirrorNext", space.id).folder;
+  const doomed = db.createFolder("MirrorDoomed").folder;
+  const relocatedTo = db.createFolder("MirrorNext").folder;
 
   // One note relocates to the extra folder "MirrorNext"; one falls back to
   // the Personal directory (folder_id NULL).
@@ -183,8 +180,7 @@ test("mirror-enabled folder delete cleans up the directory and preserves survivi
     "personal",
     null,
     null,
-    doomed.id,
-    space.id
+    doomed.id
   );
 
   db.sql
@@ -197,8 +193,7 @@ test("mirror-enabled folder delete cleans up the directory and preserves survivi
     "personal",
     null,
     null,
-    doomed.id,
-    space.id
+    doomed.id
   );
 
   // Mirror both notes into the doomed directory, like a live mirror would be.
@@ -266,73 +261,6 @@ test("mirror-enabled folder delete cleans up the directory and preserves survivi
   );
 });
 
-test("a live same-named folder in another space keeps the shared mirror directory", async (t: import("node:test").TestContext) => {
-  const DatabaseManager = require("../../src/helpers/database.ts");
-  const { IPCHandlers } = await import("../../src/helpers/ipcHandlers.ts");
-
-  const markdownMirror =
-    require("../../src/helpers/markdownMirror") as import("../../src/helpers/markdownMirror.ts").MarkdownMirror;
-
-  let db;
-
-  try {
-    db = new DatabaseManager();
-  } catch (error) {
-    skipOrFail(t, error);
-
-    return;
-  }
-
-  t.after(() => db.close());
-
-  const mirrorBase = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-shared-"));
-  markdownMirror.init(mirrorBase);
-  t.after(() => {
-    markdownMirror.init(path.join(os.tmpdir(), "mirror-reset-disabled"));
-    fs.rmSync(mirrorBase, { recursive: true, force: true });
-  });
-
-  const spaceA = db.getSpaces()[0];
-
-  const spaceBRow = db.sql
-    .prepare("INSERT INTO spaces (name, kind) VALUES (?, 'private')")
-    .run("Second space");
-
-  const spaceB = { id: Number(spaceBRow.lastInsertRowid) };
-  const sharedName = "SharedName";
-  const folderA = db.createFolder(sharedName, spaceA.id).folder;
-
-  const folderB = spaceB
-    ? db.createFolder(sharedName, spaceB.id).folder
-    : db.createFolder(sharedName, spaceA.id).folder;
-
-  assert.ok(folderA && folderB, "fixture folders created");
-
-  const adapter = Object.create(IPCHandlers.prototype) as {
-    _noteFilesEnabled: boolean;
-    databaseManager: typeof db;
-    _mirrorDeleteFolderIfUnshared(folderName: string, relocatedNoteIds: number[]): void;
-  };
-
-  adapter._noteFilesEnabled = true;
-  adapter.databaseManager = db;
-  fs.mkdirSync(path.join(mirrorBase, sharedName), { recursive: true });
-
-  const deleteA = db.deleteFolder(folderA.id);
-  assert.doesNotThrow(() =>
-    adapter._mirrorDeleteFolderIfUnshared(sharedName, deleteA.relocatedNoteIds)
-  );
-  assert.ok(
-    fs.existsSync(path.join(mirrorBase, sharedName)),
-    "the live same-named folder's mirror directory is untouched"
-  );
-
-  // Once no live same-named folder remains, the directory goes.
-  const deleteB = db.deleteFolder(folderB.id);
-  adapter._mirrorDeleteFolderIfUnshared(sharedName, deleteB.relocatedNoteIds);
-  assert.equal(fs.existsSync(path.join(mirrorBase, sharedName)), false);
-});
-
 // Issue #175 fix-round regression for #174: a second folder delete in the
 // same tick must not swap the first delete's relocated-note ids out from
 // under its deferred mirror callback (instance-state capture did exactly
@@ -361,17 +289,16 @@ test("two deletes in one tick keep each delete's own relocated-note ids", async 
     fs.rmSync(mirrorBase, { recursive: true, force: true });
   });
 
-  const space = db.getSpaces()[0];
 
   const personal =
     db.getFolders().find((f: { is_default: boolean }) => f.is_default) ??
-    db.createFolder("Personal", space.id).folder;
+    db.createFolder("Personal").folder;
 
-  const doomedA = db.createFolder("InterleaveA", space.id).folder;
-  const doomedB = db.createFolder("InterleaveB", space.id).folder;
+  const doomedA = db.createFolder("InterleaveA").folder;
+  const doomedB = db.createFolder("InterleaveB").folder;
 
-  const noteA = db.saveNote("Interleave note A", "a", "personal", null, null, doomedA.id, space.id);
-  const noteB = db.saveNote("Interleave note B", "b", "personal", null, null, doomedB.id, space.id);
+  const noteA = db.saveNote("Interleave note A", "a", "personal", null, null, doomedA.id);
+  const noteB = db.saveNote("Interleave note B", "b", "personal", null, null, doomedB.id);
   markdownMirror.writeNote(noteA.note as never, "InterleaveA");
   markdownMirror.writeNote(noteB.note as never, "InterleaveB");
 

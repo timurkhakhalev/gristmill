@@ -31,7 +31,6 @@ function noteFixture(id: number, title: string, content: string): NoteItem {
     title,
     content,
     note_type: "meeting",
-    space_id: 1,
     folder_id: null,
     folder_ids: [],
     source_file: null,
@@ -80,10 +79,10 @@ async function mountNotesView(
       addEventListener: () => {},
       removeEventListener: () => {},
       electronAPI: {
-        getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
         getFolders: async () => [],
         getFolderNoteCounts: async () => [],
         getNotes: async () => rows,
+        getRootNotes: async () => rows.filter((row) => row.folder_id == null),
         getNote: (id: number) => getNote(id),
         updateNote: async (id: number, updates: Record<string, unknown>) => {
           updateCalls.push({ id, updates });

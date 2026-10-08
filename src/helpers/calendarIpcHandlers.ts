@@ -38,7 +38,8 @@ export interface GoogleCalendarManagerLike {
   startOAuth(): Promise<{ success: boolean; email?: string; error?: string }>;
   disconnect(email?: string): void;
   getConnectionStatus(): GoogleConnectionStatus;
-  getCalendars(): unknown[];
+  // Rows feed projectGoogleCalendarSummary, which validates each entry.
+  getCalendars(): readonly unknown[];
   setCalendarSelection(calendarId: string, isSelected: boolean): Promise<void>;
   setPrimaryOnly(value: boolean): Promise<void>;
   syncEvents(): Promise<CalendarSyncOutcome | void>;
@@ -70,6 +71,18 @@ export interface CalendarIntegrationDeps {
   logError: (message: string, data?: unknown, tag?: string) => void;
 }
 
+interface LoggedError {
+  message?: string;
+}
+
+// ipcHandlers catch blocks log thrown unknowns; only the optional message is
+// read, so this parse is the boundary.
+function thrownError(error: unknown): LoggedError {
+  if (error instanceof Error) return { message: error.message };
+
+  return {};
+}
+
 function parseOr<T>(raw: unknown, parse: (value: unknown) => T | null, fallback: T): T {
   const parsed = parse(raw);
 
@@ -91,7 +104,7 @@ export function registerCalendarIntegrationHandlers(
 
         return parsed.success ? parsed.data : { success: false };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
         deps.logError("Google Calendar OAuth failed", { error: err?.message }, "calendar");
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
@@ -113,7 +126,7 @@ export function registerCalendarIntegrationHandlers(
 
         return { success: true };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
         deps.logError("Google Calendar disconnect failed", { error: err?.message }, "calendar");
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
@@ -169,7 +182,7 @@ export function registerCalendarIntegrationHandlers(
 
         return { success: true };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
@@ -190,7 +203,7 @@ export function registerCalendarIntegrationHandlers(
 
         return { success: true };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
@@ -215,7 +228,7 @@ export function registerCalendarIntegrationHandlers(
 
         return { success: true };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
@@ -277,7 +290,7 @@ export function registerCalendarIntegrationHandlers(
 
         return parsed.success ? parsed.data : { success: false };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
         deps.logError("Microsoft Calendar OAuth failed", { error: err?.message }, "calendar");
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
@@ -299,7 +312,7 @@ export function registerCalendarIntegrationHandlers(
 
         return { success: true };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
         deps.logError("Microsoft Calendar disconnect failed", { error: err?.message }, "calendar");
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
@@ -317,7 +330,7 @@ export function registerCalendarIntegrationHandlers(
         // The unconfigured fallback omits `configured`; keep its exact shape.
         return parsed.success ? parsed.data : { connected: false, accounts: [] };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
         deps.logError(
           "Microsoft Calendar connection status failed",
           { error: err?.message },
@@ -343,7 +356,7 @@ export function registerCalendarIntegrationHandlers(
 
         return { success: true };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
@@ -359,7 +372,7 @@ export function registerCalendarIntegrationHandlers(
 
       return parsed.success ? parsed.data : { success: false };
     } catch (error) {
-      const err = error as { message?: string };
+      const err = thrownError(error);
       deps.logError("Apple Calendar connect failed", { error: err?.message }, "acal");
 
       return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
@@ -375,7 +388,7 @@ export function registerCalendarIntegrationHandlers(
 
         return parsed.success ? parsed.data : { success: false };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
         deps.logError("Apple Calendar disconnect failed", { error: err?.message }, "acal");
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
@@ -392,7 +405,7 @@ export function registerCalendarIntegrationHandlers(
 
         return parsed.success ? parsed.data : { connected: false, sourceNames: [] };
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
         deps.logError("Apple Calendar connection status failed", { error: err?.message }, "acal");
 
         return { connected: false, sourceNames: [] };
@@ -406,7 +419,7 @@ export function registerCalendarIntegrationHandlers(
       try {
         return await deps.openCalendarPrivacySettings();
       } catch (error) {
-        const err = error as { message?: string };
+        const err = thrownError(error);
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }

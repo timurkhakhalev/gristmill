@@ -4,7 +4,9 @@ export function parseAttendees(event: CalendarEvent): CalendarAttendee[] {
   if (!event.attendees) return [];
 
   try {
-    const parsed = JSON.parse(event.attendees);
+    // SAFETY: the column is written by the calendar sync as a JSON array of
+    // attendee objects; malformed payloads degrade to the empty list.
+    const parsed = JSON.parse(event.attendees) as CalendarAttendee[];
 
     return Array.isArray(parsed) ? parsed : [];
   } catch {

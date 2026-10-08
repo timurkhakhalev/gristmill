@@ -36,6 +36,8 @@ const PERSONAL_EMAIL_DOMAINS = new Set<string>([
 ]);
 
 export function emailDomain(email: string): string {
+  // Display strings flow in from calendar/UI callers; non-strings degrade
+  // to "no domain" instead of throwing.
   if (typeof email !== "string") return "";
   const trimmed = email.trim();
   const angle = /<([^<>]+)>/.exec(trimmed);

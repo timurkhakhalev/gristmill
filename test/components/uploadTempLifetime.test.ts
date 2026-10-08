@@ -18,6 +18,12 @@ const vm: typeof import("node:vm") = require("node:vm");
 
 const root = path.join(__dirname, "../..");
 
+// The #310 upload paths route fire-and-forget work through the shared helper;
+// the extracted callbacks call it, so the sandbox carries the real one.
+const {
+  runInBackground,
+}: typeof import("../../src/stores/noteStore") = require("../../src/stores/noteStore.ts");
+
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 interface TestDeferred {
@@ -50,7 +56,9 @@ interface Sandbox {
   t(key: string): string;
   window: {
     electronAPI: {
-      deleteTempFile(path: string): void;
+      deleteTempFile(path: string): Promise<void>;
+      cancelUrlDownload(): Promise<void>;
+      getDiarizationModelStatus(): Promise<{ modelsDownloaded: boolean }>;
       cancelUploadTranscription?: (payload: unknown) => unknown;
     };
   };
@@ -60,6 +68,7 @@ interface Sandbox {
   cancelTranscription(): Promise<unknown>;
   reset(): void;
   runMountEffect(): () => void;
+  runInBackground(load: Promise<unknown>, label: string): void;
   [key: string]: unknown;
   handleRetry(): Promise<void>;
 }
@@ -152,7 +161,18 @@ function buildSandbox({ deletes }: { deletes: string[] }) {
     setSelectedFolderId: () => {},
     setFolderMoveError: () => {},
     // view dependencies
-    window: { electronAPI: { deleteTempFile: (p) => deletes.push(p) } },
+    window: {
+      electronAPI: {
+        deleteTempFile: async (p) => {
+          deletes.push(p);
+        },
+        // Paths the extracted callbacks run in the background resolve
+        // through the real runInBackground, so every touched method must
+        // return a promise like the real preload contract.
+        cancelUrlDownload: async () => {},
+        getDiarizationModelStatus: async () => ({ modelsDownloaded: false }),
+      },
+    },
     crypto: require("node:crypto"),
     setInterval: () => 0,
     clearInterval: () => {},
@@ -172,6 +192,7 @@ function buildSandbox({ deletes }: { deletes: string[] }) {
       numSpeakers: null,
     }),
     buildTranscriptionConfig: () => ({}),
+    runInBackground,
     // stubs for the seams the extracted initializers overwrite below
     reset: () => {},
     cancelTranscription: async () => {},

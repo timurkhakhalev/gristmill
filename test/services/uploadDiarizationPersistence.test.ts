@@ -122,8 +122,12 @@ function installUploadElectronAPI(
 
       return { success: true, note: { id } };
     },
-    deleteTempFile: (path: string) => calls.deletedTempFiles.push(path),
-    cancelUrlDownload: () => {},
+    // Background cleanup resolves through runInBackground; the stub must
+    // return a promise like the real preload contract.
+    deleteTempFile: async (path: string) => {
+      calls.deletedTempFiles.push(path);
+    },
+    cancelUrlDownload: async () => {},
   });
 
   return calls;

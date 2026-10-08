@@ -31,13 +31,23 @@ export interface GooglePersonProfile {
   photoUrl: string | null;
 }
 
-interface PeoplePerson {
+export interface PeoplePerson {
   names?: Array<{ displayName?: string; metadata?: { primary?: boolean } }>;
   emailAddresses?: Array<{ value?: string }>;
   photos?: Array<{ url?: string; default?: boolean; metadata?: { primary?: boolean } }>;
 }
 
-type ApiGet = (url: string) => Promise<unknown>;
+// The People API returns JSON envelopes; the sync reads only these fields and
+// skips malformed entries, so a partial parse is the honest contract here.
+export interface PeoplePage {
+  nextPageToken?: string;
+  connections?: PeoplePerson[];
+  otherContacts?: PeoplePerson[];
+  people?: PeoplePerson[];
+}
+
+// List endpoints return a page; the /people/me profile returns one person.
+type ApiGet = (url: string) => Promise<PeoplePage | PeoplePerson>;
 
 function primary<T extends { metadata?: { primary?: boolean } }>(
   items: T[] | undefined
@@ -73,14 +83,11 @@ async function collect(
 
     if (pageToken) query.set("pageToken", pageToken);
 
-    const data = (await apiGet(`${PEOPLE_API_BASE}${path}?${query.toString()}`)) as Record<
-      string,
-      unknown
-    > & {
-      nextPageToken?: string;
-    };
+    // SAFETY: list endpoints return a page envelope; the union only names the
+    // /people/me variant, and a malformed page yields empty lists below.
+    const data = (await apiGet(`${PEOPLE_API_BASE}${path}?${query.toString()}`)) as PeoplePage;
 
-    people.push(...((data[itemsKey] as PeoplePerson[] | undefined) ?? []));
+    people.push(...(data[itemsKey] ?? []));
     pageToken = data.nextPageToken;
 
     if (!pageToken) break;
@@ -146,11 +153,15 @@ export async function fetchGooglePeople(
 
   sources.push([
     "self",
-    async () => [
-      (await apiGet(
+    async () => {
+      // SAFETY: this endpoint returns the single person profile, the other
+      // union member; missing fields degrade through profilesOf.
+      const me = (await apiGet(
         `${PEOPLE_API_BASE}/people/me?personFields=names,emailAddresses,photos`
-      )) as PeoplePerson,
-    ],
+      )) as PeoplePerson;
+
+      return [me];
+    },
   ]);
 
   const byEmail = new Map<string, GooglePersonProfile>();
@@ -169,7 +180,7 @@ export async function fetchGooglePeople(
       }
     } catch (error) {
       // A personal account has no directory; a scope can be revoked later.
-      onSourceError(source, error as Error);
+      onSourceError(source, error instanceof Error ? error : new Error(String(error)));
     }
   }
 

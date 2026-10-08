@@ -33,7 +33,10 @@ const person = (email: string, name?: string, photo?: { url: string; default?: b
 function fakeApi(responses: Record<string, unknown>) {
   const requested: string[] = [];
 
-  const apiGet = async (url: string) => {
+  // The sync's ApiGet contract: pages or the /people/me profile.
+  type ApiGetResult = Record<string, unknown>;
+
+  const apiGet = async (url: string): Promise<ApiGetResult> => {
     requested.push(url);
     const match = Object.keys(responses).find((path) => url.includes(path));
 
@@ -42,7 +45,7 @@ function fakeApi(responses: Record<string, unknown>) {
 
     if (response instanceof Error) throw response;
 
-    return response;
+    return response as ApiGetResult;
   };
 
   return { apiGet, requested };
@@ -119,7 +122,7 @@ test("a failing source is reported and the others still load", async () => {
 test("pages are followed until the last one", async () => {
   let calls = 0;
 
-  const apiGet = async (url: string) => {
+  const apiGet = async (url: string): Promise<Record<string, unknown>> => {
     if (url.includes("/people/me?")) return {};
     calls++;
 

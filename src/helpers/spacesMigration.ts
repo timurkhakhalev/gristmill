@@ -57,7 +57,9 @@ export function migrateSpaces(db: SqliteDatabase): void {
       // Old profiles can have several private containers. Folder names used
       // to be unique per container; keep every folder and disambiguate names.
       const folders = db
-        .prepare("SELECT id, name, is_default, sort_order, created_at, updated_at, icon, color FROM folders ORDER BY id")
+        .prepare(
+          "SELECT id, name, is_default, sort_order, created_at, updated_at, icon, color FROM folders ORDER BY id"
+        )
         .all<{
           id: number;
           name: string;

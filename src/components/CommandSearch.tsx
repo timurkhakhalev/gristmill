@@ -199,8 +199,7 @@ export default function CommandSearch({
   const selectItem = useCallback(
     (item: FlatItem) => {
       if (item.kind === "container") onContainerSelect?.(item.target.folderId);
-      else if (item.kind === "note")
-        onNoteSelect?.(item.note.id, item.note.folder_id ?? null);
+      else if (item.kind === "note") onNoteSelect?.(item.note.id, item.note.folder_id ?? null);
       else if (item.kind === "noteTranscript")
         onNoteSelect?.(item.hit.note.id, item.hit.note.folder_id ?? null);
       else if (item.kind === "transcript") onTranscriptSelect?.(item.transcript.id);
@@ -390,9 +389,7 @@ export default function CommandSearch({
                   )}
 
                   {filteredTranscripts.length > 0 && (
-                    <div
-                      className={jumpTargets.length > 0 || notes.length > 0 ? "mt-0.5" : ""}
-                    >
+                    <div className={jumpTargets.length > 0 || notes.length > 0 ? "mt-0.5" : ""}>
                       <SectionHeader
                         icon={<Mic size={11} />}
                         label={t("commandSearch.sections.transcripts")}

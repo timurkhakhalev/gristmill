@@ -78,11 +78,7 @@ export function registerContainerHandlers(
   ipcMain.handle("db-get-folders", async (_event, ...args: unknown[]) => {
     parseArgs(getFoldersArgsSchema, args);
 
-    return parseResult(
-      folderListResultSchema,
-      database.getFolders(),
-      "folder list shape"
-    );
+    return parseResult(folderListResultSchema, database.getFolders(), "folder list shape");
   });
 
   ipcMain.handle("db-create-folder", async (_event, ...args: unknown[]) => {
@@ -198,5 +194,4 @@ export function registerContainerHandlers(
       "folder note counts shape"
     );
   });
-
 }

@@ -190,7 +190,8 @@ export function MoveFolderPicker({
       )}
       <div className="-mx-1 max-h-64 overflow-y-auto">
         {filtered.map((option) => {
-          const isCurrent = option.target.folderId === note.folder_id && note.folder_ids.length <= 1;
+          const isCurrent =
+            option.target.folderId === note.folder_id && note.folder_ids.length <= 1;
 
           return (
             <button
@@ -410,11 +411,11 @@ function NoteRow({
   a11y: RowA11y;
   t: TFn;
   dragState: { draggingNoteId: number | null };
-  noteDragHandlers: (note: {
-    id: number;
-    title: string;
-    folderId: number | null;
-  }) => { draggable: true; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
+  noteDragHandlers: (note: { id: number; title: string; folderId: number | null }) => {
+    draggable: true;
+    onDragStart: (e: React.DragEvent) => void;
+    onDragEnd: () => void;
+  };
 }) {
   const locale = useUiLocale();
   const { dateFormat, timeFormat } = useDateTimePreferences();
@@ -869,9 +870,7 @@ export default function NotesTree({
         const row = rows[index];
 
         if (row?.type === "note" && row.note) {
-          setActiveContext(
-            row.parentKey ? Number(row.parentKey.slice("folder:".length)) : null
-          );
+          setActiveContext(row.parentKey ? Number(row.parentKey.slice("folder:".length)) : null);
           setActiveNoteId(row.note.id);
           onNavigate?.();
         } else if (row) toggleContainerExpanded(row.key);
@@ -1186,69 +1185,69 @@ export default function NotesTree({
         className="scrollbar-hidden flex-1 overflow-y-auto px-1.5 pb-2 space-y-px"
       >
         <div role="group" aria-label={t("sidebar.notes")}>
-              <div
-                {...dropTargetHandlers({ folderId: null })}
-                className={cn(
-                  "group flex h-7 items-center gap-2 rounded-md ps-2 pe-2",
-                  dragState.dragOverKey === ROOT_CONTAINER_KEY && "ring-1 ring-primary bg-primary/10"
-                )}
+          <div
+            {...dropTargetHandlers({ folderId: null })}
+            className={cn(
+              "group flex h-7 items-center gap-2 rounded-md ps-2 pe-2",
+              dragState.dragOverKey === ROOT_CONTAINER_KEY && "ring-1 ring-primary bg-primary/10"
+            )}
+          >
+            <span className="flex-1 truncate text-xs font-medium text-muted">
+              {t("sidebar.notes")}
+            </span>
+            {rootCount + Object.values(folderCounts).reduce((sum, count) => sum + count, 0) > 0 && (
+              <span className="text-2xs text-muted">
+                {rootCount + Object.values(folderCounts).reduce((sum, count) => sum + count, 0)}
+              </span>
+            )}
+            {folderKeys.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={
+                  anyFolderExpanded ? t("notes.context.collapseAll") : t("notes.context.expandAll")
+                }
+                title={
+                  anyFolderExpanded ? t("notes.context.collapseAll") : t("notes.context.expandAll")
+                }
+                onClick={() => setAllFoldersExpanded(!anyFolderExpanded)}
+                className={buttonClass}
               >
-                <span className="flex-1 truncate text-xs font-medium text-muted">
-                  {t("sidebar.notes")}
-                </span>
-                {rootCount + Object.values(folderCounts).reduce((sum, count) => sum + count, 0) > 0 &&
-                  <span className="text-2xs text-muted">{rootCount + Object.values(folderCounts).reduce((sum, count) => sum + count, 0)}</span>}
-                {folderKeys.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={
-                      anyFolderExpanded
-                        ? t("notes.context.collapseAll")
-                        : t("notes.context.expandAll")
-                    }
-                    title={
-                      anyFolderExpanded
-                        ? t("notes.context.collapseAll")
-                        : t("notes.context.expandAll")
-                    }
-                    onClick={() => setAllFoldersExpanded(!anyFolderExpanded)}
-                    className={buttonClass}
-                  >
-                    {anyFolderExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("notes.context.addFolder")}
-                  title={t("notes.context.addFolder")}
-                  onClick={() => setAddingFolder(true)}
-                  className={buttonClass}
-                >
-                  <Plus size={12} />
-                </Button>
-              </div>
-              {addingFolder && (
-                <div className="px-2">
-                  <input
-                    dir="auto"
-                    autoFocus
-                    value={newFolderName}
-                    onChange={(e) => setNewFolderName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter")
-                        runInBackground(createFolderIn(), "Create folder failed");
+                {anyFolderExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("notes.context.addFolder")}
+              title={t("notes.context.addFolder")}
+              onClick={() => setAddingFolder(true)}
+              className={buttonClass}
+            >
+              <Plus size={12} />
+            </Button>
+          </div>
+          {addingFolder && (
+            <div className="px-2">
+              <input
+                dir="auto"
+                autoFocus
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") runInBackground(createFolderIn(), "Create folder failed");
 
-                      if (e.key === "Escape") setAddingFolder(false);
-                    }}
-                    onBlur={() => void createFolderIn()}
-                    className="w-full h-6 px-2 text-xs bg-default rounded"
-                  />
-                </div>
-              )}
-              {folders.map(renderFolder)}
-              {(notesByContainer[ROOT_CONTAINER_KEY] ?? []).map((note) => renderNote(note, 1, ROOT_CONTAINER_KEY))}
+                  if (e.key === "Escape") setAddingFolder(false);
+                }}
+                onBlur={() => void createFolderIn()}
+                className="w-full h-6 px-2 text-xs bg-default rounded"
+              />
+            </div>
+          )}
+          {folders.map(renderFolder)}
+          {(notesByContainer[ROOT_CONTAINER_KEY] ?? []).map((note) =>
+            renderNote(note, 1, ROOT_CONTAINER_KEY)
+          )}
         </div>
       </div>
       <PointMenu

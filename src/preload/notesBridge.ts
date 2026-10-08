@@ -72,11 +72,7 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
       ipcRenderer
         .invoke(noteChannels.getNote, id)
         .then((raw) => parseResult(noteOrNullResultSchema, raw, noteChannels.getNote)),
-    getNotes: (
-      noteType?: string | null,
-      limit?: number,
-      folderId?: number | null
-    ) =>
+    getNotes: (noteType?: string | null, limit?: number, folderId?: number | null) =>
       ipcRenderer
         .invoke(noteChannels.getNotes, noteType, limit, folderId)
         .then((raw) => parseResult(noteListResultSchema, raw, noteChannels.getNotes)),
@@ -92,22 +88,12 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
       ipcRenderer
         .invoke(noteChannels.deleteNote, id)
         .then((raw) => parseResult(noteDeleteResultSchema, raw, noteChannels.deleteNote)),
-    searchNotes: (
-      query: string,
-      limit?: number,
-      folderId?: number | null,
-      rootOnly?: boolean
-    ) =>
+    searchNotes: (query: string, limit?: number, folderId?: number | null, rootOnly?: boolean) =>
       ipcRenderer
         .invoke(noteChannels.searchNotes, query, limit, folderId, rootOnly)
         .then((raw) => parseResult(noteListResultSchema, raw, noteChannels.searchNotes)),
     searchNoteContent: (query) =>
-      invokeParseArray(
-        noteSearchHitSchema,
-        ipcRenderer,
-        noteChannels.searchNoteContent,
-        query
-      ),
+      invokeParseArray(noteSearchHitSchema, ipcRenderer, noteChannels.searchNoteContent, query),
     searchNoteTranscripts: (query) =>
       invokeParseArray(
         transcriptSearchHitSchema,

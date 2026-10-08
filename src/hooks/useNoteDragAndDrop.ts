@@ -135,9 +135,7 @@ export function useNoteDragAndDrop({
         if (!note) return false;
 
         const isSameContainer =
-          target.folderId != null
-            ? note.folderId === target.folderId
-            : note.folderId == null;
+          target.folderId != null ? note.folderId === target.folderId : note.folderId == null;
 
         if (isSameContainer) return false;
 
@@ -205,11 +203,7 @@ export function useNoteDragAndDrop({
         },
       };
     },
-    [
-      onHoverTarget,
-      commitDrop,
-      clearHoverTimeout,
-    ]
+    [onHoverTarget, commitDrop, clearHoverTimeout]
   );
 
   return { dragState, noteDragHandlers, dropTargetHandlers };

@@ -9,7 +9,11 @@ import {
 
 const MAX_CONTENT_LENGTH = 500;
 
-export function createSearchNotesTool({ fixedScope }: { fixedScope?: ContainerScope }): ToolDefinition {
+export function createSearchNotesTool({
+  fixedScope,
+}: {
+  fixedScope?: ContainerScope;
+}): ToolDefinition {
   return {
     name: "search_notes",
     description: fixedScope

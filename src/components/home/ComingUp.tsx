@@ -29,10 +29,14 @@ interface ComingUpProps {
 
 const openJoinUrl = (url: string) => {
   if (window.electronAPI?.openExternal) {
-    window.electronAPI.openExternal(url);
-  } else {
-    window.open(url, "_blank");
+    window.electronAPI.openExternal(url).catch(() => {
+      // A failed external open is not actionable inside the app.
+    });
+
+    return;
   }
+
+  window.open(url, "_blank");
 };
 
 function formatTimeRange(
@@ -92,11 +96,11 @@ function groupEventsByDay(events: CalendarEvent[], now: Date): DayGroup[] {
 const ATTENDEE_COUNT_PILL_CLASS =
   "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-surface-3 px-0.5 text-3xs font-medium tabular-nums text-muted-foreground ring-1 ring-surface-2";
 
-const RSVP_DOT: Record<string, string> = {
+const RSVP_DOT = {
   accepted: "bg-success",
   declined: "bg-danger",
   tentative: "bg-warning",
-};
+} satisfies Record<string, string>;
 
 function AttendeePopover({
   event,
@@ -157,7 +161,9 @@ function AttendeePopover({
               <span
                 className={cn(
                   "h-1.5 w-1.5 shrink-0 rounded-full",
-                  RSVP_DOT[a.responseStatus ?? ""] ?? "bg-muted-foreground/25"
+                  // SAFETY: responseStatus is the provider enum; unknown
+                  // values degrade to the neutral dot color.
+                  RSVP_DOT[a.responseStatus as keyof typeof RSVP_DOT] ?? "bg-muted-foreground/25"
                 )}
               />
             </div>
@@ -197,7 +203,9 @@ function EventRow({
 
   const startNotes = () => {
     if (joinUrl) openJoinUrl(joinUrl);
-    window.electronAPI?.joinCalendarMeeting?.(event.id);
+    window.electronAPI?.joinCalendarMeeting?.(event.id)?.catch(() => {
+      // The meeting window surfaces its own failure state.
+    });
   };
 
   const joinButton = (
@@ -396,7 +404,7 @@ export default function ComingUp({
                 <Monitor size={12} className="shrink-0" />
                 <span className="flex-1">{t("upcoming.systemAudioRequired")}</span>
                 <button
-                  onClick={() => systemAudio.request()}
+                  onClick={() => void systemAudio.request()}
                   className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
                 >
                   {systemAudio.mode === "native"

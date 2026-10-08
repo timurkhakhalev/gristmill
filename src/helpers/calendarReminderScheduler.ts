@@ -11,6 +11,7 @@ function notificationKey(event: Pick<CalendarEventRow, "provider" | "id">): stri
 // A solo event with no invitees and no meeting link is a time block (focus
 // time, a personal reminder), not a meeting — every provider syncs those.
 function isReminderEligible(event: CalendarEventRow): boolean {
+  // SAFETY: the row already carries every field getMeetingJoinUrl reads.
   return (event.attendees_count ?? 0) > 0 || getMeetingJoinUrl(event as never) !== null;
 }
 
@@ -20,7 +21,13 @@ export interface ReminderSchedulerDb {
 }
 
 export interface MeetingDetectionEngine {
-  handleCalendarReminder(event: CalendarEventRow): unknown;
+  handleCalendarReminder(event: CalendarEventRow): void;
+}
+
+export interface ActiveMeetingState {
+  activeMeeting: CalendarEventRow | null;
+  activeEvents: CalendarEventRow[];
+  upcomingEvents: CalendarEventRow[];
 }
 
 // Provider-agnostic meeting reminder scheduling. Reads only the shared
@@ -114,11 +121,7 @@ export class CalendarReminderScheduler {
     this.scheduleNextMeeting();
   }
 
-  getActiveMeetingState(): {
-    activeMeeting: CalendarEventRow | null;
-    activeEvents: CalendarEventRow[];
-    upcomingEvents: CalendarEventRow[];
-  } {
+  getActiveMeetingState(): ActiveMeetingState {
     return {
       activeMeeting: this.activeMeeting,
       activeEvents: this.databaseManager.getActiveEvents(),
@@ -210,4 +213,6 @@ export class CalendarReminderScheduler {
 
 module.exports = CalendarReminderScheduler;
 
-module.exports.CalendarReminderScheduler = CalendarReminderScheduler;
+// Dual export: legacy requires read this module as the class itself, while the
+// TS graph imports the named class.
+Object.assign(module.exports, { CalendarReminderScheduler });

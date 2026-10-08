@@ -2,14 +2,14 @@
 // text (Microsoft's bodyPreview). The app shows them as plain text, so HTML is
 // flattened here, once, at sync time.
 
-const ENTITIES: Record<string, string> = {
+const ENTITIES = {
   amp: "&",
   lt: "<",
   gt: ">",
   quot: '"',
   apos: "'",
   nbsp: " ",
-};
+} satisfies Record<string, string>;
 
 function decodeEntities(text: string): string {
   return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
@@ -22,7 +22,10 @@ function decodeEntities(text: string): string {
       return Number.isFinite(code) ? String.fromCodePoint(code) : match;
     }
 
-    return ENTITIES[entity.toLowerCase()] ?? match;
+    const entityText = entity.toLowerCase();
+
+    // SAFETY: the `in` check above proved the key is one of the six entity names.
+    return entityText in ENTITIES ? ENTITIES[entityText as keyof typeof ENTITIES] : match;
   });
 }
 

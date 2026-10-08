@@ -9,6 +9,7 @@ import {
 } from "../../stores/meetingRecordingStore";
 import { cn } from "../lib/utils";
 import { formatMmSs } from "../../utils/formatDuration";
+import { runInBackground } from "../../stores/noteStore";
 import { isControlPanelWindow } from "../../utils/windowContext";
 
 interface MeetingRecordingPillProps {
@@ -107,6 +108,8 @@ export default function MeetingRecordingPill({
         "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-200"
       )}
       data-no-window-drag=""
+      // SAFETY: WebkitAppRegion is Electron's window-drag CSS seam; React's
+      // CSSProperties type does not declare it.
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       role="group"
       aria-label={t("notes.meeting.title")}
@@ -144,7 +147,7 @@ export default function MeetingRecordingPill({
       <MeetingMicButton />
       <button
         type="button"
-        onClick={handleStop}
+        onClick={() => runInBackground(handleStop(), "Stop meeting failed")}
         disabled={isStopping}
         aria-label={stopLabel}
         title={stopLabel}

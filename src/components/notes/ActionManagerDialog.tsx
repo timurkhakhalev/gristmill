@@ -7,6 +7,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { cn } from "../lib/utils";
 import { useActions, initializeActions, getActionName } from "../../stores/actionStore";
+import { runInBackground } from "../../stores/noteStore";
 import type { ActionItem } from "../../contracts/actions";
 
 interface ActionManagerDialogProps {
@@ -35,7 +36,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
 
   useEffect(() => {
     if (open) {
-      initializeActions();
+      runInBackground(initializeActions(), "Actions load failed");
       setIsCreating(false);
       setEditingId(null);
       setSelectedId(null);
@@ -73,7 +74,9 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
   };
 
   const handleDelete = async (id: number) => {
-    await window.electronAPI.deleteAction(id);
+    const deleted = await window.electronAPI.deleteAction(id);
+
+    if (!deleted.success) throw new Error("Action was not deleted");
 
     if (selectedId === id) {
       setSelectedId(null);
@@ -88,13 +91,21 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
 
     try {
       if (editingId !== null) {
-        await window.electronAPI.updateAction(editingId, {
+        const saved = await window.electronAPI.updateAction(editingId, {
           name: name.trim(),
           description: description.trim(),
           prompt: prompt.trim(),
         });
+
+        if (!saved.success) throw new Error(saved.error || "Action was not saved");
       } else {
-        await window.electronAPI.createAction(name.trim(), description.trim(), prompt.trim());
+        const created = await window.electronAPI.createAction(
+          name.trim(),
+          description.trim(),
+          prompt.trim()
+        );
+
+        if (!created.success) throw new Error(created.error || "Action was not saved");
         setIsCreating(false);
       }
     } finally {
@@ -202,7 +213,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDelete(action.id);
+                            runInBackground(handleDelete(action.id), "Action delete failed");
                           }}
                           aria-label={t("notes.context.delete")}
                           className={cn(
@@ -252,7 +263,7 @@ export default function ActionManagerDialog({ open, onOpenChange }: ActionManage
                     )}
                     <Button
                       size="sm"
-                      onClick={handleSave}
+                      onClick={() => runInBackground(handleSave(), "Action save failed")}
                       disabled={isSaving || !name.trim() || !prompt.trim() || !hasUnsavedChanges}
                       className="h-7 text-xs"
                     >

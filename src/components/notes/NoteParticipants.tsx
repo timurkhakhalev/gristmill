@@ -9,6 +9,7 @@ import PersonAvatar from "../ui/PersonAvatar";
 import PersonName from "../ui/PersonName";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { syncSessionExpectedCountFromParticipants } from "../../stores/meetingRecordingStore";
+import { runInBackground } from "../../stores/noteStore";
 import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
 import { openExternalLink } from "../../utils/externalLinks";
 import {
@@ -231,21 +232,27 @@ export default function NoteParticipants({
     }
 
     const query = search.trim();
-    window.electronAPI.searchContacts(query).then((result) => {
-      if (result.success) {
-        const existing = new Set(localParticipants.map((p) => p.email));
-        setSuggestions(result.contacts.filter((c) => !existing.has(c.email)));
-      }
-    });
+    runInBackground(
+      window.electronAPI.searchContacts(query).then((result) => {
+        if (result.success) {
+          const existing = new Set(localParticipants.map((p) => p.email));
+          setSuggestions(result.contacts.filter((c) => !existing.has(c.email)));
+        }
+      }),
+      "Contact search failed"
+    );
   }, [search, open, localParticipants, preview]);
 
   const saveParticipants = useCallback(
     (updated: CalendarAttendee[]) => {
       if (preview) return;
       syncSessionExpectedCountFromParticipants(noteId, updated);
-      window.electronAPI.updateNote(noteId, {
-        participants: JSON.stringify(updated),
-      });
+      runInBackground(
+        window.electronAPI.updateNote(noteId, {
+          participants: JSON.stringify(updated),
+        }),
+        "Participants save failed"
+      );
     },
     [noteId, preview]
   );
@@ -265,7 +272,13 @@ export default function NoteParticipants({
       saveParticipants(updated);
 
       if (!preview)
-        window.electronAPI.upsertContact({ email: normalized, displayName: displayName || null });
+        runInBackground(
+          window.electronAPI.upsertContact({
+            email: normalized,
+            displayName: displayName || null,
+          }),
+          "Contact upsert failed"
+        );
       setSearch("");
     },
     [localParticipants, preview, saveParticipants]
@@ -297,7 +310,7 @@ export default function NoteParticipants({
       const domain = p.email.split("@")[1] || "other";
 
       if (!groups.has(domain)) groups.set(domain, []);
-      groups.get(domain)!.push(p);
+      groups.get(domain)?.push(p);
     }
 
     return Array.from(groups.entries());

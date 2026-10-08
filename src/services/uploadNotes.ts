@@ -69,7 +69,7 @@ export function buildUploadNoteMetadata(
 
   return {
     audioDurationSeconds:
-      typeof durationSeconds === "number" && Number.isFinite(durationSeconds) && durationSeconds > 0
+      durationSeconds != null && Number.isFinite(durationSeconds) && durationSeconds > 0
         ? durationSeconds
         : null,
     noteUpdates,

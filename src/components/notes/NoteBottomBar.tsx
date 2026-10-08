@@ -110,7 +110,7 @@ export default function NoteBottomBar({
         !isModelPickerOpen &&
         !isHistoryOpen &&
         containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
+        !(e.target instanceof Node && containerRef.current.contains(e.target))
       ) {
         setIsExpanded(false);
       }

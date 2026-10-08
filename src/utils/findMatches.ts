@@ -30,7 +30,7 @@ export function collectTextNodes(root: Node): Text[] {
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      const parent = (node as Text).parentElement;
+      const parent = node.parentElement;
 
       if (!parent) return NodeFilter.FILTER_REJECT;
       const tag = parent.tagName;
@@ -44,7 +44,7 @@ export function collectTextNodes(root: Node): Text[] {
   let current = walker.nextNode();
 
   while (current) {
-    nodes.push(current as Text);
+    if (current instanceof Text) nodes.push(current);
     current = walker.nextNode();
   }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNoteEventsRevision } from "../../stores/noteStore";
+import { runInBackground, useNoteEventsRevision } from "../../stores/noteStore";
 import { useNotesTreeActions } from "../../hooks/useNotesTreeActions";
 import { useHomeChat } from "../../hooks/useHomeChat";
 import { useUpcomingEvents } from "../../hooks/useUpcomingEvents";
@@ -71,19 +71,38 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
     [t]
   );
 
-  const askFromBar = useCallback(
-    (text: string) => {
-      setChatMode("floating");
-      void chat.sendMessage(text);
-    },
+  const sendChatMessage = useCallback(
+    (text: string) => runInBackground(chat.sendMessage(text), "Home chat message failed"),
     [chat]
   );
 
-  // Chat citations can point past the recent list, so fall back to a lookup.
-  const openNoteById = async (id: number) => {
-    const note = notes?.find((item) => item.id === id) ?? (await window.electronAPI.getNote(id));
+  const switchChat = (id: number) =>
+    runInBackground(chat.switchConversation(id), "Switch chat failed");
 
-    if (note) onOpenNote(note);
+  const askFromBar = useCallback(
+    (text: string) => {
+      setChatMode("floating");
+      sendChatMessage(text);
+    },
+    [sendChatMessage]
+  );
+
+  // Chat citations can point past the recent list, so fall back to a lookup.
+  const openNoteById = (id: number) => {
+    const cached = notes?.find((item) => item.id === id);
+
+    if (cached) {
+      onOpenNote(cached);
+
+      return;
+    }
+
+    runInBackground(
+      window.electronAPI.getNote(id).then((note) => {
+        if (note) onOpenNote(note);
+      }),
+      "Open chat note failed"
+    );
   };
 
   return (
@@ -122,7 +141,7 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
             conversations: chat.conversations,
             activeConversationId: chat.activeConversationId,
             onSwitchConversation: (id) => {
-              chat.switchConversation(id);
+              switchChat(id);
               setChatMode("floating");
             },
             onNewChat: () => {
@@ -138,12 +157,12 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
             floatingMaxHeight="calc(100vh - 8rem)"
             messages={chat.messages}
             agentState={chat.agentState}
-            onTextSubmit={chat.sendMessage}
+            onTextSubmit={sendChatMessage}
             onCancel={chat.cancelStream}
             onRetrySave={chat.retrySaveMessage}
             conversations={chat.conversations}
             activeConversationId={chat.activeConversationId}
-            onSwitchConversation={chat.switchConversation}
+            onSwitchConversation={switchChat}
             onNewChat={chat.startNewChat}
             suggestions={suggestions}
             emptyStateText={t("embeddedChat.homeEmptyState")}

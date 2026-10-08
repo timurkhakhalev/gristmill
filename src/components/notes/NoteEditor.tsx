@@ -44,13 +44,19 @@ import { openSettings } from "../../utils/openSettings";
 import EmptyStateCard from "../ui/EmptyStateCard";
 import { Button } from "../ui/button";
 import ChatPanel, { type ChatPanelMode } from "../chat/ChatPanel";
-import { openNoteRow, setActiveFolderId, setActiveNoteId } from "../../stores/noteStore";
+import {
+  openNoteRow,
+  runInBackground,
+  setActiveFolderId,
+  setActiveNoteId,
+} from "../../stores/noteStore";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
 import type { Message } from "../chat/types";
 import { formatNoteDate, formatShortDateTime } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { collectKnownPeople } from "../../utils/llmTranscript";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
+import { parseNoteParticipants } from "../../utils/noteParticipants";
 import {
   applyTranscriptSpeakerPatch,
   lockTranscriptSpeaker,
@@ -59,7 +65,7 @@ import {
 import NoteParticipants from "./NoteParticipants";
 import { takeNoteHandoff } from "./noteHandoff";
 import NoteFindBar from "./NoteFindBar";
-import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
+import type { CalendarEvent } from "../../contracts/calendar";
 import { observeFloatingChatLayout } from "./floatingChatLayout";
 import { NOTE_META_CHIP_CLASS, defaultFolderDisplayName, folderMatchesQuery } from "./shared";
 import MeetingResultsPanel, { type SummaryActionState } from "./MeetingResultsPanel";
@@ -320,7 +326,7 @@ export default function NoteEditor({
 
     // Chat citations can sit outside the container caches (#185): the row is
     // already in hand — hold it directly instead of id-only selection.
-    if (target) void openNoteRow(target);
+    if (target) runInBackground(openNoteRow(target), "Open chat note failed");
     else setActiveNoteId(noteId);
   }, []);
 
@@ -374,7 +380,7 @@ export default function NoteEditor({
             ? (speakerMappings[segment.speaker] ?? segment.speakerName ?? null)
             : null,
           text: segment.text,
-          ...(typeof segment.timestamp === "number" && Number.isFinite(segment.timestamp)
+          ...(segment.timestamp != null && Number.isFinite(segment.timestamp)
             ? { startTimestamp: segment.timestamp }
             : {}),
         })),
@@ -411,13 +417,10 @@ export default function NoteEditor({
     [displaySegments, speakerMappings, speakerProfiles]
   );
 
-  const parsedParticipants = useMemo<CalendarAttendee[]>(() => {
-    try {
-      return note.participants ? JSON.parse(note.participants) : [];
-    } catch {
-      return [];
-    }
-  }, [note.participants]);
+  const parsedParticipants = useMemo(
+    () => parseNoteParticipants(note.participants),
+    [note.participants]
+  );
 
   const mentionPeople = useMemo(
     () =>
@@ -431,15 +434,20 @@ export default function NoteEditor({
 
   const refreshSpeakerProfiles = useCallback(() => {
     if (debugPreview) return;
-    window.electronAPI?.getSpeakerProfiles?.().then((profiles) => {
-      setSpeakerProfiles(
-        (profiles || []).map((profile) => ({
-          id: profile.id,
-          display_name: profile.display_name,
-          email: profile.email,
-        }))
-      );
-    });
+    runInBackground(
+      (async () => {
+        const profiles = await window.electronAPI?.getSpeakerProfiles?.();
+
+        setSpeakerProfiles(
+          (profiles || []).map((profile) => ({
+            id: profile.id,
+            display_name: profile.display_name,
+            email: profile.email,
+          }))
+        );
+      })(),
+      "Load speaker profiles failed"
+    );
   }, [debugPreview]);
 
   useEffect(() => {
@@ -464,12 +472,16 @@ export default function NoteEditor({
 
   useEffect(() => {
     if (debugPreview) return;
-    window.electronAPI?.getSpeakerMappings?.(note.id).then((mappings) => {
-      const map: Record<string, string> = {};
+    runInBackground(
+      (async () => {
+        const mappings = await window.electronAPI?.getSpeakerMappings?.(note.id);
+        const map: Record<string, string> = {};
 
-      for (const m of mappings || []) map[m.speaker_id] = m.display_name;
-      setSpeakerMappings(map);
-    });
+        for (const m of mappings || []) map[m.speaker_id] = m.display_name;
+        setSpeakerMappings(map);
+      })(),
+      "Load speaker mappings failed"
+    );
     refreshSpeakerProfiles();
   }, [debugPreview, note.id, refreshSpeakerProfiles]);
 
@@ -527,9 +539,12 @@ export default function NoteEditor({
       }
 
       if (debugPreview) return;
-      await window.electronAPI?.updateNote(note.id, {
+
+      const result = await window.electronAPI?.updateNote(note.id, {
         transcript: serializeTranscriptSegments(nextSegments),
       });
+
+      if (result?.success === false) throw new Error(result.error ?? "Transcript save failed");
     },
     [debugPreview, note.id]
   );
@@ -1160,10 +1175,27 @@ export default function NoteEditor({
                     userTouchedStepper={userTouchedStepper}
                     onSetSessionDiarizationEnabled={onSetSessionDiarizationEnabled}
                     onSetSessionExpectedCount={onSetSessionExpectedCount}
-                    onMapSpeaker={handleMapSpeaker}
-                    onConfirmSuggestion={handleConfirmSuggestion}
-                    onDismissSuggestion={handleDismissSuggestion}
-                    onAttachSpeakerEmail={handleAttachSpeakerEmail}
+                    onMapSpeaker={(speakerId, displayName, email, profileId) =>
+                      runInBackground(
+                        handleMapSpeaker(speakerId, displayName, email, profileId),
+                        "Speaker mapping failed"
+                      )
+                    }
+                    onConfirmSuggestion={(speakerId, suggestedName, profileId) =>
+                      runInBackground(
+                        handleConfirmSuggestion(speakerId, suggestedName, profileId),
+                        "Speaker suggestion failed"
+                      )
+                    }
+                    onDismissSuggestion={(speakerId) =>
+                      runInBackground(handleDismissSuggestion(speakerId), "Speaker dismiss failed")
+                    }
+                    onAttachSpeakerEmail={(profileId, email) =>
+                      runInBackground(
+                        handleAttachSpeakerEmail(profileId, email),
+                        "Attach speaker email failed"
+                      )
+                    }
                     selectedSegmentIds={selectedSegmentIds}
                     onToggleSelect={handleToggleSelect}
                   />
@@ -1192,7 +1224,12 @@ export default function NoteEditor({
                 onClear={handleClearSelection}
                 speakerProfiles={knownSpeakers}
                 participants={parsedParticipants}
-                onAssignName={handleBulkAssignName}
+                onAssignName={(displayName, email, profileId) =>
+                  runInBackground(
+                    handleBulkAssignName(displayName, email, profileId),
+                    "Assign speaker name failed"
+                  )
+                }
                 t={t}
               />
             </div>
@@ -1209,7 +1246,10 @@ export default function NoteEditor({
                     conversations: chatPanelProps.conversations,
                     activeConversationId: chatPanelProps.activeConversationId,
                     onSwitchConversation: (id) => {
-                      chatPanelProps.onSwitchConversation?.(id);
+                      runInBackground(
+                        Promise.resolve(chatPanelProps.onSwitchConversation?.(id)),
+                        "Switch chat failed"
+                      );
                       setChatMode("floating");
                     },
                     onNewChat: chatPanelProps.onNewChat

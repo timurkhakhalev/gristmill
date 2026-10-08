@@ -10,26 +10,15 @@ import PersonAvatar from "../ui/PersonAvatar";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import { formatDate, formatTime, normalizeDbDate } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
-import type { CalendarAttendee } from "../../contracts/calendar";
 import type { NoteItem } from "../../contracts/notes";
+import type { CalendarAttendee } from "../../contracts/calendar";
+import { parseNoteParticipants } from "../../utils/noteParticipants";
 
 // Names spelled out before collapsing the rest into "& N others".
 const MAX_NAMED_PARTICIPANTS = 2;
 
-function parseParticipants(raw: string | null): CalendarAttendee[] {
-  if (!raw) return [];
-
-  try {
-    const parsed = JSON.parse(raw);
-
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
 function participantName(person: CalendarAttendee): string {
-  return person.displayName || person.email?.split("@")[0] || "";
+  return person.displayName || person.email.split("@")[0] || "";
 }
 
 interface DayGroup {
@@ -75,7 +64,7 @@ function NoteRow({ note, onOpen, onMove, onCreateFolderAndMove, onDelete }: Note
   const { timeFormat } = useDateTimePreferences();
 
   const others = useMemo(
-    () => parseParticipants(note.participants).filter((p) => !p.self && participantName(p)),
+    () => parseNoteParticipants(note.participants).filter((p) => !p.self && participantName(p)),
     [note.participants]
   );
 

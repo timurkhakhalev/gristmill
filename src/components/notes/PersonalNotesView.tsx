@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { useTranslation } from "react-i18next";
 import { Plus } from "../icons";
 import NoteEditor from "./NoteEditor";
@@ -23,6 +22,7 @@ import {
   getNoteFromStore,
   retainNoteEditorUpdates,
   flushNoteEditorWrites,
+  runInBackground,
   useNoteEditorSave,
   getNoteEditorUpdates,
 } from "../../stores/noteStore";
@@ -71,7 +71,7 @@ interface PersonalNotesViewProps {
   meetingRecordingRequest?: {
     noteId: number;
     folderId: number | null;
-    event: any;
+    event: unknown;
   } | null;
   onMeetingRecordingRequestHandled?: () => void;
   /** Top bar already shows Back when the window is a narrow note surface. */
@@ -81,7 +81,6 @@ interface PersonalNotesViewProps {
 }
 
 export default function PersonalNotesView({
-  onOpenSettings,
   meetingRecordingRequest,
   onMeetingRecordingRequestHandled,
   chromeProvidesBack = false,
@@ -111,7 +110,7 @@ export default function PersonalNotesView({
       if (pending) {
         clearTimeout(pending.timer);
         ref.current = null;
-        void flushNoteEditorWrites(pending.noteId);
+        runInBackground(flushNoteEditorWrites(pending.noteId), "Flush note save failed");
       }
     }
   }, []);
@@ -143,10 +142,8 @@ export default function PersonalNotesView({
 
   const {
     startRecordingForNote,
-    handleNewNoteIn,
     handleNewNote,
     handleNotesAdded,
-    handleMoveNote,
     handleSetNoteFolders,
     handleCreateFolderAndAdd,
   } = useNotesTreeActions();
@@ -161,7 +158,7 @@ export default function PersonalNotesView({
   const folders = useFolders();
 
   useEffect(() => {
-    initializeNotesTree();
+    runInBackground(initializeNotesTree(), "Notes tree load failed");
   }, []);
 
   const activeNote = useActiveNote();
@@ -189,12 +186,13 @@ export default function PersonalNotesView({
       return;
     }
 
-    window.electronAPI.gcalGetEvent(activeNote.calendar_event_id).then((result) => {
-      setCalendarEvent(result?.success ? result.event : null);
-    });
+    runInBackground(
+      window.electronAPI.gcalGetEvent(activeNote.calendar_event_id).then((result) => {
+        setCalendarEvent(result?.success ? result.event : null);
+      }),
+      "Calendar event load failed"
+    );
   }, [activeNote?.calendar_event_id]);
-
-  const calendarEventName = calendarEvent?.summary ?? null;
 
   const startRecording = useCallback(
     () => startRecordingForNote(activeNote ?? null),
@@ -271,7 +269,7 @@ export default function PersonalNotesView({
       timer: setTimeout(() => {
         if (pendingDocumentRef.current !== pending) return;
         pendingDocumentRef.current = null;
-        void flushNoteEditorWrites(pending.noteId);
+        runInBackground(flushNoteEditorWrites(pending.noteId), "Flush note save failed");
       }, 1000),
     };
 
@@ -293,7 +291,7 @@ export default function PersonalNotesView({
       timer: setTimeout(() => {
         if (pendingEnhancedRef.current !== pending) return;
         pendingEnhancedRef.current = null;
-        void flushNoteEditorWrites(pending.noteId);
+        runInBackground(flushNoteEditorWrites(pending.noteId), "Flush note save failed");
       }, 1000),
     };
 
@@ -385,14 +383,14 @@ export default function PersonalNotesView({
             ...(merged.dirtyTitle ? { title: merged.title } : {}),
             ...(merged.dirtyContent ? { content: merged.content } : {}),
           });
-          void flushNoteEditorWrites(handoff.noteId);
+          runInBackground(flushNoteEditorWrites(handoff.noteId), "Flush note save failed");
         }
       })().catch((error) => {
         // Keep the handoff for the next editor mount if its merge-base read fails.
         if (eventDraftHandoff && !eventDraftHandoff.current) eventDraftHandoff.current = handoff;
         logger.warn(
           "Failed to prepare event draft handoff",
-          { error: (error as Error).message },
+          { error: error instanceof Error ? error.message : String(error) },
           "notes"
         );
       });
@@ -418,11 +416,6 @@ export default function PersonalNotesView({
       flushPendingSaves("unmount");
     };
   }, [flushPendingSaves]);
-
-  // Boolean flag so actions enable during recording without re-rendering on every transcript update.
-  const hasLiveTranscript = useMeetingRecordingStore(
-    (s) => s.recordingNoteId === activeNote?.id && !!s.transcript
-  );
 
   const activeNoteRawTranscript = activeNote?.transcript || "";
   const activeDraft = draft?.noteId === activeNote?.id ? draft : null;
@@ -485,7 +478,7 @@ export default function PersonalNotesView({
     }).catch((error) => {
       logger.warn(
         "Failed to handle automatic meeting recording request",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "meeting"
       );
     });
@@ -514,7 +507,7 @@ export default function PersonalNotesView({
                   type="button"
                   disabled={isSaving}
                   onClick={() => {
-                    void flushNoteEditorWrites(editorNote.id);
+                    runInBackground(flushNoteEditorWrites(editorNote.id), "Flush note save failed");
                   }}
                 >
                   {t("common.retry")}
@@ -531,13 +524,16 @@ export default function PersonalNotesView({
               isRecording={isActiveNoteRecording}
               isProcessing={false}
               recordingAllowed={meetingRecordingAllowed}
-              onStartRecording={startRecording}
-              onStopRecording={stopRecording}
+              onStartRecording={() => runInBackground(startRecording(), "Start recording failed")}
+              onStopRecording={() => runInBackground(stopRecording(), "Stop recording failed")}
               onPauseRecording={() => {
-                void pauseMeeting();
+                runInBackground(pauseMeeting(), "Pause recording failed");
               }}
               onResumeRecording={() => {
-                void startRecordingForNote(activeNote ?? null, true);
+                runInBackground(
+                  startRecordingForNote(activeNote ?? null, true),
+                  "Resume recording failed"
+                );
               }}
               enhancement={
                 editorEnhancedContent
@@ -558,8 +554,15 @@ export default function PersonalNotesView({
               folderName={activeFolderName}
               calendarEvent={calendarEvent}
               folders={editorFolders}
-              onSetFolders={handleSetNoteFolders}
-              onCreateFolderAndAdd={handleCreateFolderAndAdd}
+              onSetFolders={(noteId, folderIds) =>
+                runInBackground(handleSetNoteFolders(noteId, folderIds), "Set note folders failed")
+              }
+              onCreateFolderAndAdd={(noteId, folderName) =>
+                runInBackground(
+                  handleCreateFolderAndAdd(noteId, folderName),
+                  "Create folder and add note failed"
+                )
+              }
             />
           </div>
         ) : showNoteSkeleton ? (
@@ -673,7 +676,7 @@ export default function PersonalNotesView({
                 </p>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleNewNote}
+                    onClick={() => runInBackground(handleNewNote(), "Create note failed")}
                     className="flex items-center gap-1.5 px-4 h-7 rounded-md bg-primary/8 dark:bg-primary/10 border border-primary/12 dark:border-primary/15 text-xs font-medium text-primary/70 hover:bg-primary/12 hover:text-primary hover:border-primary/20 transition-colors"
                   >
                     <Plus size={11} />
@@ -710,7 +713,7 @@ export default function PersonalNotesView({
           open={showAddNotesDialog}
           onOpenChange={setShowAddNotesDialog}
           targetFolderId={activeFolderId}
-          onNotesAdded={handleNotesAdded}
+          onNotesAdded={() => runInBackground(handleNotesAdded(), "Add notes to folder failed")}
         />
       )}
     </div>

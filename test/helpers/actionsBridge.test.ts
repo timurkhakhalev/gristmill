@@ -5,6 +5,10 @@
 // with exact unsubscribe and malformed response/event rejection.
 const test: typeof import("node:test") = require("node:test");
 
+const { loadBundledPreload: loadPreload, createListenerRegistry, plain }: typeof import("./harness/bundledPreload.ts") = require("./harness/bundledPreload.ts");
+
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -13,13 +17,7 @@ const os: typeof import("node:os") = require("node:os");
 
 const path: typeof import("node:path") = require("node:path");
 
-const vm: typeof import("node:vm") = require("node:vm");
-
 const Module = require("node:module");
-
-const root = path.resolve(__dirname, "../..");
-
-const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 let activeHandlers: Map<string, (event: unknown, ...args: unknown[]) => unknown> | null = null;
 
@@ -86,64 +84,16 @@ test.after(() => {
   fs.rmSync(initialUserDataDir, { recursive: true, force: true });
 });
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String((error as { message?: unknown })?.message || error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
-  listenersByChannel = new Map();
-
-  // The preload surface is exercised dynamically; one loose record type keeps
-  // the test reading like the JS original while still checking the harness.
   type PreloadApi = { [k: string]: (...args: unknown[]) => Promise<any> } & {
     onActionCreated(cb: (a: unknown) => void): () => void;
     onActionUpdated(cb: (a: unknown) => void): () => void;
     onActionDeleted(cb: (p: unknown) => void): () => void;
   };
+  const registry = createListenerRegistry();
+  listenersByChannel = registry.listeners;
 
-  let api: PreloadApi | undefined;
-  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
-    // The bundle keeps CJS interop for hybrid manifest modules, so the
-    // sandbox needs the same bindings Node's CJS loader provides.
-    module: { exports: {} },
-    exports: {},
-    require(name: string) {
-      assert.equal(name, "electron", "the bundled preload must only require electron");
-
-      return {
-        contextBridge: {
-          exposeInMainWorld: (_name: string, value: PreloadApi) => {
-            api = value;
-          },
-        },
-        ipcRenderer: {
-          invoke,
-          send() {},
-          on(channel: string, listener: (event: unknown, ...args: unknown[]) => void) {
-            const list = listenersByChannel.get(channel) || [];
-            list.push(listener);
-            listenersByChannel.set(channel, list);
-          },
-          removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void) {
-            const list = listenersByChannel.get(channel) || [];
-            const index = list.indexOf(listener);
-
-            if (index !== -1) list.splice(index, 1);
-          },
-        },
-        webUtils: { getPathForFile: () => "" },
-      };
-    },
-    process: { platform: "darwin", versions: {} },
-    console,
-  });
-
-  return api!;
+  return loadPreload<PreloadApi>({ invoke, ...registry });
 }
 
 async function createFixture(t: import("node:test").TestContext) {
@@ -169,13 +119,9 @@ async function createFixture(t: import("node:test").TestContext) {
         close: () => void;
       };
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 
   const { registerActionsHandlers } = await import("../../src/helpers/actionsIpcHandlers.ts");
@@ -210,9 +156,6 @@ async function createFixture(t: import("node:test").TestContext) {
 
   return { db, api, flush, invoke };
 }
-
-// Objects from vm.runInNewContext have a different prototype; compare by JSON.
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 test("custom action lifecycle round-trips through the bundled preload", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);

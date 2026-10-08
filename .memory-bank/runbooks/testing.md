@@ -62,6 +62,12 @@ pnpm test --domain calendar --domain notes
 - An ordinary `types` test under `test/cases/<domain>/<kind>/` does not go into the batch. The runner selects batch groups by their `test/scripts/type-probes/` path.
 - Keep separate compiler programs when compiler options are not compatible or when fixtures change implementation sources. Do not combine those environments until you prove that they can share one program.
 
+### Shared main-process harness
+
+- Use `test/helpers/harness/bundledPreload.ts` to run the emitted preload in a sandbox. Do not copy a preload loader into a test file.
+- When the better-sqlite3 binding cannot load, call `skipOrFail` from `test/helpers/harness/nativeBinding.ts`. It skips locally and fails when `REQUIRE_DB_TESTS` is set. Do not write a local skip check.
+- Use `test/helpers/harness/db.ts` for a temporary `DatabaseManager`. It installs the electron stub when it loads.
+
 ### Renderer tests
 
 - Import pure renderer modules directly when this keeps the tested behavior.

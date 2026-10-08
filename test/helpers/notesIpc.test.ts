@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -74,15 +76,6 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String(error instanceof Error ? error.message : error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 // Load the TS modules through tsx after the electron stub is installed.
 async function loadModules() {
   const [{ registerNotesHandlers }, events] = await Promise.all([
@@ -101,13 +94,9 @@ async function createFixture(t: import("node:test").TestContext, mirrorError?: E
   try {
     db = new DatabaseManager();
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 
   t.after(() => db.close());

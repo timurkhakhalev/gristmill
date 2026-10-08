@@ -97,7 +97,7 @@
       }
     },
     {
-      "files": ["test/helpers/harness/db.ts"],
+      "files": ["test/helpers/harness/nativeBinding.ts"],
       "rules": {
         "quality/no-unknown-parameters": "off"
       }

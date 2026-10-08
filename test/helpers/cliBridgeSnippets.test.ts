@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -43,15 +45,6 @@ const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseMa
 
 const CliBridge = require("../../src/helpers/cliBridge.ts");
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String((error as { message?: unknown })?.message || error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 function createBridge(t: import("node:test").TestContext) {
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openwhispr-cli-snip-"));
   let db: any;
@@ -63,13 +56,9 @@ function createBridge(t: import("node:test").TestContext) {
     fs.rmSync(path.join(userDataDir, "probe.db"), { force: true });
     db = new DatabaseManager();
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 
   broadcasts.length = 0;

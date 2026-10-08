@@ -6,6 +6,10 @@
 // same channel must fail loudly — the #23 duplicate-handler failure).
 const test: typeof import("node:test") = require("node:test");
 
+const { loadBundledPreload: loadPreload, plain }: typeof import("./harness/bundledPreload.ts") = require("./harness/bundledPreload.ts");
+
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -14,13 +18,9 @@ const os: typeof import("node:os") = require("node:os");
 
 const path: typeof import("node:path") = require("node:path");
 
-const vm: typeof import("node:vm") = require("node:vm");
-
 const Module = require("node:module");
 
 const root = path.resolve(__dirname, "../..");
-
-const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 type BridgeHandler = (event: unknown, ...args: unknown[]) => unknown;
 
@@ -84,45 +84,8 @@ test.after(() => {
   fs.rmSync(initialUserDataDir, { recursive: true, force: true });
 });
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String((error as { message?: unknown })?.message || error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
-  let api: Record<string, unknown> | undefined;
-  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
-    // The bundle keeps CJS interop for hybrid manifest modules, so the
-    // sandbox needs the same bindings Node's CJS loader provides.
-    module: { exports: {} },
-    exports: {},
-    require(name: string) {
-      assert.equal(name, "electron", "the bundled preload must only require electron");
-
-      return {
-        contextBridge: {
-          exposeInMainWorld: (_name: string, value: Record<string, unknown>) => {
-            api = value;
-          },
-        },
-        ipcRenderer: {
-          invoke,
-          send() {},
-          on() {},
-          removeListener() {},
-        },
-        webUtils: { getPathForFile: () => "" },
-      };
-    },
-    process: { platform: "darwin", versions: {} },
-    console,
-  });
-
-  return api!;
+  return loadPreload<Record<string, unknown>>({ invoke });
 }
 
 type DbUnderTest =
@@ -148,13 +111,9 @@ async function createFixture(t: import("node:test").TestContext): Promise<{
   try {
     db = new DatabaseManager() as unknown as NonNullable<typeof db>;
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 
   const { registerChatPersistenceHandlers } =
@@ -184,9 +143,6 @@ async function createFixture(t: import("node:test").TestContext): Promise<{
 
   return { db, api, invoke };
 }
-
-// Objects from vm.runInNewContext have a different prototype; compare by JSON.
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 test("the full bundled preload chain round-trips conversations and messages", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);

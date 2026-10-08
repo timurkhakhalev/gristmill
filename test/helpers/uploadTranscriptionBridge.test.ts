@@ -5,6 +5,8 @@
 // duplicate-channel guard.
 const test: typeof import("node:test") = require("node:test");
 
+const { loadBundledPreload: loadPreload, plain }: typeof import("./harness/bundledPreload.ts") = require("./harness/bundledPreload.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -13,13 +15,7 @@ const os: typeof import("node:os") = require("node:os");
 
 const path: typeof import("node:path") = require("node:path");
 
-const vm: typeof import("node:vm") = require("node:vm");
-
 const Module = require("node:module");
-
-const root = path.resolve(__dirname, "../..");
-
-const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-upload-bridge-")));
 
@@ -64,46 +60,11 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-function loadBundledPreload(invoke: unknown) {
-  let api: Record<string, any> | undefined;
-  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
-    // The bundle keeps CJS interop for hybrid manifest modules, so the
-    // sandbox needs the same bindings Node's CJS loader provides.
-    module: { exports: {} },
-    exports: {},
-    require(name: string) {
-      assert.equal(name, "electron", "the bundled preload must only require electron");
-
-      return {
-        contextBridge: {
-          exposeInMainWorld: (_name: string, value: unknown) => {
-            if (typeof value !== "object" || value === null) throw new Error("Invalid preload API");
-            api = value as Record<string, unknown>;
-          },
-        },
-        ipcRenderer: {
-          invoke,
-          send() {},
-          on() {},
-          removeListener() {},
-        },
-        webUtils: { getPathForFile: () => "" },
-      };
-    },
-    process: { platform: "darwin", versions: {} },
-    console,
-  });
-
-  if (!api) throw new Error("Bundled preload did not expose its API");
-
-  return api;
+function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>) {
+  return loadPreload<Record<string, any>>({ invoke });
 }
 
-// Objects from vm.runInNewContext have a different prototype; compare by JSON.
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
-
 async function createFixture() {
-  assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
 
   const ipcMain = {

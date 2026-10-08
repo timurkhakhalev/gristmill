@@ -2,6 +2,8 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 
 const test: typeof import("node:test") = require("node:test");
 
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const fs: typeof import("node:fs") = require("node:fs");
 
 const os: typeof import("node:os") = require("node:os");
@@ -38,19 +40,9 @@ function createDb(t: import("node:test").TestContext) {
   try {
     return new DatabaseManager();
   } catch (error) {
-    const message = String((error as { message?: unknown })?.message || error);
+    skipOrFail(t, error);
 
-    if (
-      message.includes("NODE_MODULE_VERSION") ||
-      message.includes("Could not locate the bindings file")
-    ) {
-      if (process.env.REQUIRE_DB_TESTS) throw error;
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
-
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 }
 

@@ -1,5 +1,7 @@
 const test: typeof import("node:test") = require("node:test");
 
+const { skipOrFail }: typeof import("./harness/nativeBinding.ts") = require("./harness/nativeBinding.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
 const fs: typeof import("node:fs") = require("node:fs");
@@ -45,15 +47,6 @@ const DatabaseManager: typeof import("../../src/helpers/database.ts").DatabaseMa
 
 const CliBridge = require("../../src/helpers/cliBridge.ts");
 
-function isNativeBindingUnavailable(error: unknown) {
-  const message = String((error as { message?: unknown })?.message || error);
-
-  return (
-    message.includes("NODE_MODULE_VERSION") ||
-    message.includes("Could not locate the bindings file")
-  );
-}
-
 // Builds the route table against a real database with broadcasts stubbed. The
 // constructor does not start a server, so routes can be invoked directly.
 function createBridge(t: import("node:test").TestContext) {
@@ -67,13 +60,9 @@ function createBridge(t: import("node:test").TestContext) {
     fs.rmSync(path.join(userDataDir, "probe.db"), { force: true });
     db = new DatabaseManager() as import("../../src/helpers/database.js").DatabaseManager;
   } catch (error) {
-    if (isNativeBindingUnavailable(error)) {
-      t.skip("better-sqlite3 native binding is not available for this Node runtime");
+    skipOrFail(t, error);
 
-      return null;
-    }
-
-    throw error;
+    return null;
   }
 
   broadcasts.length = 0;

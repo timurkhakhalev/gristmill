@@ -5,22 +5,14 @@
 // main registration duplicate-channel guard.
 const test: typeof import("node:test") = require("node:test");
 
+const { loadBundledPreload: loadPreload, plain }: typeof import("./harness/bundledPreload.ts") = require("./harness/bundledPreload.ts");
+
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
-
-const fs: typeof import("node:fs") = require("node:fs");
-
-const path: typeof import("node:path") = require("node:path");
-
-const vm: typeof import("node:vm") = require("node:vm");
 
 const Module = require("node:module");
 
 import type { ReasoningApi, EnterpriseStreamEnvelope } from "../../src/contracts/reasoning.ts";
 import type { ReasoningIpcMain } from "../../src/helpers/reasoningIpcHandlers.ts";
-
-const root = path.resolve(__dirname, "../..");
-
-const bundledPreload = path.join(root, "dist-main", "preload.js");
 
 const requiredMethods = [
   "processLocalReasoning",
@@ -77,52 +69,20 @@ function loadBundledPreload(transport: {
   on(channel: string, listener: (event: unknown, payload: unknown) => void): void;
   removeListener(channel: string, listener: (event: unknown, payload: unknown) => void): void;
 }): ReasoningApi {
-  let api: unknown;
-  vm.runInNewContext(fs.readFileSync(bundledPreload, "utf8"), {
-    // The bundle keeps CJS interop for hybrid manifest modules, so the
-    // sandbox needs the same bindings Node's CJS loader provides.
-    module: { exports: {} },
-    exports: {},
-    require(name: string) {
-      assert.equal(name, "electron", "the bundled preload must only require electron");
-
-      return {
-        contextBridge: {
-          exposeInMainWorld: (_name: string, value: unknown) => {
-            api = value;
-          },
-        },
-        ipcRenderer: {
-          invoke: (channel: string, ...args: unknown[]) => transport.invoke(channel, ...args),
-          send: (channel: string, ...args: unknown[]) => transport.send(channel, ...args),
-          on: (channel: string, listener: any) => transport.on(channel, listener),
-          removeListener: (channel: string, listener: any) =>
-            transport.removeListener(channel, listener),
-        },
-        webUtils: { getPathForFile: () => "" },
-      };
-    },
-    process: { platform: "darwin", versions: {} },
-    console,
-  });
-  assert.ok(api && typeof api === "object", "Bundled preload did not expose its API");
+  const api = loadPreload<ReasoningApi>(transport);
 
   for (const method of requiredMethods) {
     assert.equal(
-      typeof (api as Record<string, unknown>)[method],
+      typeof Reflect.get(api, method),
       "function",
       `${method} must be exposed`
     );
   }
 
-  return api as ReasoningApi;
+  return api;
 }
 
-// Objects from vm.runInNewContext have a different prototype; compare by JSON.
-const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
-
 async function createFixture() {
-  assert.ok(fs.existsSync(bundledPreload), "Run pnpm run build:main first");
   activeHandlers = new Map();
 
   const ipcMain: ReasoningIpcMain = {

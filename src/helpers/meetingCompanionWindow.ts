@@ -1,4 +1,4 @@
-import { app, screen, BrowserWindow } from "electron";
+import { app, screen, BrowserWindow, type WebContents } from "electron";
 import debugLogger from "./debugLogger.js";
 import { DevServerManager } from "./devServerManager.js";
 import { NOTIFICATION_WINDOW_CONFIG, WindowPositionUtil } from "./windowConfig.js";
@@ -21,7 +21,7 @@ import {
 
 interface MeetingCompanionDeps {
   getControlPanelWindow: () => BrowserWindow | null;
-  openNote: (payload: { noteId: number; folderId: number | null }) => void | Promise<void>;
+  openNote: (payload: { noteId: number; folderId: number | null }) => Promise<void>;
 }
 
 /**
@@ -84,7 +84,9 @@ export class MeetingCompanionWindow {
     const { noteId, folderId } = this.state;
 
     if (noteId == null) return;
-    void this.deps.openNote({ noteId, folderId });
+    // Opening is fire-and-forget from the bubble; a rejection must not take
+    // the companion window down.
+    this.deps.openNote({ noteId, folderId }).catch(() => undefined);
   }
 
   /** Relays the bubble's mute button to the control panel, which owns the recording. */
@@ -103,7 +105,7 @@ export class MeetingCompanionWindow {
   }
 
   /** Pointer and ready messages count only when they come from the bubble itself. */
-  ownsSender(sender: unknown): boolean {
+  ownsSender(sender: WebContents | null | undefined): boolean {
     return Boolean(this.win && !this.win.isDestroyed() && this.win.webContents === sender);
   }
 
@@ -179,7 +181,9 @@ export class MeetingCompanionWindow {
         return;
       }
 
-      const fileInfo = DevServerManager.getAppFilePath(false)!;
+      const fileInfo = DevServerManager.getAppFilePath(false);
+
+      if (!fileInfo) throw new Error("Companion app path is unavailable");
       await win.loadFile(fileInfo.path, {
         query: { ...fileInfo.query, "meeting-companion": "true" },
       });
@@ -188,7 +192,7 @@ export class MeetingCompanionWindow {
     load().catch((error: unknown) => {
       debugLogger.warn(
         "Meeting companion failed to load",
-        { error: (error as Error).message },
+        { error: error instanceof Error ? error.message : String(error) },
         "meeting"
       );
 
@@ -198,7 +202,7 @@ export class MeetingCompanionWindow {
     return win;
   }
 
-  private send(channel: string, payload: unknown): void {
+  private send(channel: string, payload: MeetingCompanionWirePayload): void {
     const win = this.win;
 
     if (!win || win.isDestroyed() || !this.loaded) return;
@@ -206,9 +210,17 @@ export class MeetingCompanionWindow {
   }
 }
 
-interface IpcMainLike {
-  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
+interface IpcEventLike {
+  sender?: WebContents;
 }
+
+interface IpcMainLike {
+  on(channel: string, listener: (event: IpcEventLike, ...args: unknown[]) => void): unknown;
+}
+
+// The companion window only ever emits schema-parsed payloads; the senders
+// here emit state and level events.
+type MeetingCompanionWirePayload = MeetingCompanionState | number;
 
 export function registerMeetingCompanionHandlers(
   ipcMain: IpcMainLike,
@@ -225,8 +237,8 @@ export function registerMeetingCompanionHandlers(
     if (parsed.success) companion.setLevel(parsed.data);
   });
 
-  const fromCompanion = (event: unknown) =>
-    companion.ownsSender((event as { sender?: unknown } | null)?.sender);
+  // Electron event objects always carry `sender`; a missing one is not ours.
+  const fromCompanion = (event: IpcEventLike) => companion.ownsSender(event?.sender);
 
   ipcMain.on(meetingCompanionChannels.dragStart, (event, ...args) => {
     const parsed = meetingCompanionPointSchema.safeParse(args);

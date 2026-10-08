@@ -4,22 +4,31 @@ import { processListCache } from "./processListCache.js";
 
 const POLL_INTERVAL_MS = 30 * 1000;
 
-const BUNDLE_ID_MAP: Record<string, MeetingProcessKey> = {
+const BUNDLE_ID_MAP = {
   "us.zoom.xos": "zoom",
   "com.microsoft.teams": "teams",
   "com.microsoft.teams2": "teams",
   "com.cisco.webexmeetingsapp": "webex",
   "com.apple.FaceTime": "facetime",
-};
+} satisfies Record<string, MeetingProcessKey>;
 
-const BUNDLE_APP_NAMES: Record<string, string> = {
+const BUNDLE_APP_NAMES = {
   zoom: "Zoom",
   teams: "Microsoft Teams",
   webex: "Webex",
   facetime: "FaceTime",
-};
+} satisfies Record<MeetingProcessKey, string>;
 
 type MeetingProcessKey = "zoom" | "teams" | "webex" | "facetime";
+
+type MeetingPlatform = "win32" | "linux";
+
+type MeetingProcessBundleId =
+  | "us.zoom.xos"
+  | "com.microsoft.teams"
+  | "com.microsoft.teams2"
+  | "com.cisco.webexmeetingsapp"
+  | "com.apple.FaceTime";
 
 interface MeetingAppEntry {
   processKey: MeetingProcessKey;
@@ -27,7 +36,7 @@ interface MeetingAppEntry {
   imageName: string;
 }
 
-const MEETING_APPS: Record<string, MeetingAppEntry[]> = {
+const MEETING_APPS = {
   win32: [
     { processKey: "zoom", appName: "Zoom", imageName: "cpthost.exe" },
     { processKey: "teams", appName: "Microsoft Teams", imageName: "ms-teams_modulehost.exe" },
@@ -37,7 +46,7 @@ const MEETING_APPS: Record<string, MeetingAppEntry[]> = {
     { processKey: "zoom", appName: "Zoom", imageName: "zoom" },
     { processKey: "teams", appName: "Microsoft Teams", imageName: "teams" },
   ],
-};
+} satisfies Partial<Record<NodeJS.Platform, MeetingAppEntry[]>>;
 
 interface DetectedProcessEntry {
   detectedAt: number;
@@ -60,11 +69,12 @@ export interface MeetingProcessEndedEvent {
   appName: string;
 }
 
+interface WorkspaceUserInfo {
+  NSApplicationBundleIdentifier?: string;
+}
+
 interface WorkspaceSubscription {
-  subscribeWorkspaceNotification?(
-    event: string,
-    callback: (_event: unknown, userInfo: { NSApplicationBundleIdentifier?: string } | null) => void
-  ): number;
+  subscribeWorkspaceNotification?(event: string, callback: (...args: unknown[]) => void): number;
   unsubscribeWorkspaceNotification?(id: number): void;
 }
 
@@ -81,7 +91,9 @@ export class MeetingProcessDetector extends EventEmitter {
     if (process.platform === "darwin") {
       this._startDarwin();
     } else {
-      const apps = MEETING_APPS[process.platform] || [];
+      // SAFETY: MEETING_APPS only defines entries for the polled desktop
+      // platforms; other platforms legitimately start with none.
+      const apps = MEETING_APPS[process.platform as MeetingPlatform] ?? [];
       debugLogger.info(
         "Process detector started",
         {
@@ -91,8 +103,11 @@ export class MeetingProcessDetector extends EventEmitter {
         },
         "meeting"
       );
-      void this._poll();
-      this.pollInterval = setInterval(() => void this._poll(), POLL_INTERVAL_MS);
+      void this._poll().catch(() => undefined);
+      this.pollInterval = setInterval(
+        () => void this._poll().catch(() => undefined),
+        POLL_INTERVAL_MS
+      );
     }
   }
 
@@ -100,7 +115,12 @@ export class MeetingProcessDetector extends EventEmitter {
     let systemPreferences: WorkspaceSubscription | undefined;
 
     try {
-      systemPreferences = require("electron").systemPreferences;
+      // Electron is only resolvable inside the running app; the typed require
+      // keeps the fallback path honest when it is not.
+      // SAFETY: only the systemPreferences capability is consumed here.
+      const electron = require("electron") as { systemPreferences?: WorkspaceSubscription };
+
+      systemPreferences = electron.systemPreferences;
     } catch {
       debugLogger.warn("systemPreferences unavailable, falling back to polling", {}, "meeting");
       this._startPollingFallback();
@@ -119,24 +139,29 @@ export class MeetingProcessDetector extends EventEmitter {
       return;
     }
 
-    const processKeyFrom = (
-      userInfo: { NSApplicationBundleIdentifier?: string } | null | undefined
-    ): MeetingProcessKey | null => {
-      const bundleId = userInfo?.NSApplicationBundleIdentifier;
+    // SAFETY: NSWorkspace callbacks deliver the user-info dictionary as the
+    // second argument; absent info simply has no bundle id.
+    const processKeyFromBundleId = (args: unknown[]): string | undefined =>
+      (args[1] as WorkspaceUserInfo | undefined)?.NSApplicationBundleIdentifier;
 
-      return bundleId ? (BUNDLE_ID_MAP[bundleId] ?? null) : null;
+    const processKeyFrom = (args: unknown[]): MeetingProcessKey | null => {
+      const bundleId = processKeyFromBundleId(args);
+
+      // SAFETY: the map is the authoritative bundle-id table; unknown ids
+      // legitimately fall through to null.
+      return bundleId ? (BUNDLE_ID_MAP[bundleId as MeetingProcessBundleId] ?? null) : null;
     };
 
     const launchId = systemPreferences.subscribeWorkspaceNotification(
       "NSWorkspaceDidLaunchApplicationNotification",
-      (_event, userInfo) => {
-        const processKey = processKeyFrom(userInfo);
+      (...args) => {
+        const processKey = processKeyFrom(args);
 
         if (processKey) {
-          const appName = BUNDLE_APP_NAMES[processKey] || processKey;
+          const appName = BUNDLE_APP_NAMES[processKey];
           debugLogger.debug(
             "Workspace app launched",
-            { bundleId: userInfo?.NSApplicationBundleIdentifier, processKey },
+            { bundleId: processKeyFromBundleId(args), processKey },
             "meeting"
           );
           this._updateDetection(processKey, appName, true);
@@ -146,14 +171,14 @@ export class MeetingProcessDetector extends EventEmitter {
 
     const terminateId = systemPreferences.subscribeWorkspaceNotification(
       "NSWorkspaceDidTerminateApplicationNotification",
-      (_event, userInfo) => {
-        const processKey = processKeyFrom(userInfo);
+      (...args) => {
+        const processKey = processKeyFrom(args);
 
         if (processKey) {
-          const appName = BUNDLE_APP_NAMES[processKey] || processKey;
+          const appName = BUNDLE_APP_NAMES[processKey];
           debugLogger.debug(
             "Workspace app terminated",
-            { bundleId: userInfo?.NSApplicationBundleIdentifier, processKey },
+            { bundleId: processKeyFromBundleId(args), processKey },
             "meeting"
           );
           this._updateDetection(processKey, appName, false);
@@ -173,23 +198,23 @@ export class MeetingProcessDetector extends EventEmitter {
       "meeting"
     );
 
-    void this._initialScanDarwin();
+    void this._initialScanDarwin().catch(() => undefined);
   }
 
   async _initialScanDarwin(): Promise<void> {
     try {
       const processList = await processListCache.getProcessList();
 
-      const darwinProcessNames = [
-        { match: "zoom.us", processKey: "zoom" as MeetingProcessKey },
-        { match: "microsoft teams", processKey: "teams" as MeetingProcessKey },
-        { match: "webex", processKey: "webex" as MeetingProcessKey },
-        { match: "facetime", processKey: "facetime" as MeetingProcessKey },
+      const darwinProcessNames: Array<{ match: string; processKey: MeetingProcessKey }> = [
+        { match: "zoom.us", processKey: "zoom" },
+        { match: "microsoft teams", processKey: "teams" },
+        { match: "webex", processKey: "webex" },
+        { match: "facetime", processKey: "facetime" },
       ];
 
       for (const { match, processKey } of darwinProcessNames) {
         if (processList.some((p) => p.includes(match))) {
-          const appName = BUNDLE_APP_NAMES[processKey] || processKey;
+          const appName = BUNDLE_APP_NAMES[processKey];
           debugLogger.info("Initial scan: already running", { processKey, appName }, "meeting");
           this._updateDetection(processKey, appName, true);
         }
@@ -204,7 +229,7 @@ export class MeetingProcessDetector extends EventEmitter {
   }
 
   _startPollingFallback(): void {
-    const apps = MEETING_APPS.linux || [];
+    const apps = MEETING_APPS.linux;
     debugLogger.info(
       "Process detector started (polling fallback)",
       {
@@ -214,8 +239,11 @@ export class MeetingProcessDetector extends EventEmitter {
       },
       "meeting"
     );
-    void this._poll();
-    this.pollInterval = setInterval(() => void this._poll(), POLL_INTERVAL_MS);
+    void this._poll().catch(() => undefined);
+    this.pollInterval = setInterval(
+      () => void this._poll().catch(() => undefined),
+      POLL_INTERVAL_MS
+    );
   }
 
   stop(): void {
@@ -226,9 +254,9 @@ export class MeetingProcessDetector extends EventEmitter {
 
     if (this._subscriptionIds.length > 0) {
       try {
-        const { systemPreferences } = require("electron") as {
-          systemPreferences?: WorkspaceSubscription;
-        };
+        // SAFETY: only the systemPreferences capability is consumed here.
+        const electron = require("electron") as { systemPreferences?: WorkspaceSubscription };
+        const { systemPreferences } = electron;
 
         for (const id of this._subscriptionIds) {
           systemPreferences?.unsubscribeWorkspaceNotification?.(id);
@@ -260,10 +288,14 @@ export class MeetingProcessDetector extends EventEmitter {
 
   _getAppName(processKey: string): string {
     if (process.platform === "darwin") {
-      return BUNDLE_APP_NAMES[processKey] || processKey;
+      // SAFETY: detected keys originate from these tables, so unknown strings
+      // fall back to the raw key.
+      return BUNDLE_APP_NAMES[processKey as MeetingProcessKey] ?? processKey;
     }
 
-    const apps = MEETING_APPS[process.platform] || [];
+    // SAFETY: MEETING_APPS only defines entries for the polled desktop
+    // platforms; other platforms report the raw key back.
+    const apps = MEETING_APPS[process.platform as MeetingPlatform] ?? [];
     const entry = apps.find((a) => a.processKey === processKey);
 
     return entry ? entry.appName : processKey;
@@ -274,7 +306,9 @@ export class MeetingProcessDetector extends EventEmitter {
     this._polling = true;
 
     try {
-      const apps = MEETING_APPS[process.platform] || MEETING_APPS.linux || [];
+      // SAFETY: MEETING_APPS only defines entries for the polled desktop
+      // platforms; others fall back to the linux list.
+      const apps = MEETING_APPS[process.platform as MeetingPlatform] ?? MEETING_APPS.linux;
       const processList = await processListCache.getProcessList();
 
       for (const { processKey, appName, imageName } of apps) {
@@ -311,4 +345,4 @@ export class MeetingProcessDetector extends EventEmitter {
 
 module.exports = MeetingProcessDetector;
 
-module.exports.MeetingProcessDetector = MeetingProcessDetector;
+Object.assign(module.exports, { MeetingProcessDetector });

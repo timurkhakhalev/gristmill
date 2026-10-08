@@ -8,6 +8,22 @@ import {
 } from "../contracts/companion.js";
 import { CompanionFrameDecoder, writeCompanionFrame } from "./companionFrames.js";
 
+interface CompanionConnectionFile {
+  socketPath: string;
+  credential: string;
+}
+
+function isCompanionConnection(value: unknown): value is CompanionConnectionFile {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "socketPath" in value &&
+    typeof value.socketPath === "string" &&
+    "credential" in value &&
+    typeof value.credential === "string"
+  );
+}
+
 /** Chrome launches this entry with Electron's bundled Node runtime. Stdout is protocol-only. */
 export function runCompanionNativeHost(args: string[]): void {
   const [profilePath, channel, origin] = args;
@@ -43,16 +59,15 @@ export function runCompanionNativeHost(args: string[]): void {
       stat.uid !== process.getuid?.()
     )
       throw new Error("Invalid companion connection file");
-    connection = JSON.parse(fs.readFileSync(filename, "utf8"));
+    const decoded: unknown = JSON.parse(fs.readFileSync(filename, "utf8"));
 
     if (
-      !connection ||
-      typeof connection.socketPath !== "string" ||
-      !path.isAbsolute(connection.socketPath) ||
-      typeof connection.credential !== "string" ||
-      !/^[a-f0-9]{64}$/.test(connection.credential)
+      !isCompanionConnection(decoded) ||
+      !path.isAbsolute(decoded.socketPath) ||
+      !/^[a-f0-9]{64}$/.test(decoded.credential)
     )
       throw new Error("Invalid companion connection");
+    connection = decoded;
   } catch {
     writeCompanionFrame(process.stdout, {
       version: 1,

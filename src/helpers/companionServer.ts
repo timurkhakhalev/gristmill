@@ -12,6 +12,24 @@ import {
 } from "../contracts/companion.js";
 import { CompanionFrameDecoder, writeCompanionFrame } from "./companionFrames.js";
 
+const ERRNO_CLEANUP_CODES = new Set(["ENOENT", "ENOTEMPTY"]);
+
+function isCleanupErrno(error: Error): error is NodeJS.ErrnoException {
+  // Only fs cleanup failures are classified here; every other error rethrows.
+  return "code" in error && typeof error.code === "string" && ERRNO_CLEANUP_CODES.has(error.code);
+}
+
+function isStoredCredential(value: unknown): value is { credential: string; socketPath: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "credential" in value &&
+    typeof value.credential === "string" &&
+    "socketPath" in value &&
+    typeof value.socketPath === "string"
+  );
+}
+
 export interface CompanionConnectionFile {
   socketPath: string;
   credential: string;
@@ -142,21 +160,26 @@ export class CompanionServer {
     if (this.server.listening)
       await new Promise<void>((resolve) => this.server.close(() => resolve()));
 
+    this.removeConnectionFile();
+    this.removeSocketDirectory();
+  }
+  // Cleanup is best-effort: the connection file may already be gone or torn
+  // down by another stop(), and only its own credential is ever deleted.
+  private removeConnectionFile(): void {
     try {
-      const saved = JSON.parse(
-        fs.readFileSync(this.connectionFile, "utf8")
-      ) as CompanionConnectionFile;
+      const decoded: unknown = JSON.parse(fs.readFileSync(this.connectionFile, "utf8"));
 
-      if (saved.credential === this.credential) fs.unlinkSync(this.connectionFile);
+      if (isStoredCredential(decoded) && decoded.credential === this.credential)
+        fs.unlinkSync(this.connectionFile);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (!(error instanceof Error) || !isCleanupErrno(error)) throw error;
     }
-
+  }
+  private removeSocketDirectory(): void {
     try {
       fs.rmdirSync(this.socketDirectory);
     } catch (error) {
-      if (!["ENOENT", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? ""))
-        throw error;
+      if (!(error instanceof Error) || !isCleanupErrno(error)) throw error;
     }
   }
   private send(socket: net.Socket, message: CompanionDesktopMessage): void {

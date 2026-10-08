@@ -141,7 +141,7 @@ test("extractMeetingUrl returns the first matching candidate", async () => {
   const { extractMeetingUrl } = await load();
   assert.equal(
     extractMeetingUrl([
-      null,
+      "",
       "Conference Room 4B",
       "https://zoom.us/j/111",
       "https://meet.google.com/zzz",
@@ -153,10 +153,7 @@ test("extractMeetingUrl returns the first matching candidate", async () => {
 test("extractMeetingUrl returns null when nothing matches", async () => {
   const { extractMeetingUrl } = await load();
   assert.equal(extractMeetingUrl([]), null);
-  assert.equal(extractMeetingUrl(null), null);
-  assert.equal(extractMeetingUrl(undefined), null);
-  assert.equal(extractMeetingUrl("not an array"), null);
-  assert.equal(extractMeetingUrl([null, undefined, ""]), null);
+  assert.equal(extractMeetingUrl(["", ""]), null);
   assert.equal(extractMeetingUrl(["Conference Room 4B", "https://example.com/agenda"]), null);
 });
 

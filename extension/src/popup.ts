@@ -9,21 +9,30 @@ declare const COMPANION_VERSION: string;
 
 const appName = COMPANION_DEV ? "Gristmill Dev" : "Gristmill";
 
-document.querySelector<HTMLElement>("#channel")!.hidden = !COMPANION_DEV;
+// The popup owns popup.html; every id below ships in that document.
+function requireElement<T extends HTMLElement>(selector: string): T {
+  const element = document.querySelector<T>(selector);
 
-document.querySelector<HTMLElement>("#version")!.textContent = `v${COMPANION_VERSION}`;
+  if (!element) throw new Error(`Missing popup element: ${selector}`);
 
-const status = document.querySelector<HTMLElement>("#status")!;
+  return element;
+}
 
-const notice = document.querySelector<HTMLElement>("#notice")!;
+requireElement<HTMLElement>("#channel").hidden = !COMPANION_DEV;
 
-const mute = document.querySelector<HTMLButtonElement>("#mute")!;
+requireElement<HTMLElement>("#version").textContent = `v${COMPANION_VERSION}`;
 
-const error = document.querySelector<HTMLElement>("#error")!;
+const status = requireElement<HTMLElement>("#status");
 
-const connection = document.querySelector<HTMLElement>("#connection")!;
+const notice = requireElement<HTMLElement>("#notice");
 
-const connectionLabel = document.querySelector<HTMLElement>("#connection-label")!;
+const mute = requireElement<HTMLButtonElement>("#mute");
+
+const error = requireElement<HTMLElement>("#error");
+
+const connection = requireElement<HTMLElement>("#connection");
+
+const connectionLabel = requireElement<HTMLElement>("#connection-label");
 
 let current: ReturnType<typeof describePopup> | null = null;
 
@@ -39,6 +48,7 @@ mute.addEventListener("click", () => {
   void chrome.runtime
     .sendMessage({ type: "manual-mute", recordingId: value.recordingId, muted: !value.manualMuted })
     .then((reply) => {
+      // SAFETY: the worker answers manual-mute with an {accepted} envelope.
       if (!(reply as { accepted?: boolean })?.accepted)
         error.textContent = "Recording changed. Try again in Gristmill.";
     })
@@ -47,7 +57,8 @@ mute.addEventListener("click", () => {
     })
     .finally(() => {
       busy = false;
-      void refresh();
+
+      void refresh().catch(() => undefined);
     });
 });
 
@@ -66,7 +77,7 @@ function render(view: ReturnType<typeof describePopup>) {
 }
 
 function renderDiagnostics(rows: Array<[string, string]>) {
-  document.querySelector<HTMLElement>("#rows")!.replaceChildren(
+  requireElement<HTMLElement>("#rows").replaceChildren(
     ...rows.flatMap(([label, value]) => {
       const term = document.createElement("dt");
       term.textContent = label;
@@ -106,8 +117,8 @@ async function refresh() {
   }
 }
 
-void refresh();
+void refresh().catch(() => undefined);
 
-const timer = setInterval(() => void refresh(), 1000);
+const timer = setInterval(() => void refresh().catch(() => undefined), 1000);
 
 window.addEventListener("pagehide", () => clearInterval(timer), { once: true });

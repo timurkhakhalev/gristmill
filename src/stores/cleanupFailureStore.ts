@@ -30,12 +30,11 @@ export const useCleanupFailureStore = create<CleanupFailureState>(() => ({
   lastFailure: null,
 }));
 
-export function recordCleanupFailure(failure: string | CleanupFailure = ""): void {
-  const normalized = typeof failure === "string" ? { message: failure } : failure;
+export function recordCleanupFailure(failure: CleanupFailure = { message: "" }): void {
   useCleanupFailureStore.setState((state) => ({
     pending: state.pending + 1,
-    lastMessage: normalized.message,
-    lastFailure: normalized,
+    lastMessage: failure.message,
+    lastFailure: failure,
   }));
 }
 

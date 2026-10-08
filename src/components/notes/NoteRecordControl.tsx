@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Button, Tooltip } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, ArrowRight, AudioLines, Loader2, Mic, Play, Sparkles, Square } from "../icons";
+import { AudioLines, Loader2, Mic, Play, Sparkles, Square } from "../icons";
 import { Pause } from "../icons/primitives";
 import { formatMmSs } from "../../utils/formatDuration";
 import { IconTooltip } from "../ui/IconTooltip";

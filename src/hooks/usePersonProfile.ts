@@ -28,10 +28,13 @@ function flush(): void {
   queued.clear();
 
   if (emails.length === 0) return;
-  const lookup = window.electronAPI?.getContactProfiles;
 
-  if (!lookup) return;
-  void lookup(emails)
+  const api = window.electronAPI;
+
+  if (!api?.getContactProfiles) return;
+
+  api
+    .getContactProfiles(emails)
     .then((rows) => {
       for (const email of emails) profiles.set(email, null);
 
@@ -90,7 +93,12 @@ export function nameFromEmail(email: string): string {
 
 /** A stored "name" that is only the mailbox (e.g. "sibfisher") says nothing the email doesn't. */
 function isRealName(name: string | null | undefined, email: string): name is string {
-  return Boolean(name) && name!.trim().toLowerCase() !== (email.split("@")[0] ?? "").toLowerCase();
+  const candidate = name ?? "";
+
+  return (
+    Boolean(candidate) &&
+    candidate.trim().toLowerCase() !== (email.split("@")[0] ?? "").toLowerCase()
+  );
 }
 
 /** The name to show for a person: Google People, then the invite's name, then one read from the email. */

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "../lib/utils";
 import { usePersonProfile } from "../../hooks/usePersonProfile";
+import { runInBackground } from "../../stores/noteStore";
 
 function getInitial(displayName: string | null, email: string | null): string {
   return (displayName || email || "?").charAt(0).toUpperCase();
@@ -50,11 +51,14 @@ export default function PersonAvatar({
 
     if (!email || cached) return;
     let cancelled = false;
-    window.electronAPI?.getMD5Hash?.(email).then((result) => {
-      if (result) hashByEmail.set(email, result);
+    runInBackground(
+      window.electronAPI?.getMD5Hash?.(email).then((result) => {
+        if (result) hashByEmail.set(email, result);
 
-      if (!cancelled) setHash(result);
-    });
+        if (!cancelled) setHash(result);
+      }),
+      "Avatar hash failed"
+    );
 
     return () => {
       cancelled = true;

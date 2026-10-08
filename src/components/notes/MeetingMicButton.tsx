@@ -54,15 +54,14 @@ export function MeetingMicButton() {
             ? "bg-danger/15 text-danger hover:bg-danger/25"
             : "text-foreground/70 hover:bg-foreground/10"
         )}
-        onClick={async () => {
+        onClick={() => {
           if (pending !== null) return;
           setPending(!muted);
 
-          try {
-            setFailed(!(await setManualMicMuted(!muted)));
-          } finally {
-            setPending(null);
-          }
+          setManualMicMuted(!muted)
+            .then((ok) => setFailed(!ok))
+            .catch(() => setFailed(true))
+            .finally(() => setPending(null));
         }}
       >
         {effectiveMuted ? <MicSlashIcon /> : <Mic size={14} />}

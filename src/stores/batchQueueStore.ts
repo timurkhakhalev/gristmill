@@ -4,6 +4,8 @@ import { transcribeFileWithSpeakers } from "../services/fileTranscription";
 import type { FileTranscriptionConfig, DiarizationSettings } from "../services/fileTranscription";
 import { DOWNLOAD_ERROR_KEYS, transcriptionErrorKey } from "../components/notes/shared";
 import { saveUploadNote, uploadTitleFallback } from "../services/uploadNotes";
+import type { UrlDownloadFailure } from "../contracts/urlDownload";
+import { runInBackground } from "./noteStore";
 
 export type QueueItemStatus = "queued" | "downloading" | "transcribing" | "done" | "error";
 
@@ -96,7 +98,7 @@ export function removeQueueItem(id: string) {
 
 export function cancelBatch() {
   runId++;
-  window.electronAPI.cancelUrlDownload();
+  runInBackground(window.electronAPI.cancelUrlDownload(), "Batch URL download cancel failed");
   // Hard-cancel the current item's execution before flipping the queue, so
   // its transport/decode/diarization stop instead of burning a paid request
   // to completion in the background. Navigation never calls this — the
@@ -175,7 +177,7 @@ export function processBatchQueue(
           const res = await window.electronAPI.downloadUrlAudio(item.url, item.id);
 
           if (!res.success) {
-            const fail = res as { success: false; error: string; code?: string };
+            const fail: UrlDownloadFailure = res;
 
             const key =
               fail.code === "DOWNLOAD_CANCELLED"
@@ -292,29 +294,35 @@ export function processBatchQueue(
       }
 
       if (tempPath) {
-        window.electronAPI.deleteTempFile(tempPath);
+        runInBackground(
+          window.electronAPI.deleteTempFile(tempPath),
+          "Batch temp file delete failed"
+        );
       }
     }
   };
 
-  (async () => {
-    const processed = new Set<string>();
-    let next: QueueItem | undefined;
+  runInBackground(
+    (async () => {
+      const processed = new Set<string>();
+      let next: QueueItem | undefined;
 
-    while (
-      run === runId &&
-      (next = useBatchQueueStore
-        .getState()
-        .queue.find((i) => i.status === "queued" && !processed.has(i.id)))
-    ) {
-      processed.add(next.id);
-      await processItem(next);
-    }
+      while (
+        run === runId &&
+        (next = useBatchQueueStore
+          .getState()
+          .queue.find((i) => i.status === "queued" && !processed.has(i.id)))
+      ) {
+        processed.add(next.id);
+        await processItem(next);
+      }
 
-    if (run === runId) {
-      useBatchQueueStore.setState({ isProcessing: false });
-    }
-  })();
+      if (run === runId) {
+        useBatchQueueStore.setState({ isProcessing: false });
+      }
+    })(),
+    "Batch queue processing failed"
+  );
 }
 
 // Same composed shape the queue UI consumed when this lived in a hook.

@@ -46,6 +46,8 @@ import { ToastContext } from "../ui/useToast";
 import NoteViewSwitch from "./NoteViewSwitch";
 import { ProviderIcon } from "../ui/ProviderIcon";
 import { IconTooltip } from "../ui/IconTooltip";
+import { runInBackground } from "../../stores/noteStore";
+import { parseNoteParticipants } from "../../utils/noteParticipants";
 import { cn } from "../lib/utils";
 import {
   formatDate,
@@ -266,8 +268,7 @@ export default function MeetingResultsPanel({
     ) => {
       setRecordingState((current) => ({
         noteId,
-        items:
-          typeof next === "function" ? next(current.noteId === noteId ? current.items : []) : next,
+        items: Array.isArray(next) ? next : next(current.noteId === noteId ? current.items : []),
       }));
     },
     [noteId]
@@ -377,41 +378,38 @@ export default function MeetingResultsPanel({
     setCalendarParticipants([]);
 
     if (previewRecordings) return;
-    void (async () => {
-      const note = await window.electronAPI.getNote(noteId);
-      const raw: unknown = note?.participants ? JSON.parse(note.participants) : [];
+    runInBackground(
+      (async () => {
+        const note = await window.electronAPI.getNote(noteId);
+        const attendees = new Map<string, string | null>();
 
-      if (!Array.isArray(raw)) throw new Error("Invalid calendar participants");
-      const attendees = new Map<string, string | null>();
+        for (const person of parseNoteParticipants(note?.participants ?? null)) {
+          const email = person.email.trim();
 
-      for (const person of raw) {
-        if (person && typeof person.email === "string" && person.email.trim()) {
-          attendees.set(
-            person.email.trim().toLowerCase(),
-            typeof person.displayName === "string" ? person.displayName : null
-          );
+          if (email) attendees.set(email.toLowerCase(), person.displayName);
         }
-      }
 
-      const contacts = await window.electronAPI.getContactProfiles([...attendees.keys()]);
+        const contacts = await window.electronAPI.getContactProfiles([...attendees.keys()]);
 
-      const names = new Map(
-        contacts.map((contact) => [contact.email.toLowerCase(), contact.display_name])
-      );
-
-      if (!cancelled)
-        setCalendarParticipants(
-          [...attendees].map(([email, name]) => ({ email, name: names.get(email) || name }))
+        const names = new Map(
+          contacts.map((contact) => [contact.email.toLowerCase(), contact.display_name])
         );
-    })().catch(() => {
-      if (!cancelled)
-        notify(
-          t("meetingResults.participantsLoadError", {
-            defaultValue: "Could not load calendar participants.",
-          }),
-          "destructive"
-        );
-    });
+
+        if (!cancelled)
+          setCalendarParticipants(
+            [...attendees].map(([email, name]) => ({ email, name: names.get(email) || name }))
+          );
+      })().catch(() => {
+        if (!cancelled)
+          notify(
+            t("meetingResults.participantsLoadError", {
+              defaultValue: "Could not load calendar participants.",
+            }),
+            "destructive"
+          );
+      }),
+      "Load calendar participants failed"
+    );
 
     return () => {
       cancelled = true;
@@ -432,7 +430,6 @@ export default function MeetingResultsPanel({
     playbackTime,
     totalDuration,
     startAudio,
-    togglePlay,
     skip,
     stop: stopPlayback,
     onSeekBarPointerDown,
@@ -466,7 +463,7 @@ export default function MeetingResultsPanel({
       return;
     }
 
-    void refresh();
+    runInBackground(refresh(), "Refresh recordings failed");
     const unsubscribe = window.electronAPI.onMeetingProcessingUpdated(() => void refresh());
 
     return () => {
@@ -476,15 +473,20 @@ export default function MeetingResultsPanel({
   }, [previewRecordings, refresh, setRecordings, invalidateRefresh]);
   useEffect(() => {
     if (capturePhase === "recording" || capturePhase === "saved" || capturePhase === "incomplete")
-      void refresh();
+      runInBackground(refresh(), "Refresh recordings failed");
   }, [capturePhase, refresh]);
   useEffect(() => {
     if (previewRecordings) return;
-    void window.electronAPI
-      .getSpeakerProfiles?.()
-      .then((items) =>
-        setProfiles((items ?? []).map((item) => ({ id: item.id, display_name: item.display_name })))
-      );
+    runInBackground(
+      (async () => {
+        const items = await window.electronAPI.getSpeakerProfiles?.();
+
+        setProfiles(
+          (items ?? []).map((item) => ({ id: item.id, display_name: item.display_name }))
+        );
+      })(),
+      "Load speaker profiles failed"
+    );
   }, [previewRecordings]);
 
   // One group per recording session (start/stop), each split into parts by pauses.
@@ -936,7 +938,7 @@ export default function MeetingResultsPanel({
       if (manualAsrBlockedForGroups(targetGroupIds)) return;
     }
 
-    void createRun({ kind, ...target });
+    runInBackground(createRun({ kind, ...target }), "Create run failed");
   };
 
   const createRun = async (choice: RunChoice) => {
@@ -1231,7 +1233,7 @@ export default function MeetingResultsPanel({
               cumulative += part?.recording.durationSeconds ?? 0;
             }
 
-            const allSegments = selected.transcript.segments!;
+            const allSegments = selected.transcript.segments ?? [];
 
             return [
               ...allSegments.slice(0, transcriptLimit).map((segment, index) => {
@@ -1285,7 +1287,7 @@ export default function MeetingResultsPanel({
                             const duration = part.recording.durationSeconds ?? 0;
 
                             if (remaining <= duration) {
-                              void startAudio(id, remaining);
+                              runInBackground(startAudio(id, remaining), "Audio start failed");
                               break;
                             }
 
@@ -1301,7 +1303,7 @@ export default function MeetingResultsPanel({
                           <button
                             className="rounded text-xs font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                             onClick={() => {
-                              editSpeaker(segment.speaker!);
+                              if (segment.speaker) editSpeaker(segment.speaker);
                             }}
                           >
                             {selected.speakerCorrections.find(
@@ -1407,7 +1409,10 @@ export default function MeetingResultsPanel({
                         const duration = part.recording.durationSeconds ?? 0;
 
                         if (remaining < duration) {
-                          void startAudio(part.recording.id, remaining);
+                          runInBackground(
+                            startAudio(part.recording.id, remaining),
+                            "Audio start failed"
+                          );
 
                           return;
                         }
@@ -1537,7 +1542,11 @@ export default function MeetingResultsPanel({
                     <div
                       className="min-h-0 flex-1 overflow-y-auto"
                       onKeyDown={(event) => {
-                        if (!playingId || !event.currentTarget.contains(event.target as Node))
+                        if (
+                          !playingId ||
+                          !(event.target instanceof Node) ||
+                          !event.currentTarget.contains(event.target)
+                        )
                           return;
 
                         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -1643,7 +1652,11 @@ export default function MeetingResultsPanel({
                                         if (key === "asr")
                                           openRun("reprocess", { partId: part.recording.id });
 
-                                        if (key === "export") void exportPart(part.recording.id);
+                                        if (key === "export")
+                                          runInBackground(
+                                            exportPart(part.recording.id),
+                                            "Export audio part failed"
+                                          );
 
                                         if (key === "delete") deletePart(part.recording.id);
                                       }}
@@ -2093,7 +2106,7 @@ export default function MeetingResultsPanel({
                             }
                             onPress={() => {
                               setModelOpen(false);
-                              void runSummaryAction("recap");
+                              runInBackground(runSummaryAction("recap"), "Summary action failed");
                             }}
                           >
                             <AlignLeft size={14} />

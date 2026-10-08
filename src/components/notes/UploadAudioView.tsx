@@ -30,6 +30,7 @@ import {
 import { useSettingsStore, getSettings } from "../../stores/settingsStore";
 import { selectResolvedUploadTranscription } from "../../config/settingsSelectors";
 import { useBatchQueue } from "../../stores/batchQueueStore";
+import { runInBackground } from "../../stores/noteStore";
 import type { TranscribeOptions } from "../../stores/batchQueueStore";
 import {
   transcribeFileWithSpeakers,
@@ -83,7 +84,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function parseBatchUrls(text: string): { valid: string[]; skipped: number } {
+function parseBatchUrls(text: string) {
   const lines = text
     .split("\n")
     .map((l) => l.trim())
@@ -233,19 +234,23 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     });
 
   useEffect(() => {
-    window.electronAPI.getDiarizationModelStatus?.().then((status) => {
-      const ready = status?.modelsDownloaded ?? false;
-      setDiarizationModelsReady(ready);
+    runInBackground(
+      (async () => {
+        const status = await window.electronAPI.getDiarizationModelStatus();
+        const ready = status?.modelsDownloaded ?? false;
+        setDiarizationModelsReady(ready);
 
-      // Heal a persisted-on toggle whose models were removed since; roll it back
-      // if the download fails so it can't sit ON while doing nothing.
-      if (!ready && localStorage.getItem("uploadDiarizationEnabled") === "true") {
-        if (shouldUseByokDiarize(buildTranscriptionConfig(), true)) return;
-        ensureDiarizationModels().then((ok) => {
+        // Heal a persisted-on toggle whose models were removed since; roll it back
+        // if the download fails so it can't sit ON while doing nothing.
+        if (!ready && localStorage.getItem("uploadDiarizationEnabled") === "true") {
+          if (shouldUseByokDiarize(buildTranscriptionConfig(), true)) return;
+          const ok = await ensureDiarizationModels();
+
           if (!ok) setDiarizationEnabled(false);
-        });
-      }
-    });
+        }
+      })(),
+      "Diarization model heal failed"
+    );
     // Mount-only by design: heals persisted state against the models on disk.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -335,11 +340,14 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       mountedRef.current = false;
 
       if (urlDownloadActiveRef.current) {
-        window.electronAPI.cancelUrlDownload();
+        runInBackground(window.electronAPI.cancelUrlDownload(), "Cancel URL download failed");
       }
 
       if (downloadedTempPathRef.current) {
-        window.electronAPI.deleteTempFile(downloadedTempPathRef.current);
+        runInBackground(
+          window.electronAPI.deleteTempFile(downloadedTempPathRef.current),
+          "Delete temp file failed"
+        );
       }
     };
   }, []);
@@ -367,7 +375,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       }
     };
 
-    void loadFolders();
+    runInBackground(loadFolders(), "Load upload folders failed");
 
     return () => {
       cancelled = true;
@@ -428,7 +436,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       }
     };
 
-    checkProviderReady();
+    runInBackground(checkProviderReady(), "Provider readiness check failed");
 
     return () => {
       cancelled = true;
@@ -482,12 +490,12 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
   const buildTranscriptionConfig = (): FileTranscriptionConfig => ({
     useLocalWhisper,
-    localTranscriptionProvider: localTranscriptionProvider as string,
+    localTranscriptionProvider,
     whisperModel,
     parakeetModel,
     cohereModel,
     getApiKey: () => getTranscriptionApiKey(cloudTranscriptionProvider, apiKeys),
-    cloudTranscriptionProvider: cloudTranscriptionProvider as string,
+    cloudTranscriptionProvider,
     cloudTranscriptionBaseUrl: cloudTranscriptionBaseUrl || "",
     cloudTranscriptionModel,
     // Empty = auto-detect; the resolver supplies a default where one is required.
@@ -592,7 +600,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   // source files are never deleted, only the downloaded temp copy.
   const releaseExecutionTemp = (executionTemp: string | null) => {
     if (!executionTemp) return;
-    window.electronAPI.deleteTempFile(executionTemp);
+    runInBackground(window.electronAPI.deleteTempFile(executionTemp), "Delete temp file failed");
 
     // CAS: an older execution may settle after a newer upload claimed the ref.
     // Clear only its own claim so the newer execution remains the owner.
@@ -615,7 +623,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     executionTempRef.current = null;
 
     if (!mountedRef.current) {
-      window.electronAPI.deleteTempFile(executionTemp);
+      runInBackground(window.electronAPI.deleteTempFile(executionTemp), "Delete temp file failed");
 
       return;
     }
@@ -631,7 +639,10 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     progressCleanupRef.current = null;
 
     if (downloadedTempPath) {
-      window.electronAPI.deleteTempFile(downloadedTempPath);
+      runInBackground(
+        window.electronAPI.deleteTempFile(downloadedTempPath),
+        "Delete temp file failed"
+      );
       setDownloadedTempPath(null);
     }
 
@@ -896,13 +907,17 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 
       if (!mountedRef.current) {
         // Unmounted mid-download: nothing owns the temp file anymore, delete it.
-        if (res.success) window.electronAPI.deleteTempFile(res.tempPath);
+        if (res.success)
+          runInBackground(
+            window.electronAPI.deleteTempFile(res.tempPath),
+            "Delete temp file failed"
+          );
 
         return;
       }
 
       if (!res.success) {
-        const fail = res as { success: false; error: string; code?: string };
+        const fail = res;
 
         if (fail.code === "DOWNLOAD_CANCELLED") {
           setState("idle");
@@ -954,7 +969,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
       try {
         noteRes = await saveUploadNote(pending);
       } catch {
-        noteRes = { success: false } as Awaited<ReturnType<typeof saveUploadNote>>;
+        noteRes = { success: false };
       }
 
       if (runId !== runIdRef.current) return;
@@ -983,16 +998,19 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     }
 
     if (file) {
-      handleTranscribe();
+      runInBackground(handleTranscribe(), "Transcription start failed");
     } else if (urlInput.trim()) {
-      handleUrlSubmit();
+      runInBackground(handleUrlSubmit(), "URL download start failed");
     } else {
       reset();
     }
   };
 
   const handleCancelDownload = () => {
-    window.electronAPI.cancelUrlDownload(singleDownloadIdRef.current ?? undefined);
+    runInBackground(
+      window.electronAPI.cancelUrlDownload(singleDownloadIdRef.current ?? undefined),
+      "Cancel URL download failed"
+    );
   };
 
   const handleBatchUrlSubmit = () => {
@@ -1028,13 +1046,14 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     const res = await window.electronAPI.createFolder(trimmed);
 
     if (res.success && res.folder) {
-      setFolders((prev) => [...prev, res.folder!]);
-      const newId = String(res.folder.id);
+      const folder = res.folder;
+      setFolders((prev) => [...prev, folder]);
+      const newId = String(folder.id);
       setSelectedFolderId(newId);
 
       if (noteId != null) {
         try {
-          const moved = await window.electronAPI.updateNote(noteId, { folder_id: res.folder.id });
+          const moved = await window.electronAPI.updateNote(noteId, { folder_id: folder.id });
 
           if (!moved.success) {
             showFolderMoveFailure(moved.error, newId);
@@ -1056,6 +1075,22 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         : t("notes.mutationErrors.generic")
     );
     setSelectedFolderId(fallbackSelection);
+  };
+
+  const handleDiarizationToggle = async (next: boolean) => {
+    if (diarizationDownloading) return;
+    setDiarizationEnabled(next);
+
+    // BYOK-native diarization needs no local models — don't download them.
+    if (
+      next &&
+      !diarizationModelsReady &&
+      !shouldUseByokDiarize(buildTranscriptionConfig(), true)
+    ) {
+      const ready = await ensureDiarizationModels();
+
+      if (!ready) setDiarizationEnabled(false);
+    }
   };
 
   const handleFolderChange = (val: string) => {
@@ -1109,7 +1144,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                 t={t}
                 getActiveModelLabel={getActiveModelLabel}
                 handleDrop={handleDrop}
-                handleBrowse={handleBrowse}
+                handleBrowse={() => runInBackground(handleBrowse(), "File browse failed")}
                 isDragOver={isDragOver}
                 setIsDragOver={setIsDragOver}
                 onOpenSettings={onOpenSettings}
@@ -1178,7 +1213,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        handleUrlSubmit();
+                        runInBackground(handleUrlSubmit(), "URL download start failed");
                       }
                     }}
                     onFocus={() => {
@@ -1197,7 +1232,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                     className={cn(uploadFieldClass, "w-full h-8 pl-8 pr-9")}
                   />
                   <button
-                    onClick={handleUrlSubmit}
+                    onClick={() => runInBackground(handleUrlSubmit(), "URL download start failed")}
                     disabled={!urlInput.trim()}
                     aria-label={t("notes.upload.urlSubmit")}
                     className={cn(
@@ -1253,7 +1288,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={startBatchProcessing}
+                      onClick={() =>
+                        runInBackground(startBatchProcessing(), "Batch processing start failed")
+                      }
                       disabled={state === "downloading" || state === "transcribing"}
                       className="h-8 text-xs px-5"
                     >
@@ -1271,7 +1308,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               file={file}
               getActiveModelLabel={getActiveModelLabel}
               reset={reset}
-              handleTranscribe={handleTranscribe}
+              handleTranscribe={() =>
+                runInBackground(handleTranscribe(), "Transcription start failed")
+              }
               transcribeDisabled={batch.isProcessing}
               byokTooLarge={byokTooLarge}
               byokMaxFileSizeMb={byokMaxFileSizeMb}
@@ -1345,7 +1384,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               progress={progress}
               getTranscribingLabel={getTranscribingLabel}
               file={file}
-              onCancel={cancelTranscription}
+              onCancel={() => runInBackground(cancelTranscription(), "Cancel transcription failed")}
             />
           )}
 
@@ -1366,7 +1405,12 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
           )}
 
           {state === "error" && error && (
-            <ErrorView t={t} error={error} reset={reset} onRetry={handleRetry} />
+            <ErrorView
+              t={t}
+              error={error}
+              reset={reset}
+              onRetry={() => runInBackground(handleRetry(), "Retry failed")}
+            />
           )}
         </div>
 
@@ -1385,21 +1429,9 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
                 checked={diarizationEnabled}
                 disabled={diarizationDownloading}
                 ariaLabel={t("notes.upload.speakerDetection")}
-                onChange={async (next) => {
-                  if (diarizationDownloading) return;
-                  setDiarizationEnabled(next);
-
-                  // BYOK-native diarization needs no local models — don't download them.
-                  if (
-                    next &&
-                    !diarizationModelsReady &&
-                    !shouldUseByokDiarize(buildTranscriptionConfig(), true)
-                  ) {
-                    const ready = await ensureDiarizationModels();
-
-                    if (!ready) setDiarizationEnabled(false);
-                  }
-                }}
+                onChange={(next) =>
+                  runInBackground(handleDiarizationToggle(next), "Speaker detection toggle failed")
+                }
               />
             </div>
 
@@ -1483,7 +1515,8 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
               placeholder={t("notes.folders.folderName")}
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateFolder();
+                if (e.key === "Enter")
+                  runInBackground(handleCreateFolder(), "Create folder failed");
               }}
             />
           </div>
@@ -1497,7 +1530,10 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
             >
               {t("notes.upload.cancel")}
             </Button>
-            <Button onClick={handleCreateFolder} disabled={!newFolderName.trim()}>
+            <Button
+              onClick={() => runInBackground(handleCreateFolder(), "Create folder failed")}
+              disabled={!newFolderName.trim()}
+            >
               {t("notes.upload.create")}
             </Button>
           </DialogFooter>
@@ -1508,7 +1544,7 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
 }
 
 interface NoProviderViewProps {
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: (key: string, options?: Record<string, string | number>) => string;
   onOpenSettings: () => void;
 }
 
@@ -1527,7 +1563,7 @@ function NoProviderView({ t, onOpenSettings }: NoProviderViewProps) {
 }
 
 interface IdleViewProps {
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: (key: string, options?: Record<string, string | number>) => string;
   getActiveModelLabel: () => string;
   handleDrop: (e: React.DragEvent) => void;
   handleBrowse: () => void;
@@ -1645,7 +1681,7 @@ function IdleView({
 }
 
 interface SelectedViewProps {
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: (key: string, options?: Record<string, string | number>) => string;
   file: { name: string; path: string; size: string; sizeBytes: number };
   getActiveModelLabel: () => string;
   reset: () => void;
@@ -1728,7 +1764,7 @@ function SelectedView({
 }
 
 interface TranscribingViewProps {
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: (key: string, options?: Record<string, string | number>) => string;
   progress: number;
   getTranscribingLabel: () => string;
   file: { name: string; path: string; size: string; sizeBytes: number } | null;
@@ -1824,7 +1860,7 @@ function FolderSelect({
 }
 
 interface CompleteViewProps {
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: (key: string, options?: Record<string, string | number>) => string;
   result: string;
   partialWarning: { failed: number; total: number } | null;
   diarizationWarning: boolean;

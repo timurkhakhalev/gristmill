@@ -101,11 +101,11 @@ export function MeetingPlatformIcon({ url, size = 16 }: { url: string; size?: nu
   }
 }
 
-const CALENDAR_ICONS: Record<string, string> = {
+const CALENDAR_ICONS = {
   google: googleCalendarIcon,
   microsoft: microsoftCalendarIcon,
   apple: appleCalendarIcon,
-};
+} satisfies Record<string, string>;
 
 /** The calendar app's mark for an event's provider. */
 export function CalendarProviderIcon({
@@ -115,7 +115,11 @@ export function CalendarProviderIcon({
   provider: string;
   size?: number;
 }): ReactNode {
-  const src = CALENDAR_ICONS[provider];
+  // SAFETY: the `in` check above proved the provider is one of the three known keys.
+  const src =
+    provider in CALENDAR_ICONS
+      ? CALENDAR_ICONS[provider as keyof typeof CALENDAR_ICONS]
+      : undefined;
 
   return src ? <img src={src} alt="" width={size} height={size} className="shrink-0" /> : null;
 }

@@ -9,6 +9,7 @@ import { buildNoteFormattingOverrides } from "../helpers/noteFormattingOverrides
 import { tagActionItemOwners, type MentionPerson } from "../utils/mentionMarkdown";
 import type { ActionItem } from "../contracts/actions";
 import type { NoteUpdate } from "../contracts/notes";
+import { runInBackground } from "./noteStore";
 
 /**
  * Output budget for a formatted note.
@@ -167,83 +168,98 @@ export function runBackgroundAction(
   processingFlags.set(noteId, true);
   setNoteState(noteId, { status: "processing", actionName: action.name });
 
-  (async () => {
-    try {
-      const standalone =
-        !!action.translation_key && STANDALONE_PROMPT_KEYS.has(action.translation_key);
+  runInBackground(
+    (async () => {
+      try {
+        const standalone =
+          !!action.translation_key && STANDALONE_PROMPT_KEYS.has(action.translation_key);
 
-      const basePrompt = standalone
-        ? options.isMeetingNote
-          ? MEETING_INPUT_PREAMBLE
-          : NOTE_INPUT_PREAMBLE
-        : options.isMeetingNote
-          ? MEETING_SYSTEM_PROMPT
-          : BASE_SYSTEM_PROMPT;
+        const basePrompt = standalone
+          ? options.isMeetingNote
+            ? MEETING_INPUT_PREAMBLE
+            : NOTE_INPUT_PREAMBLE
+          : options.isMeetingNote
+            ? MEETING_SYSTEM_PROMPT
+            : BASE_SYSTEM_PROMPT;
 
-      const providerOverrides = buildNoteFormattingOverrides(noteFormatting, options.isCloudMode);
+        const providerOverrides = buildNoteFormattingOverrides(noteFormatting, options.isCloudMode);
 
-      const systemPrompt = appendDictionarySuffix(
-        basePrompt + action.prompt,
-        options.isMeetingNote ? settings.customDictionary : undefined,
-        settings.uiLanguage
-      );
+        const systemPrompt = appendDictionarySuffix(
+          basePrompt + action.prompt,
+          options.isMeetingNote ? settings.customDictionary : undefined,
+          settings.uiLanguage
+        );
 
-      const enhanced = await reasoningService.processText(noteContent, modelId, null, {
-        systemPrompt,
-        maxTokens: NOTE_OUTPUT_MAX_TOKENS,
-        temperature: 0.3,
-        disableThinking: settings.noteFormattingDisableThinking,
-        ...providerOverrides,
-      });
+        const enhanced = await reasoningService.processText(noteContent, modelId, null, {
+          systemPrompt,
+          maxTokens: NOTE_OUTPUT_MAX_TOKENS,
+          temperature: 0.3,
+          disableThinking: settings.noteFormattingDisableThinking,
+          ...providerOverrides,
+        });
 
-      if (cancelledFlags.get(noteId)) return;
+        if (cancelledFlags.get(noteId)) return;
 
-      let title: string | undefined;
+        let title: string | undefined;
 
-      if (options.allowTitleGeneration && getSettings().autoGenerateNoteTitle) {
-        const generated = await generateNoteTitle(enhanced, modelId, providerOverrides);
+        if (options.allowTitleGeneration && getSettings().autoGenerateNoteTitle) {
+          const generated = await generateNoteTitle(enhanced, modelId, providerOverrides);
 
-        if (generated) title = generated;
-      }
+          if (generated) title = generated;
+        }
 
-      if (cancelledFlags.get(noteId)) return;
+        if (cancelledFlags.get(noteId)) return;
 
-      const updates: NoteUpdate = {
-        enhanced_content: options.knownPeople?.length
-          ? tagActionItemOwners(enhanced, options.knownPeople)
-          : enhanced,
-        enhancement_prompt: action.prompt,
-        enhanced_at_content_hash: contentHash,
-      };
+        const updates: NoteUpdate = {
+          enhanced_content: options.knownPeople?.length
+            ? tagActionItemOwners(enhanced, options.knownPeople)
+            : enhanced,
+          enhancement_prompt: action.prompt,
+          enhanced_at_content_hash: contentHash,
+        };
 
-      if (title) updates.title = title;
-      await window.electronAPI.updateNote(noteId, updates);
+        if (title) updates.title = title;
+        const saved = await window.electronAPI.updateNote(noteId, updates);
 
-      setNoteState(noteId, { status: "success", actionName: action.name });
+        if (!saved?.success) throw new Error(saved?.error || "Action result was not saved");
 
-      const timer = setTimeout(() => {
+        setNoteState(noteId, { status: "success", actionName: action.name });
+
+        const timer = setTimeout(() => {
+          processingFlags.set(noteId, false);
+          clearNoteState(noteId);
+          successTimers.delete(noteId);
+        }, 600);
+
+        successTimers.set(noteId, timer);
+      } catch (err) {
+        if (cancelledFlags.get(noteId)) return;
         processingFlags.set(noteId, false);
         clearNoteState(noteId);
-        successTimers.delete(noteId);
-      }, 600);
+        const message = err instanceof Error ? err.message : labels.actionFailed;
 
-      successTimers.set(noteId, timer);
-    } catch (err) {
-      if (cancelledFlags.get(noteId)) return;
-      processingFlags.set(noteId, false);
-      clearNoteState(noteId);
-      const message = err instanceof Error ? err.message : labels.actionFailed;
+        // SAFETY: thrown unknowns are read defensively; each optional field is
+        // undefined-checked before it is spread, so a foreign throwable degrades
+        // to the generic `message` label instead of shape assumptions.
+        const errorFields = (err ?? {}) as {
+          messageKey?: string;
+          messageParams?: Record<string, string | number>;
+        };
 
-      const { messageKey, messageParams } = (err ?? {}) as {
-        messageKey?: string;
-        messageParams?: Record<string, string | number>;
-      };
-
-      pushErrorEvent({ noteId, message, messageKey, messageParams });
-    } finally {
-      cancelledFlags.delete(noteId);
-    }
-  })();
+        pushErrorEvent({
+          noteId,
+          message,
+          ...(errorFields.messageKey !== undefined ? { messageKey: errorFields.messageKey } : {}),
+          ...(errorFields.messageParams !== undefined
+            ? { messageParams: errorFields.messageParams }
+            : {}),
+        });
+      } finally {
+        cancelledFlags.delete(noteId);
+      }
+    })(),
+    "Action processing failed"
+  );
 }
 
 /** Soft cancel: the HTTP request continues but the result is discarded. */

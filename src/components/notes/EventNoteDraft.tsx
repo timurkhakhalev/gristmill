@@ -14,6 +14,7 @@ import { formatDate, parseEventDate } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import logger from "../../utils/logger";
+import { runInBackground } from "../../stores/noteStore";
 
 export type EventDraftIntent = "write" | "record" | "ask";
 
@@ -89,7 +90,7 @@ export default function EventNoteDraft({
       } catch (error) {
         logger.warn(
           "Failed to create calendar event note",
-          { error: (error as Error).message },
+          { error: error instanceof Error ? error.message : String(error) },
           "notes"
         );
         creatingRef.current = false;
@@ -118,7 +119,7 @@ export default function EventNoteDraft({
           suppressContentEditableWarning
           onInput={() => {
             draftRef.current.title = titleRef.current?.textContent ?? "";
-            void materialize("write", { focus: "title" });
+            runInBackground(materialize("write", { focus: "title" }), "Event note write failed");
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.preventDefault();
@@ -145,7 +146,7 @@ export default function EventNoteDraft({
               disabled={creating}
               capturePhase="idle"
               captureStartedAt={null}
-              onStart={() => void materialize("record", {})}
+              onStart={() => runInBackground(materialize("record", {}), "Event note record failed")}
               onStop={() => {}}
             />
           </div>
@@ -157,7 +158,10 @@ export default function EventNoteDraft({
             value=""
             onChange={(value) => {
               draftRef.current.content = value;
-              void materialize("write", { focus: "content" });
+              runInBackground(
+                materialize("write", { focus: "content" }),
+                "Event note write failed"
+              );
             }}
             placeholder={t("notes.editor.startWriting")}
           />
@@ -167,7 +171,9 @@ export default function EventNoteDraft({
         <NoteBottomBar
           isRecording={false}
           askDisabled={creating}
-          onAskSubmit={(text) => void materialize("ask", { ask: text })}
+          onAskSubmit={(text) =>
+            runInBackground(materialize("ask", { ask: text }), "Event note ask failed")
+          }
         />
       </div>
     </div>

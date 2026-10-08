@@ -719,7 +719,6 @@
     "files": [
       "test/helpers/settingsStoreLocalProviderMigrations.test.ts",
       "test/helpers/settingsStoreMeetingFollowFlags.test.ts",
-      "test/helpers/settingsStoreRetiredGroqModels.test.ts",
       "test/helpers/settingsStoreTranscriptionModeReconcile.test.ts"
     ]
   },

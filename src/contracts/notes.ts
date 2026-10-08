@@ -27,7 +27,6 @@ export const noteItemSchema = z.object({
   folder_id: nonNegativeInt.nullable(),
   /** Every folder holding the note: folder_id (the primary) first, then extra folders. */
   folder_ids: z.array(nonNegativeInt),
-  space_id: nonNegativeInt,
   transcript: z.string().nullable(),
   calendar_event_id: z.string().nullable(),
   participants: z.string().nullable(),
@@ -54,7 +53,6 @@ export const noteUpdateSchema = z
     folder_id: nonNegativeInt.nullable().optional(),
     /** Replaces folder membership; the current primary folder stays primary when kept. */
     folder_ids: z.array(nonNegativeInt).optional(),
-    space_id: nonNegativeInt.optional(),
     transcript: z.string().nullable().optional(),
     calendar_event_id: z.string().nullable().optional(),
     participants: z.string().nullable().optional(),
@@ -81,7 +79,6 @@ export const saveNoteArgsSchema = z.tuple([
   z.string().nullable().optional(),
   z.number().nullable().optional(),
   optionalId,
-  optionalId,
 ]);
 
 export const getNoteArgsSchema = z.tuple([idArg]);
@@ -90,16 +87,20 @@ export const getNotesArgsSchema = z.tuple([
   z.string().nullable().optional(),
   optionalLimit,
   optionalId,
-  optionalId,
 ]);
 
-export const getSpaceNotesArgsSchema = z.tuple([idArg, optionalLimit]);
+export const getRootNotesArgsSchema = z.tuple([optionalLimit]);
 
 export const updateNoteArgsSchema = z.tuple([idArg, noteUpdateSchema]);
 
 export const deleteNoteArgsSchema = z.tuple([idArg]);
 
-export const searchNotesArgsSchema = z.tuple([z.string(), optionalLimit, optionalId, optionalId]);
+export const searchNotesArgsSchema = z.tuple([
+  z.string(),
+  optionalLimit,
+  optionalId,
+  z.boolean().optional(),
+]);
 
 export const saveNoteResultSchema = z.object({
   success: z.literal(true),
@@ -164,30 +165,21 @@ export interface NotesApi {
     noteType?: string,
     sourceFile?: string | null,
     audioDuration?: number | null,
-    folderId?: number | null,
-    spaceId?: number | null
+    folderId?: number | null
   ): Promise<NoteMutationResult>;
   getNote(id: number): Promise<NoteItem | null>;
-  getNotes(
-    noteType?: string | null,
-    limit?: number,
-    folderId?: number | null,
-    spaceId?: number | null
-  ): Promise<NoteItem[]>;
-  getSpaceNotes(spaceId: number, limit?: number): Promise<NoteItem[]>;
+  getNotes(noteType?: string | null, limit?: number, folderId?: number | null): Promise<NoteItem[]>;
+  getRootNotes(limit?: number): Promise<NoteItem[]>;
   updateNote(id: number, updates: NoteUpdate): Promise<NoteMutationResult>;
   deleteNote(id: number): Promise<NoteDeleteResult>;
   searchNotes(
     query: string,
     limit?: number,
-    spaceId?: number | null,
-    folderId?: number | null
+    folderId?: number | null,
+    rootOnly?: boolean
   ): Promise<NoteItem[]>;
-  searchNoteContent(
-    query: string,
-    spaceId?: number | null
-  ): Promise<Array<z.infer<typeof noteSearchHitSchema>>>;
-  searchNoteTranscripts(query: string, spaceId?: number | null): Promise<TranscriptSearchHit[]>;
+  searchNoteContent(query: string): Promise<Array<z.infer<typeof noteSearchHitSchema>>>;
+  searchNoteTranscripts(query: string): Promise<TranscriptSearchHit[]>;
   getNoteOutput(request: NoteOutputRequest): Promise<NoteOutput>;
   getNoteTranscript(noteId: number): Promise<NoteTranscript>;
   onNoteAdded(callback: (note: NoteItem) => void): () => void;
@@ -199,7 +191,7 @@ export const noteChannels = {
   saveNote: "db-save-note",
   getNote: "db-get-note",
   getNotes: "db-get-notes",
-  getSpaceNotes: "db-get-space-notes",
+  getRootNotes: "db-get-root-notes",
   updateNote: "db-update-note",
   deleteNote: "db-delete-note",
   searchNotes: "db-search-notes",

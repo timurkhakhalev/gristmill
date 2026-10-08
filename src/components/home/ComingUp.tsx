@@ -398,31 +398,30 @@ export default function ComingUp({
               <DayRow key={group.key} group={group} isNowFn={isNowFn} onOpenEvent={onOpenEvent} />
             ))}
           </div>
-          {events.length === 0 &&
-            (needsSystemAudioGrant ? (
-              <div className="mt-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
-                <Monitor size={12} className="shrink-0" />
-                <span className="flex-1">{t("upcoming.systemAudioRequired")}</span>
-                <button
-                  onClick={() => void systemAudio.request()}
-                  className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
-                >
-                  {systemAudio.mode === "native"
-                    ? t("upcoming.openSettings")
-                    : t("onboarding.permissions.grantAccess")}
-                </button>
-              </div>
-            ) : (
-              <p className="mt-2 px-1 text-xs text-muted-foreground">
-                {t("upcoming.moreCalendarsHint")}{" "}
-                <button
-                  onClick={onConnectCalendar}
-                  className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
-                >
-                  {t("upcoming.connectHere")}
-                </button>
-              </p>
-            ))}
+          {needsSystemAudioGrant ? (
+            <div className="mt-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+              <Monitor size={12} className="shrink-0" />
+              <span className="flex-1">{t("upcoming.systemAudioRequired")}</span>
+              <button
+                onClick={() => void systemAudio.request()}
+                className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
+              >
+                {systemAudio.mode === "native"
+                  ? t("upcoming.openSettings")
+                  : t("onboarding.permissions.grantAccess")}
+              </button>
+            </div>
+          ) : events.length === 0 ? (
+            <p className="mt-2 px-1 text-xs text-muted-foreground">
+              {t("upcoming.moreCalendarsHint")}{" "}
+              <button
+                onClick={onConnectCalendar}
+                className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
+              >
+                {t("upcoming.connectHere")}
+              </button>
+            </p>
+          ) : null}
         </div>
       )}
     </section>

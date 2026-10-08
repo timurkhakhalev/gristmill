@@ -12,7 +12,6 @@ test("search_notes uses local FTS IPC and does not expose semantic search", asyn
   let semanticSearchCalled = false;
   setWindow({
     electronAPI: {
-      getSpaces: async () => [{ id: 7, name: "Personal", kind: "private" }],
       searchNotes: async (...args: unknown[]) => {
         calls.push(args);
 
@@ -22,7 +21,6 @@ test("search_notes uses local FTS IPC and does not expose semantic search", asyn
             title: "Launch plan",
             created_at: "2026-09-14T10:00:00.000Z",
             note_type: "note",
-            space_id: 7,
             content: "Ship the first release",
             enhanced_content: null,
           },
@@ -37,12 +35,12 @@ test("search_notes uses local FTS IPC and does not expose semantic search", asyn
 
   const tool = createSearchNotesTool({});
   assert.equal(tool.name, "search_notes");
-  assert.match(tool.description, /local full-text search/);
+  assert.match(tool.description, /Search all local notes/);
   assert.doesNotMatch(tool.description, /semantic/i);
 
-  const result = await tool.execute({ query: "release", limit: 3, space: "Personal" });
+  const result = await tool.execute({ query: "release", limit: 3 });
 
-  assert.deepEqual(calls, [["release", 3, 7, null]]);
+  assert.deepEqual(calls, [["release", 3, null, false]]);
   assert.equal(semanticSearchCalled, false);
   assert.deepEqual(result.data, [
     {
@@ -50,10 +48,12 @@ test("search_notes uses local FTS IPC and does not expose semantic search", asyn
       title: "Launch plan",
       date: "2026-09-14T10:00:00.000Z",
       type: "note",
-      space: "Personal",
       content: "Ship the first release",
     },
   ]);
+
+  await createSearchNotesTool({ fixedScope: { folderId: null } }).execute({ query: "release" });
+  assert.deepEqual(calls[1], ["release", 5, null, true]);
 });
 
 test("the tool registry never registers web_search", async () => {

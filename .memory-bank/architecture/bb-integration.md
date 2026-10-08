@@ -1,7 +1,7 @@
 # BB agent route
 
 The optional **bb** route uses the installed BB app and the provider subscription of the user.
-The supported CLI version is **0.44.0** (`SUPPORTED_BB_VERSION` in `src/helpers/bbCli.ts`).
+Gristmill does not restrict the BB CLI version. It validates command responses against the fields that it uses. Additional response fields are accepted.
 Transcription and recording stay on their existing routes.
 
 ## Harness selection
@@ -26,7 +26,7 @@ Transcription and recording stay on their existing routes.
   2. `~/.local/bin/bb`
   3. The BB app bundle: `/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/bb`
 - Thus the discovery does not depend on the terminal `PATH` when the app starts from Finder.
-- Main runs `bb --version` before it starts a thread. A missing or incorrect version is an error.
+- Main calls the required command directly. CLI failures and invalid responses are errors.
 
 ### Projects and output
 
@@ -75,6 +75,17 @@ Explicit Stop discards partial persistence. Unmount can save a visible partial r
 - Outside BB, the launcher uses the channel of the app that installed it. Explicit `--profile` and `GRISTMILL_PROFILE` override these defaults.
 - A closed workspace profile fails visibly. The CLI does not read a different profile.
 
+### Bridge routes and access limits
+
+- The loopback HTTP bridge is an internal integration contract. It is not a published general-purpose API.
+- The bridge starts with the app. It binds `127.0.0.1` on the first free port in 8200–8219 and requires a Bearer token.
+- The app makes two tokens at each start. Both connection files use mode 0600.
+- The read token permits health and Note list, search, metadata, content, Summary and transcript. It does not permit all GET routes: folders, vocabulary, models and transcriptions stay closed.
+- The write token permits Note create, patch and delete, folder list and create, Dictionary and Snippets list and update, local models, local-file transcription, and separate transcription and audio deletion.
+- There are no folder edit or delete routes. `/v1/transcribe` uses an installed local model and a local file path. It does not run the full meeting and Summary pipeline.
+- The BB tool wrapper has a narrower allowlist than the write token: Note read, create and patch, folder list and create, and Dictionary and Snippets operations. It does not expose Note delete or transcription and audio routes.
+- Do not infer BB tool availability from the full route table. A read-token request to a write route fails as read-only.
+
 ### Chat prompt
 
 - BB Chat gets the current Note ID and a short description of `gristmill` as a helper for more meeting information. `gristmill --help` shows the commands.
@@ -117,13 +128,15 @@ Explicit Stop discards partial persistence. Unmount can save a visible partial r
 
 ## Updating BB
 
-1. Install the new BB app.
-2. Examine `bb --version`, `bb thread spawn --help`, `bb thread tell --help`, `bb thread log --help`, `bb thread output --help` and the provider and model JSON output.
-3. Verify the CLI argument and event schemas in `src/contracts/bb.ts`.
-4. Update `SUPPORTED_BB_VERSION` in `src/helpers/bbCli.ts`.
-5. Run the BB CLI contract test, the meeting recovery tests, typecheck, lint and the full suite.
-6. Do an isolated live thread smoke test against the installed app. Include streamed deltas and the final output.
-7. Verify Chat and the meeting summary in an isolated Gristmill profile.
+A BB update does not require a Gristmill version change while the commands and required response fields stay compatible.
+There is no version probe or upper version limit.
 
-The version check fails closed deliberately.
+When the BB CLI contract changes:
+
+1. Examine the installed CLI help and the provider and model JSON output.
+2. Update the affected commands, schemas and contract tests.
+3. Run the affected BB catalog, Chat and meeting tests, typecheck and lint.
+4. Verify the affected behavior against the installed BB app in an isolated Gristmill profile.
+
+Command errors and invalid required response fields stop the operation.
 When BB is not available, Gristmill does not change to a BYOK or local model automatically.

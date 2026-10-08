@@ -1,6 +1,5 @@
 import type { BbSelection } from "../contracts/bb.js";
 import {
-  assertBbVersion,
   BbCliError,
   getBbThreadHistory,
   getBbThreadOutput,
@@ -76,7 +75,6 @@ export async function createBbTextConversation(input: {
       let afterSeq = 0;
 
       if (id) {
-        await assertBbVersion();
         const previous = new Map<string, string>();
         let lastInput = "";
 

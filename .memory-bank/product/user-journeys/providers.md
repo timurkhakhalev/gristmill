@@ -1,43 +1,70 @@
 # Choose processing routes
 
-As a Gristmill user, I want to select models supported by the task I want to run.
-
-## User journey
-
-1. Open Settings → Models and choose the task.
-2. Select an offered cloud, Local or supported endpoint route.
-3. Configure the required access in Providers or download a local model in On-device.
-4. Run Upload or post-Stop meeting processing with those settings.
-
-## Behavior and limits
-
-- Provider presence in the registry does not mean support for every task. The task picker and executor restrict the set.
-- Meeting cloud file routes are Deepgram Nova, ElevenLabs Scribe v2, Gemini 3.5 Transcribe and OpenAI gpt-4o-transcribe-diarize in the picker. Meeting processing also has a Local path.
-- General Upload/batch routes include OpenAI, Groq, xAI, Mistral, Gemini, Corti, Tinfoil, Deepgram and ElevenLabs, plus Custom, Local and Self-Hosted. AssemblyAI registry presence does not provide a supported current batch or meeting-picker route.
-- Gemini batch is restricted to gemini-3.5-transcribe; Deepgram uses Nova rather than Flux. Stored OpenAI meeting configurations can be accepted by the executor, but the picker offers the diarization model.
-- Local file dispatch supports Whisper, Parakeet and Cohere. Cohere requires the selected language rather than auto-detection.
-- Self-Hosted uses its dedicated OpenAI-compatible endpoint configuration. Custom is a separate keyed route. They are not interchangeable meeting routes.
-- Upload size checks allow 2 GiB for Deepgram/Gemini, 3 GiB for ElevenLabs and 25 MiB for other BYOK routes. URL download has the separate 500 MiB cap. Local and Self-Hosted have no app-level size cap in this path.
-- Single and batch Upload use the same route size cap as main. Custom has a 25 MiB cap.
-- Chat/Summary model choices are a separate catalog. Anthropic, Bedrock, Azure or Vertex support elsewhere does not imply meeting ASR support.
-- Recording is local. These transcription routes process saved audio after Stop; they do not enable live transcription.
-
-## What to check
-
-- Each task offers only supported routes.
-- A local model download does not select it automatically.
-- Provider errors retain saved meeting audio for retry.
-
-## BDD acceptance criteria
-
-- Given I select Meeting, when the cloud picker opens, then it offers the meeting file-route subset.
-- Given an unsupported batch route is supplied, when it is resolved, then it fails with a capability error rather than silently selecting another provider.
+As a Gristmill user, I want to select a model for each task that Gristmill does.
 
 ## Entry points
 
-- [taskCatalog.ts](../../../src/components/settings/models/taskCatalog.ts) — task catalogs.
-- [ModelRegistry.ts](../../../src/models/ModelRegistry.ts) — registry access.
-- [meetingFileTranscription.ts](../../../src/helpers/meetingFileTranscription.ts) — meeting route contract.
-- [transcriptionRoute.ts](../../../src/helpers/transcriptionRoute.ts) — batch routes and limits.
-- [fileTranscription.ts](../../../src/services/fileTranscription.ts) — Local and diarization dispatch.
-- [transcriptionCapabilities.ts](../../../src/config/transcriptionCapabilities.ts) — Upload size checks.
+- **Gristmill app → Settings → Models → Tasks** — select a model for each task.
+- **Gristmill app → Settings → Providers** — add API keys and set up bb harnesses.
+- **Gristmill app → Settings → On-device** — download models that run on this Mac.
+
+## Paths
+
+Settings → Models has four tasks:
+
+| Task              | What it does                              | Model sources                     |
+| ----------------- | ----------------------------------------- | --------------------------------- |
+| Meeting recording | Transcribes a recording after you stop it | Cloud, On-device                  |
+| Audio upload      | Transcribes audio files that you upload   | Cloud, On-device                  |
+| Meeting summary   | Writes the Summary from the transcript    | Cloud, On-device, Self-hosted, bb |
+| Chat              | Answers questions about your notes        | Cloud, On-device, Self-hosted, bb |
+
+### Use a cloud provider
+
+1. Open Settings → Models and select a task.
+2. On the **Cloud** tab, select a provider and a model. Each task shows only the providers that can do it. For example, Meeting recording offers only the providers that can transcribe a full meeting file with speakers.
+3. If the task shows **Add an API key**, click **Add key** in the picker, or add the key in Settings → Providers. One key works for all tasks.
+4. Record a meeting or upload a file. Gristmill uses the selected model.
+
+### Use a model on this Mac
+
+1. Open Settings → On-device and download a speech or language model.
+2. Open Settings → Models, select the task and the **On-device** tab.
+3. Click **Use this** on the downloaded model. A download alone does not change the model of a task.
+4. Audio and text stay on your computer.
+
+### Use a self-hosted server or a custom endpoint
+
+These options are in Settings → Models. The first-run provider step offers meeting transcription providers only.
+
+1. For Meeting summary or Chat, select the **Self-hosted** tab and add the server URL.
+2. For Audio upload, Meeting summary or Chat, select **Custom endpoint** on the **Cloud** tab to use any OpenAI-compatible API. For Meeting summary and Chat, you can also select OpenRouter.
+3. Meeting recording does not offer a custom or self-hosted route.
+
+### Use a bb harness for Summaries and chat
+
+1. Open Settings → Providers → **Coding agents (bb)**. Enable the harnesses and select the default harness.
+2. Open Settings → Models, select Meeting summary or Chat and the **bb** tab.
+3. Keep **Default harness**, or select a harness and a model. See [BB integration](../../architecture/bb-integration.md).
+
+### Fix a missing setting
+
+1. If a recording waits for settings, the note shows **Transcription is waiting for settings** or **Summary is waiting for settings**.
+2. Click **Open settings**, select a model or add a key, then retry. See [Recording results](meeting-results.md).
+3. Gristmill never changes to another provider without your action. The saved audio stays.
+
+### Upload a large file
+
+1. Before an upload, Gristmill checks the file size against the limit of the selected provider.
+2. If the file is too large, Gristmill shows the limit. Select a provider with a larger limit or a model on this Mac.
+
+## BDD acceptance criteria
+
+- Given I select Meeting recording, when the cloud picker opens, then it shows only providers that can transcribe a meeting file.
+- Given I download a local model, when the download completes, then each task keeps its selected model.
+- Given a provider fails, when I look at the note, then the saved meeting audio stays for a retry.
+
+## Related documents
+
+- [Processing routes](../../architecture/processing-routes.md) — provider lists, size limits and route rules.
+- [Post-Stop processing](../../architecture/post-stop-processing.md) — provider limits for meetings.

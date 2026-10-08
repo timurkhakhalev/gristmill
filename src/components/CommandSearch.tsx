@@ -1,33 +1,28 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useUiLocale } from "../hooks/useUiLocale";
-import { Search, FileText, Mic, Folder, Lock, Users, Upload, ChevronDown } from "./icons";
+import { Search, FileText, Mic, Folder, Users, Upload } from "./icons";
 import { cn } from "./lib/utils";
-import { Dropdown, Label, Modal, Separator } from "@heroui/react";
-import type { SpaceItem } from "../contracts/containers";
+import { Modal } from "@heroui/react";
 import type { TranscriptionItem } from "../contracts/transcriptionData.js";
 import type { NoteItem, TranscriptSearchHit } from "../contracts/notes";
 import { formatRelativeTime } from "../utils/dateFormatting";
-import { useFolders, useSpaces } from "../stores/noteStore";
+import { useFolders } from "../stores/noteStore";
 import { useDateTimePreferences } from "../hooks/useDateTimePreferences";
 import { defaultFolderDisplayName, folderMatchesQuery } from "./notes/shared";
 
-const ALL_SPACES_KEY = "__all__";
-
 interface JumpTarget {
   key: string;
-  spaceId: number;
   folderId: number | null;
   label: string;
-  space: SpaceItem | undefined;
 }
 
 export interface CommandSearchProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transcriptions?: TranscriptionItem[];
-  onNoteSelect?: (noteId: number, folderId: number | null, spaceId?: number) => void;
-  onContainerSelect?: (spaceId: number, folderId: number | null) => void;
+  onNoteSelect?: (noteId: number, folderId: number | null) => void;
+  onContainerSelect?: (folderId: number | null) => void;
   onTranscriptSelect?: (transcriptId: number) => void;
 }
 
@@ -62,12 +57,10 @@ export default function CommandSearch({
   const [searchError, setSearchError] = useState(false);
   const [transcriptSearchPending, setTranscriptSearchPending] = useState(false);
   // Live store references: create/rename/delete land here (createFolder,
-  // renameFolder, deleteFolder, loadFolders, loadSpaces all write the store),
+  // renameFolder, deleteFolder and loadFolders all write the store),
   // so jump targets stay current even though ControlPanel keeps this
   // component mounted while search is closed — no second cache owner (#178).
   const folders = useFolders();
-  const spaces = useSpaces();
-  const [scopeSpaceId, setScopeSpaceId] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -80,7 +73,6 @@ export default function CommandSearch({
   if (open && !prevOpen) {
     setPrevOpen(open);
     setQuery("");
-    setScopeSpaceId(null);
     setSelectedIndex(0);
   } else if (open !== prevOpen) {
     setPrevOpen(open);
@@ -121,7 +113,7 @@ export default function CommandSearch({
     setTranscriptSearchPending(true);
     searchTimerRef.current = setTimeout(() => {
       void window.electronAPI
-        .searchNoteContent(query, scopeSpaceId)
+        .searchNoteContent(query)
         .then((hits) => {
           if (searchVersionRef.current === version) setNotes(hits.map((hit) => hit.note));
         })
@@ -129,7 +121,7 @@ export default function CommandSearch({
           if (searchVersionRef.current === version) setSearchError(true);
         });
       void window.electronAPI
-        .searchNoteTranscripts(query, scopeSpaceId)
+        .searchNoteTranscripts(query)
         .then((hits) => {
           if (searchVersionRef.current === version) setNoteTranscriptHits(hits);
         })
@@ -144,7 +136,7 @@ export default function CommandSearch({
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [query, scopeSpaceId]);
+  }, [query]);
 
   if (notes !== prevNotes || query !== prevQuery) {
     setPrevNotes(notes);
@@ -153,42 +145,14 @@ export default function CommandSearch({
   }
 
   const folderMap = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
-  const spaceMap = useMemo(() => new Map(spaces.map((s) => [s.id, s])), [spaces]);
-  const scopeSpace = scopeSpaceId != null ? spaceMap.get(scopeSpaceId) : undefined;
-
-  // Scoping re-filters the visible list immediately, so the keyboard
-  // highlight must restart from the top.
-  const selectScope = useCallback((spaceId: number | null) => {
-    setScopeSpaceId(spaceId);
-    setSelectedIndex(0);
-  }, []);
-
-  // The search leg scopes at the DB; this also covers browsed (empty-query)
-  // results and stale in-flight results after a scope switch.
-  const scopedNotes = useMemo(
-    () => (scopeSpaceId == null ? notes : notes.filter((n) => n.space_id === scopeSpaceId)),
-    [notes, scopeSpaceId]
-  );
-
-  const spaceLabel = useCallback(
-    (space: SpaceItem) =>
-      space.kind === "private"
-        ? t("notes.spaces.personal")
-        : `${space.emoji ? `${space.emoji} ` : ""}${space.name}`,
-    [t]
-  );
 
   const noteBreadcrumb = useCallback(
     (note: NoteItem) => {
-      const space = spaceMap.get(note.space_id);
       const folder = note.folder_id != null ? folderMap.get(note.folder_id) : undefined;
-      const folderLabel = folder ? defaultFolderDisplayName(folder, t) : "";
 
-      if (!space) return folderLabel;
-
-      return folder ? `${spaceLabel(space)} / ${folderLabel}` : spaceLabel(space);
+      return folder ? defaultFolderDisplayName(folder, t) : t("sidebar.notes");
     },
-    [spaceMap, folderMap, spaceLabel, t]
+    [folderMap, t]
   );
 
   const jumpTargets = useMemo<JumpTarget[]>(() => {
@@ -197,28 +161,18 @@ export default function CommandSearch({
     if (!q) return [];
     const targets: JumpTarget[] = [];
 
-    for (const space of spaces) {
-      const label = spaceLabel(space);
-
-      if (label.toLowerCase().includes(q)) {
-        targets.push({ key: `s:${space.id}`, spaceId: space.id, folderId: null, label, space });
-      }
-    }
-
     for (const folder of folders) {
       if (folderMatchesQuery(folder, t, q)) {
         targets.push({
           key: `f:${folder.id}`,
-          spaceId: folder.space_id,
           folderId: folder.id,
           label: defaultFolderDisplayName(folder, t),
-          space: spaceMap.get(folder.space_id),
         });
       }
     }
 
     return targets.slice(0, 5);
-  }, [query, spaces, folders, spaceMap, spaceLabel, t]);
+  }, [query, folders, t]);
 
   const filteredTranscripts = useMemo(() => {
     const slice = query.trim()
@@ -233,22 +187,21 @@ export default function CommandSearch({
 
     for (const target of jumpTargets) items.push({ kind: "container", target });
 
-    for (const note of scopedNotes) items.push({ kind: "note", note });
+    for (const note of notes) items.push({ kind: "note", note });
 
     for (const hit of noteTranscriptHits) items.push({ kind: "noteTranscript", hit });
 
     for (const transcript of filteredTranscripts) items.push({ kind: "transcript", transcript });
 
     return items;
-  }, [jumpTargets, scopedNotes, noteTranscriptHits, filteredTranscripts]);
+  }, [jumpTargets, notes, noteTranscriptHits, filteredTranscripts]);
 
   const selectItem = useCallback(
     (item: FlatItem) => {
-      if (item.kind === "container") onContainerSelect?.(item.target.spaceId, item.target.folderId);
-      else if (item.kind === "note")
-        onNoteSelect?.(item.note.id, item.note.folder_id ?? null, item.note.space_id);
+      if (item.kind === "container") onContainerSelect?.(item.target.folderId);
+      else if (item.kind === "note") onNoteSelect?.(item.note.id, item.note.folder_id ?? null);
       else if (item.kind === "noteTranscript")
-        onNoteSelect?.(item.hit.note.id, item.hit.note.folder_id ?? null, item.hit.note.space_id);
+        onNoteSelect?.(item.hit.note.id, item.hit.note.folder_id ?? null);
       else if (item.kind === "transcript") onTranscriptSelect?.(item.transcript.id);
       onOpenChange(false);
     },
@@ -291,57 +244,6 @@ export default function CommandSearch({
             {/* Search input */}
             <div className="flex items-center gap-2.5 px-3.5 py-3 border-b border-border/70">
               <Search size={14} className="shrink-0 text-muted" />
-              {spaces.length > 1 && (
-                <Dropdown>
-                  <Dropdown.Trigger
-                    className={cn(
-                      "flex shrink-0 items-center gap-1 rounded-md border border-border bg-subtle",
-                      "px-1.5 py-0.5 text-2xs outline-none transition-colors data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus",
-                      scopeSpace ? "text-foreground" : "text-muted hover:text-foreground"
-                    )}
-                  >
-                    <span className="max-w-32 truncate">
-                      {scopeSpace ? (
-                        <span dir="auto">{spaceLabel(scopeSpace)}</span>
-                      ) : (
-                        t("commandSearch.allSpaces")
-                      )}
-                    </span>
-                    <ChevronDown size={11} className="shrink-0 text-muted" />
-                  </Dropdown.Trigger>
-                  <Dropdown.Popover placement="bottom start">
-                    <Dropdown.Menu
-                      aria-label={t("commandSearch.allSpaces")}
-                      selectionMode="single"
-                      selectedKeys={[scopeSpace ? String(scopeSpace.id) : ALL_SPACES_KEY]}
-                      onAction={(key) => {
-                        selectScope(
-                          key === ALL_SPACES_KEY
-                            ? null
-                            : (spaces.find((space) => String(space.id) === key)?.id ?? null)
-                        );
-                        requestAnimationFrame(() => inputRef.current?.focus());
-                      }}
-                    >
-                      <Dropdown.Item id={ALL_SPACES_KEY} textValue={t("commandSearch.allSpaces")}>
-                        <Label>{t("commandSearch.allSpaces")}</Label>
-                        <Dropdown.ItemIndicator />
-                      </Dropdown.Item>
-                      <Separator className="my-1" />
-                      {spaces.map((space) => (
-                        <Dropdown.Item
-                          key={space.id}
-                          id={String(space.id)}
-                          textValue={spaceLabel(space)}
-                        >
-                          <Label dir="auto">{spaceLabel(space)}</Label>
-                          <Dropdown.ItemIndicator />
-                        </Dropdown.Item>
-                      ))}
-                    </Dropdown.Menu>
-                  </Dropdown.Popover>
-                </Dropdown>
-              )}
               <input
                 dir="auto"
                 ref={inputRef}
@@ -402,8 +304,6 @@ export default function CommandSearch({
                           <ContainerRow
                             key={target.key}
                             target={target}
-                            showSpaceHint={target.folderId != null && spaces.length > 1}
-                            spaceLabel={spaceLabel}
                             idx={idx}
                             isSelected={selectedIndex === idx}
                             onSelect={() => selectItem({ kind: "container", target })}
@@ -414,13 +314,13 @@ export default function CommandSearch({
                     </div>
                   )}
 
-                  {scopedNotes.length > 0 && (
+                  {notes.length > 0 && (
                     <div className={jumpTargets.length > 0 ? "mt-0.5" : ""}>
                       <SectionHeader
                         icon={<FileText size={11} />}
                         label={t("commandSearch.sections.notes")}
                       />
-                      {scopedNotes.map((note) => {
+                      {notes.map((note) => {
                         const idx = flatItems.findIndex(
                           (fi) => fi.kind === "note" && fi.note.id === note.id
                         );
@@ -489,9 +389,7 @@ export default function CommandSearch({
                   )}
 
                   {filteredTranscripts.length > 0 && (
-                    <div
-                      className={jumpTargets.length > 0 || scopedNotes.length > 0 ? "mt-0.5" : ""}
-                    >
+                    <div className={jumpTargets.length > 0 || notes.length > 0 ? "mt-0.5" : ""}>
                       <SectionHeader
                         icon={<Mic size={11} />}
                         label={t("commandSearch.sections.transcripts")}
@@ -544,23 +442,17 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 
 function ContainerRow({
   target,
-  showSpaceHint,
-  spaceLabel,
   idx,
   isSelected,
   onSelect,
   onHover,
 }: {
   target: JumpTarget;
-  showSpaceHint: boolean;
-  spaceLabel: (space: SpaceItem) => string;
   idx: number;
   isSelected: boolean;
   onSelect: () => void;
   onHover: () => void;
 }) {
-  const { space } = target;
-
   const iconClass = cn("shrink-0 transition-colors", isSelected ? "text-primary" : "text-muted");
 
   return (
@@ -574,25 +466,10 @@ function ContainerRow({
         isSelected ? "bg-primary/8 dark:bg-primary/10" : "hover:bg-default dark:hover:bg-white/4"
       )}
     >
-      {target.folderId != null ? (
-        <Folder size={13} className={iconClass} />
-      ) : space?.kind === "private" ? (
-        <Lock size={13} className={iconClass} />
-      ) : space?.emoji ? (
-        <span className="text-ui leading-none shrink-0" aria-hidden="true">
-          {space.emoji}
-        </span>
-      ) : (
-        <Users size={13} className={iconClass} />
-      )}
+      <Folder size={13} className={iconClass} />
       <p dir="auto" className="flex-1 text-xs font-medium text-foreground truncate min-w-0">
         {target.label}
       </p>
-      {showSpaceHint && space && (
-        <span dir="auto" className="text-2xs text-muted truncate shrink-0 max-w-32">
-          {spaceLabel(space)}
-        </span>
-      )}
     </button>
   );
 }

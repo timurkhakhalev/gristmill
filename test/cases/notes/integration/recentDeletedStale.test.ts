@@ -1,4 +1,4 @@
-// Issue #186: Home keeps a cross-space recent list fetched separately, and
+// Issue #186: Home keeps a recent list fetched separately, and
 // refreshed only when `notesByContainer` identity changed. Deleting a note from
 // an unloaded folder succeeded in main and emitted note-deleted, but the store's
 // removeNote no-ops when the row is not cached, so the container map never
@@ -25,13 +25,12 @@ const {
 
 import type { NoteItem, NoteDeletedPayload } from "../../../../src/contracts/notes";
 
-function note(id: number, folderId: number | null, spaceId = 1): NoteItem {
+function note(id: number, folderId: number | null): NoteItem {
   return {
     id,
     title: `Note ${id}`,
     content: "",
     note_type: "personal",
-    space_id: spaceId,
     folder_id: folderId,
     folder_ids: folderId == null ? [] : [folderId],
     source_file: null,
@@ -83,15 +82,12 @@ async function mountHome(
   let getNotesCalls = 0;
   let deleteCalls = 0;
 
-  // Mirrors the real bridge: folderId (3rd arg) or spaceId (4th arg) scopes the
-  // list; no scope is the cross-space recent list.
-  const realGetNotes = async (folderId: number | null, spaceId: number | null) => {
+  // Mirrors the real bridge: folderId (3rd arg) scopes the
+  // list; no scope is the recent list.
+  const realGetNotes = async (folderId: number | null) => {
     const all = rows();
 
     if (folderId != null) return all.filter((n) => n.folder_ids.includes(folderId));
-
-    if (spaceId != null)
-      return all.filter((n) => n.space_id === spaceId && n.folder_ids.length === 0);
 
     return all;
   };
@@ -103,11 +99,10 @@ async function mountHome(
           _type: unknown,
           _limit: unknown,
           folderId: number | null = null,
-          spaceId: number | null = null
         ) => {
           getNotesCalls += 1;
 
-          return getNotesImpl ? getNotesImpl() : realGetNotes(folderId, spaceId);
+          return getNotesImpl ? getNotesImpl() : realGetNotes(folderId);
         },
         onNoteDeleted: (listener: (payload: NoteDeletedPayload) => void) => {
           deletedListener = listener;
@@ -121,7 +116,7 @@ async function mountHome(
         onFolderDeleted: () => () => {},
         getFolders: async () => [],
         getFolderNoteCounts: async () => [],
-        getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
+        getRootNotes: async () => rows().filter((n) => n.folder_ids.length === 0),
         deleteNote: async (id: number) => {
           deleteCalls += 1;
           void id;
@@ -226,14 +221,14 @@ async function mountHome(
 }
 
 test("deleting a note from an unloaded folder removes it from RecentNotes without a remount", async (t) => {
-  // note 1 lives in folder 9, which is never loaded; note 2 sits at the space
-  // root, loaded by initializeNotesTree.
+  // note 1 lives in folder 9, which is never loaded; note 2 sits at the root
+  // loaded by initializeNotesTree.
   const rows: NoteItem[] = [note(1, 9), note(2, null)];
   const home = await mountHome(t, () => rows);
   assert.deepEqual(
-    home.cachedNotes("s:1").map((n) => n.id),
+    home.cachedNotes("root").map((n) => n.id),
     [2],
-    "only the space root is cached"
+    "only the root is cached"
   );
   assert.deepEqual(home.rowIds(), ["1", "2"]);
   const callsBefore = home.calls();

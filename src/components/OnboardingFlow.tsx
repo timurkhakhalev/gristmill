@@ -78,7 +78,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             />
             <div className="mt-6 flex shrink-0 flex-col">
               <ByokProviderStep
-                onSelfHostedChange={() => {}}
                 onConnectionChange={setProviderConnected}
                 onProceed={() => setStep("languages")}
                 onFooterContinue={bindProviderCommit}

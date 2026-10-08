@@ -353,14 +353,11 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
   }, []);
 
   useEffect(() => {
-    // Keep upload destinations scoped to the private space.
     let cancelled = false;
 
     const loadFolders = async () => {
       try {
-        const spaces = (await window.electronAPI.getSpaces?.()) ?? [];
-        const privateSpace = spaces.find((space) => space.kind === "private");
-        const items = (await window.electronAPI.getFolders?.(privateSpace?.id ?? null)) ?? [];
+        const items = (await window.electronAPI.getFolders?.()) ?? [];
 
         if (cancelled) return;
         setFolders(items);

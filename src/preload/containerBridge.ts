@@ -1,21 +1,16 @@
-// Renderer-facing containers bridge. Moved out of preload.js so the eight
+// Renderer-facing folders bridge. Moved out of preload.js so the
 // operations and the one subscription have one typed implementation backed by
 // the shared contract. The sandboxed preload can't require local modules, so
 // build-main.js bundles the final preload with esbuild before packaging.
-// Events without a renderer consumer (folder-created/renamed/synced,
-// space-synced) stay unexposed; onSpacePurged has no producer and is not
-// carried over.
+// Events without a renderer consumer stay unexposed.
 import {
   containerChannels,
   containerEventChannels,
   folderDeleteResultSchema,
   folderDeletedPayloadSchema,
   folderListResultSchema,
-  folderMoveResultSchema,
   folderMutationResultSchema,
   folderNoteCountsResultSchema,
-  spaceListResultSchema,
-  spaceMutationResultSchema,
   type ContainersApi,
   type FolderDeletedPayload,
   type FolderStyle,
@@ -38,13 +33,13 @@ function parseResult<T>(schema: ZodType<T>, raw: unknown, channel: string): T {
 // implementation and the contract fails compilation instead of review.
 export function createContainersBridge(ipcRenderer: IpcRendererLike): ContainersApi {
   return {
-    getFolders: (spaceId?: number | null) =>
+    getFolders: () =>
       ipcRenderer
-        .invoke(containerChannels.getFolders, spaceId)
+        .invoke(containerChannels.getFolders)
         .then((raw) => parseResult(folderListResultSchema, raw, containerChannels.getFolders)),
-    createFolder: (name: string, spaceId?: number | null) =>
+    createFolder: (name: string) =>
       ipcRenderer
-        .invoke(containerChannels.createFolder, name, spaceId)
+        .invoke(containerChannels.createFolder, name)
         .then((raw) =>
           parseResult(folderMutationResultSchema, raw, containerChannels.createFolder)
         ),
@@ -64,17 +59,11 @@ export function createContainersBridge(ipcRenderer: IpcRendererLike): Containers
         .then((raw) =>
           parseResult(folderMutationResultSchema, raw, containerChannels.updateFolderStyle)
         ),
-    reorderFolders: (spaceId: number, folderIds: number[]) =>
+    reorderFolders: (folderIds: number[]) =>
       ipcRenderer
-        .invoke(containerChannels.reorderFolders, spaceId, folderIds)
+        .invoke(containerChannels.reorderFolders, folderIds)
         .then((raw) =>
           parseResult(folderDeleteResultSchema, raw, containerChannels.reorderFolders)
-        ),
-    moveFolderToSpace: (id: number, spaceId: number) =>
-      ipcRenderer
-        .invoke(containerChannels.moveFolderToSpace, id, spaceId)
-        .then((raw) =>
-          parseResult(folderMoveResultSchema, raw, containerChannels.moveFolderToSpace)
         ),
     getFolderNoteCounts: () =>
       ipcRenderer
@@ -82,14 +71,6 @@ export function createContainersBridge(ipcRenderer: IpcRendererLike): Containers
         .then((raw) =>
           parseResult(folderNoteCountsResultSchema, raw, containerChannels.getFolderNoteCounts)
         ),
-    getSpaces: () =>
-      ipcRenderer
-        .invoke(containerChannels.getSpaces)
-        .then((raw) => parseResult(spaceListResultSchema, raw, containerChannels.getSpaces)),
-    updateSpace: (id: number, updates: { name?: string; emoji?: string | null }) =>
-      ipcRenderer
-        .invoke(containerChannels.updateSpace, id, updates)
-        .then((raw) => parseResult(spaceMutationResultSchema, raw, containerChannels.updateSpace)),
     onFolderDeleted: (callback: (payload: FolderDeletedPayload) => void) =>
       subscribeDropped(
         ipcRenderer,

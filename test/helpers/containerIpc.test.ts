@@ -1,4 +1,4 @@
-// Characterization for the eight container (folders/spaces) IPC channels
+// Characterization for the folder IPC channels
 // before they move into the typed module. The handlers run against the real
 // registration logic with a database double, so the behavior pinned here is
 // the behavior the JS boundary had — not the DB layer's.
@@ -93,17 +93,8 @@ function fakeDb() {
     reorderFolders: () => {
       throw new Error("fake db: reorderFolders not set");
     },
-    moveFolderToSpace: () => {
-      throw new Error("fake db: moveFolderToSpace not set");
-    },
     getFolderNoteCounts: () => {
       throw new Error("fake db: getFolderNoteCounts not set");
-    },
-    getSpaces: () => {
-      throw new Error("fake db: getSpaces not set");
-    },
-    updateSpace: () => {
-      throw new Error("fake db: updateSpace not set");
     },
   };
 }
@@ -126,42 +117,29 @@ const FOLDER = {
   name: "Meetings",
   is_default: 1,
   sort_order: 2,
-  space_id: 3,
   created_at: "2026-09-14 10:00:00",
   updated_at: "2026-09-14 10:00:00",
 };
 
-const SPACE = {
-  id: 3,
-  name: "Personal",
-  emoji: null,
-  kind: "private",
-  sort_order: 0,
-  created_at: "2026-09-14 10:00:00",
-  updated_at: "2026-09-14 10:00:00",
-};
-
-test("getFolders passes spaceId through (null keeps all folders)", async () => {
+test("getFolders returns all folders", async () => {
   const seen: unknown[] = [];
 
   const db = {
     ...fakeDb(),
-    getFolders: (spaceId: unknown) => (seen.push(spaceId), [FOLDER]),
+    getFolders: () => (seen.push(true), [FOLDER]),
   } as DatabaseDouble;
 
   const h = setup(db);
-  assert.deepEqual(await call(h, "db-get-folders", 3), [FOLDER]);
-  assert.deepEqual(await call(h, "db-get-folders", null), [FOLDER]);
-  assert.deepEqual(await call(h, "db-get-folders", undefined), [FOLDER]);
-  // undefined is normalized to null at the main boundary; the DB default
-  // param makes both "all folders" anyway.
-  assert.deepEqual(seen, [3, null, null]);
+  assert.deepEqual(await call(h, "db-get-folders"), [FOLDER]);
+  assert.deepEqual(await call(h, "db-get-folders"), [FOLDER]);
+  assert.deepEqual(await call(h, "db-get-folders"), [FOLDER]);
+  assert.deepEqual(seen, [true, true, true]);
 });
 
 test("createFolder defers folder-created and the mirror only when enabled", async () => {
   const db = {
     ...fakeDb(),
-    createFolder: (_name: unknown, _spaceId: unknown) => ({ success: true, folder: FOLDER }),
+    createFolder: (_name: unknown) => ({ success: true, folder: FOLDER }),
   } as DatabaseDouble;
 
   const calls: unknown[] = [];
@@ -173,7 +151,7 @@ test("createFolder defers folder-created and the mirror only when enabled", asyn
     },
   });
 
-  const result = await call(h, "db-create-folder", " Work ", 3);
+  const result = await call(h, "db-create-folder", " Work ");
   assert.equal(result.success, true);
   assert.deepEqual(sent!, [] as unknown);
   await flush();
@@ -184,7 +162,7 @@ test("createFolder defers folder-created and the mirror only when enabled", asyn
   calls.length = 0;
   sent!.length = 0;
   const h2 = setup(db);
-  await call(h2, "db-create-folder", "Work", 3);
+  await call(h2, "db-create-folder", "Work");
   await flush();
   assert.deepEqual(calls, []);
 
@@ -276,59 +254,15 @@ test("renameFolder defers folder-renamed and the rename mirror when enabled", as
   assert.deepEqual(calls, [["Old", "New"]]);
 });
 
-test("moveFolderToSpace sends folder-synced only on success with a folder", async () => {
-  const db = {
-    ...fakeDb(),
-    moveFolderToSpace: () => ({ success: true, folder: FOLDER, notes: [] }),
-  };
-
-  const h = setup(db);
-  const result = await call(h, "db-move-folder-to-space", 7, 3);
-  assert.equal(result.success, true);
-  assert.deepEqual(result.notes, []);
-  await flush();
-  assert.deepEqual(sent!, [{ channel: "folder-synced", data: FOLDER }]);
-
-  // Success without a folder row sends nothing.
-  sent!.length = 0;
-  const h2 = setup({ ...db, moveFolderToSpace: () => ({ success: true }) });
-  await call(h2, "db-move-folder-to-space", 7, 3);
-  await flush();
-  assert.deepEqual(sent!, [] as unknown);
-});
-
-test("getSpaces/getFolderNoteCounts pass the DB rows straight through", async () => {
+test("getFolderNoteCounts passes the DB rows straight through", async () => {
   const h = setup({
     ...fakeDb(),
-    getSpaces: () => [SPACE],
-    getFolderNoteCounts: () => [{ folder_id: null, space_id: 3, count: 4 }],
+    getFolderNoteCounts: () => [{ folder_id: null, count: 4 }],
   });
 
-  assert.deepEqual(await call(h, "db-get-spaces"), [SPACE]);
   assert.deepEqual(await call(h, "db-get-folder-note-counts"), [
-    { folder_id: null, space_id: 3, count: 4 },
+    { folder_id: null, count: 4 },
   ]);
-});
-
-test("updateSpace defers space-synced only on success with a space", async () => {
-  const db = {
-    ...fakeDb(),
-    updateSpace: (_id: unknown, _updates: unknown) => ({ success: true, space: SPACE }),
-  } as DatabaseDouble;
-
-  const h = setup(db);
-  const result = await call(h, "db-update-space", 3, { name: "Renamed" });
-  assert.equal(result.success, true);
-  await flush();
-  assert.deepEqual(sent!, [{ channel: "space-synced", data: SPACE }]);
-
-  // Empty whitelist ({} or null updates) fails quietly in the DB layer.
-  sent!.length = 0;
-  const h2 = setup({ ...db, updateSpace: () => ({ success: false }) });
-  const failed = await call(h2, "db-update-space", 3, null);
-  assert.deepEqual(failed, { success: false });
-  await flush();
-  assert.deepEqual(sent!, [] as unknown);
 });
 
 test("wrong-shaped ids reject before the DB is touched", async () => {
@@ -344,17 +278,11 @@ test("wrong-shaped ids reject before the DB is touched", async () => {
     renameFolder: unexpected("renameFolder"),
     updateFolderStyle: unexpected("updateFolderStyle"),
     reorderFolders: unexpected("reorderFolders"),
-    moveFolderToSpace: unexpected("moveFolderToSpace"),
-    updateSpace: unexpected("updateSpace"),
     getFolders: unexpected("getFolders"),
   };
 
   const h = setup(db);
   await assert.rejects(() => call(h, "db-delete-folder", "nope"), /Invalid arguments/);
   await assert.rejects(() => call(h, "db-rename-folder", 7, null, "extra"), /Invalid arguments/);
-  await assert.rejects(() => call(h, "db-move-folder-to-space", 7, "x"), /Invalid arguments/);
-  await assert.rejects(() => call(h, "db-update-space", "x", {}), /Invalid arguments/);
-  // getFolders keeps its tolerant spaceId (unknown is still not a valid id).
-  await assert.rejects(() => call(h, "db-get-folders", "x"), /Invalid arguments/);
   assert.deepEqual(touched, []);
 });

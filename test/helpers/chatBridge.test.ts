@@ -91,7 +91,6 @@ function loadBundledPreload(invoke: (channel: string, ...args: unknown[]) => Pro
 type DbUnderTest =
   import("../../src/helpers/chatPersistenceIpcHandlers.js").ChatPersistenceHandlerDeps["database"] & {
     close: () => void;
-    getPrivateSpaceId: () => unknown;
   };
 
 async function createFixture(t: import("node:test").TestContext): Promise<{
@@ -150,8 +149,7 @@ test("the full bundled preload chain round-trips conversations and messages", as
   if (!ctx) return;
   const { api, db } = ctx;
 
-  const spaceId = db.getPrivateSpaceId();
-  const created = await api.createAgentConversation("Round trip", null, spaceId, null);
+  const created = await api.createAgentConversation("Round trip", null, null);
   assert.equal(created.title, "Round trip");
   assert.deepEqual(plain(created.messages), []);
 
@@ -179,7 +177,7 @@ test("the full bundled preload chain round-trips conversations and messages", as
   await api.updateAgentConversationTitle(created.id, "Renamed");
   const forNote = await api.getConversationsForNote(987654);
   assert.deepEqual(plain(forNote), []);
-  const containerList = await api.getConversationsForContainer(spaceId, null);
+  const containerList = await api.getConversationsForContainer(null);
   assert.equal((containerList[0] as Record<string, unknown>).message_count, 2);
   assert.equal((containerList[0] as Record<string, unknown>).title, "Renamed");
 
@@ -220,7 +218,7 @@ test("missing ids stay null through the bridge", async (t: import("node:test").T
   assert.equal(await api.addAgentMessage(987654, "user", "x"), null);
   assert.deepEqual(plain(await api.getAgentMessages(987654)), []);
   assert.deepEqual(plain(await api.getConversationsForNote(987654)), []);
-  assert.deepEqual(plain(await api.getConversationsForContainer(987654, null)), []);
+  assert.deepEqual(plain(await api.getConversationsForContainer(987654)), []);
   assert.deepEqual(plain(await api.searchAgentConversations("nothing-matches")), []);
   assert.deepEqual(plain(await api.updateAgentConversationTitle(987654, "x")), { success: false });
   assert.deepEqual(plain(await api.archiveAgentConversation(987654)), { success: false });

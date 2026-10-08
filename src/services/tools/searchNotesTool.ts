@@ -1,51 +1,29 @@
-import type { SpaceItem } from "../../contracts/containers";
 import type { ContainerScope } from "../../types/chat";
 import {
   readNumber,
   readString,
-  type JsonObject,
   type ToolArguments,
   type ToolDefinition,
   type ToolResult,
 } from "./ToolRegistry";
-import { resolveSpace } from "./utils";
 
 const MAX_CONTENT_LENGTH = 500;
 
-interface SearchToolOptions {
-  /** Pins every search to this container; the LLM's space arg is dropped. */
+export function createSearchNotesTool({
+  fixedScope,
+}: {
   fixedScope?: ContainerScope;
-}
-
-export function createSearchNotesTool(options: SearchToolOptions): ToolDefinition {
-  const { fixedScope } = options;
-
-  const spaceParameter: JsonObject = fixedScope
-    ? {}
-    : {
-        space: {
-          type: "string",
-          description: "Space name to search within. Omit to search all accessible spaces.",
-        },
-      };
-
+}): ToolDefinition {
   return {
     name: "search_notes",
     description: fixedScope
-      ? "Search the notes in the folder or space the user is currently viewing using local full-text search. Returns matching notes with title, date, space, and a preview of content."
-      : "Search the user's notes using local full-text search. Searches every local note by default; pass space to search within a single space. Returns matching notes with title, date, space, and a preview of content.",
+      ? "Search notes in the Notes location the user is viewing. Returns matching notes with title, date and a content preview."
+      : "Search all local notes. Returns matching notes with title, date and a content preview.",
     parameters: {
       type: "object",
       properties: {
-        query: {
-          type: "string",
-          description: "The search query to find relevant notes",
-        },
-        limit: {
-          type: "number",
-          description: "Maximum number of results to return (default 5)",
-        },
-        ...spaceParameter,
+        query: { type: "string", description: "The search query" },
+        limit: { type: "number", description: "Maximum results (default 5)" },
       },
       required: ["query"],
       additionalProperties: false,
@@ -55,28 +33,30 @@ export function createSearchNotesTool(options: SearchToolOptions): ToolDefinitio
     async execute(args: ToolArguments): Promise<ToolResult> {
       const query = readString(args, "query") ?? "";
       const limit = readNumber(args, "limit") ?? 5;
-      const spaceName = fixedScope ? undefined : readString(args, "space");
-
-      const spaces = (await window.electronAPI.getSpaces?.()) ?? [];
-      let space: SpaceItem | undefined;
-
-      if (fixedScope) {
-        space = spaces.find((s) => s.id === fixedScope.spaceId);
-      } else if (spaceName) {
-        const resolved = resolveSpace(spaces, spaceName);
-
-        if (resolved.error) {
-          return { success: false, data: null, displayText: resolved.error };
-        }
-
-        space = resolved.space;
-      }
-
-      const spaceId = fixedScope?.spaceId ?? space?.id ?? null;
-      const folderId = fixedScope?.folderId ?? null;
 
       try {
-        return await executeLocalSearch(query, limit, space, spaces, spaceId, folderId);
+        const notes = await window.electronAPI.searchNotes(
+          query,
+          limit,
+          fixedScope?.folderId ?? null,
+          fixedScope?.folderId === null
+        );
+
+        const results = notes.map((note) => ({
+          id: note.id,
+          title: note.title,
+          date: note.created_at,
+          type: note.note_type,
+          content: (note.enhanced_content || note.content).slice(0, MAX_CONTENT_LENGTH),
+        }));
+
+        return {
+          success: true,
+          data: results,
+          displayText: results.length
+            ? `Found ${results.length} note${results.length === 1 ? "" : "s"} for "${query}"`
+            : `No notes found for "${query}"`,
+        };
       } catch (error) {
         return {
           success: false,
@@ -85,41 +65,5 @@ export function createSearchNotesTool(options: SearchToolOptions): ToolDefinitio
         };
       }
     },
-  };
-}
-
-function summaryText(count: number, query: string, space: SpaceItem | undefined): string {
-  const scope = space ? ` in ${space.name}` : "";
-
-  if (count === 0) return `No notes found for "${query}"${scope}`;
-
-  return `Found ${count} note${count === 1 ? "" : "s"} for "${query}"${scope}`;
-}
-
-async function executeLocalSearch(
-  query: string,
-  limit: number,
-  space: SpaceItem | undefined,
-  spaces: SpaceItem[],
-  spaceId: number | null,
-  folderId: number | null
-): Promise<ToolResult> {
-  const notes = await window.electronAPI.searchNotes(query, limit, spaceId, folderId);
-
-  const spaceNameById = new Map(spaces.map((s) => [s.id, s.name]));
-
-  const results = notes.map((note) => ({
-    id: note.id,
-    title: note.title,
-    date: note.created_at,
-    type: note.note_type,
-    space: spaceNameById.get(note.space_id) ?? null,
-    content: (note.enhanced_content || note.content).slice(0, MAX_CONTENT_LENGTH),
-  }));
-
-  return {
-    success: true,
-    data: results,
-    displayText: summaryText(results.length, query, space),
   };
 }

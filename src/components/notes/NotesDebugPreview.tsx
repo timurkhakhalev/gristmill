@@ -245,7 +245,6 @@ function makePreview(scenario: NotesDebugScenario) {
     enhanced_at_content_hash: null,
     folder_id: null,
     folder_ids: [],
-    space_id: 0,
     transcript: hasTranscript ? transcript : null,
     calendar_event_id: null,
     participants: null,

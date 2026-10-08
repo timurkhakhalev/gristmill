@@ -14,6 +14,7 @@ import path from "path";
 import { z } from "zod";
 import { migrateMeetingPlatformEvidence } from "./meetingPlatformMigration.js";
 import { migrateMeetingAudio } from "./meetingAudioMigration.js";
+import { migrateSpaces } from "./spacesMigration.js";
 import { createHash, randomUUID } from "crypto";
 import { app } from "electron";
 import debugLogger from "./debugLogger.js";
@@ -141,16 +142,6 @@ function decryptCalendarToken(token: string): string {
 
 // --- Internal row shapes (main-only; not renderer DTO) ------------------------
 
-export interface SpaceRow {
-  id: number;
-  name: string;
-  emoji: string | null;
-  kind: "private";
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-}
-
 /** Palette names a folder glyph can be tinted with. */
 export const FOLDER_COLORS = ["red", "orange", "amber", "green", "teal", "blue", "violet", "pink"];
 
@@ -159,7 +150,6 @@ export interface FolderRow {
   name: string;
   is_default: number;
   sort_order: number;
-  space_id: number;
   /** Emoji shown instead of the default folder glyph. */
   icon?: string | null;
   /** Palette name tinting the folder glyph. */
@@ -183,7 +173,6 @@ export interface NoteRow {
   folder_id: number | null;
   /** Every folder holding the note: the primary folder_id first, then extra folders. */
   folder_ids: number[];
-  space_id: number;
   transcript: string | null;
   calendar_event_id: string | null;
   participants: string | null;
@@ -314,7 +303,6 @@ export interface AgentConversationRow {
   id: number;
   title: string;
   note_id: number | null;
-  space_id: number | null;
   folder_id: number | null;
   archived_at: string | null;
   created_at: string;
@@ -471,7 +459,6 @@ export interface NoteSpeakerEmbeddingRow {
 
 export interface FolderNoteCountRow {
   folder_id: number | null;
-  space_id: number;
   count: number;
 }
 
@@ -739,11 +726,6 @@ export interface FolderDeleteDbResult {
   relocatedNoteIds: number[];
 }
 
-export interface SpaceMutationDbResult {
-  success: boolean;
-  space?: SpaceRow | null;
-}
-
 export interface DictionaryChangeDbResult {
   success: boolean;
   added: number;
@@ -856,6 +838,10 @@ export class DatabaseManager {
       this._db.pragma("journal_mode = WAL");
       this._db.pragma("secure_delete = ON");
 
+      const isNewProfile = !this._db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'folders'")
+        .get();
+
       this._db.exec(`
         CREATE TABLE IF NOT EXISTS transcriptions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -887,25 +873,14 @@ export class DatabaseManager {
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE TABLE IF NOT EXISTS spaces (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          emoji TEXT,
-          kind TEXT NOT NULL DEFAULT 'private' CHECK (kind = 'private'),
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-
         CREATE TABLE IF NOT EXISTS folders (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
           is_default INTEGER NOT NULL DEFAULT 0,
           sort_order INTEGER NOT NULL DEFAULT 0,
-          space_id INTEGER NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE (space_id, name)
+          UNIQUE (name)
         );
 
         CREATE TABLE IF NOT EXISTS notes (
@@ -921,7 +896,6 @@ export class DatabaseManager {
           enhancement_prompt TEXT,
           enhanced_at_content_hash TEXT,
           folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
-          space_id INTEGER NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
           transcript TEXT,
           calendar_event_id TEXT,
           participants TEXT,
@@ -1079,7 +1053,6 @@ export class DatabaseManager {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           title TEXT NOT NULL DEFAULT 'Untitled',
           note_id INTEGER REFERENCES notes(id) ON DELETE CASCADE,
-          space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
           folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
           archived_at DATETIME,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1212,7 +1185,6 @@ export class DatabaseManager {
           PRIMARY KEY (note_id, speaker_id)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_notes_space ON notes(space_id, updated_at);
         CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id, updated_at);
         CREATE INDEX IF NOT EXISTS idx_note_folders_folder ON note_folders(folder_id);
         CREATE INDEX IF NOT EXISTS idx_messages_conversation ON agent_messages(conversation_id, created_at);
@@ -1486,6 +1458,8 @@ export class DatabaseManager {
         }
       }
 
+      migrateSpaces(this.sql);
+
       const googleCalendarColumns = this.sql.pragma<
         Array<{
           name: string;
@@ -1543,25 +1517,10 @@ export class DatabaseManager {
         );
       }
 
-      const existingSpace = this.sql.prepare("SELECT id FROM spaces LIMIT 1").get<{ id: number }>();
-
-      const spaceId =
-        existingSpace?.id ??
-        Number(
-          this.sql
-            .prepare(
-              "INSERT INTO spaces (name, kind, sort_order) VALUES ('Personal', 'private', 0)"
-            )
-            .run().lastInsertRowid
-        );
-
-      if (!existingSpace) {
-        const insertFolder = this.sql.prepare(
-          "INSERT INTO folders (name, is_default, sort_order, space_id) VALUES (?, 1, ?, ?)"
-        );
-
-        insertFolder.run("Personal", 0, spaceId);
-      }
+      if (isNewProfile)
+        this.sql
+          .prepare("INSERT INTO folders (name, is_default, sort_order) VALUES ('Personal', 1, 0)")
+          .run();
 
       const insertAction = this.sql.prepare(
         "INSERT INTO actions (name, description, prompt, icon, is_builtin, sort_order, translation_key) VALUES (?, ?, ?, ?, 1, ?, ?)"
@@ -3685,94 +3644,27 @@ export class DatabaseManager {
     return { success: transaction() };
   }
 
-  _privateSpaceId(): number | null {
-    return (
-      this.sql.prepare("SELECT id FROM spaces WHERE kind = 'private' LIMIT 1").get<{
-        id: number;
-      }>()?.id ?? null
-    );
-  }
-
-  getPrivateSpaceId(): number | null {
-    return this._privateSpaceId();
-  }
-
-  _spaceRow(row: SpaceRow | undefined | null): SpaceRow | null {
-    return row ? { ...row, kind: "private" } : null;
-  }
-
-  getSpaces(): SpaceRow[] {
+  getFolders(): FolderRow[] {
     return this.sql
-      .prepare("SELECT * FROM spaces ORDER BY sort_order, id")
-      .all<SpaceRow>()
-      .map((row) => ({ ...row, kind: "private" as const }));
+      .prepare("SELECT * FROM folders ORDER BY sort_order, created_at")
+      .all<FolderRow>();
   }
 
-  getSpace(id: number): SpaceRow | null {
-    return this._spaceRow(this.sql.prepare("SELECT * FROM spaces WHERE id = ?").get<SpaceRow>(id));
-  }
-
-  updateSpace(
-    id: number,
-    { name, emoji }: { name?: string; emoji?: string | null } = {}
-  ): SpaceMutationDbResult {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-
-    if (name !== undefined) {
-      fields.push("name = ?");
-      values.push(name);
-    }
-
-    if (emoji !== undefined) {
-      fields.push("emoji = ?");
-      values.push(emoji);
-    }
-
-    if (fields.length === 0) return { success: false };
-    values.push(id);
-
-    const result = this.sql
-      .prepare(
-        `UPDATE spaces SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      )
-      .run(...values);
-
-    return { success: result.changes > 0, space: this.getSpace(id) };
-  }
-
-  getFolders(spaceId: number | null = null): FolderRow[] {
-    const sql =
-      spaceId == null
-        ? "SELECT * FROM folders ORDER BY sort_order, created_at"
-        : "SELECT * FROM folders WHERE space_id = ? ORDER BY sort_order, created_at";
-
-    return spaceId == null
-      ? this.sql.prepare(sql).all<FolderRow>()
-      : this.sql.prepare(sql).all<FolderRow>(spaceId);
-  }
-
-  createFolder(
-    name: string | null | undefined,
-    spaceId: number | null = null
-  ): FolderMutationDbResult {
+  createFolder(name: string | null | undefined): FolderMutationDbResult {
     const trimmed = String(name || "").trim();
-    spaceId ??= this._privateSpaceId();
 
     if (!trimmed) return { success: false, error: "Folder name is required" };
 
-    if (!spaceId || !this.getSpace(spaceId)) return { success: false, error: "Space not found" };
-
     const max = (
       this.sql
-        .prepare("SELECT COALESCE(MAX(sort_order), -1) AS value FROM folders WHERE space_id = ?")
-        .get<{ value: number }>(spaceId) ?? { value: -1 }
+        .prepare("SELECT COALESCE(MAX(sort_order), -1) AS value FROM folders")
+        .get<{ value: number }>() ?? { value: -1 }
     ).value;
 
     try {
       const result = this.sql
-        .prepare("INSERT INTO folders (name, sort_order, space_id) VALUES (?, ?, ?)")
-        .run(trimmed, max + 1, spaceId);
+        .prepare("INSERT INTO folders (name, sort_order) VALUES (?, ?)")
+        .run(trimmed, max + 1);
 
       return {
         success: true,
@@ -3841,14 +3733,12 @@ export class DatabaseManager {
     };
   }
 
-  /** Manual order of one space's folders: position in the list becomes sort_order. */
-  reorderFolders(spaceId: number, folderIds: number[]): SuccessResult {
-    const update = this.sql.prepare(
-      "UPDATE folders SET sort_order = ? WHERE id = ? AND space_id = ?"
-    );
+  /** The list position becomes sort_order. */
+  reorderFolders(folderIds: number[]): SuccessResult {
+    const update = this.sql.prepare("UPDATE folders SET sort_order = ? WHERE id = ?");
 
     this.sql.transaction(() => {
-      folderIds.forEach((folderId, index) => update.run(index, folderId, spaceId));
+      folderIds.forEach((folderId, index) => update.run(index, folderId));
     })();
 
     return { success: true };
@@ -3895,70 +3785,26 @@ export class DatabaseManager {
 
   private _lastDeletedFolderNoteIds: number[] = [];
 
-  /** Extra folders must share the note's space and never repeat its primary folder. */
+  /** Extra folders must never repeat the primary folder. */
   private pruneNoteFolderLinks(): void {
     this.sql
       .prepare(`
       DELETE FROM note_folders WHERE EXISTS (
         SELECT 1 FROM notes n JOIN folders f ON f.id = note_folders.folder_id
-        WHERE n.id = note_folders.note_id AND (f.space_id != n.space_id OR n.folder_id = note_folders.folder_id)
+        WHERE n.id = note_folders.note_id AND n.folder_id = note_folders.folder_id
       )
     `)
       .run();
   }
 
-  moveFolderToSpace(id: number, spaceId: number): FolderMutationDbResult & { notes?: NoteRow[] } {
-    if (!this.getSpace(spaceId)) return { success: false, error: "Space not found" };
-
-    try {
-      const result = this.sql.transaction(() => {
-        const folder = this.sql
-          .prepare("SELECT id FROM folders WHERE id = ?")
-          .get<{ id: number }>(id);
-
-        const noNotes: NoteRow[] = [];
-
-        if (!folder) return { changes: 0, notes: noNotes };
-
-        const updated = this.sql
-          .prepare("UPDATE folders SET space_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-          .run(spaceId, id);
-
-        this.sql
-          .prepare(
-            "UPDATE notes SET space_id = ?, updated_at = CURRENT_TIMESTAMP WHERE folder_id = ?"
-          )
-          .run(spaceId, id);
-        this.pruneNoteFolderLinks();
-
-        const notes = this.sql
-          .prepare(`SELECT ${noteColumns("notes")} FROM notes WHERE folder_id = ?`)
-          .all<RawNoteRow>(id)
-          .map(hydrateNote);
-
-        return { changes: updated.changes, notes };
-      })();
-
-      return {
-        success: result.changes > 0,
-        folder: this.sql.prepare("SELECT * FROM folders WHERE id = ?").get<FolderRow>(id),
-        notes: result.notes,
-      };
-    } catch (error) {
-      if (isSqliteUniqueConstraint(error))
-        return { success: false, error: "A folder with that name already exists" };
-      throw error;
-    }
-  }
-
   getFolderNoteCounts(): FolderNoteCountRow[] {
     return this.sql
       .prepare(`
-      SELECT folder_id, space_id, COUNT(*) AS count FROM (
-        SELECT folder_id, space_id FROM notes
+      SELECT folder_id, COUNT(*) AS count FROM (
+        SELECT folder_id FROM notes
         UNION ALL
-        SELECT nf.folder_id, n.space_id FROM note_folders nf JOIN notes n ON n.id = nf.note_id
-      ) GROUP BY folder_id, space_id
+        SELECT nf.folder_id FROM note_folders nf JOIN notes n ON n.id = nf.note_id
+      ) GROUP BY folder_id
     `)
       .all<FolderNoteCountRow>();
   }
@@ -4204,25 +4050,13 @@ export class DatabaseManager {
     noteType = "personal",
     sourceFile: string | null = null,
     audioDuration: number | null = null,
-    folderId: number | null = null,
-    spaceId: number | null = null
+    folderId: number | null = null
   ): NoteSaveDbResult {
-    spaceId ??= this._privateSpaceId();
-
-    if (folderId != null) {
-      spaceId =
-        this.sql
-          .prepare("SELECT space_id FROM folders WHERE id = ?")
-          .get<{ space_id: number }>(folderId)?.space_id ?? null;
-    }
-
-    if (!spaceId || !this.getSpace(spaceId)) throw new Error("Space not found");
-
     const result = this.sql
       .prepare(
-        "INSERT INTO notes (title, content, note_type, source_file, audio_duration_seconds, folder_id, space_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO notes (title, content, note_type, source_file, audio_duration_seconds, folder_id) VALUES (?, ?, ?, ?, ?, ?)"
       )
-      .run(title, content, noteType, sourceFile, audioDuration, folderId, spaceId);
+      .run(title, content, noteType, sourceFile, audioDuration, folderId);
 
     return { success: true, note: this.getNote(result.lastInsertRowid) } satisfies {
       success: boolean;
@@ -4234,20 +4068,17 @@ export class DatabaseManager {
     rows: unknown,
     { noteType = "meeting", folderName = "Imported" } = {}
   ): ImportNotesResult {
-    const spaceId = this._privateSpaceId();
-
     let folderId: number | null =
-      this.sql
-        .prepare("SELECT id FROM folders WHERE space_id = ? AND name = ?")
-        .get<{ id: number }>(spaceId, folderName)?.id ?? null;
+      this.sql.prepare("SELECT id FROM folders WHERE name = ?").get<{ id: number }>(folderName)
+        ?.id ?? null;
 
-    if (!folderId) folderId = this.createFolder(folderName, spaceId).folder?.id ?? null;
+    if (!folderId) folderId = this.createFolder(folderName).folder?.id ?? null;
     let imported = 0;
     const noteIds: number[] = [];
     const errors: Array<{ error: string }> = [];
 
     const insert = this.sql.prepare(
-      "INSERT INTO notes (title, content, note_type, source_file, folder_id, space_id, transcript, participants, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))"
+      "INSERT INTO notes (title, content, note_type, source_file, folder_id, transcript, participants, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))"
     );
 
     this.sql.transaction(() => {
@@ -4263,7 +4094,6 @@ export class DatabaseManager {
             noteType,
             row.sourceFile,
             folderId,
-            spaceId,
             row.transcript,
             row.participants,
             row.createdAt,
@@ -4291,12 +4121,7 @@ export class DatabaseManager {
     return raw ? hydrateNote(raw) : null;
   }
 
-  getNotes(
-    noteType: string | null = null,
-    limit = 100,
-    folderId: number | null = null,
-    spaceId: number | null = null
-  ): NoteRow[] {
+  getNotes(noteType: string | null = null, limit = 100, folderId: number | null = null): NoteRow[] {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
@@ -4310,13 +4135,6 @@ export class DatabaseManager {
         "(folder_id = ? OR id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))"
       );
       params.push(folderId, folderId);
-    }
-
-    if (spaceId != null) {
-      conditions.push("space_id = ?");
-      params.push(spaceId);
-
-      if (folderId == null) conditions.push("folder_id IS NULL");
     }
 
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
@@ -4350,12 +4168,12 @@ export class DatabaseManager {
     );
   }
 
-  getNotesForSpace(spaceId: number, limit = 50): NoteRow[] {
+  getRootNotes(limit = 50): NoteRow[] {
     return this.sql
       .prepare(
-        `SELECT ${noteColumns("notes")} FROM notes WHERE space_id = ? ORDER BY updated_at DESC LIMIT ?`
+        `SELECT ${noteColumns("notes")} FROM notes WHERE folder_id IS NULL ORDER BY updated_at DESC LIMIT ?`
       )
-      .all<RawNoteRow>(spaceId, limit)
+      .all<RawNoteRow>(limit)
       .map(hydrateNote);
   }
 
@@ -4369,17 +4187,11 @@ export class DatabaseManager {
   }
 
   getNoteIdsInScope(
-    spaceId: number | null = null,
     folderId: number | null = null,
     candidateIds: number[] | null = null
   ): number[] {
     const conditions: string[] = [];
     const params: unknown[] = [];
-
-    if (spaceId != null) {
-      conditions.push("space_id = ?");
-      params.push(spaceId);
-    }
 
     if (folderId != null) {
       conditions.push(
@@ -4413,7 +4225,6 @@ export class DatabaseManager {
       folder_id: number | null;
       /** Full folder membership; the current primary stays primary when kept. */
       folder_ids: number[];
-      space_id: number;
       transcript: string | null;
       calendar_event_id: string | null;
       participants: string | null;
@@ -4468,7 +4279,6 @@ export class DatabaseManager {
       "enhancement_prompt",
       "enhanced_at_content_hash",
       "folder_id",
-      "space_id",
       "transcript",
       "calendar_event_id",
       "participants",
@@ -4489,18 +4299,11 @@ export class DatabaseManager {
         values.push(updates[key]);
       }
 
-    if (updates.folder_id != null) {
-      const folder = this.sql
-        .prepare("SELECT space_id FROM folders WHERE id = ?")
-        .get<{ space_id: number }>(updates.folder_id);
-
-      if (!folder) return { success: false, error: "Folder not found" };
-
-      if (updates.space_id === undefined) {
-        fields.push("space_id = ?");
-        values.push(folder.space_id);
-      }
-    }
+    if (
+      updates.folder_id != null &&
+      !this.sql.prepare("SELECT 1 FROM folders WHERE id = ?").get(updates.folder_id)
+    )
+      return { success: false, error: "Folder not found" };
 
     if (!fields.length) return { success: false };
     values.push(id);
@@ -4522,7 +4325,7 @@ export class DatabaseManager {
         for (const folderId of extraFolderIds) link.run(id, folderId);
       }
 
-      if (extraFolderIds || updates.folder_id !== undefined || updates.space_id !== undefined) {
+      if (extraFolderIds || updates.folder_id !== undefined) {
         this.pruneNoteFolderLinks();
       }
 
@@ -4547,10 +4350,6 @@ export class DatabaseManager {
     const result = this.sql.prepare("DELETE FROM notes WHERE id = ?").run(id);
 
     return { success: result.changes > 0 };
-  }
-
-  getFolderNoteCountsBySpace(spaceId: number): FolderNoteCountRow[] {
-    return this.getFolderNoteCounts().filter((row) => row.space_id === spaceId);
   }
 
   getActions(): ActionRow[] {
@@ -4615,14 +4414,11 @@ export class DatabaseManager {
   createAgentConversation(
     title = "Untitled",
     noteId: number | null = null,
-    spaceId: number | null = null,
     folderId: number | null = null
   ): AgentConversationRow | null {
     const result = this.sql
-      .prepare(
-        "INSERT INTO agent_conversations (title, note_id, space_id, folder_id) VALUES (?, ?, ?, ?)"
-      )
-      .run(title, noteId, spaceId, folderId);
+      .prepare("INSERT INTO agent_conversations (title, note_id, folder_id) VALUES (?, ?, ?)")
+      .run(title, noteId, folderId);
 
     return this.getAgentConversation(result.lastInsertRowid);
   }
@@ -4664,7 +4460,6 @@ export class DatabaseManager {
       .all<AgentConversationRow>(noteId, limit);
   }
   getConversationsForContainer(
-    spaceId: number,
     folderId: number | null = null,
     limit = 20
   ): ContainerConversationRow[] {
@@ -4673,12 +4468,12 @@ export class DatabaseManager {
 
     const sql =
       folderId == null
-        ? `SELECT ${fields} FROM agent_conversations c WHERE c.space_id = ? AND c.folder_id IS NULL ORDER BY c.updated_at DESC LIMIT ?`
-        : `SELECT ${fields} FROM agent_conversations c WHERE c.space_id = ? AND c.folder_id = ? ORDER BY c.updated_at DESC LIMIT ?`;
+        ? `SELECT ${fields} FROM agent_conversations c WHERE c.note_id IS NULL AND c.folder_id IS NULL ORDER BY c.updated_at DESC LIMIT ?`
+        : `SELECT ${fields} FROM agent_conversations c WHERE c.note_id IS NULL AND c.folder_id = ? ORDER BY c.updated_at DESC LIMIT ?`;
 
     return folderId == null
-      ? this.sql.prepare(sql).all<ContainerConversationRow>(spaceId, limit)
-      : this.sql.prepare(sql).all<ContainerConversationRow>(spaceId, folderId, limit);
+      ? this.sql.prepare(sql).all<ContainerConversationRow>(limit)
+      : this.sql.prepare(sql).all<ContainerConversationRow>(folderId, limit);
   }
   addAgentMessage(
     conversationId: number,
@@ -5358,8 +5153,8 @@ export class DatabaseManager {
   searchNotes(
     query: unknown,
     limit = 50,
-    spaceId: number | null = null,
-    folderId: number | null = null
+    folderId: number | null = null,
+    rootOnly = false
   ): NoteRow[] {
     const ftsQuery = buildNoteSearchQuery(query);
 
@@ -5367,16 +5162,13 @@ export class DatabaseManager {
     const conditions = ["notes_fts MATCH ?"];
     const params: unknown[] = [ftsQuery];
 
-    if (spaceId != null) {
-      conditions.push("n.space_id = ?");
-      params.push(spaceId);
-    }
-
     if (folderId != null) {
       conditions.push(
         "(n.folder_id = ? OR n.id IN (SELECT note_id FROM note_folders WHERE folder_id = ?))"
       );
       params.push(folderId, folderId);
+    } else if (rootOnly) {
+      conditions.push("n.folder_id IS NULL");
     }
 
     params.push(limit);

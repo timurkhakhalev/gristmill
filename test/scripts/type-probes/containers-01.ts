@@ -7,9 +7,8 @@ declare const ipcMain: {
   handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
 };
 
-// A database missing updateSpace would leave the space channel dead while
-// every folder channel keeps working; the compiler must reject the
-// registration instead.
+// A database missing the folder count operation leaves the sidebar counts
+// unavailable; the compiler must reject the registration.
 registerContainerHandlers(ipcMain, {
   database: {
     getFolders: () => [],
@@ -18,9 +17,6 @@ registerContainerHandlers(ipcMain, {
     renameFolder: () => ({ success: true, folder: null }),
     updateFolderStyle: () => ({ success: true, folder: null }),
     reorderFolders: () => ({ success: true }),
-    moveFolderToSpace: () => ({ success: true, folder: null, notes: [] }),
-    getFolderNoteCounts: () => [],
-    getSpaces: () => [],
   },
   noteFilesEnabled: () => false,
   getFolderName: () => null,

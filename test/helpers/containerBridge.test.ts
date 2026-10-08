@@ -108,7 +108,7 @@ async function createFixture(t: import("node:test").TestContext) {
     {
       database: db,
       noteFilesEnabled: () => false,
-      getFolderName: (id: unknown) => db.getFolders().find((f) => f.id === id)?.name ?? null,
+      getFolderName: (id: unknown) => (db.getFolders() as Array<{ id: unknown; name: string }>).find((f) => f.id === id)?.name ?? null,
       mirrorWriteNote: () => {},
       mirrorEnsureFolder: () => {},
       mirrorRenameFolder: () => {},
@@ -140,54 +140,30 @@ async function createFixture(t: import("node:test").TestContext) {
   return { db, api, flush };
 }
 
-test("the full bundled preload chain round-trips folders and spaces", async (t: import("node:test").TestContext) => {
+test("the full bundled preload chain round-trips folders", async (t: import("node:test").TestContext) => {
   const ctx = await createFixture(t);
 
   if (!ctx) return;
   const { db, api, flush } = ctx;
 
-  const spaces = await api.getSpaces();
-  assert.equal(spaces.length, 1);
-  assert.equal(spaces[0].kind, "private");
-  assert.equal(spaces[0].emoji, null);
-  const spaceId = spaces[0].id;
-
-  const created = await api.createFolder("Bridge Folder", spaceId);
+  const created = await api.createFolder("Bridge Folder");
   assert.equal(created.success, true);
   assert.equal(created.folder.name, "Bridge Folder");
-  assert.equal(created.folder.space_id, spaceId);
 
-  const listed = await api.getFolders(null);
+  const listed = await api.getFolders();
   assert.ok(listed.some((f: any) => f.id === created.folder.id));
-
-  const scoped = await api.getFolders(spaceId);
-  // The seeded private space ships with Personal plus ours.
-  assert.equal(scoped.length, 2);
-  assert.ok(scoped.some((f: any) => f.id === created.folder.id));
 
   const renamed = await api.renameFolder(created.folder.id, "Renamed");
   assert.equal(renamed.success, true);
   assert.equal(renamed.folder.name, "Renamed");
 
-  // Renaming to an existing folder name in the same space hits the UNIQUE
-  // constraint on folders (space_id, name).
+  // Renaming to an existing folder name hits the UNIQUE
+  // constraint on folders.name.
   const duplicate = await api.renameFolder(created.folder.id, "Personal");
   assert.equal(duplicate.success, false);
   assert.match(duplicate.error, /already exists/);
 
-  const updated = await api.updateSpace(spaceId, { name: "Renamed Space", emoji: null });
-  assert.equal(updated.success, true);
-  assert.equal(updated.space.name, "Renamed Space");
-  await flush();
-
-  // Database normalization and events agree.
-  assert.deepEqual(plain(await api.getSpaces()), plain(db.getSpaces()));
-  assert.equal((await api.getSpaces())[0].name, "Renamed Space");
-
-  const moved = await api.moveFolderToSpace(created.folder.id, spaceId);
-  assert.equal(moved.success, true);
-  assert.equal(moved.folder.space_id, spaceId);
-  assert.deepEqual(plain(moved.notes), []);
+  // Database normalization agrees across main and preload.
 
   const counts = await api.getFolderNoteCounts();
   assert.ok(Array.isArray(counts));
@@ -198,7 +174,7 @@ test("the full bundled preload chain round-trips folders and spaces", async (t: 
   // loop is replaced by the next test, or it leaks into that test's listeners.
   await flush();
   assert.equal(
-    (await api.getFolders(null)).some((f: any) => f.id === created.folder.id),
+    (await api.getFolders()).some((f: any) => f.id === created.folder.id),
     false
   );
 
@@ -207,9 +183,6 @@ test("the full bundled preload chain round-trips folders and spaces", async (t: 
   assert.equal((await api.renameFolder(987654, "x")).success, false);
   // renameFolder misses omit `folder` entirely.
   assert.equal((await api.renameFolder(987654, "x")).folder, undefined);
-  assert.equal((await api.updateSpace(987654, { name: "x" })).success, false);
-  assert.equal((await api.moveFolderToSpace(1, 987654)).error, "Space not found");
-  assert.equal((await api.createFolder("Y", 987654)).error, "Space not found");
 });
 
 test("onFolderDeleted delivers payloads and unsubscribes cleanly", async (t: import("node:test").TestContext) => {
@@ -218,13 +191,12 @@ test("onFolderDeleted delivers payloads and unsubscribes cleanly", async (t: imp
   if (!ctx) return;
   const { api, flush } = ctx;
 
-  const spaceId = (await api.getSpaces())[0].id;
   const events: unknown[] = [];
   const eventsToo: unknown[] = [];
   const unsubA = api.onFolderDeleted((payload: unknown) => events.push(payload));
   const unsubB = api.onFolderDeleted((payload: unknown) => eventsToo.push(payload));
 
-  const folder = (await api.createFolder("Event Folder", spaceId)).folder;
+  const folder = (await api.createFolder("Event Folder")).folder;
   await api.deleteFolder(folder.id);
   await flush();
 
@@ -232,7 +204,7 @@ test("onFolderDeleted delivers payloads and unsubscribes cleanly", async (t: imp
   assert.deepEqual(plain(eventsToo), [{ id: folder.id }]);
 
   unsubA();
-  const folder2 = (await api.createFolder("Event Folder 2", spaceId)).folder;
+  const folder2 = (await api.createFolder("Event Folder 2")).folder;
   await api.deleteFolder(folder2.id);
   await flush();
 
@@ -248,9 +220,7 @@ test("wrong arguments reject through the bridge before the DB runs", async (t: i
   const { api } = ctx;
 
   await assert.rejects(() => api.deleteFolder("nope"));
-  await assert.rejects(() => api.moveFolderToSpace(1, "x"));
   await assert.rejects(() => api.renameFolder("x", "y"));
-  await assert.rejects(() => api.getFolders("x"));
 });
 
 test("malformed events are dropped at the preload boundary", async (t: import("node:test").TestContext) => {
@@ -269,8 +239,7 @@ test("malformed events are dropped at the preload boundary", async (t: import("n
   assert.deepEqual(events, []);
 
   // The next valid event is still delivered.
-  const spaceId = (await api.getSpaces())[0].id;
-  const folder = (await api.createFolder("After Junk", spaceId)).folder;
+  const folder = (await api.createFolder("After Junk")).folder;
   dispatchSend?.("folder-deleted", { id: folder.id });
   await flush();
   assert.deepEqual(plain(events), [{ id: folder.id }]);

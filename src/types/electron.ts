@@ -492,9 +492,8 @@ declare global {
       // (six renderer operations + the two subscriptions); dictionary export
       // stays local.
 
-      // Container (folders/spaces) operations come from the shared
+      // Folder operations come from the shared
       // ContainersApi contract (eight operations + onFolderDeleted);
-      // onSpacePurged has no producer and is not exposed.
 
       // Note operations come from the shared NotesApi contract (seven
       // operations + the three note subscriptions); note export stays local.

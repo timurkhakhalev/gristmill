@@ -22,8 +22,8 @@ it("maps database validation messages to translation keys", () => {
     "notes.mutationErrors.defaultFolderImmutable"
   );
   assert.equal(
-    localMutationErrorKey("Cannot purge the private space"),
-    "notes.mutationErrors.privateSpaceImmutable"
+    localMutationErrorKey("Folder not found"),
+    "notes.mutationErrors.folderNotFound"
   );
 });
 

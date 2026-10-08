@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../components/ui/useToast";
 import type { NoteMoveTarget } from "./useNoteDragAndDrop";
@@ -20,7 +20,6 @@ import {
   useActiveFolderId,
   useActiveNoteId,
   useFolders,
-  useSpaces,
 } from "../stores/noteStore";
 import {
   resumeMeeting,
@@ -28,13 +27,12 @@ import {
   useMeetingRecordingStore,
 } from "../stores/meetingRecordingStore";
 
-/** Tree-level note actions shared by the app sidebar (SpacesTree) and the
+/** Tree-level note actions shared by the app sidebar (NotesTree) and the
  * notes view (overview empty states, editor move-to-folder). Thin wrappers
  * over the note/meeting stores so both surfaces stay in sync. */
 export function useNotesTreeActions() {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const spaces = useSpaces();
   const folders = useFolders();
   const activeContext = useActiveContext();
   const activeFolderId = useActiveFolderId();
@@ -60,20 +58,19 @@ export function useNotesTreeActions() {
   }, []);
 
   const handleNewNoteIn = useCallback(
-    async (spaceId: number, folderId: number | null) => {
+    async (folderId: number | null) => {
       const result = await window.electronAPI.saveNote(
         t("notes.list.untitledNote"),
         "",
         "personal",
         null,
         null,
-        folderId,
-        spaceId
+        folderId
       );
 
       if (result.success && result.note) {
-        setActiveContext(result.note.space_id, result.note.folder_id);
-        revealContainer(result.note.space_id, result.note.folder_id);
+        setActiveContext(result.note.folder_id);
+        revealContainer(result.note.folder_id);
         // Hold the full row in case the container is not loaded (#185).
         await openNoteRow(result.note);
 
@@ -90,22 +87,9 @@ export function useNotesTreeActions() {
     [t, isTranscribing, startRecordingForNote]
   );
 
-  const privateSpaceId = useMemo(
-    () => spaces.find((s) => s.kind === "private")?.id ?? null,
-    [spaces]
-  );
-
-  const handleNewNoteInPrivate = useCallback(() => {
-    if (privateSpaceId == null) return Promise.resolve(null);
-
-    return handleNewNoteIn(privateSpaceId, null);
-  }, [privateSpaceId, handleNewNoteIn]);
-
   const handleNewNote = useCallback(() => {
-    if (activeContext) return handleNewNoteIn(activeContext.spaceId, activeContext.folderId);
-
-    return handleNewNoteInPrivate();
-  }, [activeContext, handleNewNoteIn, handleNewNoteInPrivate]);
+    return handleNewNoteIn(activeContext?.folderId ?? null);
+  }, [activeContext, handleNewNoteIn]);
 
   const handleNotesAdded = useCallback(async () => {
     if (activeFolderId) {
@@ -124,15 +108,14 @@ export function useNotesTreeActions() {
       // A move takes the note out of all its folders, like moving a file.
       const result = await window.electronAPI.updateNote(noteId, {
         folder_ids: target.folderIds ?? (target.folderId != null ? [target.folderId] : []),
-        space_id: target.spaceId,
       });
 
       // A rejected move leaves the note where it was; do not follow it.
       if (!result.success) return;
 
       if (noteId === activeNoteId) {
-        setActiveContext(target.spaceId, target.folderId);
-        revealContainer(target.spaceId, target.folderId);
+        setActiveContext(target.folderId);
+        revealContainer(target.folderId);
       }
     },
     [activeNoteId]
@@ -143,7 +126,7 @@ export function useNotesTreeActions() {
       const folder = folders.find((f) => f.id === folderId);
 
       if (!folder) return;
-      await handleMoveNote(noteId, { spaceId: folder.space_id, folderId });
+      await handleMoveNote(noteId, { folderId });
     },
     [folders, handleMoveNote]
   );
@@ -159,11 +142,11 @@ export function useNotesTreeActions() {
       const stillListed =
         activeContext?.folderId != null
           ? note.folder_ids.includes(activeContext.folderId)
-          : activeContext?.spaceId === note.space_id && note.folder_id == null;
+          : note.folder_id == null;
 
       if (!stillListed) {
-        setActiveContext(note.space_id, note.folder_id);
-        revealContainer(note.space_id, note.folder_id);
+        setActiveContext(note.folder_id);
+        revealContainer(note.folder_id);
       }
     },
     [activeNoteId, activeContext]
@@ -172,10 +155,7 @@ export function useNotesTreeActions() {
   const handleCreateFolderAndAdd = useCallback(
     async (noteId: number, folderName: string) => {
       const note = getNoteFromStore(noteId);
-      const spaceId = note?.space_id ?? privateSpaceId;
-
-      if (spaceId == null) return;
-      const result = await createFolder(folderName, spaceId);
+      const result = await createFolder(folderName);
 
       if (result.success && result.folder) {
         await handleSetNoteFolders(noteId, [...(note?.folder_ids ?? []), result.folder.id]);
@@ -187,15 +167,12 @@ export function useNotesTreeActions() {
         });
       }
     },
-    [privateSpaceId, handleSetNoteFolders, toast, t]
+    [handleSetNoteFolders, toast, t]
   );
 
   const handleCreateFolderAndMove = useCallback(
     async (noteId: number, folderName: string) => {
-      const spaceId = getNoteFromStore(noteId)?.space_id ?? privateSpaceId;
-
-      if (spaceId == null) return;
-      const result = await createFolder(folderName, spaceId);
+      const result = await createFolder(folderName);
 
       if (result.success && result.folder) {
         await handleMoveToFolder(noteId, result.folder.id);
@@ -207,7 +184,7 @@ export function useNotesTreeActions() {
         });
       }
     },
-    [privateSpaceId, handleMoveToFolder, toast, t]
+    [handleMoveToFolder, toast, t]
   );
 
   return {

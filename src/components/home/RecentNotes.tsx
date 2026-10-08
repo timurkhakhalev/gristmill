@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dropdown, Label, Separator } from "@heroui/react";
 import { FileText, FolderOpen, Trash2 } from "../icons";
-import { MoveFolderPicker, RowMenu } from "../notes/SpacesTree";
+import { MoveFolderPicker, RowMenu } from "../notes/NotesTree";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
-import { useFolders, useSpaces } from "../../stores/noteStore";
+import { useFolders } from "../../stores/noteStore";
 import type { NoteMoveTarget } from "../../hooks/useNoteDragAndDrop";
 import PersonAvatar from "../ui/PersonAvatar";
 import { useUiLocale } from "../../hooks/useUiLocale";
@@ -57,7 +57,6 @@ interface NoteRowProps {
 
 function NoteRow({ note, onOpen, onMove, onCreateFolderAndMove, onDelete }: NoteRowProps) {
   const { t } = useTranslation();
-  const spaces = useSpaces();
   const folders = useFolders();
   const [moveOpen, setMoveOpen] = useState(false);
   const locale = useUiLocale();
@@ -145,7 +144,6 @@ function NoteRow({ note, onOpen, onMove, onCreateFolderAndMove, onDelete }: Note
       <PopoverContent align="end" className="w-64 p-2">
         <MoveFolderPicker
           note={note}
-          spaces={spaces}
           folders={folders}
           onMove={(target) => onMove(note.id, target)}
           onCreateFolderAndMove={onCreateFolderAndMove}
@@ -165,7 +163,7 @@ interface RecentNotesProps {
   onDeleteNote: NoteRowProps["onDelete"];
 }
 
-/** Past notes and meetings across every space, grouped by day. */
+/** Past notes and meetings, grouped by day. */
 export default function RecentNotes({
   notes,
   onOpenNote,

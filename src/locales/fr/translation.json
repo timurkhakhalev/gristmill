@@ -270,18 +270,12 @@
         "description": "Choisissez un fournisseur, ajoutez vos identifiants et testez la connexion.",
         "descriptionLineOne": "Choisissez un fournisseur et ajoutez",
         "descriptionLineTwo": "votre clé API.",
-        "selfHosted": "J’ai une clé de modèle auto-hébergé",
         "providerLabel": "Fournisseur",
         "providerPlaceholder": "Choisir le fournisseur du modèle",
         "modelLabel": "Modèle",
         "modelPlaceholder": "Choisir le modèle",
         "apiKey": "Clé API",
         "apiKeyPlaceholder": "Collez votre clé API",
-        "endpointUrl": "URL de l’endpoint",
-        "endpointPlaceholder": "Collez l’URL de votre endpoint",
-        "optional": "Facultatif",
-        "modelId": "ID du modèle",
-        "modelIdPlaceholder": "Saisissez l’ID de votre modèle",
         "testConnection": "Tester la connexion",
         "proceed": "Continuer",
         "clinical": "POUR LA TRANSCRIPTION CLINIQUE",
@@ -1503,26 +1497,12 @@
       "folderAlreadyExists": "Un dossier portant ce nom existe déjà.",
       "folderNotFound": "Ce dossier est introuvable.",
       "defaultFolderImmutable": "Les dossiers par défaut ne peuvent pas être modifiés.",
-      "spaceNameRequired": "Saisissez un nom d’espace.",
-      "spaceNotFound": "Cet espace est introuvable.",
-      "privateSpaceImmutable": "Votre espace Personnel ne peut pas être modifié.",
       "generic": "La modification n’a pas pu être effectuée. Réessayez."
     },
     "sidebar": {
       "newNote": "Nouvelle note",
       "searchNotes": "Rechercher des notes",
       "actions": "Actions"
-    },
-    "structureIntro": {
-      "title": "Où se trouvent vos notes",
-      "description": "Gristmill sépare les idées privées du travail partagé afin que les bonnes personnes voient les bonnes notes.",
-      "personal": {
-        "title": "Espace personnel",
-        "description": "Vous seul pouvez voir les dossiers et les notes qui s'y trouvent."
-      },
-      "contents": "Chaque espace peut contenir des dossiers et des notes.",
-      "done": "Compris",
-      "reopen": "Comprendre l'organisation des espaces"
     },
     "folders": {
       "defaults": {
@@ -1537,7 +1517,7 @@
       "couldNotRename": "Impossible de renommer le dossier",
       "couldNotDelete": "Impossible de supprimer le dossier",
       "deleteTitle": "Supprimer le dossier ?",
-      "deleteDescription": "Supprimer « {{name}} » ? Les notes resteront dans leurs autres dossiers ou seront déplacées à la racine de l’espace.",
+      "deleteDescription": "Supprimer « {{name}} » ? Les notes resteront dans leurs autres dossiers ou seront déplacées à la racine des Notes.",
       "deleteDescriptionEmpty": "Cette action supprimera définitivement \"{{name}}\". Cette action est irréversible.",
       "deleteConfirm": "Supprimer le dossier"
     },
@@ -1883,14 +1863,10 @@
       },
       "consentNotice": "Obtenez toujours le consentement avant d'enregistrer d'autres personnes"
     },
-    "spaces": {
-      "personal": "Personnel",
-      "moveToSpace": "Déplacer vers un espace…",
+    "moves": {
       "moved": "« {{title}} » déplacée vers {{target}}",
       "couldNotMoveNote": "Impossible de déplacer la note",
-      "undo": "Annuler",
-      "noteCount_one": "{{count}} note",
-      "noteCount_other": "{{count}} notes"
+      "undo": "Annuler"
     },
     "dateGroups": {
       "today": "Aujourd'hui",
@@ -2123,7 +2099,6 @@
   "commandSearch": {
     "searchError": "Échec de la recherche",
     "searchingTranscripts": "Recherche dans les transcriptions…",
-    "allSpaces": "Tous les espaces",
     "title": "Rechercher",
     "description": "Rechercher dans les notes et transcriptions",
     "placeholder": "Rechercher notes et transcriptions…",

@@ -5,7 +5,6 @@ import {
   DatabaseManager,
   type NoteRow,
   type FolderRow,
-  type SpaceRow,
   type ActionRow,
   type TranscriptionRow,
   type AgentConversationRow,
@@ -29,11 +28,10 @@ import { parseDbTimestamp, toDbTimestamp, hasExplicitTimeZone } from "./src/help
 
 async function useAll(): Promise<string> {
   const manager = new DatabaseManager();
-  const space: SpaceRow | null = manager.getSpace(1);
-  const folders: FolderRow[] = manager.getFolders(space?.id ?? null);
+  const folders: FolderRow[] = manager.getFolders();
   const note: NoteRow | null = manager.getNote(1);
   const noteFolder: number | null = note?.folder_id ?? null;
-  const notes: NoteRow[] = manager.getNotes(null, 100, noteFolder, space?.id ?? null);
+  const notes: NoteRow[] = manager.getNotes(null, 100, noteFolder);
   const actions: ActionRow[] = manager.getActions();
   const action = manager.createAction("n", "d", "p");
   const builtinFlag: number = action.action?.is_builtin ?? 0;
@@ -44,7 +42,6 @@ async function useAll(): Promise<string> {
   const conversation: AgentConversationRow | null = manager.createAgentConversation(
     "t",
     note?.id ?? null,
-    space?.id ?? null,
     folders[0]?.id ?? null
   );
   const message: AgentMessageRow | null = manager.addAgentMessage(
@@ -57,7 +54,6 @@ async function useAll(): Promise<string> {
     message?.metadata === null ? null : JSON.parse(message?.metadata ?? "null");
   void metadata;
   const container: ContainerConversationRow[] = manager.getConversationsForContainer(
-    space?.id ?? 0,
     null,
     10
   );
@@ -78,7 +74,7 @@ async function useAll(): Promise<string> {
   const acal: AppleCalendarRow[] = manager.getAppleCalendars();
   const tokens: GoogleTokenRow | null = manager.getGoogleTokens();
   const msTokens: MicrosoftTokenRow | null = manager.getMicrosoftTokensByEmail("a@b.c");
-  const fts: NoteRow[] = manager.searchNotes(buildNoteSearchQuery("meeting"), 10, null, null);
+  const fts: NoteRow[] = manager.searchNotes(buildNoteSearchQuery("meeting"), 10, null, false);
   manager.upsertCalendarEvents([
     {
       id: "e1",

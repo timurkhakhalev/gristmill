@@ -14,7 +14,6 @@ const note = (id: number, content: string): NoteItem => ({
   title: `Note ${id}`,
   content,
   note_type: "meeting",
-  space_id: 1,
   folder_id: null,
   folder_ids: [],
   source_file: null,
@@ -72,10 +71,10 @@ for (const scenario of ["replace", "append", "append-remount"] as const) {
       window: {
         matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
         electronAPI: {
-          getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
           getFolders: async () => [],
           getFolderNoteCounts: async () => [],
           getNotes: async () => [b],
+          getRootNotes: async () => [b],
           findCalendarEventNote: async () => null,
           createCalendarEventNote: async () => {
             await creating;

@@ -182,9 +182,8 @@ test("choosing No folder after upload saves folder_id null in the database", asy
   const db = createDb(t);
 
   if (!db) return;
-  const spaceId = db.getPrivateSpaceId();
-  const meetingsId = db.createFolder("Meetings", spaceId).folder!.id;
-  const noteId = db.saveNote("Uploaded", "", "upload", null, null, meetingsId, null).note!.id;
+  const meetingsId = db.createFolder("Meetings").folder!.id;
+  const noteId = db.saveNote("Uploaded", "", "upload", null, null, meetingsId).note!.id;
   const callbacks = buildCallbacks(db, { noteId });
 
   callbacks.handleFolderChange(String(meetingsId));
@@ -204,9 +203,8 @@ test("a failed folder move reports the failure and rolls the selection back", as
   const db = createDb(t);
 
   if (!db) return;
-  const spaceId = db.getPrivateSpaceId();
-  const meetingsId = db.createFolder("Meetings", spaceId).folder!.id;
-  const noteId = db.saveNote("Uploaded", "", "upload", null, null, null, null).note!.id;
+  const meetingsId = db.createFolder("Meetings").folder!.id;
+  const noteId = db.saveNote("Uploaded", "", "upload", null, null, null).note!.id;
   db.updateNote(noteId, { folder_id: meetingsId });
 
   const callbacks = buildCallbacks(db, {
@@ -224,7 +222,7 @@ test("a failed folder move reports the failure and rolls the selection back", as
   assert.equal(db.getNote(noteId)!.folder_id, meetingsId, "the note stays in its confirmed folder");
 
   // A later successful change clears the stale failure message.
-  const videoId = db.createFolder("Videos", spaceId).folder!.id;
+  const videoId = db.createFolder("Videos").folder!.id;
   callbacks.setFailFolderWrites(false);
   callbacks.handleFolderChange(String(videoId));
   await tick();
@@ -236,9 +234,8 @@ test("a rejected folder_id 0 patch never reaches the database", async (t) => {
   const db = createDb(t);
 
   if (!db) return;
-  const spaceId = db.getPrivateSpaceId();
-  const meetingsId = db.createFolder("Meetings", spaceId).folder!.id;
-  const noteId = db.saveNote("Uploaded", "", "upload", null, null, meetingsId, null).note!.id;
+  const meetingsId = db.createFolder("Meetings").folder!.id;
+  const noteId = db.saveNote("Uploaded", "", "upload", null, null, meetingsId).note!.id;
 
   const callbacks = buildCallbacks(db, {
     failFolderWrites: true,

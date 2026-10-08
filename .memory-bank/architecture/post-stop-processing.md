@@ -170,6 +170,7 @@ flowchart TD
 - New processing can use a different available route. Previous runs and artifacts stay.
 - The selected route sets the limits and the available functions.
 - A limit does not cause a provider change, a cut of the audio or a split without notice.
+- Storage chunk boundaries do not set ASR requests. A split for provider limits needs an explicit design for completeness and speaker continuity.
 - There is no new Self-Hosted meeting route.
 
 ## Provider limits (documentation checked 2026-09-25)

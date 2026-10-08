@@ -17,11 +17,36 @@ const {
   tellBbThread,
   getBbThreadHistory,
   watchBbThread,
-  assertBbVersion,
+  listBbProviders,
   clearBbCaches,
   listBbHarnesses,
   toBbLogo,
 } = require("../../src/helpers/bbCli.ts");
+
+test("bb catalog rejects incompatible responses and preserves CLI errors", async (t: import("node:test").TestContext) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-contract-"));
+  const binary = path.join(directory, "bb-fake");
+  const previousBinary = process.env.BB_CLI;
+  process.env.BB_CLI = binary;
+  t.after(() => {
+    if (previousBinary === undefined) delete process.env.BB_CLI;
+    else process.env.BB_CLI = previousBinary;
+    fs.rmSync(directory, { recursive: true, force: true });
+    clearBbCaches();
+  });
+
+  fs.writeFileSync(binary, 'process.stdout.write(\'[{"id":"codex"}]\');');
+  await assert.rejects(listBbProviders(), /displayName|available/);
+
+  fs.writeFileSync(binary, 'process.stdout.write("not JSON");');
+  await assert.rejects(listBbProviders(), { code: "bb-invalid-response" });
+
+  fs.writeFileSync(binary, 'process.stdout.write(JSON.stringify({ok:false,error:{code:"command_removed",message:"Provider list is unavailable"}})); process.exitCode = 1;');
+  await assert.rejects(listBbProviders(), {
+    code: "command_removed",
+    message: "Provider list is unavailable",
+  });
+});
 
 const {
   generateBbSummary,
@@ -93,13 +118,12 @@ test("bb tool wrapper authenticates allowlisted routes and rejects external URLs
   assert.doesNotMatch(result.stderr, /test-token/);
 });
 
-test("bb CLI creates a profile project and resumes an in-flight summary from its last event", async (t: import("node:test").TestContext) => {
+test("bb CLI creates a profile project and resumes a summary without querying its version", async (t: import("node:test").TestContext) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-bb-test-"));
   const binary = path.join(directory, "bb-fake");
   const capture = path.join(directory, "prompt.txt");
   const previousBinary = process.env.BB_CLI;
   const previousCapture = process.env.BB_FAKE_CAPTURE;
-  const previousVersion = process.env.BB_FAKE_VERSION;
   const previousPath = process.env.PATH;
   process.env.BB_CLI = binary;
   process.env.BB_FAKE_CAPTURE = capture;
@@ -109,9 +133,6 @@ test("bb CLI creates a profile project and resumes an in-flight summary from its
 
     if (previousCapture === undefined) delete process.env.BB_FAKE_CAPTURE;
     else process.env.BB_FAKE_CAPTURE = previousCapture;
-
-    if (previousVersion === undefined) delete process.env.BB_FAKE_VERSION;
-    else process.env.BB_FAKE_VERSION = previousVersion;
 
     if (previousPath === undefined) delete process.env.PATH;
     else process.env.PATH = previousPath;
@@ -123,8 +144,7 @@ test("bb CLI creates a profile project and resumes an in-flight summary from its
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const out = (value) => process.stdout.write(JSON.stringify(value));
-if (args[0] === "--version") process.stdout.write(process.env.BB_FAKE_VERSION || "0.44.0");
-else if (args[0] === "project" && args[1] === "create") out({ id: "proj_test" });
+if (args[0] === "project" && args[1] === "create") out({ id: "proj_test" });
 else if (args[0] === "project" && args[1] === "show") out({ id: "proj_test", sources: [{ path: process.env.BB_FAKE_WORKSPACE }] });
 else if (args[0] === "thread" && args[1] === "spawn") {
   let prompt = "";
@@ -157,15 +177,6 @@ else throw new Error("Unexpected bb command: " + args.join(" "));
 
   clearBbCaches();
   process.env.PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
-  await assertBbVersion();
-  process.env.BB_FAKE_VERSION = "0.44.1";
-  clearBbCaches();
-  await assert.rejects(
-    assertBbVersion(),
-    (error: unknown) => (error as { code?: string }).code === "bb-version-unsupported"
-  );
-  delete process.env.BB_FAKE_VERSION;
-
   const id = await spawnBbThread(
     "Private prompt from stdin",
     {
@@ -264,9 +275,8 @@ test("bb harness logos are fetched only from bb's loopback logo route and must b
     `#!/usr/bin/env node
 const args = process.argv.slice(2);
 const out = (value) => process.stdout.write(JSON.stringify(value));
-if (args[0] === "--version") process.stdout.write("0.44.0");
-else if (args[0] === "provider" && args[1] === "list") out([
-  { id: "codex", displayName: "Codex", available: true, logoUrl: "/api/v1/system/providers/codex/logo?h=1" },
+if (args[0] === "provider" && args[1] === "list") out([
+  { id: "codex", displayName: "Codex", available: true, futureCapability: { enabled: true }, logoUrl: "/api/v1/system/providers/codex/logo?h=1" },
   { id: "evil", displayName: "Evil", available: true, logoUrl: "http://example.com/api/v1/system/providers/evil/logo" },
   { id: "pi", displayName: "Pi", available: true },
 ]);

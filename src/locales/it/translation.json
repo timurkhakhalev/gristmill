@@ -270,18 +270,12 @@
         "description": "Scegli un provider, aggiungi le credenziali e prova la connessione.",
         "descriptionLineOne": "Scegli un provider e aggiungi",
         "descriptionLineTwo": "la tua chiave API.",
-        "selfHosted": "Ho una chiave per un modello self-hosted",
         "providerLabel": "Provider",
         "providerPlaceholder": "Scegli il provider del modello",
         "modelLabel": "Modello",
         "modelPlaceholder": "Scegli il modello",
         "apiKey": "Chiave API",
         "apiKeyPlaceholder": "Incolla la tua chiave API",
-        "endpointUrl": "URL endpoint",
-        "endpointPlaceholder": "Incolla l’URL del tuo endpoint",
-        "optional": "Facoltativo",
-        "modelId": "ID modello",
-        "modelIdPlaceholder": "Scrivi l’ID del tuo modello",
         "testConnection": "Prova la connessione",
         "proceed": "Procedi",
         "clinical": "PER LA TRASCRIZIONE CLINICA",
@@ -1427,26 +1421,12 @@
       "folderAlreadyExists": "Esiste già una cartella con questo nome.",
       "folderNotFound": "Impossibile trovare questa cartella.",
       "defaultFolderImmutable": "Le cartelle predefinite non possono essere modificate.",
-      "spaceNameRequired": "Inserisci un nome per lo spazio.",
-      "spaceNotFound": "Impossibile trovare questo spazio.",
-      "privateSpaceImmutable": "Il tuo spazio Personale non può essere modificato.",
       "generic": "Impossibile completare la modifica. Riprova."
     },
     "sidebar": {
       "newNote": "Nuova nota",
       "searchNotes": "Cerca note",
       "actions": "Azioni"
-    },
-    "structureIntro": {
-      "title": "Dove si trovano le tue note",
-      "description": "Gristmill separa i pensieri privati dal lavoro condiviso, così le note sono visibili alle persone giuste.",
-      "personal": {
-        "title": "Spazio personale",
-        "description": "Solo tu puoi vedere le cartelle e le note in questo spazio."
-      },
-      "contents": "Ogni spazio può contenere cartelle e note.",
-      "done": "Ho capito",
-      "reopen": "Scopri come sono organizzati gli spazi"
     },
     "folders": {
       "defaults": {
@@ -1461,7 +1441,7 @@
       "couldNotRename": "Impossibile rinominare la cartella",
       "couldNotDelete": "Impossibile eliminare la cartella",
       "deleteTitle": "Eliminare la cartella?",
-      "deleteDescription": "Eliminare «{{name}}»? Le note resteranno nelle altre cartelle o verranno spostate nella radice dello spazio.",
+      "deleteDescription": "Eliminare «{{name}}»? Le note resteranno nelle altre cartelle o verranno spostate nella radice delle Note.",
       "deleteDescriptionEmpty": "Questa azione eliminerà definitivamente \"{{name}}\". Questa operazione non può essere annullata.",
       "deleteConfirm": "Elimina cartella"
     },
@@ -1807,14 +1787,10 @@
       },
       "consentNotice": "Ottieni sempre il consenso quando registri altre persone"
     },
-    "spaces": {
-      "personal": "Personale",
-      "moveToSpace": "Sposta in uno spazio…",
+    "moves": {
       "moved": "“{{title}}” spostata in {{target}}",
       "couldNotMoveNote": "Impossibile spostare la nota",
-      "undo": "Annulla",
-      "noteCount_one": "{{count}} nota",
-      "noteCount_other": "{{count}} note"
+      "undo": "Annulla"
     },
     "dateGroups": {
       "today": "Oggi",
@@ -2123,7 +2099,6 @@
   "commandSearch": {
     "searchError": "Ricerca non riuscita",
     "searchingTranscripts": "Ricerca nelle trascrizioni…",
-    "allSpaces": "Tutti gli spazi",
     "title": "Cerca",
     "description": "Cerca tra note e trascrizioni",
     "placeholder": "Cerca note e trascrizioni…",

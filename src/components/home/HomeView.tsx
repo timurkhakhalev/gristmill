@@ -28,7 +28,7 @@ interface HomeViewProps {
   onOpenEvent: (event: CalendarEvent) => void;
 }
 
-/** Start screen: upcoming calendar meetings, recent notes across every space,
+/** Start screen: upcoming calendar meetings, recent notes,
  * and a chat pinned to the bottom that searches all notes. */
 export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }: HomeViewProps) {
   const { t } = useTranslation();
@@ -42,7 +42,7 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
   // Fade the list in only when it replaces the skeleton, not on cached remounts.
   const [notesWereLoading] = useState(() => cachedRecentNotes == null);
 
-  // The store only holds loaded containers, so the cross-space list is fetched
+  // The store only holds loaded containers, so the recent list is fetched
   // here and refreshed whenever the store signals a confirmed Note event. The
   // stale guard drops a response that a newer event already superseded.
   useEffect(() => {

@@ -2,42 +2,65 @@
 
 As a Gristmill user, I want to find upcoming meetings and return to my notes.
 
-## User journey
+## Entry points
 
-1. Complete onboarding and open Home.
-2. Review Coming Up and Recent Notes.
-3. Open a note, or click a calendar event to open its note or an unsaved event draft.
-4. Use the sidebar to open Actions, Upload, Settings or a note in the spaces tree.
+- **Gristmill app → sidebar → Home** — the default main view.
+- **Gristmill app → sidebar → Actions, Upload file, Settings, Notes tree** — the other main areas.
+- **macOS menu bar → Gristmill tray icon** — New Note, upcoming events and Settings.
 
-## Behavior and limits
+## Paths
 
-- Tray New Note, event and Settings commands wait in preload until ControlPanel subscribes. New Note and event actions also wait for loaded spaces/tree readiness so initial Note selection cannot discard an event draft. The document-load sender guard applies to all three commands; delivering one does not override window visibility.
-- Home is the default main view. Notes without a selected note also shows Home.
-- Recent Notes fetches up to 50 notes across spaces, selected by last update. The display groups and orders this set by creation time.
-- Confirmed note events refresh the recent list, including deletion from a folder that is not loaded.
-- Coming Up reads events through midnight seven days ahead and filters for other attendees. It shows at most five days with events, with Today always present.
-- Without a connected calendar, Coming Up offers calendar setup.
-- Clicking an event row does not start recording. An event draft is saved on the first title/text edit, Record or Ask.
-- Join/Take notes is a separate action: it opens the meeting link when present and starts the calendar meeting flow.
+### Look at the day
 
-Home updates its recent-note state and remount cache only from the current request. A superseded response cannot restore deleted rows on remount.
+1. Open Gristmill. Home opens after setup.
+2. Read **Coming up**. It shows Today and the next days with meetings, at most five days.
+3. Read the recent notes below. They are grouped by day: Today, Yesterday and earlier dates.
 
-## What to check
+### Prepare notes for an upcoming meeting
 
-- A deleted note leaves Recent Notes after a confirmed deletion.
-- Event selection and Join/Take notes have different effects.
+1. In **Coming up**, click an event row.
+2. Gristmill opens the note of the event. If the event has no note, Gristmill opens an unsaved draft.
+3. Type a title or text, start a recording or ask the chat. Gristmill saves the note at that moment.
+4. If you close the draft without a change, Gristmill does not save a note.
+
+### Join a meeting and record it
+
+1. In **Coming up**, click **Join & transcribe** on an event with a meeting link, or **Take notes** on an event without a link.
+2. Gristmill opens the meeting link, if there is one, and starts the meeting note flow.
+3. Clicking the event row itself never starts a recording.
+
+### Connect a calendar from Home
+
+1. If no calendar is connected, **Coming up** shows **Connect your calendar**.
+2. Click **Connect Calendar**. Settings → Calendar opens. See [Connect calendars](calendars.md).
+
+### Return to a note
+
+1. In the recent notes, click a note to open it.
+2. To move a note, open its menu and click **Move to folder**.
+3. To delete a note, open its menu and click **Delete**. The note goes out of the list.
+
+### Use the tray
+
+1. Look at the macOS menu bar. Next to the Gristmill icon, you see the next meeting and the time until it starts, or the time that is left.
+2. Click the icon. The menu shows the current meeting, the next meeting (**Starts in …**) and a meeting tomorrow.
+3. On the current meeting, click **Open note**, or click **Skip this meeting** to remove it from the menu.
+4. Click **New Note** or **Settings**. Gristmill opens the window and goes to the selected item. If the window still loads, Gristmill does the action when the window is ready.
+5. During a recording, the menu shows **Recording in progress** and **Stop recording**.
+
+### Move between areas
+
+1. Use the sidebar to open Home, Actions, Upload file or Settings.
+2. Use the Notes tree in the sidebar to open a folder or a note.
 
 ## BDD acceptance criteria
 
-- Given an unloaded folder contains a recent note, when its deletion is confirmed, then Home refreshes its list.
-- Given an event has no saved note, when I open its row, then I see an unsaved draft until I edit, record or ask.
+- Given an event has no saved note, when I click its row, then I see an unsaved draft until I edit, record or ask.
+- Given I click an event row, when the draft opens, then no recording starts.
+- Given I delete a recent note, when the deletion is confirmed, then the note leaves Home.
+- Given I click **New Note** in the tray while the window loads, when the window is ready, then the new note opens.
 
-## Entry points
+## Related documents
 
-- [HomeView.tsx](../../../src/components/home/HomeView.tsx) — Home and recent-note refresh.
-- [RecentNotes.tsx](../../../src/components/home/RecentNotes.tsx) — grouping and note actions.
-- [ComingUp.tsx](../../../src/components/home/ComingUp.tsx) — calendar display and join action.
-- [ControlPanel.tsx](../../../src/components/ControlPanel.tsx) — navigation.
-- [EventNoteDraft.tsx](../../../src/components/notes/EventNoteDraft.tsx) — draft persistence.
-- [useUpcomingEvents.ts](../../../src/hooks/useUpcomingEvents.ts) — calendar window.
-- [database.ts](../../../src/helpers/database.ts) — recent-note selection.
+- [Application shell](../../architecture/app-shell.md) — Home data windows, refresh rules and tray command delivery.
+- [Connect calendars](calendars.md) — calendar connection and reminders.

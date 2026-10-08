@@ -12,7 +12,7 @@ import {
   deleteNoteArgsSchema,
   getNoteArgsSchema,
   getNotesArgsSchema,
-  getSpaceNotesArgsSchema,
+  getRootNotesArgsSchema,
   noteDeleteResultSchema,
   noteOrNullResultSchema,
   noteListResultSchema,
@@ -32,19 +32,18 @@ export interface NotesHandlerDeps {
   getNotes: (
     noteType: string | null | undefined,
     limit: number | undefined,
-    folderId: number | null,
-    spaceId: number | null
+    folderId: number | null
   ) => unknown;
-  getNotesForSpace: (spaceId: number, limit: number | undefined) => unknown;
+  getRootNotes: (limit: number | undefined) => unknown;
   deleteNoteInternal: (id: number) => unknown;
   searchNotes: (
     query: string,
     limit: number | undefined,
-    spaceId: number | null,
-    folderId: number | null
+    folderId: number | null,
+    rootOnly: boolean | undefined
   ) => unknown;
-  searchNoteContent: (query: string, spaceId: number | null) => unknown;
-  searchNoteTranscripts: (query: string, spaceId: number | null) => unknown;
+  searchNoteContent: (query: string) => unknown;
+  searchNoteTranscripts: (query: string) => unknown;
   getNoteTranscript: (noteId: number) => unknown;
   getNoteOutput: (request: NoteOutputRequest) => unknown;
 }
@@ -83,8 +82,7 @@ function parseNoteOrNull(raw: unknown): NoteItem | null {
 
 type IpcEventListener = (event: unknown, ...args: unknown[]) => unknown;
 
-// Positional tuples for the channels that take a single optional space scope.
-const searchScopeArgsSchema = z.tuple([z.string(), z.number().int().positive().nullish()]);
+const searchScopeArgsSchema = z.tuple([z.string()]);
 
 const noteTranscriptArgsSchema = z.tuple([z.number().int().positive()]);
 
@@ -93,7 +91,7 @@ export function registerNotesHandlers(
   deps: NotesHandlerDeps
 ): void {
   ipcMain.handle("db-save-note", async (_event, ...args: unknown[]) => {
-    const [title, content, noteType, sourceFile, audioDuration, folderId, spaceId] = parseArgs(
+    const [title, content, noteType, sourceFile, audioDuration, folderId] = parseArgs(
       saveNoteArgsSchema,
       args
     );
@@ -104,8 +102,7 @@ export function registerNotesHandlers(
       noteType,
       sourceFile ?? null,
       audioDuration ?? null,
-      folderId ?? null,
-      spaceId ?? null
+      folderId ?? null
     );
   });
 
@@ -122,15 +119,15 @@ export function registerNotesHandlers(
   });
 
   ipcMain.handle("db-get-notes", async (_event, ...args: unknown[]) => {
-    const [noteType, limit, folderId, spaceId] = parseArgs(getNotesArgsSchema, args);
+    const [noteType, limit, folderId] = parseArgs(getNotesArgsSchema, args);
 
-    return parseNoteList(deps.getNotes(noteType, limit, folderId ?? null, spaceId ?? null));
+    return parseNoteList(deps.getNotes(noteType, limit, folderId ?? null));
   });
 
-  ipcMain.handle("db-get-space-notes", async (_event, ...args: unknown[]) => {
-    const [spaceId, limit] = parseArgs(getSpaceNotesArgsSchema, args);
+  ipcMain.handle(noteChannels.getRootNotes, async (_event, ...args: unknown[]) => {
+    const [limit] = parseArgs(getRootNotesArgsSchema, args);
 
-    return parseNoteList(deps.getNotesForSpace(spaceId, limit));
+    return parseNoteList(deps.getRootNotes(limit));
   });
 
   ipcMain.handle("db-update-note", async (_event, ...args: unknown[]) => {
@@ -154,23 +151,21 @@ export function registerNotesHandlers(
   });
 
   ipcMain.handle("db-search-notes", async (_event, ...args: unknown[]) => {
-    const [query, limit, spaceId, folderId] = parseArgs(searchNotesArgsSchema, args);
+    const [query, limit, folderId, rootOnly] = parseArgs(searchNotesArgsSchema, args);
 
-    return parseNoteList(deps.searchNotes(query, limit, spaceId ?? null, folderId ?? null));
+    return parseNoteList(deps.searchNotes(query, limit, folderId ?? null, rootOnly));
   });
 
   ipcMain.handle("notes-search-content", async (_event, ...args: unknown[]) => {
-    const [query, spaceId] = parseArgs(searchScopeArgsSchema, args);
+    const [query] = parseArgs(searchScopeArgsSchema, args);
 
-    return noteSearchHitSchema.array().parse(deps.searchNoteContent(query, spaceId ?? null));
+    return noteSearchHitSchema.array().parse(deps.searchNoteContent(query));
   });
 
   ipcMain.handle("notes-search-transcripts", async (_event, ...args: unknown[]) => {
-    const [query, spaceId] = parseArgs(searchScopeArgsSchema, args);
+    const [query] = parseArgs(searchScopeArgsSchema, args);
 
-    return transcriptSearchHitSchema
-      .array()
-      .parse(deps.searchNoteTranscripts(query, spaceId ?? null));
+    return transcriptSearchHitSchema.array().parse(deps.searchNoteTranscripts(query));
   });
 
   ipcMain.handle("notes-get-transcript", async (_event, ...args: unknown[]) => {

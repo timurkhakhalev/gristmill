@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { folderContainerKey, runInBackground, spaceContainerKey } from "../stores/noteStore";
+import { folderContainerKey, ROOT_CONTAINER_KEY, runInBackground } from "../stores/noteStore";
 
 export interface NoteMoveTarget {
-  spaceId: number;
   folderId: number | null;
   /** Full folder set to restore (undo); a plain move leaves only folderId. */
   folderIds?: number[];
@@ -12,7 +11,6 @@ export interface DraggedNoteInfo {
   id: number;
   title: string;
   folderId: number | null;
-  spaceId: number;
 }
 
 interface DropTargetInfo extends NoteMoveTarget {}
@@ -26,16 +24,6 @@ interface DragState {
 interface UseNoteDragAndDropOptions {
   untitledLabel: string;
   onMoveToTarget: (noteId: number, target: NoteMoveTarget) => void | Promise<void>;
-  /** Cross-space drops change the note's audience — the caller confirms, then calls commit(). */
-  onCrossSpaceDrop: (note: DraggedNoteInfo, target: NoteMoveTarget, commit: () => void) => void;
-  /** Vetoes cross-space targets: when it returns false the row never accepts the drag. */
-  canCrossSpaceDrop?: (note: DraggedNoteInfo, target: NoteMoveTarget) => boolean;
-  /**
-   * Fired at most once per drag when the dragged note first hovers a target
-   * the cross-space veto rejected — the drop would otherwise die silently
-   * (no highlight, no dialog), which reads as a broken drag.
-   */
-  onCrossSpaceVeto?: (note: DraggedNoteInfo) => void;
   /** Fired after hovering a target for 500ms mid-drag (auto-expand collapsed containers). */
   onHoverTarget?: (key: string) => void;
 }
@@ -43,17 +31,12 @@ interface UseNoteDragAndDropOptions {
 const HOVER_EXPAND_DELAY_MS = 500;
 
 function targetKey(target: NoteMoveTarget): string {
-  return target.folderId != null
-    ? folderContainerKey(target.folderId)
-    : spaceContainerKey(target.spaceId);
+  return target.folderId != null ? folderContainerKey(target.folderId) : ROOT_CONTAINER_KEY;
 }
 
 export function useNoteDragAndDrop({
   untitledLabel,
   onMoveToTarget,
-  onCrossSpaceDrop,
-  canCrossSpaceDrop,
-  onCrossSpaceVeto,
   onHoverTarget,
 }: UseNoteDragAndDropOptions) {
   const [dragState, setDragState] = useState<DragState>({
@@ -67,7 +50,6 @@ export function useNoteDragAndDrop({
   const hoverKeyRef = useRef<string | null>(null);
   const enterCounterRef = useRef<Map<string, number>>(new Map());
   const draggedNoteRef = useRef<DraggedNoteInfo | null>(null);
-  const vetoNotifiedRef = useRef(false);
 
   const clearHoverTimeout = useCallback(() => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
@@ -110,13 +92,11 @@ export function useNoteDragAndDrop({
         requestAnimationFrame(() => ghost.remove());
 
         draggedNoteRef.current = note;
-        vetoNotifiedRef.current = false;
         setDragState((prev) => ({ ...prev, draggingNoteId: note.id }));
         enterCounterRef.current.clear();
       },
       onDragEnd: () => {
         draggedNoteRef.current = null;
-        vetoNotifiedRef.current = false;
         clearHoverTimeout();
         setDragState((prev) => ({
           ...prev,
@@ -146,11 +126,8 @@ export function useNoteDragAndDrop({
 
   const dropTargetHandlers = useCallback(
     (targetInfo: DropTargetInfo) => {
-      const target: NoteMoveTarget = { spaceId: targetInfo.spaceId, folderId: targetInfo.folderId };
+      const target: NoteMoveTarget = { folderId: targetInfo.folderId };
       const key = targetKey(target);
-
-      const crossSpaceVetoed = (note: DraggedNoteInfo): boolean =>
-        note.spaceId !== target.spaceId && !!canCrossSpaceDrop && !canCrossSpaceDrop(note, target);
 
       const canDrop = () => {
         const note = draggedNoteRef.current;
@@ -158,13 +135,9 @@ export function useNoteDragAndDrop({
         if (!note) return false;
 
         const isSameContainer =
-          target.folderId != null
-            ? note.folderId === target.folderId
-            : note.folderId == null && note.spaceId === target.spaceId;
+          target.folderId != null ? note.folderId === target.folderId : note.folderId == null;
 
         if (isSameContainer) return false;
-
-        if (crossSpaceVetoed(note)) return false;
 
         return true;
       };
@@ -178,16 +151,7 @@ export function useNoteDragAndDrop({
         onDragEnter: (e: React.DragEvent) => {
           e.preventDefault();
 
-          if (!canDrop()) {
-            const note = draggedNoteRef.current;
-
-            if (note && crossSpaceVetoed(note) && !vetoNotifiedRef.current) {
-              vetoNotifiedRef.current = true;
-              onCrossSpaceVeto?.(note);
-            }
-
-            return;
-          }
+          if (!canDrop()) return;
 
           const count = (enterCounterRef.current.get(key) ?? 0) + 1;
           enterCounterRef.current.set(key, count);
@@ -235,22 +199,11 @@ export function useNoteDragAndDrop({
             dragOverKey: null,
           }));
 
-          if (note.spaceId !== target.spaceId) {
-            onCrossSpaceDrop(note, target, () => commitDrop(noteId, target, key));
-          } else {
-            commitDrop(noteId, target, key);
-          }
+          commitDrop(noteId, target, key);
         },
       };
     },
-    [
-      onCrossSpaceDrop,
-      canCrossSpaceDrop,
-      onCrossSpaceVeto,
-      onHoverTarget,
-      commitDrop,
-      clearHoverTimeout,
-    ]
+    [onHoverTarget, commitDrop, clearHoverTimeout]
   );
 
   return { dragState, noteDragHandlers, dropTargetHandlers };

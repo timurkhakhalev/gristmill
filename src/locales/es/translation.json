@@ -270,18 +270,12 @@
         "description": "Elige un proveedor, añade tus credenciales y prueba la conexión.",
         "descriptionLineOne": "Elige un proveedor y añade",
         "descriptionLineTwo": "tu clave API.",
-        "selfHosted": "Tengo una clave de modelo autoalojado",
         "providerLabel": "Proveedor",
         "providerPlaceholder": "Elige el proveedor del modelo",
         "modelLabel": "Modelo",
         "modelPlaceholder": "Elige el modelo",
         "apiKey": "Clave API",
         "apiKeyPlaceholder": "Pega tu clave API",
-        "endpointUrl": "URL del endpoint",
-        "endpointPlaceholder": "Pega la URL de tu endpoint",
-        "optional": "Opcional",
-        "modelId": "ID del modelo",
-        "modelIdPlaceholder": "Escribe el ID de tu modelo",
         "testConnection": "Probar conexión",
         "proceed": "Continuar",
         "clinical": "PARA TRANSCRIPCIÓN CLÍNICA",
@@ -1427,26 +1421,12 @@
       "folderAlreadyExists": "Ya existe una carpeta con ese nombre.",
       "folderNotFound": "No se pudo encontrar esa carpeta.",
       "defaultFolderImmutable": "Las carpetas predeterminadas no se pueden modificar.",
-      "spaceNameRequired": "Introduce un nombre para el espacio.",
-      "spaceNotFound": "No se pudo encontrar ese espacio.",
-      "privateSpaceImmutable": "Tu espacio Personal no se puede modificar.",
       "generic": "No se pudo completar el cambio. Inténtalo de nuevo."
     },
     "sidebar": {
       "newNote": "Nueva nota",
       "searchNotes": "Buscar notas",
       "actions": "Acciones"
-    },
-    "structureIntro": {
-      "title": "Dónde están tus notas",
-      "description": "Gristmill separa las ideas privadas del trabajo compartido para que las notas lleguen a las personas adecuadas.",
-      "personal": {
-        "title": "Espacio personal",
-        "description": "Solo tú puedes ver las carpetas y notas de este espacio."
-      },
-      "contents": "Cada espacio puede contener carpetas y notas.",
-      "done": "Entendido",
-      "reopen": "Cómo se organizan los espacios"
     },
     "folders": {
       "defaults": {
@@ -1461,7 +1441,7 @@
       "couldNotRename": "No se pudo renombrar la carpeta",
       "couldNotDelete": "No se pudo eliminar la carpeta",
       "deleteTitle": "¿Eliminar carpeta?",
-      "deleteDescription": "¿Eliminar «{{name}}»? Las notas permanecerán en sus otras carpetas o pasarán a la raíz del espacio.",
+      "deleteDescription": "¿Eliminar «{{name}}»? Las notas permanecerán en sus otras carpetas o pasarán a la raíz de Notas.",
       "deleteDescriptionEmpty": "Esto eliminará permanentemente \"{{name}}\". Esta acción no se puede deshacer.",
       "deleteConfirm": "Eliminar carpeta"
     },
@@ -1807,14 +1787,10 @@
       },
       "consentNotice": "Pide siempre consentimiento al grabar a otras personas"
     },
-    "spaces": {
-      "personal": "Personal",
-      "moveToSpace": "Mover a espacio…",
+    "moves": {
       "moved": "«{{title}}» se movió a {{target}}",
       "couldNotMoveNote": "No se pudo mover la nota",
-      "undo": "Deshacer",
-      "noteCount_one": "{{count}} nota",
-      "noteCount_other": "{{count}} notas"
+      "undo": "Deshacer"
     },
     "dateGroups": {
       "today": "Hoy",
@@ -2123,7 +2099,6 @@
   "commandSearch": {
     "searchError": "La búsqueda falló",
     "searchingTranscripts": "Buscando en las transcripciones…",
-    "allSpaces": "Todos los espacios",
     "title": "Buscar",
     "description": "Buscar en notas y transcripciones",
     "placeholder": "Buscar notas y transcripciones…",

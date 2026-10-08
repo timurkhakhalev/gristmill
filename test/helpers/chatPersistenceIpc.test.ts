@@ -89,7 +89,6 @@ const CONV = {
   id: 5,
   title: "Chat",
   note_id: null,
-  space_id: null,
   folder_id: null,
   archived_at: null,
   created_at: "2026-09-14 10:00:00",
@@ -108,15 +107,15 @@ test("create passes title through untouched and normalizes only omitted ids", as
   const created = await call(h, "db-create-agent-conversation");
   assert.equal(created.id, 5);
   // Omitted title reaches the DB as undefined: the DB default applies.
-  assert.deepEqual(seen, [[undefined, null, null, null]]);
+  assert.deepEqual(seen, [[undefined, null, null]]);
   seen.length = 0;
-  await call(h, "db-create-agent-conversation", "Title", 3, 4, 5);
-  assert.deepEqual(seen, [["Title", 3, 4, 5]]);
+  await call(h, "db-create-agent-conversation", "Title", 3, 5);
+  assert.deepEqual(seen, [["Title", 3, 5]]);
   // An explicit null must survive normalization: the DB rejects it and no
   // row is created — the handler must not rescue null into "Untitled".
   seen.length = 0;
   await call(h, "db-create-agent-conversation", null);
-  assert.deepEqual(seen, [[null, null, null, null]]);
+  assert.deepEqual(seen, [[null, null, null]]);
 });
 
 test("wrong-shaped create args reject before the database runs", async () => {
@@ -151,13 +150,13 @@ test("list channels apply their documented defaults", async () => {
 
   const h = setup(db);
   await call(h, "db-get-conversations-for-note", 7);
-  await call(h, "db-get-conversations-for-container", 3, null);
+  await call(h, "db-get-conversations-for-container", 3);
   await call(h, "db-get-agent-conversations");
   await call(h, "db-search-agent-conversations", "");
   await call(h, "db-get-agent-conversations-with-preview");
   assert.deepEqual(seen, [
     ["note", 7, 20],
-    ["container", 3, null, 20],
+    ["container", 3, 20],
     ["all", 50],
     ["search", "", 20],
     ["preview", 50, 0, false],
@@ -223,7 +222,7 @@ test("container list rows must carry message_count, plain lists must not", async
   };
 
   const h = setup(db);
-  assert.deepEqual(await call(h, "db-get-conversations-for-container", 1, null), [withCount]);
+  assert.deepEqual(await call(h, "db-get-conversations-for-container", 1), [withCount]);
   assert.deepEqual(await call(h, "db-get-agent-conversations"), [CONV]);
   const broken = { ...CONV, archived_at: undefined };
   const db2 = { ...db, getAgentConversations: () => [broken] };

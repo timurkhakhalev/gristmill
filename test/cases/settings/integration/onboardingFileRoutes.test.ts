@@ -24,7 +24,6 @@ test("each offered onboarding model saves its key and resolves the selected file
     "saveTinfoilKey",
     "saveDeepgramKey",
     "saveElevenLabsKey",
-    "saveCustomTranscriptionKey",
   ];
 
   installBrowserGlobals(t, {
@@ -82,9 +81,13 @@ test("each offered onboarding model saves its key and resolves the selected file
     uploadCloudTranscriptionModel: "gpt-4o-mini-transcribe",
   });
   const { resolveTranscriptionRoute } = await vite.ssrLoadModule("/helpers/transcriptionRoute.ts");
+  const { supportedMeetingFileProvider } = await vite.ssrLoadModule(
+    "/helpers/meetingFileTranscription.ts"
+  );
 
-  const { selectResolvedUploadTranscription, selectResolvedMeetingTranscription } =
-    await vite.ssrLoadModule("/config/settingsSelectors.ts");
+  const { selectResolvedUploadTranscription } = await vite.ssrLoadModule(
+    "/config/settingsSelectors.ts"
+  );
 
   let commit!: () => Promise<void>;
   let proceeds = 0;
@@ -112,6 +115,8 @@ test("each offered onboarding model saves its key and resolves the selected file
 
   assert.equal(offered.includes("assemblyai"), false);
   assert.equal(offered.includes("corti"), false);
+  assert.equal(offered.includes("groq"), false);
+  assert.equal(offered.includes("custom"), false);
   assert.ok(offered.includes("openai") && offered.includes("deepgram"));
   let combinations = 0;
 
@@ -125,6 +130,7 @@ test("each offered onboarding model saves its key and resolves the selected file
     assert.ok(models.length);
 
     for (const model of models) {
+      assert.notEqual(supportedMeetingFileProvider(provider, model), null, `${provider}/${model}`);
       await React.act(async () => {
         ui.selects[modelLabel].onChange(model);
         ui.key.onChange({ target: { value: "synthetic-key" } });
@@ -158,43 +164,5 @@ test("each offered onboarding model saves its key and resolves the selected file
   }
 
   assert.equal(proceeds, combinations);
-  await React.act(async () =>
-    useSettingsStore.setState({
-      remoteTranscriptionUrl: "https://old.example.invalid/v1",
-      meetingRemoteTranscriptionUrl: "https://old-meeting.example.invalid/v1",
-      uploadCloudTranscriptionBaseUrl: "https://old-upload.example.invalid/v1",
-      meetingCloudTranscriptionBaseUrl: "https://old-custom.example.invalid/v1",
-    })
-  );
-
-  const findToggle = (node: any): any =>
-    node.attributes?.get("role") === "checkbox"
-      ? node
-      : node.childNodes?.map(findToggle).find(Boolean);
-
-  const toggle = findToggle(container);
-  assert.ok(toggle);
-  const props = toggle[Object.keys(toggle).find((key) => key.startsWith("__reactProps$"))!];
-  await React.act(async () => props.onClick());
-  const endpoint = "https://new.example.invalid/v1";
-  await React.act(async () => {
-    ui.inputs["onboarding.rehaul.provider.endpointPlaceholder"].onChange({
-      target: { value: endpoint },
-    });
-    ui.inputs["onboarding.rehaul.provider.modelIdPlaceholder"].onChange({
-      target: { value: "chosen-model" },
-    });
-  });
-  await React.act(async () => ui.connection.onSuccessChange(true));
-  await React.act(async () => {
-    await commit();
-  });
-  assert.equal(proceeds, combinations + 1);
-
-  for (const select of [selectResolvedUploadTranscription, selectResolvedMeetingTranscription]) {
-    const route = resolveTranscriptionRoute({ settings: select(useSettingsStore.getState()) });
-    assert.equal(route.transport, "http-batch");
-    assert.equal(route.endpoint, endpoint + "/audio/transcriptions");
-    assert.equal(route.model, "chosen-model");
-  }
+  assert.equal(ui.inputs["onboarding.rehaul.provider.endpointPlaceholder"], undefined);
 });

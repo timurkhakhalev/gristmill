@@ -270,18 +270,12 @@
         "description": "Wählen Sie einen Anbieter, fügen Sie Ihre Zugangsdaten hinzu und testen Sie die Verbindung.",
         "descriptionLineOne": "Wählen Sie einen Anbieter und fügen",
         "descriptionLineTwo": "Sie Ihren API-Schlüssel hinzu.",
-        "selfHosted": "Ich habe einen Schlüssel für ein selbst gehostetes Modell",
         "providerLabel": "Anbieter",
         "providerPlaceholder": "Modellanbieter auswählen",
         "modelLabel": "Modell",
         "modelPlaceholder": "Modell auswählen",
         "apiKey": "API-Schlüssel",
         "apiKeyPlaceholder": "API-Schlüssel einfügen",
-        "endpointUrl": "Endpoint-URL",
-        "endpointPlaceholder": "Endpoint-URL einfügen",
-        "optional": "Optional",
-        "modelId": "Modell-ID",
-        "modelIdPlaceholder": "Modell-ID eingeben",
         "testConnection": "Verbindung testen",
         "proceed": "Fortfahren",
         "clinical": "FÜR KLINISCHE TRANSKRIPTION",
@@ -1503,26 +1497,12 @@
       "folderAlreadyExists": "Ein Ordner mit diesem Namen existiert bereits.",
       "folderNotFound": "Dieser Ordner wurde nicht gefunden.",
       "defaultFolderImmutable": "Standardordner können nicht geändert werden.",
-      "spaceNameRequired": "Gib einen Bereichsnamen ein.",
-      "spaceNotFound": "Dieser Bereich wurde nicht gefunden.",
-      "privateSpaceImmutable": "Dein persönlicher Bereich kann nicht geändert werden.",
       "generic": "Die Änderung konnte nicht abgeschlossen werden. Bitte versuche es erneut."
     },
     "sidebar": {
       "newNote": "Neue Notiz",
       "searchNotes": "Notizen suchen",
       "actions": "Aktionen"
-    },
-    "structureIntro": {
-      "title": "Wo Ihre Notizen gespeichert sind",
-      "description": "Gristmill trennt private Gedanken von gemeinsamer Arbeit, damit nur die richtigen Personen Ihre Notizen sehen.",
-      "personal": {
-        "title": "Persönlicher Bereich",
-        "description": "Nur Sie können die Ordner und Notizen hier sehen."
-      },
-      "contents": "Jeder Bereich kann Ordner und Notizen enthalten.",
-      "done": "Verstanden",
-      "reopen": "Organisation der Bereiche erklären"
     },
     "folders": {
       "defaults": {
@@ -1537,7 +1517,7 @@
       "couldNotRename": "Ordner konnte nicht umbenannt werden",
       "couldNotDelete": "Ordner konnte nicht gelöscht werden",
       "deleteTitle": "Ordner löschen?",
-      "deleteDescription": "„{{name}}“ löschen? Notizen bleiben in ihren anderen Ordnern oder werden in die oberste Ebene des Bereichs verschoben.",
+      "deleteDescription": "„{{name}}“ löschen? Notizen bleiben in ihren anderen Ordnern oder werden in die oberste Ebene von Notizen verschoben.",
       "deleteDescriptionEmpty": "Dadurch wird \"{{name}}\" dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
       "deleteConfirm": "Ordner löschen"
     },
@@ -1883,14 +1863,10 @@
       },
       "consentNotice": "Hole immer die Zustimmung ein, wenn du andere aufnimmst"
     },
-    "spaces": {
-      "personal": "Persönlich",
-      "moveToSpace": "In Bereich verschieben…",
+    "moves": {
       "moved": "„{{title}}“ nach {{target}} verschoben",
       "couldNotMoveNote": "Notiz konnte nicht verschoben werden",
-      "undo": "Rückgängig",
-      "noteCount_one": "{{count}} Notiz",
-      "noteCount_other": "{{count}} Notizen"
+      "undo": "Rückgängig"
     },
     "dateGroups": {
       "today": "Heute",
@@ -2123,7 +2099,6 @@
   "commandSearch": {
     "searchError": "Suche fehlgeschlagen",
     "searchingTranscripts": "Transkripte werden durchsucht…",
-    "allSpaces": "Alle Bereiche",
     "title": "Suche",
     "description": "In Notizen und Transkripten suchen",
     "placeholder": "Notizen und Transkripte durchsuchen…",

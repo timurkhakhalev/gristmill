@@ -29,7 +29,6 @@ test("New note opens the saved note from Home and Upload only after creation suc
     title: "New note",
     content: "",
     note_type: "personal",
-    space_id: 1,
     folder_id: null,
     folder_ids: [],
     source_file: null,
@@ -57,10 +56,10 @@ test("New note opens the saved note from Home and Upload only after creation suc
         if (name === "keydown") keyListeners.delete(listener);
       },
       electronAPI: {
-        getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
         getFolders: async () => [],
         getFolderNoteCounts: async () => [],
         getNotes: async () => [...savedNotes],
+        getRootNotes: async () => [...savedNotes],
         saveNote: () =>
           new Promise<NoteMutationResult>((resolve) => {
             resolveSave = resolve;

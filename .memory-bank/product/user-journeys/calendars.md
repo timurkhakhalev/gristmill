@@ -1,51 +1,62 @@
 # Connect calendars
 
-As a Gristmill user, I want to see meetings and receive recording prompts.
-
-## User journey
-
-1. Open Settings → Calendar or the optional calendar onboarding step.
-2. Connect a configured Google/Microsoft account, or enable Apple Calendar access.
-3. Review connected accounts and the primary-calendar preference.
-4. Open upcoming events from Home and respond to recording reminders.
-5. Disconnect an account when it is no longer needed.
-
-## Behavior and limits
-
-- Google and Microsoft use direct OAuth and allow multiple accounts. They read calendars; this UI does not create or edit events.
-- Connect is unavailable when the application lacks the provider OAuth registration. Calendar UI has no fields for those registration credentials.
-- Only primary calendar is enabled by default for Google and Microsoft. The current UI does not offer an arbitrary individual-calendar picker.
-- Apple uses EventKit on macOS and reads Calendar.app accounts. Permission denial and a missing native helper are different errors. Disconnect stops the helper/cache; it does not revoke macOS permission.
-- Settings requests system audio permission before connection and can stop on refusal. Onboarding continues calendar setup after refusal.
-- Reminders are scheduled one minute before events with attendees or a meeting link. They depend on notification settings and show a recording prompt, not automatic recording.
-- An active meeting suppresses prompts; recording/cooldown can queue them.
-- Calendar notes store event participants. Known local names can enrich them, but participants remain identity hints.
-- Disconnect invalidates pending token refresh, calendar-list and event-sync results. Reconnecting the same email creates a new connection identity; old results cannot change it.
-- Google/Microsoft normally refresh every two minutes with error backoff. Stop invalidates in-flight interval and focus outcomes, so late completion cannot re-arm polling. A new explicit sync keeps its normal backoff policy. Apple follows EventKit changes and periodic snapshots.
-
-Google keeps a separate association for each account and calendar ID. Primary status, selection and sync tokens belong to that association. Live events remain eligible while any association is selected; event sync chooses one selected account per calendar. Disconnect removes only that account’s associations and keeps historical event/Note links.
-
-Every Google/Microsoft account removal reconciles the cached active meeting with live calendar rows and reschedules reminders. Removing one account preserves delivered-reminder deduplication for the remaining accounts.
-
-Apple Calendar accepts data and permission messages only from its current helper process. Late stdout from a stopped or replaced helper cannot restore a disconnected calendar or change a replacement connection.
-
-## What to check
-
-- Unconfigured OAuth providers show an unavailable state.
-- Disconnecting Apple preserves the system permission.
-- A reminder offers recording instead of starting it.
-
-## BDD acceptance criteria
-
-- Given OAuth registration is absent, when I open Calendar, then that provider cannot be connected.
-- Given a qualifying event approaches and notifications are enabled, when its reminder is due, then a recording prompt can appear.
+As a Gristmill user, I want to see my meetings in Gristmill and get a prompt to record them.
 
 ## Entry points
 
-- [IntegrationsView.tsx](../../../src/components/IntegrationsView.tsx) — calendar controls.
-- [CalendarConnectionsStep.tsx](../../../src/components/onboarding/CalendarConnectionsStep.tsx) — onboarding permission behavior.
-- [googleCalendarOAuth.ts](../../../src/helpers/googleCalendarOAuth.ts) — Google availability and OAuth.
-- [microsoftCalendarOAuth.ts](../../../src/helpers/microsoftCalendarOAuth.ts) — Microsoft availability and OAuth.
-- [appleCalendarManager.ts](../../../src/helpers/appleCalendarManager.ts) — EventKit lifecycle.
-- [calendarReminderScheduler.ts](../../../src/helpers/calendarReminderScheduler.ts) — reminder eligibility.
-- [meetingDetectionEngine.ts](../../../src/helpers/meetingDetectionEngine.ts) — prompt lifecycle and calendar notes.
+- **Gristmill app → Settings → Calendar** — connect and disconnect calendars.
+- **Gristmill app → first launch → calendar step** — optional connection during setup.
+- **Gristmill app → Home → Coming up → Connect Calendar** — opens Settings → Calendar.
+- **Gristmill meeting notification** — the reminder before a meeting.
+
+## Paths
+
+### Connect Google Calendar or Microsoft Calendar
+
+1. Open Settings → Calendar.
+2. Click **Connect Google Calendar** or **Connect Microsoft Calendar**.
+3. The browser opens the account sign-in. Sign in and allow access. The account appears as **Connected**. System Audio permission is not required to connect a calendar.
+4. To add another account, click **Add another calendar**.
+5. If the provider shows **Set up OAuth to connect**, this build cannot connect it.
+
+### Connect Apple Calendar
+
+1. Open Settings → Calendar and click **Connect Apple Calendar**.
+2. Allow calendar access in the macOS prompt. Gristmill reads the accounts of Calendar.app. System Audio permission is not required.
+3. If you refused calendar access, Gristmill shows **Calendar Access Required**. Click **Open System Settings** and allow access.
+
+### Select which calendars to read
+
+1. For a Google or Microsoft account, use **Sync primary calendar only**. It is on by default.
+2. Turn it off to also read calendars that are shared with you.
+
+### See meetings and get a reminder
+
+1. Open Home. **Coming up** shows the events of the connected calendars. See [Home and navigation](home.md).
+2. If System Audio access is missing and Gristmill can request it, **Coming up** explains that the meeting recorder needs it to capture other participants and offers **Open System Settings**. Calendar events remain available.
+3. One minute before an event with other people or with a meeting link, Gristmill shows a notification with the event title and **Your meeting is starting. Want to take notes?** Notifications must be on.
+4. Click **Join & transcribe** for an event with a meeting link, or **Take notes** for other events. Gristmill does not start a recording without your action.
+5. During another meeting, Gristmill does not show the reminder.
+
+### Use participants in a meeting note
+
+1. Open the note of a calendar event. It shows the event participants.
+2. Use the participants to name speakers. See [Correct speakers](speakers.md).
+
+### Disconnect a calendar
+
+1. Open Settings → Calendar and click **Disconnect** on the account.
+2. Confirm. Gristmill stops reading events from that account. The notes of past events stay.
+3. For Apple Calendar, macOS keeps the permission. Remove it in System Settings if necessary.
+
+## BDD acceptance criteria
+
+- Given System Audio access is refused, when I connect a calendar in Settings, then Gristmill starts the calendar connection without another System Audio request.
+- Given a connected calendar has meetings and Gristmill can request missing System Audio access, when I open Home, then **Coming up** shows the System Audio action with the meetings.
+- Given OAuth is not set up for a provider, when I open Settings → Calendar, then I cannot connect that provider.
+- Given a qualifying event approaches and notifications are on, when the reminder is due, then Gristmill offers to record and does not start a recording.
+- Given I disconnect Apple Calendar, when the disconnection completes, then the macOS permission stays.
+
+## Related documents
+
+- [Calendar architecture](../../architecture/calendars.md) — sync, reminders and connection lifecycle.

@@ -93,6 +93,10 @@ export type OnnxWorkerReply =
 // `raw` is the MessagePortMain payload — the exact-file override keeps the
 // parser signature honest.
 export function parseOnnxWorkerRequest(raw: unknown): OnnxWorkerRequest | null {
+  // Worker messages come from outside the process; a null payload is just
+  // another malformed request, not a crash.
+  if (typeof raw !== "object" || raw === null) return null;
+
   // SAFETY: every field is re-checked below before the object literal is
   // rebuilt; the assertion only carries the checked candidate shape.
   const candidate = raw as {
@@ -129,6 +133,10 @@ export function parseOnnxWorkerRequest(raw: unknown): OnnxWorkerRequest | null {
 }
 
 export function parseOnnxWorkerReply(raw: unknown): OnnxWorkerReply | null {
+  // Worker messages come from outside the process; a null payload is just
+  // another malformed reply, not a crash.
+  if (typeof raw !== "object" || raw === null) return null;
+
   // SAFETY: every field is re-checked below before the reply is rebuilt; the
   // assertion only carries the checked candidate shape.
   const candidate = raw as { id?: unknown; result?: unknown; error?: unknown };

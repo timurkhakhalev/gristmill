@@ -405,7 +405,10 @@ test("Whisper explicit thread request cannot reuse an auto-fallback identity", a
   await h.manager.start("A");
   const manager = h.manager as InstanceType<typeof Whisper.WhisperServerManager>;
   manager.threadSignature = "threads:default";
-  await manager.start("A", { threads: automatic.threads });
+  // A null auto resolution means "no explicit value"; the probe needs a
+  // definite number so the option source (and therefore the start identity)
+  // differs from the first request on every machine.
+  await manager.start("A", { threads: automatic.threads ?? 2 });
   assert.equal(
     h.starts.length,
     2,

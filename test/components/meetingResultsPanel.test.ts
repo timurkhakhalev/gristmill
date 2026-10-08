@@ -238,6 +238,7 @@ async function mountPanel(
     initialCapturePhase = "idle",
     noteTranscript,
     failRefreshAfterCorrection = false,
+    failParticipants = false,
   }: {
     viewMode?: "raw" | "enhanced";
     playback?: { success: boolean; error?: string };
@@ -252,6 +253,7 @@ async function mountPanel(
     // the correction is persisted but the panel cannot observe it, so only its
     // own optimistic update can flag the Summary stale.
     failRefreshAfterCorrection?: boolean;
+    failParticipants?: boolean;
   } = {}
 ) {
   const calls: MountedCalls = {
@@ -266,6 +268,8 @@ async function mountPanel(
     cancel: [],
   };
 
+  let participantLoads = 0;
+  const notifications: string[] = [];
   let listedItems = items;
   let correctionSaved = false;
   let setCapturePhase: (phase: string) => void = () => {};
@@ -279,7 +283,11 @@ async function mountPanel(
     },
     onMeetingProcessingUpdated: () => () => {},
     getSpeakerProfiles: async () => [],
-    getNote: async () => ({ participants: JSON.stringify([{ email: "person@example.com" }]) }),
+    getNote: async () => {
+      participantLoads++;
+      if (failParticipants) throw new Error("participant-load-failed");
+      return { participants: JSON.stringify([{ email: "person@example.com" }]) };
+    },
     onNoteUpdated: () => () => {},
     getNoteOutput: async (request: { noteId: number; scope: "note" | "run"; runId?: string }) => {
       if (request.scope === "note")
@@ -516,7 +524,7 @@ async function mountPanel(
       noExternal: ["@heroui/react"],
       mockModules: {
         "@heroui/react": heroMock,
-        "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
+        "react-i18next": `const t = (key, options) => options?.defaultValue ?? key; export function useTranslation() { return { t }; }`,
         "/hooks/useDateTimePreferences": `export function useDateTimePreferences() { return { dateFormat: "locale", timeFormat: "locale" }; }`,
         "/ui/ProviderIcon": `export const ProviderIcon = () => null;`,
         "/ui/dialog": `export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };`,
@@ -579,9 +587,22 @@ async function mountPanel(
     return tree;
   }
 
+  const { ToastContext } = await vite.ssrLoadModule("/components/ui/useToast.ts");
+  function ToastHarness() {
+    const [toastCount, setToastCount] = React.useState(0);
+    const toast = React.useCallback((props: { title: string }) => {
+      notifications.push(props.title);
+      setToastCount((count: number) => count + 1);
+      return String(notifications.length);
+    }, []);
+    return React.createElement(ToastContext.Provider, {
+      value: { toast, toastCount, dismiss: () => {} },
+    }, React.createElement(Harness));
+  }
+
   root = createRoot(container);
   await React.act(async () => {
-    root.render(React.createElement(Harness));
+    root.render(React.createElement(failParticipants ? ToastHarness : Harness));
     await Promise.resolve();
   });
 
@@ -602,6 +623,8 @@ async function mountPanel(
 
   return {
     calls,
+    notifications,
+    participantLoads: () => participantLoads,
     flush,
     tree: () => tree,
     dialog: () => mocks.__meetingResultsConfirmDialog!,
@@ -1515,3 +1538,13 @@ for (const taskStatus of [undefined, "pending", "running", "complete", "provider
     }
   });
 }
+
+test("calendar participant failure shows one toast without restarting the request", async (t: TestContext) => {
+  const ui = await mountPanel(t, [], { failParticipants: true });
+  await ui.flush(() => {});
+  assert.equal(ui.participantLoads(), 1);
+  assert.deepEqual(ui.notifications, ["Could not load calendar participants."]);
+  await ui.setCapturePhase("recording");
+  assert.equal(ui.participantLoads(), 1);
+  assert.equal(ui.notifications.length, 1);
+});

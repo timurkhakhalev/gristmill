@@ -4,18 +4,18 @@
 // local modules, so build-main.js bundles the final preload.
 import {
   diarizationDownloadProgressEventSchema,
+  contactProfileSchema,
+  speakerMappingEntrySchema,
+  publicSpeakerProfileSchema,
   speakerChannels,
   type AttachSpeakerEmailResult,
   type CancelDiarizationResult,
-  type ContactProfile,
   type DiarizationDownloadProgressEvent,
   type DiarizationModelActionResult,
   type DiarizationModelStatus,
-  type PublicSpeakerProfile,
   type SetSpeakerMappingResult,
   type SpeakerApi,
   type SpeakerContact,
-  type SpeakerMappingEntry,
 } from "../contracts/speakerProfiles.js";
 import { z } from "zod";
 
@@ -77,9 +77,13 @@ export function createSpeakerBridge(ipcRenderer: IpcRendererLike): SpeakerApi {
     upsertContact: (contact: { email: string; displayName?: string | null }) =>
       passthroughInvoke<{ success: boolean }>(ipcRenderer, c.upsertContact, contact),
     getContactProfiles: (emails: string[]) =>
-      passthroughInvoke<ContactProfile[]>(ipcRenderer, c.getContactProfiles, emails),
+      ipcRenderer
+        .invoke(c.getContactProfiles, emails)
+        .then((raw) => contactProfileSchema.array().parse(raw)),
     getSpeakerMappings: (noteId: number) =>
-      passthroughInvoke<SpeakerMappingEntry[]>(ipcRenderer, c.getSpeakerMappings, noteId),
+      ipcRenderer
+        .invoke(c.getSpeakerMappings, noteId)
+        .then((raw) => speakerMappingEntrySchema.array().parse(raw)),
     setSpeakerMapping: (noteId, speakerId, displayName, email, profileId) =>
       passthroughInvoke<SetSpeakerMappingResult>(
         ipcRenderer,
@@ -98,7 +102,9 @@ export function createSpeakerBridge(ipcRenderer: IpcRendererLike): SpeakerApi {
         speakerId
       ),
     getSpeakerProfiles: () =>
-      passthroughInvoke<PublicSpeakerProfile[]>(ipcRenderer, c.getSpeakerProfiles),
+      ipcRenderer
+        .invoke(c.getSpeakerProfiles)
+        .then((raw) => publicSpeakerProfileSchema.array().parse(raw)),
     attachSpeakerEmail: (profileId: number, email: string | null) =>
       passthroughInvoke<AttachSpeakerEmailResult>(
         ipcRenderer,

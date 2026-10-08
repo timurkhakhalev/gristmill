@@ -288,17 +288,17 @@ export default function MeetingResultsPanel({
   const [popoverTab, setPopoverTab] = useState<"transcript" | "audio">("audio");
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const [message, setMessage] = useState("");
-  const toastApi = useContext(ToastContext);
+  const toast = useContext(ToastContext)?.toast;
 
   // Outcomes of one-off actions go to a toast; the inline line is only a fallback outside ToastProvider.
   const notify = useCallback(
     (text: string, variant: "default" | "destructive" | "success" = "default") => {
       if (!text) return setMessage("");
 
-      if (toastApi) toastApi.toast({ title: text, variant });
+      if (toast) toast({ title: text, variant });
       else setMessage(text);
     },
-    [toastApi]
+    [toast]
   );
 
   const [busy, setBusy] = useState(false);

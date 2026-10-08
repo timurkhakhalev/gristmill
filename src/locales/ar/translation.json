@@ -720,26 +720,12 @@
       "folderAlreadyExists": "يوجد مجلد بهذا الاسم بالفعل.",
       "folderNotFound": "تعذر العثور على ذلك المجلد.",
       "defaultFolderImmutable": "لا يمكن تغيير المجلدات الافتراضية.",
-      "spaceNameRequired": "أدخل اسم مساحة.",
-      "spaceNotFound": "تعذر العثور على تلك المساحة.",
-      "privateSpaceImmutable": "لا يمكن تغيير مساحتك الشخصية.",
       "generic": "تعذر إكمال التغيير. يرجى المحاولة مرة أخرى."
     },
     "sidebar": {
       "newNote": "ملاحظة جديدة",
       "searchNotes": "البحث في الملاحظات",
       "actions": "الإجراءات"
-    },
-    "structureIntro": {
-      "title": "أين تُحفظ ملاحظاتك",
-      "description": "يفصل Gristmill الأفكار الخاصة عن العمل المشترك حتى يرى الأشخاص المناسبون الملاحظات المناسبة.",
-      "personal": {
-        "title": "المساحة الشخصية",
-        "description": "أنت فقط من يمكنه رؤية المجلدات والملاحظات هنا."
-      },
-      "contents": "يمكن أن تحتوي كل مساحة على مجلدات وملاحظات.",
-      "done": "فهمت",
-      "reopen": "تعرف على كيفية تنظيم المساحات"
     },
     "folders": {
       "defaults": {
@@ -754,7 +740,7 @@
       "couldNotRename": "تعذر إعادة تسمية المجلد",
       "couldNotDelete": "تعذر حذف المجلد",
       "deleteTitle": "حذف المجلد؟",
-      "deleteDescription": "هل تريد حذف «{{name}}»؟ ستبقى الملاحظات في مجلداتها الأخرى أو تنتقل إلى جذر المساحة.",
+      "deleteDescription": "هل تريد حذف «{{name}}»؟ ستبقى الملاحظات في مجلداتها الأخرى أو تنتقل إلى جذر الملاحظات.",
       "deleteDescriptionEmpty": "سيؤدي هذا إلى حذف \"{{name}}\" بشكل دائم. لا يمكن التراجع عن هذا.",
       "deleteConfirm": "حذف المجلد"
     },
@@ -1106,18 +1092,10 @@
       },
       "consentNotice": "احصل دائمًا على الموافقة عند تسجيل الآخرين"
     },
-    "spaces": {
-      "personal": "شخصي",
-      "moveToSpace": "نقل إلى مساحة…",
+    "moves": {
       "moved": "تم نقل “{{title}}” إلى {{target}}",
       "couldNotMoveNote": "تعذر نقل الملاحظة",
-      "undo": "تراجع",
-      "noteCount_one": "{{count}} ملاحظة",
-      "noteCount_other": "{{count}} ملاحظة",
-      "noteCount_zero": "{{count}} ملاحظات",
-      "noteCount_two": "{{count}} ملاحظتان",
-      "noteCount_few": "{{count}} ملاحظات",
-      "noteCount_many": "{{count}} ملاحظةً"
+      "undo": "تراجع"
     },
     "dateGroups": {
       "today": "اليوم",
@@ -1206,18 +1184,12 @@
         "description": "اختر مزودًا، وأضف بيانات الاعتماد الخاصة بك، واختبر الاتصال.",
         "descriptionLineOne": "اختر مزودًا وأضف",
         "descriptionLineTwo": "مفتاح API الخاص بك.",
-        "selfHosted": "لدي مفتاح نموذج مستضاف ذاتيًا",
         "providerLabel": "المزود",
         "providerPlaceholder": "اختر مزود النموذج",
         "modelLabel": "النموذج",
         "modelPlaceholder": "اختر النموذج",
         "apiKey": "مفتاح API",
         "apiKeyPlaceholder": "الصق مفتاح API الخاص بك",
-        "endpointUrl": "عنوان URL لنقطة النهاية",
-        "endpointPlaceholder": "الصق عنوان URL لنقطة النهاية الخاص بك",
-        "optional": "اختياري",
-        "modelId": "معرف النموذج",
-        "modelIdPlaceholder": "اكتب معرف النموذج الخاص بك",
         "testConnection": "اختبار الاتصال",
         "proceed": "متابعة",
         "clinical": "للتفريغ السريري",
@@ -2159,7 +2131,6 @@
   "commandSearch": {
     "searchError": "فشل البحث",
     "searchingTranscripts": "جارٍ البحث في النصوص المفرغة…",
-    "allSpaces": "جميع المساحات",
     "title": "البحث",
     "description": "البحث في جميع الملاحظات والنصوص المفرَّغة",
     "placeholder": "البحث في الملاحظات والنصوص المفرَّغة...",

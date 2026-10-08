@@ -55,8 +55,7 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
       noteType?: string,
       sourceFile?: string | null,
       audioDuration?: number | null,
-      folderId?: number | null,
-      spaceId?: number | null
+      folderId?: number | null
     ) =>
       ipcRenderer
         .invoke(
@@ -66,8 +65,7 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
           noteType,
           sourceFile,
           audioDuration,
-          folderId,
-          spaceId
+          folderId
         )
         .then((raw) => parseResult(noteMutationResultSchema, raw, noteChannels.saveNote)),
     getNote: (id: number) =>
@@ -77,16 +75,15 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
     getNotes: (
       noteType?: string | null,
       limit?: number,
-      folderId?: number | null,
-      spaceId?: number | null
+      folderId?: number | null
     ) =>
       ipcRenderer
-        .invoke(noteChannels.getNotes, noteType, limit, folderId, spaceId)
+        .invoke(noteChannels.getNotes, noteType, limit, folderId)
         .then((raw) => parseResult(noteListResultSchema, raw, noteChannels.getNotes)),
-    getSpaceNotes: (spaceId: number, limit?: number) =>
+    getRootNotes: (limit?: number) =>
       ipcRenderer
-        .invoke(noteChannels.getSpaceNotes, spaceId, limit)
-        .then((raw) => parseResult(noteListResultSchema, raw, noteChannels.getSpaceNotes)),
+        .invoke(noteChannels.getRootNotes, limit)
+        .then((raw) => parseResult(noteListResultSchema, raw, noteChannels.getRootNotes)),
     updateNote: (id: number, updates: NoteUpdate) =>
       ipcRenderer
         .invoke(noteChannels.updateNote, id, updates)
@@ -98,27 +95,25 @@ export function createNotesBridge(ipcRenderer: IpcRendererLike): NotesApi {
     searchNotes: (
       query: string,
       limit?: number,
-      spaceId?: number | null,
-      folderId?: number | null
+      folderId?: number | null,
+      rootOnly?: boolean
     ) =>
       ipcRenderer
-        .invoke(noteChannels.searchNotes, query, limit, spaceId, folderId)
+        .invoke(noteChannels.searchNotes, query, limit, folderId, rootOnly)
         .then((raw) => parseResult(noteListResultSchema, raw, noteChannels.searchNotes)),
-    searchNoteContent: (query, spaceId) =>
+    searchNoteContent: (query) =>
       invokeParseArray(
         noteSearchHitSchema,
         ipcRenderer,
         noteChannels.searchNoteContent,
-        query,
-        spaceId
+        query
       ),
-    searchNoteTranscripts: (query, spaceId) =>
+    searchNoteTranscripts: (query) =>
       invokeParseArray(
         transcriptSearchHitSchema,
         ipcRenderer,
         noteChannels.searchNoteTranscripts,
-        query,
-        spaceId
+        query
       ),
     getNoteOutput: (request) =>
       ipcRenderer

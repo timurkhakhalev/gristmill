@@ -10,10 +10,9 @@ declare const ipcMain: {
 
 registerChatPersistenceHandlers(ipcMain, {
   database: {
-    createAgentConversation: (title, noteId, spaceId, folderId) => {
+    createAgentConversation: (title, noteId, folderId) => {
       void title;
       void noteId;
-      void spaceId;
       void folderId;
       return null;
     },
@@ -25,7 +24,6 @@ registerChatPersistenceHandlers(ipcMain, {
               id: 1,
               title: "t",
               note_id: null,
-              space_id: null,
               folder_id: null,
               archived_at: null,
               created_at: "c",
@@ -34,7 +32,7 @@ registerChatPersistenceHandlers(ipcMain, {
           ]
         : [];
     },
-    getConversationsForContainer: (spaceId, folderId, limit) => {
+    getConversationsForContainer: (folderId, limit) => {
       void folderId;
       void limit;
       return [
@@ -42,7 +40,6 @@ registerChatPersistenceHandlers(ipcMain, {
           id: 1,
           title: "t",
           note_id: null,
-          space_id: spaceId,
           folder_id: null,
           archived_at: null,
           created_at: "c",

@@ -22,9 +22,9 @@ test("tree horizontal keys mirror logical inward and outward movement in RTL", a
   assert.equal(treeHorizontalIntent("ArrowUp", "rtl"), null);
 });
 
-test("SpacesTree resolves horizontal keyboard intent from the active i18n direction", () => {
+test("NotesTree resolves horizontal keyboard intent from the active i18n direction", () => {
   const source = fs.readFileSync(
-    path.join(__dirname, "../../src/components/notes/SpacesTree.tsx"),
+    path.join(__dirname, "../../src/components/notes/NotesTree.tsx"),
     "utf8"
   );
 

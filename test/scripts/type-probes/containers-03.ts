@@ -9,22 +9,20 @@ declare const ipcMain: {
 
 registerContainerHandlers(ipcMain, {
   database: {
-    getFolders: (spaceId) => {
-      console.log(spaceId);
+    getFolders: () => {
       return [
         {
           id: 1,
           name: "F",
           is_default: 0,
           sort_order: 0,
-          space_id: 1,
           created_at: "t",
           updated_at: "t",
         },
       ];
     },
-    createFolder: (name, spaceId) => {
-      console.log(name, spaceId);
+    createFolder: (name) => {
+      console.log(name);
       return { success: true, folder: null };
     },
     deleteFolder: (id) => {
@@ -35,24 +33,15 @@ registerContainerHandlers(ipcMain, {
       console.log(id, name);
       return { success: true, folder: null };
     },
-    reorderFolders: (spaceId, folderIds) => {
-      console.log(spaceId, folderIds);
+    reorderFolders: (folderIds) => {
+      console.log(folderIds);
       return { success: true };
     },
     updateFolderStyle: (id, style) => {
       console.log(id, style);
       return { success: true, folder: null };
     },
-    moveFolderToSpace: (id, spaceId) => {
-      console.log(id, spaceId);
-      return { success: true, folder: null, notes: [] };
-    },
     getFolderNoteCounts: () => [],
-    getSpaces: () => [],
-    updateSpace: (id, updates) => {
-      console.log(id, updates);
-      return { success: true, space: null };
-    },
   },
   noteFilesEnabled: () => false,
   getFolderName: (folderId) => (folderId > 0 ? "F" : null),

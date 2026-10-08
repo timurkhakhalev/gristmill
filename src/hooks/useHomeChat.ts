@@ -34,7 +34,7 @@ export function useHomeChat(notes: NoteItem[]): UseHomeChatReturn {
   const conversationId = persistence.conversationId;
 
   const noteContext = useMemo(() => {
-    const header = `The user is on the Home screen, which lists their ${notes.length} most recent notes across all spaces.`;
+    const header = `The user is on the Home screen, which lists their ${notes.length} most recent notes from all folders.`;
 
     const noteBlocks = notes.slice(0, MAX_CONTEXT_NOTES).map((note) => {
       const body = (note.enhanced_content || note.content || "").slice(0, NOTE_SNIPPET_LENGTH);

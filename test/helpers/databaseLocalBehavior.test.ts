@@ -46,14 +46,11 @@ function createDb(t: import("node:test").TestContext) {
   }
 }
 
-test("clean profile seeds one private space and local folders", (t: import("node:test").TestContext) => {
+test("clean profile seeds a Personal folder without a spaces table", (t: import("node:test").TestContext) => {
   const db = createDb(t);
 
   if (!db) return;
-  assert.deepEqual(
-    db.getSpaces().map((space: any) => space.kind),
-    ["private"]
-  );
+  assert.equal(db.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'spaces'").get(), undefined);
   assert.deepEqual(
     db.getFolders().map((folder: any) => folder.name),
     ["Personal"]
@@ -65,13 +62,12 @@ test("notes and embedded chat remain local and scoped to containers", (t: import
   const db = createDb(t);
 
   if (!db) return;
-  const spaceId = db.getPrivateSpaceId();
-  const folderId = db.createFolder("Meetings", spaceId).folder.id;
-  const note = db.saveNote("Meeting", "body", "meeting", null, null, folderId, spaceId).note;
-  assert.equal(db.getNotesForSpace(spaceId)[0].id, note.id);
-  const conversation = db.createAgentConversation("Questions", note.id, spaceId, folderId);
+  const folderId = db.createFolder("Meetings").folder.id;
+  const note = db.saveNote("Meeting", "body", "meeting", null, null, folderId).note;
+  assert.equal(db.getNotes(null, 50, folderId)[0].id, note.id);
+  const conversation = db.createAgentConversation("Questions", note.id, folderId);
   db.addAgentMessage(conversation.id, "user", "What happened?");
-  assert.equal(db.getConversationsForContainer(spaceId, folderId)[0].message_count, 1);
+  assert.equal(db.getConversationsForNote(note.id)[0].id, conversation.id);
   db.close();
 });
 
@@ -115,9 +111,8 @@ test("folder and note icons persist, trim and clear", (t: import("node:test").Te
   const db = createDb(t);
 
   if (!db) return;
-  const spaceId = db.getPrivateSpaceId();
-  const folderId = db.createFolder("Meetings", spaceId).folder.id;
-  const noteId = db.saveNote("Idea", "body", "personal", null, null, folderId, spaceId).note.id;
+  const folderId = db.createFolder("Meetings").folder.id;
+  const noteId = db.saveNote("Idea", "body", "personal", null, null, folderId).note.id;
 
   assert.equal(db.updateFolderStyle(folderId, { icon: " 🚀 " }).folder.icon, "🚀");
   assert.equal(db.updateNote(noteId, { icon: "💡" }).note.icon, "💡");
@@ -128,12 +123,12 @@ test("folder and note icons persist, trim and clear", (t: import("node:test").Te
   assert.equal(db.updateFolderStyle(folderId, { color: "blue" }).folder.color, "blue");
   assert.equal(db.updateFolderStyle(folderId, { color: "not-a-color" }).folder.color, null);
 
-  const second = db.createFolder("Videos", spaceId).folder.id;
-  const third = db.createFolder("Clients", spaceId).folder.id;
-  db.reorderFolders(spaceId, [third, second, folderId]);
+  const second = db.createFolder("Videos").folder.id;
+  const third = db.createFolder("Clients").folder.id;
+  db.reorderFolders([third, second, folderId]);
   assert.deepEqual(
     db
-      .getFolders(spaceId)
+      .getFolders()
       .map((folder: any) => folder.id)
       .filter((id: number) => [folderId, second, third].includes(id)),
     [third, second, folderId]

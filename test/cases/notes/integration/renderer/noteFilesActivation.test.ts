@@ -116,10 +116,9 @@ async function fixture(t: import("node:test").TestContext) {
     removeListener() {},
   });
 
-  const space = db.getSpaces()[0];
 
   const save = (title: string, folderId: number | null = null) =>
-    db.saveNote(title, "persisted body", "personal", null, null, folderId, space.id).note;
+    db.saveNote(title, "persisted body", "personal", null, null, folderId).note;
 
   return {
     db,
@@ -128,7 +127,6 @@ async function fixture(t: import("node:test").TestContext) {
     mirror,
     bridge,
     handlers,
-    space,
     save,
     granolaState,
     rebuilds: () => rebuilds,
@@ -222,8 +220,8 @@ test("real Personal folder rename/delete preserves root and surviving mirrors", 
   const root = f.save("Root");
 
   const personal =
-    f.db.getFolders(f.space.id).find((folder: { name: string }) => folder.name === "Personal") ??
-    f.db.createFolder("Personal", f.space.id).folder;
+    f.db.getFolders().find((folder: { name: string }) => folder.name === "Personal") ??
+    f.db.createFolder("Personal").folder;
 
   const nested = f.save("Nested", personal.id);
   await f.bridge.noteFilesSetEnabled(true);
@@ -237,7 +235,7 @@ test("real Personal folder rename/delete preserves root and surviving mirrors", 
   await flush();
   assert.match(f.mirror.getNotePath(root.id)!, /Personal/);
   assert.match(f.mirror.getNotePath(nested.id)!, /Personal/);
-  const other = f.db.createFolder("Personal", f.space.id).folder;
+  const other = f.db.createFolder("Personal").folder;
   const surviving = f.save("Survivor", other.id);
   f.owner._asyncMirrorWrite(surviving);
   await flush();

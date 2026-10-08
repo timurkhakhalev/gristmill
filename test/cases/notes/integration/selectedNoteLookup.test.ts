@@ -29,7 +29,6 @@ function note(id: number, folderId: number | null, title: string): NoteItem {
     title,
     content: `body ${id}`,
     note_type: "personal",
-    space_id: 1,
     folder_id: folderId,
     folder_ids: folderId == null ? [] : [folderId],
     source_file: null,
@@ -72,10 +71,10 @@ async function mountStore(
     window: {
       matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
       electronAPI: {
-        getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
         getFolders: async () => [],
         getFolderNoteCounts: async () => [],
         getNotes: async () => rows,
+        getRootNotes: async () => rows.filter((row) => row.folder_id == null),
         getNote: async (id: number) => {
           getNoteCalls += 1;
 

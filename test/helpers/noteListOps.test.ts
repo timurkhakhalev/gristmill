@@ -9,7 +9,7 @@ const load = () => import("../../src/stores/noteListOps.ts");
 
 type NoteItem = import("../../src/contracts/notes.ts").NoteItem;
 
-const note = (id: number, folderId: number | null = 1, spaceId = 1): NoteItem => ({
+const note = (id: number, folderId: number | null = 1): NoteItem => ({
   id,
   title: "",
   content: "",
@@ -23,7 +23,6 @@ const note = (id: number, folderId: number | null = 1, spaceId = 1): NoteItem =>
   enhanced_at_content_hash: null,
   folder_id: folderId,
   folder_ids: folderId == null ? [] : [folderId],
-  space_id: spaceId,
   transcript: null,
   calendar_event_id: null,
   participants: null,
@@ -37,7 +36,7 @@ test("removes the note from every container list that holds it", async () => {
   const state = {
     notesByContainer: {
       "f:1": [note(1), note(2)],
-      "s:1": [note(2), note(3)],
+      "root": [note(2), note(3)],
     },
     notes: [note(1), note(2)],
     activeNoteId: null,
@@ -51,7 +50,7 @@ test("removes the note from every container list that holds it", async () => {
     [1]
   );
   assert.deepEqual(
-    result.notesByContainer["s:1"].map((n) => n.id),
+    result.notesByContainer["root"].map((n) => n.id),
     [3]
   );
 });
@@ -131,22 +130,22 @@ test("tears down multiple containers and clears an active note inside them", asy
 
   const state = {
     notesByContainer: {
-      "s:1": [note(1, null, 1)],
-      "f:2": [note(2, 2, 1)],
-      "s:3": [note(3, null, 3)],
+      "root": [note(1, null)],
+      "f:2": [note(2, 2)],
+      "f:3": [note(3, null)],
     },
-    expandedContainers: new Set(["s:1", "f:2", "s:3"]),
+    expandedContainers: new Set(["root", "f:2", "f:3"]),
     activeNoteId: 2,
   };
 
-  const result = teardownNoteContainers(state, ["s:1", "f:2"]);
+  const result = teardownNoteContainers(state, ["root", "f:2"]);
 
-  assert.deepEqual(Object.keys(result.notesByContainer), ["s:3"]);
+  assert.deepEqual(Object.keys(result.notesByContainer), ["f:3"]);
   assert.deepEqual(
     result.removedNotes.map((n) => n.id),
     [1, 2]
   );
-  assert.deepEqual([...result.expandedContainers], ["s:3"]);
+  assert.deepEqual([...result.expandedContainers], ["f:3"]);
   assert.equal(result.activeNoteId, null);
 });
 
@@ -168,31 +167,11 @@ test("container teardown preserves active notes outside the removed containers",
   assert.equal(result.activeNoteId, 2);
 });
 
-test("account reset state contains no cached content, context, shares, or conflicts", async () => {
-  const { createClearedAccountNoteState } = await load();
-
-  const state = createClearedAccountNoteState();
-
-  assert.deepEqual(state.notes, []);
-  assert.deepEqual(state.spaces, []);
-  assert.deepEqual(state.folders, []);
-  assert.deepEqual(state.folderCounts, {});
-  assert.deepEqual(state.spaceRootCounts, {});
-  assert.deepEqual(state.notesByContainer, {});
-  assert.deepEqual([...state.expandedContainers], []);
-  assert.equal(state.activeContext, null);
-  assert.equal(state.activeNoteId, null);
-  assert.equal(state.isTreeLoading, true);
-  assert.equal(state.migration, null);
-  assert.deepEqual([...state.shareByCloudId], []);
-  assert.deepEqual(state.noteConflicts, {});
-});
-
 test("account reset invalidates every in-flight keyed load generation", async () => {
   const { invalidateKeyedLoadGenerations } = await load();
 
   const generations = new Map([
-    ["s:1", 2],
+    ["root", 2],
     ["f:8", 7],
   ]);
 
@@ -201,7 +180,7 @@ test("account reset invalidates every in-flight keyed load generation", async ()
   assert.deepEqual(
     [...generations],
     [
-      ["s:1", 3],
+      ["root", 3],
       ["f:8", 8],
     ]
   );

@@ -30,7 +30,7 @@ Recording and results:
 
 Notes:
 
-- [notes.md](notes.md) — write notes, folders, spaces and search.
+- [notes.md](notes.md) — write notes, use folders and search.
 - [note-files.md](note-files.md) — the Markdown copy of notes on disk.
 
 AI:

@@ -15,7 +15,7 @@ User paths: [Note files](../product/user-journeys/note-files.md). Write effects:
 
 - Default storage is the notes directory under Electron `userData`.
 - A note uses a Markdown file with metadata and Summary or manual content. The transcript is a separate file.
-- The backend groups by folder name, not by space hierarchy. Equal folder names share a directory. Root notes use Personal.
+- The backend groups notes by folder name. Root notes use Personal.
 - Folder rename reprojects assigned notes. It does not rename a shared directory.
 - Root notes stay in Personal when a real folder of that name changes or is deleted.
 
@@ -38,7 +38,7 @@ User paths: [Note files](../product/user-journeys/note-files.md). Write effects:
 
 - `src/components/SettingsPage.tsx` — Store note files control and errors.
 - `src/stores/settingsStore.ts` — configuration owner.
-- `src/components/notes/SpacesTree.tsx` — Finder actions.
+- `src/components/notes/NotesTree.tsx` — Finder actions.
 - `src/helpers/noteFilesIpcHandlers.ts` — mirror commands and reveal.
 - `src/helpers/ipcHandlers.ts` — main mirror state.
 - `src/helpers/markdownMirror.ts` — Markdown projection.

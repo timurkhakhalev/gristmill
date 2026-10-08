@@ -127,14 +127,12 @@ async function createFixture(t: import("node:test").TestContext, mirrorError?: E
       },
     }),
     getNote: (id) => db.getNote(id),
-    getNotes: (noteType, limit, folderId, spaceId) =>
-      db.getNotes(noteType, limit, folderId, spaceId),
-    getNotesForSpace: (spaceId, limit) => db.getNotesForSpace(spaceId, limit),
+    getNotes: (noteType, limit, folderId) => db.getNotes(noteType, limit, folderId),
+    getRootNotes: (limit) => db.getRootNotes(limit),
     deleteNoteInternal: () => {
       throw new Error("replaced below");
     },
-    searchNotes: (query, limit, spaceId, folderId) =>
-      db.searchNotes(query, limit, spaceId, folderId),
+    searchNotes: (query, limit, folderId) => db.searchNotes(query, limit, folderId),
     searchNoteContent: () => [],
     searchNoteTranscripts: () => [],
     getNoteOutput: (request) =>
@@ -218,7 +216,7 @@ test("save → get → update → search/list → delete round-trips through rea
   if (!ctx) return;
   const { call, sent, db, effects, flush } = ctx;
 
-  const saved = await call("db-save-note", "Title", "Body", "personal", null, 3, null, null);
+  const saved = await call("db-save-note", "Title", "Body", "personal", null, 3, null);
   assert.equal(saved.success, true);
   assert.equal(saved.note.title, "Title");
   assert.equal(sent.filter((s) => s.channel === "note-added").length, 0, "event waits a tick");
@@ -237,20 +235,19 @@ test("save → get → update → search/list → delete round-trips through rea
   await flush();
   assert.equal(sent.filter((s) => s.channel === "note-updated").length, 1);
 
-  const listed = await call("db-get-notes", null, 100, null, null);
+  const listed = await call("db-get-notes", null, 100, null);
   assert.ok(
     listed.some((n: import("../../src/contracts/notes.ts").NoteItem) => n.id === saved.note.id)
   );
 
-  const found = await call("db-search-notes", "T2", 50, null, null);
+  const found = await call("db-search-notes", "T2", 50, null);
   assert.ok(
     found.some((n: import("../../src/contracts/notes.ts").NoteItem) => n.id === saved.note.id)
   );
 
-  const spaceId = db.getPrivateSpaceId();
-  const spaceNotes = await call("db-get-space-notes", spaceId, 50);
+  const rootNotes = await call("db-get-root-notes", 50);
   assert.ok(
-    spaceNotes.some((n: import("../../src/contracts/notes.ts").NoteItem) => n.id === saved.note.id)
+    rootNotes.some((n: import("../../src/contracts/notes.ts").NoteItem) => n.id === saved.note.id)
   );
 
   const deleted = await call("db-delete-note", saved.note.id);
@@ -327,7 +324,7 @@ test("participants update refreshes speaker configuration after mirror without n
       }),
       getNote: (id) => db1.getNote(id),
       getNotes: (...a) => db1.getNotes(...a),
-      getNotesForSpace: (...a) => db1.getNotesForSpace(...a),
+      getRootNotes: (...a) => db1.getRootNotes(...a),
       deleteNoteInternal: (id) => ctx.deleteCalls.push(id),
       searchNotes: (...a) => db1.searchNotes(...a),
       searchNoteContent: () => [],
@@ -377,26 +374,22 @@ test("folder-only update via IPC matches the DB baseline cases", async (t: impor
 
   if (!ctx) return;
   const { call, db, flush } = ctx;
-  const spaceId = db.getPrivateSpaceId();
-  db.createFolder("Meetings", spaceId);
+  db.createFolder("Meetings");
 
   const folders = Object.fromEntries(
-    db.getFolders(spaceId).map((f: ReturnType<Database["getFolders"]>[number]) => [f.name, f.id])
+    db.getFolders().map((f: ReturnType<Database["getFolders"]>[number]) => [f.name, f.id])
   );
 
   const note = db.saveNote("N", "").note;
 
   const moved = await call("db-update-note", note.id, { folder_id: folders.Meetings });
   assert.equal(moved.note.folder_id, folders.Meetings);
-  assert.equal(moved.note.space_id, spaceId);
 
   const forced = await call("db-update-note", note.id, {
     folder_id: folders.Personal,
-    space_id: spaceId,
   });
 
   assert.equal(forced.note.folder_id, folders.Personal);
-  assert.equal(forced.note.space_id, spaceId);
 
   const failed = await call("db-update-note", note.id, { folder_id: 987654 });
   assert.deepEqual(failed, { success: false, error: "Folder not found" });
@@ -404,11 +397,10 @@ test("folder-only update via IPC matches the DB baseline cases", async (t: impor
   assert.equal(after.folder_id, folders.Personal);
 
   // The upload completion screen's "No folder" choice: a null folder_id is a
-  // real destination (the space root), not a rejected value like 0.
+  // real destination (the root), not a rejected value like 0.
   const cleared = await call("db-update-note", note.id, { folder_id: null });
   assert.equal(cleared.success, true);
   assert.equal(cleared.note.folder_id, null);
-  assert.equal(cleared.note.space_id, spaceId);
   await flush();
 });
 
@@ -448,7 +440,7 @@ test("mirror failure preserves durable edits, events and participant callbacks",
   const ctx = await createFixture(t, new Error("Mirror folder unavailable"));
 
   if (!ctx) return;
-  const saved = await ctx.call("db-save-note", "", "", "personal", null, null, null, null);
+  const saved = await ctx.call("db-save-note", "", "", "personal", null, null, null);
   assert.equal(saved.success, true);
   assert.equal(ctx.db.getNote(saved.note.id).content, "");
 
@@ -472,8 +464,8 @@ test("a thrown database write publishes no event or mirror", async (t: import("n
 
   if (!ctx) return;
   await assert.rejects(
-    () => ctx.call("db-save-note", "N", "", "personal", null, null, null, 987654),
-    /Space not found/
+    () => ctx.call("db-save-note", "N", "", "personal", null, null, 987654),
+    /FOREIGN KEY constraint failed/
   );
   await ctx.flush();
   assert.deepEqual(ctx.sent, []);
@@ -486,14 +478,13 @@ test("IPC and BB share durable blank Note, membership, event and participant-edi
   const ctx = await createFixture(t);
 
   if (!ctx) return;
-  const spaceId = ctx.db.getPrivateSpaceId();
-  const folder = ctx.db.createFolder("Meetings", spaceId).folder;
+  const folder = ctx.db.createFolder("Meetings").folder;
 
   const transcript = JSON.stringify([
     { speaker: "system:0", text: "hello", speakerName: "Manual" },
   ]);
 
-  const ui = await ctx.call("db-save-note", "", "", "meeting", null, null, folder.id, spaceId);
+  const ui = await ctx.call("db-save-note", "", "", "meeting", null, null, folder.id);
 
   const bb = await ctx.callBb("POST", "/v1/notes/create", {
     title: "",
@@ -526,7 +517,6 @@ test("IPC and BB share durable blank Note, membership, event and participant-edi
     assert.equal(stored.title, "");
     assert.equal(stored.content, "");
     assert.deepEqual(stored.folder_ids, []);
-    assert.equal(stored.space_id, spaceId);
     assert.equal(stored.transcript, transcript);
     assert.equal(stored.icon, "star");
     assert.deepEqual(ctx.db.getSpeakerMappings(id), []);

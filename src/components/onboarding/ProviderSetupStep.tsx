@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, CircleCheck } from "../icons";
+import { CircleCheck } from "../icons";
 import { useTranslation } from "react-i18next";
 import ProviderConnectionTest from "./ProviderConnectionTest";
 import { Button } from "../ui/button";
@@ -13,7 +13,7 @@ import {
 } from "../../models/ModelRegistry";
 import { pickDefaultModelId } from "../../models/providerDefaultModel";
 import { resolveTranscriptionRoute } from "../../helpers/transcriptionRoute";
-import type { OnboardingByokDraft } from "./flow";
+import { isMeetingFilePickerModel } from "../../helpers/meetingFileTranscription";
 
 type HostedProvider = TranscriptionProviderData;
 
@@ -61,25 +61,17 @@ const providerCredential = (
 };
 
 interface ByokProviderStepProps {
-  selfHostedRequested?: boolean;
-  onSelfHostedChange?: (requested: boolean) => void;
   onConnectionChange: (connected: boolean) => void;
   onProceed: () => void;
   /** The footer's Continue runs the same confirmed save-then-proceed transition. */
   onFooterContinue?: (commitAndProceed: () => Promise<void>, isSaving: boolean) => void;
-  resumeState?: OnboardingByokDraft;
-  onResumeStateChange?: (state: OnboardingByokDraft) => void;
 }
 
-/** Configure the transcription provider used by Notes and uploads. */
+/** Configure a transcription route that works for meetings and uploads. */
 export function ByokProviderStep({
-  selfHostedRequested = false,
-  onSelfHostedChange = () => {},
   onConnectionChange,
   onProceed,
   onFooterContinue,
-  resumeState,
-  onResumeStateChange,
 }: ByokProviderStepProps) {
   const { t } = useTranslation();
   const store = useSettingsStore();
@@ -93,6 +85,7 @@ export function ByokProviderStep({
         ...provider,
         models: provider.models.filter(
           (model) =>
+            isMeetingFilePickerModel(provider.id, model.id) &&
             resolveTranscriptionRoute({
               providers: catalog,
               settings: {
@@ -107,18 +100,15 @@ export function ByokProviderStep({
   }, []);
 
   const initialProvider =
-    providers.find((item) => item.id === resumeState?.selectedProvider)?.id ??
     providers.find((item) => item.id === store.cloudTranscriptionProvider)?.id ??
     "";
 
-  const [selfHosted, setSelfHosted] = useState(selfHostedRequested);
   const [selectedProvider, setSelectedProvider] = useState(initialProvider);
 
   const [selectedModel, setSelectedModel] = useState(() => {
     const provider = providers.find((item) => item.id === initialProvider);
 
     return (
-      provider?.models.find((model) => model.id === resumeState?.selectedModel)?.id ??
       provider?.models.find((model) => model.id === store.cloudTranscriptionModel)?.id ??
       pickDefaultModelId(provider)
     );
@@ -128,12 +118,9 @@ export function ByokProviderStep({
     () => providerCredential(initialProvider, store)?.value ?? ""
   );
 
-  const [draftBaseUrl, setDraftBaseUrl] = useState(resumeState?.baseUrl ?? "");
-  const [draftCustomModel, setDraftCustomModel] = useState(resumeState?.customModel ?? "");
   const [connected, setConnected] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const latestDraft = useRef<OnboardingByokDraft | null>(null);
   const saveGeneration = useRef(0);
   const saveInFlight = useRef(false);
   const mounted = useRef(true);
@@ -165,29 +152,9 @@ export function ByokProviderStep({
     onConnectionChange(false);
   }, [onConnectionChange]);
 
-  useEffect(() => {
-    latestDraft.current = {
-      selectedProvider,
-      selectedModel,
-      baseUrl: draftBaseUrl,
-      customModel: draftCustomModel,
-    };
-  }, [draftBaseUrl, draftCustomModel, selectedModel, selectedProvider]);
-
-  useEffect(
-    () => () => {
-      if (latestDraft.current) onResumeStateChange?.(latestDraft.current);
-    },
-    [onResumeStateChange]
-  );
-
   const currentProvider = providers.find((provider) => provider.id === selectedProvider);
   const models = currentProvider?.models ?? [];
-  const testingProvider = selfHosted ? "custom" : selectedProvider;
-
-  const fieldsReady = selfHosted
-    ? Boolean(draftBaseUrl.trim() && draftCustomModel.trim())
-    : Boolean(selectedProvider && selectedModel && draftApiKey.trim());
+  const fieldsReady = Boolean(selectedProvider && selectedModel && draftApiKey.trim());
 
   const chooseProvider = useCallback(
     (providerId: string) => {
@@ -211,9 +178,7 @@ export function ByokProviderStep({
     setSaveError(false);
 
     try {
-      const result = selfHosted
-        ? await store.setCustomTranscriptionApiKey(draftApiKey)
-        : await providerCredential(selectedProvider, store)?.set(draftApiKey);
+      const result = await providerCredential(selectedProvider, store)?.set(draftApiKey);
 
       if (!isCurrent()) return;
 
@@ -223,29 +188,13 @@ export function ByokProviderStep({
         return;
       }
 
-      if (selfHosted) {
-        const url = draftBaseUrl.includes("://")
-          ? draftBaseUrl.trim()
-          : `https://${draftBaseUrl.trim()}`;
-
-        store.setRemoteTranscriptionUrl("");
-        store.setMeetingRemoteTranscriptionUrl("");
-        store.setCloudTranscriptionForAllScopes({
-          useLocalWhisper: false,
-          cloudTranscriptionBaseUrl: url,
-          cloudTranscriptionModel: draftCustomModel,
-          cloudTranscriptionProvider: "custom",
-          cloudTranscriptionMode: "byok",
-        });
-      } else {
-        store.setCloudTranscriptionForAllScopes({
-          useLocalWhisper: false,
-          cloudTranscriptionBaseUrl: "",
-          cloudTranscriptionMode: "byok",
-          cloudTranscriptionProvider: selectedProvider,
-          cloudTranscriptionModel: selectedModel,
-        });
-      }
+      store.setCloudTranscriptionForAllScopes({
+        useLocalWhisper: false,
+        cloudTranscriptionBaseUrl: "",
+        cloudTranscriptionMode: "byok",
+        cloudTranscriptionProvider: selectedProvider,
+        cloudTranscriptionModel: selectedModel,
+      });
 
       onProceed();
     } catch {
@@ -255,16 +204,7 @@ export function ByokProviderStep({
 
       if (mounted.current) setIsSaving(false);
     }
-  }, [
-    draftApiKey,
-    draftBaseUrl,
-    draftCustomModel,
-    onProceed,
-    selectedModel,
-    selectedProvider,
-    selfHosted,
-    store,
-  ]);
+  }, [draftApiKey, onProceed, selectedModel, selectedProvider, store]);
 
   // Publish footer state after render; duplicate clicks are guarded synchronously.
   useEffect(() => {
@@ -275,131 +215,61 @@ export function ByokProviderStep({
     <section className="mx-auto mt-5 w-full max-w-[30rem] rounded-[1.125rem] border border-[var(--onboarding-control-border)] bg-[var(--onboarding-surface)] px-3 py-4">
       <SetupStageStepper />
       <div className="mt-3 space-y-3">
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={selfHosted}
-          onClick={() => {
-            invalidateSave();
-            const next = !selfHosted;
-            setSelfHosted(next);
-            onSelfHostedChange(next);
-            setConnected(false);
-            onConnectionChange(false);
-          }}
-          className="flex items-center gap-2 text-xs text-[var(--onboarding-text-primary)]"
-        >
-          <span
-            className={`flex size-5 items-center justify-center rounded border border-[var(--onboarding-control-border)] ${selfHosted ? "bg-[var(--onboarding-accent)]" : ""}`}
-          >
-            {selfHosted && (
-              <Check className="size-3.5 text-[var(--onboarding-accent-foreground)]" />
-            )}
-          </span>
-          {t("onboarding.rehaul.provider.selfHosted")}
-        </button>
-
-        {selfHosted ? (
-          <>
-            <label className="block">
-              <FieldLabel>{t("onboarding.rehaul.provider.endpointUrl")}</FieldLabel>
-              <Input
-                dir="ltr"
-                value={draftBaseUrl}
-                onChange={(event) => {
-                  invalidateSave();
-                  setDraftBaseUrl(event.target.value);
-                }}
-                placeholder={t("onboarding.rehaul.provider.endpointPlaceholder")}
-              />
-            </label>
-            <label className="block">
-              <FieldLabel>{t("onboarding.rehaul.provider.modelId")}</FieldLabel>
-              <Input
-                dir="ltr"
-                value={draftCustomModel}
-                onChange={(event) => {
-                  invalidateSave();
-                  setDraftCustomModel(event.target.value);
-                }}
-                placeholder={t("onboarding.rehaul.provider.modelIdPlaceholder")}
-              />
-            </label>
-            <label className="block">
-              <FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel>
-              <Input
-                dir="ltr"
-                type="password"
-                value={draftApiKey}
-                onChange={(event) => {
-                  invalidateSave();
-                  setDraftApiKey(event.target.value);
-                  setSaveError(false);
-                }}
-                placeholder={t("onboarding.rehaul.provider.optional")}
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <div>
-              <FieldLabel>{t("onboarding.rehaul.provider.providerLabel")}</FieldLabel>
-              <SelectField
-                value={selectedProvider}
-                onChange={chooseProvider}
-                ariaLabel={t("onboarding.rehaul.provider.providerLabel")}
-                placeholder={t("onboarding.rehaul.provider.providerPlaceholder")}
-                className="w-full"
-                options={providers.map((provider) => ({
-                  id: provider.id,
-                  label: provider.name,
-                  icon: <ProviderIcon provider={provider.id} className="size-4" />,
-                }))}
-              />
-            </div>
-            <div>
-              <FieldLabel>{t("onboarding.rehaul.provider.modelLabel")}</FieldLabel>
-              <SelectField
-                value={selectedModel}
-                onChange={(value) => {
-                  invalidateSave();
-                  setSelectedModel(value);
-                  setConnected(false);
-                  onConnectionChange(false);
-                }}
-                isDisabled={!selectedProvider}
-                dir="ltr"
-                ariaLabel={t("onboarding.rehaul.provider.modelLabel")}
-                placeholder={t("onboarding.rehaul.provider.modelPlaceholder")}
-                className="w-full"
-                options={models.map((model) => ({ id: model.id, label: model.name }))}
-              />
-            </div>
-            <label className="block">
-              <FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel>
-              <Input
-                dir="ltr"
-                type="password"
-                value={draftApiKey}
-                onChange={(event) => {
-                  invalidateSave();
-                  setDraftApiKey(event.target.value);
-                  setSaveError(false);
-                  setConnected(false);
-                  onConnectionChange(false);
-                }}
-                disabled={!selectedProvider}
-              />
-            </label>
-          </>
-        )}
+        <div>
+          <FieldLabel>{t("onboarding.rehaul.provider.providerLabel")}</FieldLabel>
+          <SelectField
+            value={selectedProvider}
+            onChange={chooseProvider}
+            ariaLabel={t("onboarding.rehaul.provider.providerLabel")}
+            placeholder={t("onboarding.rehaul.provider.providerPlaceholder")}
+            className="w-full"
+            options={providers.map((provider) => ({
+              id: provider.id,
+              label: provider.name,
+              icon: <ProviderIcon provider={provider.id} className="size-4" />,
+            }))}
+          />
+        </div>
+        <div>
+          <FieldLabel>{t("onboarding.rehaul.provider.modelLabel")}</FieldLabel>
+          <SelectField
+            value={selectedModel}
+            onChange={(value) => {
+              invalidateSave();
+              setSelectedModel(value);
+              setConnected(false);
+              onConnectionChange(false);
+            }}
+            isDisabled={!selectedProvider}
+            dir="ltr"
+            ariaLabel={t("onboarding.rehaul.provider.modelLabel")}
+            placeholder={t("onboarding.rehaul.provider.modelPlaceholder")}
+            className="w-full"
+            options={models.map((model) => ({ id: model.id, label: model.name }))}
+          />
+        </div>
+        <label className="block">
+          <FieldLabel>{t("onboarding.rehaul.provider.apiKey")}</FieldLabel>
+          <Input
+            dir="ltr"
+            type="password"
+            value={draftApiKey}
+            onChange={(event) => {
+              invalidateSave();
+              setDraftApiKey(event.target.value);
+              setSaveError(false);
+              setConnected(false);
+              onConnectionChange(false);
+            }}
+            disabled={!selectedProvider}
+          />
+        </label>
 
         <ProviderConnectionTest
           config={{
-            provider: testingProvider,
+            provider: selectedProvider,
             apiKey: draftApiKey,
-            baseUrl: selfHosted ? draftBaseUrl : undefined,
-            model: selfHosted ? draftCustomModel : selectedModel,
+            model: selectedModel,
             scope: "transcription",
           }}
           onSuccessChange={handleSuccessChange}

@@ -20,33 +20,6 @@ export interface TeardownContainersResult extends NoteContainerState {
   removedNotes: NoteItem[];
 }
 
-export function createClearedAccountNoteState<TSpace, TFolder, TShare, TConflict>() {
-  const notes: NoteItem[] = [];
-  const spaces: TSpace[] = [];
-  const folders: TFolder[] = [];
-  const folderCounts: Record<number, number> = {};
-  const spaceRootCounts: Record<number, number> = {};
-  const notesByContainer: Record<string, NoteItem[]> = {};
-  const shareByCloudId = new Map<string, TShare>();
-  const noteConflicts: Record<string, TConflict> = {};
-
-  return {
-    notes,
-    spaces,
-    folders,
-    folderCounts,
-    spaceRootCounts,
-    notesByContainer,
-    expandedContainers: new Set<string>(),
-    activeContext: null,
-    activeNoteId: null,
-    isTreeLoading: true,
-    migration: null,
-    shareByCloudId,
-    noteConflicts,
-  };
-}
-
 /** Make every currently running keyed load stale without reusing generations. */
 export function invalidateKeyedLoadGenerations(generations: Map<string, number>): void {
   generations.forEach((generation, key) => {
@@ -94,8 +67,7 @@ export function removeNoteFromLists(state: NoteListsState, id: number): RemoveNo
 
 /**
  * Remove cached note containers and all renderer state that points into them.
- * Folder deletion and space purging share this operation; callers remain
- * responsible for choosing a replacement active context.
+ * Folder deletion clears its cached note container and active selection.
  */
 export function teardownNoteContainers(
   state: NoteContainerState,

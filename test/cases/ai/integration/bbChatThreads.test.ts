@@ -70,7 +70,6 @@ class BbCliError extends Error {
 
 const bb: Pick<
   Bb,
-  | "assertBbVersion"
   | "BbCliError"
   | "getBbHostPreferences"
   | "getBbThreadHistory"
@@ -84,7 +83,6 @@ const bb: Pick<
   | "watchBbThread"
 > = {
   BbCliError,
-  async assertBbVersion() {},
   async getBbHostPreferences() {
     return { providerOrder: [], defaultProviderId: null };
   },

@@ -36,11 +36,10 @@ export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatP
     createAgentConversation: (
       title?: string,
       noteId?: number | null,
-      spaceId?: number | null,
       folderId?: number | null
     ) =>
       ipcRenderer
-        .invoke(chatPersistenceChannels.createAgentConversation, title, noteId, spaceId, folderId)
+        .invoke(chatPersistenceChannels.createAgentConversation, title, noteId, folderId)
         .then((raw) =>
           parseResult(
             conversationCreateResultSchema,
@@ -58,9 +57,9 @@ export function createChatPersistenceBridge(ipcRenderer: IpcRendererLike): ChatP
             chatPersistenceChannels.getConversationsForNote
           )
         ),
-    getConversationsForContainer: (spaceId: number, folderId?: number | null, limit?: number) =>
+    getConversationsForContainer: (folderId?: number | null, limit?: number) =>
       ipcRenderer
-        .invoke(chatPersistenceChannels.getConversationsForContainer, spaceId, folderId, limit)
+        .invoke(chatPersistenceChannels.getConversationsForContainer, folderId, limit)
         .then((raw) =>
           parseResult(
             containerConversationListResultSchema,

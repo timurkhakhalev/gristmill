@@ -77,19 +77,3 @@ test("resolveFolderId guards against nullish, empty, and whitespace-only inputs"
   assert.deepEqual(await resolveFolderId(""), { error: "Folder name cannot be empty" });
   assert.deepEqual(await resolveFolderId("   "), { error: "Folder name cannot be empty" });
 });
-
-test("resolveSpace normalizes whitespace and guards nullish or empty inputs", async () => {
-  const { resolveSpace } = await load();
-  const spaces = [{ id: 1, name: "Engineering" }];
-  // Narrow boundary: resolveSpace only reads id/name; the full SpaceRow has more columns.
-  const rows = spaces as unknown as Parameters<typeof resolveSpace>[0];
-
-  assert.deepEqual(resolveSpace(rows, "  engineering  "), { space: spaces[0] });
-  assert.deepEqual(resolveSpace(rows, null as unknown as string), {
-    error: "Space name cannot be empty",
-  }); // deliberately invalid input
-  assert.deepEqual(resolveSpace(rows, undefined as unknown as string), {
-    error: "Space name cannot be empty",
-  }); // deliberately invalid input
-  assert.deepEqual(resolveSpace(rows, "   "), { error: "Space name cannot be empty" });
-});

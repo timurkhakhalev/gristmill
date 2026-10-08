@@ -264,18 +264,12 @@
         "description": "Escolha um provedor, adicione suas credenciais e teste a conexão.",
         "descriptionLineOne": "Escolha um provedor e adicione",
         "descriptionLineTwo": "sua chave de API.",
-        "selfHosted": "Tenho uma chave de modelo auto-hospedado",
         "providerLabel": "Provedor",
         "providerPlaceholder": "Escolha o provedor do modelo",
         "modelLabel": "Modelo",
         "modelPlaceholder": "Escolha o modelo",
         "apiKey": "Chave de API",
         "apiKeyPlaceholder": "Cole sua chave de API",
-        "endpointUrl": "URL do endpoint",
-        "endpointPlaceholder": "Cole a URL do seu endpoint",
-        "optional": "Opcional",
-        "modelId": "ID do modelo",
-        "modelIdPlaceholder": "Escreva o ID do seu modelo",
         "testConnection": "Testar conexão",
         "proceed": "Prosseguir",
         "clinical": "PARA TRANSCRIÇÃO CLÍNICA",
@@ -1427,26 +1421,12 @@
       "folderAlreadyExists": "Já existe uma pasta com esse nome.",
       "folderNotFound": "Não foi possível encontrar essa pasta.",
       "defaultFolderImmutable": "As pastas padrão não podem ser alteradas.",
-      "spaceNameRequired": "Insira um nome para o espaço.",
-      "spaceNotFound": "Não foi possível encontrar esse espaço.",
-      "privateSpaceImmutable": "Seu espaço Pessoal não pode ser alterado.",
       "generic": "Não foi possível concluir a alteração. Tente novamente."
     },
     "sidebar": {
       "newNote": "Nova nota",
       "searchNotes": "Pesquisar notas",
       "actions": "Ações"
-    },
-    "structureIntro": {
-      "title": "Onde ficam suas notas",
-      "description": "O Gristmill separa pensamentos privados do trabalho compartilhado para que as pessoas certas vejam as notas certas.",
-      "personal": {
-        "title": "Espaço pessoal",
-        "description": "Somente você pode ver as pastas e notas deste espaço."
-      },
-      "contents": "Cada espaço pode conter pastas e notas.",
-      "done": "Entendi",
-      "reopen": "Entenda como os espaços são organizados"
     },
     "folders": {
       "defaults": {
@@ -1461,7 +1441,7 @@
       "couldNotRename": "Não foi possível renomear a pasta",
       "couldNotDelete": "Não foi possível excluir a pasta",
       "deleteTitle": "Excluir pasta?",
-      "deleteDescription": "Excluir «{{name}}»? As notas permanecerão nas outras pastas ou serão movidas para a raiz do espaço.",
+      "deleteDescription": "Excluir «{{name}}»? As notas permanecerão nas outras pastas ou serão movidas para a raiz das Notas.",
       "deleteDescriptionEmpty": "Isso excluirá permanentemente \"{{name}}\". Esta ação não pode ser desfeita.",
       "deleteConfirm": "Excluir pasta"
     },
@@ -1807,14 +1787,10 @@
       },
       "consentNotice": "Sempre obtenha consentimento ao gravar outras pessoas"
     },
-    "spaces": {
-      "personal": "Pessoal",
-      "moveToSpace": "Mover para espaço…",
+    "moves": {
       "moved": "“{{title}}” movida para {{target}}",
       "couldNotMoveNote": "Não foi possível mover a nota",
-      "undo": "Desfazer",
-      "noteCount_one": "{{count}} nota",
-      "noteCount_other": "{{count}} notas"
+      "undo": "Desfazer"
     },
     "dateGroups": {
       "today": "Hoje",
@@ -2123,7 +2099,6 @@
   "commandSearch": {
     "searchError": "Falha na pesquisa",
     "searchingTranscripts": "Pesquisando transcrições…",
-    "allSpaces": "Todos os espaços",
     "title": "Pesquisar",
     "description": "Pesquisar notas e transcrições",
     "placeholder": "Pesquisar notas e transcrições…",

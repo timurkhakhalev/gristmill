@@ -9,7 +9,7 @@ User paths: [Connect calendars](../product/user-journeys/calendars.md).
 - Connect is unavailable when the application has no OAuth registration for the provider. The Calendar UI has no fields for those registration credentials.
 - For Google and Microsoft, only the primary calendar is enabled by default. The UI has a primary-only toggle, not an individual-calendar picker.
 - Apple uses EventKit on macOS and reads Calendar.app accounts. Permission denial and a missing native helper are different errors. Disconnect stops the helper and the cache. It does not revoke the macOS permission.
-- Settings requests system audio permission before connection and can stop on refusal. Onboarding continues calendar setup after refusal.
+- Calendar connection does not require System Audio permission in Settings or onboarding. Meeting recording checks this access separately. On systems that support an in-app grant, Home shows a grant action for a connected calendar when System Audio access is missing, including when meetings are listed.
 
 ## Google account associations
 

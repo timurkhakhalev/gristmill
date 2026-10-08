@@ -22,7 +22,6 @@ export const conversationRowSchema = z.object({
   id: nonNegativeInt,
   title: z.string(),
   note_id: nonNegativeInt.nullable(),
-  space_id: nonNegativeInt.nullable(),
   folder_id: nonNegativeInt.nullable(),
   archived_at: z.string().nullable(),
   created_at: z.string(),
@@ -84,12 +83,11 @@ export const createConversationArgsSchema = z.tuple([
   z.unknown().optional(),
   optionalId,
   optionalId,
-  optionalId,
 ]);
 
 export const getConversationsForNoteArgsSchema = z.tuple([idArg, optionalLimit]);
 
-export const getConversationsForContainerArgsSchema = z.tuple([idArg, optionalId, optionalLimit]);
+export const getConversationsForContainerArgsSchema = z.tuple([optionalId, optionalLimit]);
 
 export const getConversationsArgsSchema = z.tuple([optionalLimit]);
 
@@ -142,12 +140,10 @@ export interface ChatPersistenceApi {
   createAgentConversation(
     title?: string,
     noteId?: number | null,
-    spaceId?: number | null,
     folderId?: number | null
   ): Promise<ConversationDetail | null>;
   getConversationsForNote(noteId: number, limit?: number): Promise<ConversationRow[]>;
   getConversationsForContainer(
-    spaceId: number,
     folderId?: number | null,
     limit?: number
   ): Promise<ContainerConversation[]>;

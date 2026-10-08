@@ -43,7 +43,6 @@ function noteFixture(id: number, title: string, content: string): NoteItem {
     title,
     content,
     note_type: "meeting",
-    space_id: 1,
     folder_id: null,
     folder_ids: [],
     source_file: null,

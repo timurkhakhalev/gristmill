@@ -108,7 +108,7 @@ async function createFixture(t: import("node:test").TestContext) {
       }),
       getNote: (id) => db.getNote(id),
       getNotes: (...args) => db.getNotes(...args),
-      getNotesForSpace: (...args) => db.getNotesForSpace(...args),
+      getRootNotes: (...args) => db.getRootNotes(...args),
       deleteNoteInternal: (id) => {
         const result = db.deleteNote(id);
 
@@ -172,7 +172,7 @@ test("the full bundled preload chain round-trips a note", async (t: import("node
   if (!ctx) return;
   const { api, flush } = ctx;
 
-  const saved = await api.saveNote("Bridge", "Body", "personal", null, null, null, null);
+  const saved = await api.saveNote("Bridge", "Body", "personal", null, null, null);
   assert.ok(saved.success);
   assert.equal(saved.note.title, "Bridge");
 
@@ -183,16 +183,15 @@ test("the full bundled preload chain round-trips a note", async (t: import("node
   assert.ok(updated.success);
   assert.equal(updated.note.title, "Bridge2");
 
-  const listed = await api.getNotes(null, 100, null, null);
+  const listed = await api.getNotes(null, 100, null);
   assert.ok(listed.some((n) => n.id === saved.note.id));
 
-  const spaceId = saved.note.space_id;
-  const spaceNotes = await api.getSpaceNotes(spaceId, 50);
-  assert.ok(spaceNotes.some((n) => n.id === saved.note.id));
+  const rootNotes = await api.getRootNotes(50);
+  assert.ok(rootNotes.some((n) => n.id === saved.note.id));
 
-  const found = await api.searchNotes("Bridge2", 50, null, null);
+  const found = await api.searchNotes("Bridge2", 50, null);
   assert.ok(found.some((n) => n.id === saved.note.id));
-  assert.equal((await api.searchNotes("", 50, null, null)).length, 0);
+  assert.equal((await api.searchNotes("", 50, null)).length, 0);
 
   const deleted = await api.deleteNote(saved.note.id);
   assert.equal(deleted.success, true);

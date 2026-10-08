@@ -81,7 +81,7 @@ export function transcriptionErrorKey(failure: unknown): string | undefined {
   return code ? TRANSCRIPTION_ERROR_KEYS[code] : undefined;
 }
 
-// Folder scopes get the folder-specific empty title; space roots keep the generic one.
+// Folder scopes get the folder-specific empty title; root notes keep the generic one.
 export function notesEmptyTitleKey(inFolder: boolean): string {
   return inFolder ? "notes.empty.emptyFolder" : "notes.empty.title";
 }
@@ -100,7 +100,7 @@ export const notesTextareaClass = cn(
   "focus:border-primary/30 transition-colors duration-150"
 );
 
-/** Neutral capsule for note header facts (date + attendees, folder, space). */
+/** Neutral capsule for note header facts (date + attendees, folder). */
 export const NOTE_META_CHIP_CLASS = cn(
   "inline-flex h-[26px] items-center gap-2 rounded-full bg-surface-3 px-2.5 text-xs font-medium text-foreground/70",
   "hover:bg-surface-raised hover:text-foreground dark:bg-surface-2 dark:hover:bg-surface-3",

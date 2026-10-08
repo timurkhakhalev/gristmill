@@ -270,18 +270,12 @@
         "description": "Выберите провайдера, добавьте учётные данные и проверьте подключение.",
         "descriptionLineOne": "Выберите провайдера и добавьте",
         "descriptionLineTwo": "свой API-ключ.",
-        "selfHosted": "У меня есть ключ самостоятельно размещённой модели",
         "providerLabel": "Провайдер",
         "providerPlaceholder": "Выберите провайдера модели",
         "modelLabel": "Модель",
         "modelPlaceholder": "Выберите модель",
         "apiKey": "API-ключ",
         "apiKeyPlaceholder": "Вставьте свой API-ключ",
-        "endpointUrl": "URL endpoint",
-        "endpointPlaceholder": "Вставьте URL своего endpoint",
-        "optional": "Необязательно",
-        "modelId": "ID модели",
-        "modelIdPlaceholder": "Укажите ID своей модели",
         "testConnection": "Проверить подключение",
         "proceed": "Продолжить",
         "clinical": "ДЛЯ КЛИНИЧЕСКОЙ РАСШИФРОВКИ",
@@ -1429,26 +1423,12 @@
       "folderAlreadyExists": "Папка с таким названием уже существует.",
       "folderNotFound": "Эта папка не найдена.",
       "defaultFolderImmutable": "Папки по умолчанию нельзя изменять.",
-      "spaceNameRequired": "Введите название пространства.",
-      "spaceNotFound": "Это пространство не найдено.",
-      "privateSpaceImmutable": "Личное пространство нельзя изменять.",
       "generic": "Не удалось выполнить изменение. Попробуйте снова."
     },
     "sidebar": {
       "newNote": "Новая заметка",
       "searchNotes": "Поиск заметок",
       "actions": "Действия"
-    },
-    "structureIntro": {
-      "title": "Где находятся ваши заметки",
-      "description": "Gristmill отделяет личные мысли от совместной работы, чтобы заметки видели только нужные люди.",
-      "personal": {
-        "title": "Личное пространство",
-        "description": "Папки и заметки здесь видны только вам."
-      },
-      "contents": "В каждом пространстве могут быть папки и заметки.",
-      "done": "Понятно",
-      "reopen": "Как организованы пространства"
     },
     "folders": {
       "defaults": {
@@ -1463,7 +1443,7 @@
       "couldNotRename": "Не удалось переименовать папку",
       "couldNotDelete": "Не удалось удалить папку",
       "deleteTitle": "Удалить папку?",
-      "deleteDescription": "Удалить «{{name}}»? Заметки останутся в других папках или перейдут в корень пространства.",
+      "deleteDescription": "Удалить «{{name}}»? Заметки останутся в других папках или перейдут в корень Заметок.",
       "deleteDescriptionEmpty": "Это навсегда удалит «{{name}}». Это действие нельзя отменить.",
       "deleteConfirm": "Удалить папку"
     },
@@ -1809,16 +1789,10 @@
       },
       "consentNotice": "Всегда получайте согласие при записи других людей"
     },
-    "spaces": {
-      "personal": "Личное",
-      "moveToSpace": "Переместить в пространство…",
+    "moves": {
       "moved": "«{{title}}» перемещено в {{target}}",
       "couldNotMoveNote": "Не удалось переместить заметку",
-      "undo": "Отменить",
-      "noteCount_one": "{{count}} заметка",
-      "noteCount_other": "{{count}} заметки",
-      "noteCount_few": "{{count}} заметки",
-      "noteCount_many": "{{count}} заметок"
+      "undo": "Отменить"
     },
     "dateGroups": {
       "today": "Сегодня",
@@ -2129,7 +2103,6 @@
   "commandSearch": {
     "searchError": "Ошибка поиска",
     "searchingTranscripts": "Поиск по транскриптам…",
-    "allSpaces": "Все пространства",
     "title": "Поиск",
     "description": "Поиск по заметкам и транскрипциям",
     "placeholder": "Поиск по заметкам и транскрипциям…",

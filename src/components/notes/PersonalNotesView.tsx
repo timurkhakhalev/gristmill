@@ -171,13 +171,6 @@ export default function PersonalNotesView({
     return folder ? defaultFolderDisplayName(folder, t) : null;
   }, [activeNote?.folder_id, folders, t]);
 
-  // The editor's move-to-folder chip only offers folders in the note's own
-  // space; cross-space moves change the audience and need an explicit confirm.
-  const editorFolders = useMemo(
-    () => (activeNote ? folders.filter((f) => f.space_id === activeNote.space_id) : folders),
-    [activeNote, folders]
-  );
-
   const [calendarEvent, setCalendarEvent] = useState<CalendarEvent | null>(null);
   useEffect(() => {
     if (!activeNote?.calendar_event_id) {
@@ -207,7 +200,7 @@ export default function PersonalNotesView({
     const currentDraft = draftRef.current;
 
     if (!activeNote) {
-      // Space/folder activation shows its overview by clearing activeNoteId.
+      // Root/folder activation shows its overview by clearing activeNoteId.
       if (currentDraft || pendingDocumentRef.current || pendingEnhancedRef.current) {
         transitionToNote(null, "overview");
       }
@@ -553,7 +546,7 @@ export default function PersonalNotesView({
               onSetSessionExpectedCount={setSessionExpectedCount}
               folderName={activeFolderName}
               calendarEvent={calendarEvent}
-              folders={editorFolders}
+              folders={folders}
               onSetFolders={(noteId, folderIds) =>
                 runInBackground(handleSetNoteFolders(noteId, folderIds), "Set note folders failed")
               }
@@ -683,7 +676,7 @@ export default function PersonalNotesView({
                     {t("notes.empty.createNote")}
                   </button>
                   {/* AddNotesToFolderDialog only mounts for folder contexts —
-                      space-root empty states offer just "Create note". */}
+                      root empty states offer just "Create note". */}
                   {activeFolderId != null && (
                     <button
                       onClick={() => setShowAddNotesDialog(true)}

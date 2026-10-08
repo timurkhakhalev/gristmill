@@ -30,7 +30,6 @@ function note(id: number, title: string): NoteItem {
     title,
     content: `body ${id}`,
     note_type: "personal",
-    space_id: 1,
     folder_id: null,
     folder_ids: [],
     source_file: null,
@@ -61,10 +60,10 @@ test("an editor chat citation for an out-of-cache note opens it in the editor", 
     window: {
       matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
       electronAPI: {
-        getSpaces: async () => [{ id: 1, name: "Personal", kind: "private" }],
         getFolders: async () => [],
         getFolderNoteCounts: async () => [],
         getNotes: async () => rows,
+        getRootNotes: async () => rows.filter((row) => row.folder_id == null),
         getNote: async (id: number) => {
           getNoteCalls += 1;
 

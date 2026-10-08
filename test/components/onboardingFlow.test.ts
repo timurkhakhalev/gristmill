@@ -12,7 +12,6 @@ const read = (relativePath: string) => fs.readFileSync(path.join(root, relativeP
 
 test("onboarding flow contains only local setup persistence primitives", () => {
   const flow = read("src/components/onboarding/flow.ts");
-  assert.match(flow, /export interface OnboardingByokDraft/);
   assert.match(flow, /export function resetOnboardingProgress/);
   assert.doesNotMatch(flow, /auth|dictation|assistant|required-models|screenContext/i);
 });

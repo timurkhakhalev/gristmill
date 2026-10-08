@@ -62,17 +62,15 @@ export interface ChatPersistenceHandlerDeps {
     createAgentConversation(
       title: CreateConversationArgs[0],
       noteId: CreateConversationArgs[1],
-      spaceId: CreateConversationArgs[2],
-      folderId: CreateConversationArgs[3]
+      folderId: CreateConversationArgs[2]
     ): RawDatabaseResult;
     getConversationsForNote(
       noteId: GetConversationsForNoteArgs[0],
       limit: GetConversationsForNoteArgs[1]
     ): RawDatabaseResult;
     getConversationsForContainer(
-      spaceId: GetConversationsForContainerArgs[0],
-      folderId: GetConversationsForContainerArgs[1],
-      limit: GetConversationsForContainerArgs[2]
+      folderId: GetConversationsForContainerArgs[0],
+      limit: GetConversationsForContainerArgs[1]
     ): RawDatabaseResult;
     getAgentConversations(limit: GetConversationsArgs[0]): RawDatabaseResult;
     getAgentConversation(id: GetConversationArgs[0]): RawDatabaseResult;
@@ -138,14 +136,14 @@ export function registerChatPersistenceHandlers(
   const { database } = deps;
 
   ipcMain.handle("db-create-agent-conversation", async (_event, ...args: unknown[]) => {
-    const [title, noteId, spaceId, folderId] = parseArgs(createConversationArgsSchema, args);
+    const [title, noteId, folderId] = parseArgs(createConversationArgsSchema, args);
 
     // Title passes through untouched: the DB default (only for undefined)
     // yields "Untitled", while an explicit null violates NOT NULL and the
     // invoke rejects without creating a row — the pre-cutover behavior.
     return parseResult(
       conversationCreateResultSchema,
-      database.createAgentConversation(title, noteId ?? null, spaceId ?? null, folderId ?? null),
+      database.createAgentConversation(title, noteId ?? null, folderId ?? null),
       "conversation detail"
     );
   });
@@ -161,11 +159,11 @@ export function registerChatPersistenceHandlers(
   });
 
   ipcMain.handle("db-get-conversations-for-container", async (_event, ...args: unknown[]) => {
-    const [spaceId, folderId, limit] = parseArgs(getConversationsForContainerArgsSchema, args);
+    const [folderId, limit] = parseArgs(getConversationsForContainerArgsSchema, args);
 
     return parseResult(
       containerConversationListResultSchema,
-      database.getConversationsForContainer(spaceId, folderId ?? null, limit ?? 20),
+      database.getConversationsForContainer(folderId ?? null, limit ?? 20),
       "container conversation list shape"
     );
   });

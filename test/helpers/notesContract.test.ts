@@ -111,7 +111,7 @@ test("noteUpdateSchema rejects wrong value types before any DB call could run", 
 test("saveNoteArgsSchema keeps the positional shape including nullability", async () => {
   const { saveNoteArgsSchema } = await import("../../src/contracts/notes.ts");
   assert.equal(
-    saveNoteArgsSchema.safeParse(["T", "C", "personal", null, null, null, null]).success,
+    saveNoteArgsSchema.safeParse(["T", "C", "personal", null, null, null]).success,
     true
   );
   assert.equal(saveNoteArgsSchema.safeParse(["T", "C"]).success, true);
@@ -121,7 +121,7 @@ test("saveNoteArgsSchema keeps the positional shape including nullability", asyn
 
 test("getNotesArgsSchema accepts a numeric SQLite limit of -1", async () => {
   const { getNotesArgsSchema } = await import("../../src/contracts/notes.ts");
-  assert.equal(getNotesArgsSchema.safeParse([null, -1, null, null]).success, true);
+  assert.equal(getNotesArgsSchema.safeParse([null, -1, null]).success, true);
   assert.equal(getNotesArgsSchema.safeParse([null, "many"]).success, false);
 });
 
@@ -138,7 +138,6 @@ test("event payload schemas reject malformed notes", async () => {
       note_type: "personal",
       created_at: "",
       updated_at: "",
-      space_id: 1,
       source_file: null,
       audio_duration_seconds: null,
       enhanced_content: null,
@@ -187,7 +186,7 @@ registerNotesHandlers(
     noteWrites: { saveNote: (title: number) => ({ success: false }), updateNote: () => ({ success: false }) },
     getNote: (id: number) => null,
     getNotes: () => null,
-    getNotesForSpace: () => null,
+    getRootNotes: () => null,
     deleteNoteInternal: () => null,
     searchNotes: () => null,
   }
@@ -198,7 +197,7 @@ const deps: NotesHandlerDeps = {
   noteWrites: { saveNote: () => ({ success: false }), updateNote: () => ({ success: false }) },
   getNote: () => null,
   getNotes: () => null,
-  getNotesForSpace: () => null,
+  getRootNotes: () => null,
   deleteNoteInternal: () => null,
   searchNotes: () => null,
   searchNoteContent: () => null,

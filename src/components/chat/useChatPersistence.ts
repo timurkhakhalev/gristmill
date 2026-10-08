@@ -120,7 +120,6 @@ export function useChatPersistence({ noteId }: { noteId?: number | null } = {}):
       const conv = await window.electronAPI.createAgentConversation(
         title,
         scopeNoteId ?? undefined,
-        scope?.spaceId,
         scope?.folderId ?? undefined
       );
 

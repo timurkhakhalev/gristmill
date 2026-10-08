@@ -24,7 +24,7 @@
     "kind": "integration",
     "buildMain": false,
     "files": [
-      "test/components/byokResumeDraft.test.ts",
+      "test/components/onboardingProviderSave.test.ts",
       "test/helpers/reasoningModelMemory.test.ts"
     ]
   },

@@ -33,7 +33,7 @@ declare const message: AgentMessageRow;
 const role: "user" | "bot" = message.role;
 
 // Real method signatures: getNotes' folder filter is number | null.
-const notes: string[] = db.getNotes(null, 10, "5", null);
+const notes: string[] = db.getNotes(null, 10, "5");
 void notes;
 void folderId;
 void blank;

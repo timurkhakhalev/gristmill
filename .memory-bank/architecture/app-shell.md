@@ -10,7 +10,7 @@ User paths: [First launch](../product/user-journeys/onboarding.md), [Home and na
 - Microphone access is required to continue. System audio and Accessibility are optional in this flow.
 - An empty language selection does not block Continue. Calendar connection is optional.
 - Normal Finish opens the main view. The flow does not request automatic Settings opening.
-- Calendar setup in onboarding continues after system audio permission is refused. Settings → Calendar has a different permission gate.
+- Calendar setup continues after system audio permission is refused. Settings → Calendar also allows a connection without this permission.
 
 ### Provider step
 
@@ -26,13 +26,13 @@ User paths: [First launch](../product/user-journeys/onboarding.md), [Home and na
 - The renderer hydrates settings and resolves persisted onboarding before meeting input is allowed. A fresh profile stays gated.
 - Window restore and the load backstop do not show a tray-started panel. An explicit tray or navigation action shows it.
 - A failed hidden load leaves the gate closed and permits tray startup to finish. An explicit open retries that load.
-- Tray New Note, event and Settings commands wait in preload until ControlPanel subscribes. New Note and event actions also wait for loaded spaces and tree readiness. Thus the initial Note selection cannot discard an event draft.
+- Tray New Note, event and Settings commands wait in preload until ControlPanel subscribes. New Note and event actions also wait for loaded folders and tree readiness. Thus the initial Note selection cannot discard an event draft.
 - The document-load sender guard applies to all three commands. Delivery of a command does not change window visibility.
 
 ## Home
 
 - Home is the default main view. Notes without a selected note also shows Home.
-- Recent Notes fetches up to 50 notes across spaces, selected by last update. The display groups and orders this set by creation time.
+- Recent Notes fetches up to 50 notes from all folders, selected by last update. The display groups and orders this set by creation time.
 - Confirmed note events refresh the recent list. This includes deletion from a folder that is not loaded.
 - Home updates its recent-note state and remount cache only from the current request. A superseded response cannot restore deleted rows on remount.
 - Coming Up reads events through midnight seven days ahead and filters for other attendees. It shows at most five days with events. Today is always present.

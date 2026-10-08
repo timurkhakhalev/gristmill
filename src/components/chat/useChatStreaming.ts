@@ -207,7 +207,7 @@ export function useChatStreaming({
       let registry: ToolRegistry | null = null;
 
       if (supportsTools) {
-        const scopeKey = scope ? `${scope.spaceId}:${scope.folderId ?? ""}` : "";
+        const scopeKey = scope ? String(scope.folderId ?? "root") : "";
 
         // The calendar tool reads the shared provider-deduped events table,
         // so any connected provider enables it.

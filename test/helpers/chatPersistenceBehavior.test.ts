@@ -60,7 +60,6 @@ test("create defaults: title omitted becomes Untitled and scopes stay null", (t:
   const conv = db.createAgentConversation();
   assert.equal(conv.title, "Untitled");
   assert.equal(conv.note_id, null);
-  assert.equal(conv.space_id, null);
   assert.equal(conv.folder_id, null);
   assert.equal(conv.archived_at, null);
   assert.equal(typeof conv.created_at, "string");
@@ -158,7 +157,6 @@ test("getConversationsForNote defaults to 20 and includes archived rows", (t: im
     null,
     null,
     null,
-    db.getPrivateSpaceId()
   ).note;
 
   const a = db.createAgentConversation("a", note.id);
@@ -172,17 +170,17 @@ test("getConversationsForNote defaults to 20 and includes archived rows", (t: im
   db.close();
 });
 
-test("getConversationsForContainer: null folder picks the space root only", (t: import("node:test").TestContext) => {
+test("getConversationsForContainer: null folder picks root chats only", (t: import("node:test").TestContext) => {
   const db = createDb(t);
 
   if (!db) return;
-  const spaceId = db.getPrivateSpaceId();
-  const folder = db.createFolder("F", spaceId).folder;
-  const root = db.createAgentConversation("root", null, spaceId, null);
-  const inner = db.createAgentConversation("inner", null, spaceId, folder.id);
-  const other = db.createAgentConversation("note-attached", null, null, null);
+  const folder = db.createFolder("F").folder;
+  const root = db.createAgentConversation("root", null, null);
+  const inner = db.createAgentConversation("inner", null, folder.id);
+  const note = db.saveNote("Linked note", "").note;
+  const other = db.createAgentConversation("note-attached", note.id);
 
-  const rootList = db.getConversationsForContainer(spaceId, null);
+  const rootList = db.getConversationsForContainer(null);
   assert.deepEqual(
     rootList.map((c: AgentConversationRow) => c.id),
     [root.id]
@@ -190,14 +188,14 @@ test("getConversationsForContainer: null folder picks the space root only", (t: 
   // Container list adds message_count on top of the row.
   assert.equal(rootList[0].message_count, 0);
   db.addAgentMessage(root.id, "user", "hi");
-  assert.equal(db.getConversationsForContainer(spaceId, null)[0].message_count, 1);
+  assert.equal(db.getConversationsForContainer(null)[0].message_count, 1);
 
-  const folderList = db.getConversationsForContainer(spaceId, folder.id);
+  const folderList = db.getConversationsForContainer(folder.id);
   assert.deepEqual(
     folderList.map((c: AgentConversationRow) => c.id),
     [inner.id]
   );
-  // Note-attached (space_id null) never leaks into the container list.
+  // Note-attached never leaks into the container list.
   assert.equal(
     rootList.some((c: AgentConversationRow) => c.id === other.id),
     false
@@ -352,15 +350,13 @@ test("deleting the note cascades the chat; deleting the folder clears folder_id"
   const db = createDb(t);
 
   if (!db) return;
-  const spaceId = db.getPrivateSpaceId();
-  const folder = db.createFolder("F", spaceId).folder;
-  const note = db.saveNote("Note", "body", "personal", null, null, folder.id, spaceId).note;
+  const folder = db.createFolder("F").folder;
+  const note = db.saveNote("Note", "body", "personal", null, null, folder.id).note;
   const noteChat = db.createAgentConversation("note chat", note.id);
-  const folderChat = db.createAgentConversation("folder chat", null, spaceId, folder.id);
+  const folderChat = db.createAgentConversation("folder chat", null, folder.id);
 
   db.deleteFolder(folder.id);
   assert.equal(db.getAgentConversation(folderChat.id).folder_id, null);
-  assert.equal(db.getAgentConversation(folderChat.id).space_id, spaceId);
 
   db.deleteNote(note.id);
   assert.equal(db.getAgentConversation(noteChat.id), null);
@@ -379,8 +375,7 @@ test("reopening the database restores conversations, messages and metadata", (t:
     return;
   }
 
-  const spaceId = db.getPrivateSpaceId();
-  const conv = db.createAgentConversation("durable", null, spaceId, null);
+  const conv = db.createAgentConversation("durable", null, null);
   db.addAgentMessage(conv.id, "user", "question", {
     toolCalls: [{ id: "t1", name: "search_notes" }],
   });

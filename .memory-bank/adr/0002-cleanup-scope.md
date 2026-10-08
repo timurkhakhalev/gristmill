@@ -28,7 +28,7 @@ Keep these surfaces:
 - Dictionary and Snippets, calendars and import.
 
 The start view is Home. Do not add a dashboard that replaces Notes as the product root.
-The full list is in [product scope](../product/scope.md).
+The full list is in the [product overview](../product/overview.md#not-in-the-product).
 
 Timur confirmed these details:
 

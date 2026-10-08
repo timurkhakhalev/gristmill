@@ -166,6 +166,22 @@ A missing source without full intentional coverage stays an error.
 - Microphone and system exports rebuild the selected source with full proven alignment and saved gaps. Unknown peer alignment does not block source export; common saved extent and fully proven later peer ends preserve trailing silence ([audio storage](audio-storage.md#playback-and-export)).
 - Main selects the export target. It writes through a temporary file and then renames it.
 
+### Results panel
+
+User paths: [Recording results](../product/user-journeys/meeting-results.md).
+
+- Results are inside the Note editor. Start/Stop groups appear newest first. Pause/Resume parts inside a group appear in time order.
+- The popover first opens on Audio. Play and export need available audio. New ASR also waits for capture and processing restrictions and the saved post-Stop deadline.
+- The note-wide action processes available ready and incomplete parts in time order. Without a saved Summary it offers Transcribe & Summary. With a Summary, Transcribe and Summary are separate.
+- Provider and model choices come from Settings. Results has no per-launch provider picker.
+- Cancel processing is available for pending and running work, including the post-Stop wait. It keeps audio.
+- Failed or blocked runs can be retried. Missing configuration has Open settings and Retry with current settings actions.
+- A short-transcript notice explains a skipped automatic Summary. Manual Summary stays available for a ready transcript.
+- Results appends transcript segments in batches of 60. Rows that are already shown stay in the DOM. The separate fallback `MeetingTranscriptChat` uses row virtualization.
+- Runs are persisted, but Results has no user control to select an earlier completed version.
+- Copy transcript is available. File export as Markdown, text, JSON or SRT exists in the backend without a Results control.
+- Audio export covers the mixed audio of the selected part. There is no original-track picker or whole-meeting export control here.
+
 ## Retention and deletion
 
 - One startup and 6-hour cleanup handles legacy audio and meeting retention.

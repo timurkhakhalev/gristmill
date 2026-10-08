@@ -1,40 +1,56 @@
 # Correct speakers
 
-As a Gristmill user, I want to give transcript speakers the right names.
-
-## User journey
-
-1. Open the selected result transcript and click a speaker name.
-2. Edit the display name and optionally choose an existing voice profile.
-3. Choose Only this meeting, or link the name to an available calendar participant email.
-4. Save the correction. Review the stale Summary notice and regenerate or dismiss it.
-
-## Behavior and limits
-
-- The dialog defaults to Only this meeting each time it opens; it does not restore a previously linked email as the initial selection.
-- Participants come from the note. A participant is a candidate, not proof of speaker identity. Only an email belonging to the note participants can be linked.
-- A linked contact name is remembered locally; this does not edit Google contacts.
-- Choosing a voice profile in Results stores its ID in the correction. It does not create a profile or train a voice embedding.
-- Name evidence priority is user, voice, platform, then model. Weaker automatic evidence does not replace a manual name.
-- Corrections change the displayed transcript mapping, not raw provider output. They do not rewrite an existing Summary.
-- Summary staleness follows the correction revision. Dismiss applies to that run/revision; a later correction can show the notice again.
-- For multiple recording groups, the combined transcript does not offer clickable speaker correction. Open the selected result transcript to edit names.
-- Model names have an auto badge; platform names show their source. A user correction replaces this provenance.
-
-## What to check
-
-- Manual names remain after automatic suggestions.
-- A new correction marks the existing Summary stale.
-- A linked participant is from the current note.
-
-## BDD acceptance criteria
-
-- Given a speaker has a user correction, when weaker automatic evidence arrives, then the user name remains.
-- Given I dismiss a stale Summary notice, when I make another correction, then the new revision can show the notice again.
+As a Gristmill user, I want to give the transcript speakers their correct names.
 
 ## Entry points
 
-- [MeetingResultsPanel.tsx](../../../src/components/notes/MeetingResultsPanel.tsx) — correction dialog and stale notice.
-- [meetingProcessing.ts](../../../src/helpers/meetingProcessing.ts) — correction validation.
-- [database.ts](../../../src/helpers/database.ts) — evidence priority and revisions.
-- [speakerIpcHandlers.ts](../../../src/helpers/speakerIpcHandlers.ts) — separate voice-profile operations.
+- **Gristmill app → open meeting note → Transcript/Audio popover → selected result transcript** — click a speaker name.
+
+## Paths
+
+### Rename a speaker for this meeting
+
+1. Open the transcript of the selected result.
+2. Click a speaker name, for example **Speaker 2**. The **Save speaker** dialog opens.
+3. Type the correct name in **Speaker name**.
+4. Keep **Only this meeting** in **Remember name for calendar participant**.
+5. Click **Save speaker**. The transcript shows the new name.
+
+### Link a speaker to a calendar participant
+
+1. Open the **Save speaker** dialog on a meeting note with calendar participants.
+2. In **Remember name for calendar participant**, select the participant email.
+3. Click **Save speaker**. Gristmill remembers the name for that email on this Mac. It does not change your Google contacts.
+4. The next time the dialog opens, it shows **Only this meeting** again.
+
+### Attach a voice profile
+
+1. In the **Save speaker** dialog, select a profile in **Voice profile**, or keep **No profile**.
+2. Click **Save speaker**. Gristmill keeps the link to the profile. It does not make a new profile.
+
+### Update the Summary after a correction
+
+1. After a correction, the note shows **Speaker names changed**. The Summary still has the earlier names.
+2. Click **Regenerate Summary** to make a new Summary with the new names.
+3. Or close the notice. A later correction shows the notice again.
+
+### Keep your names after automatic naming
+
+1. Gristmill can suggest names from the meeting platform (Zoom, Google Meet, Telemost) or from the AI model. A model name has an auto badge. A platform name shows its source.
+2. A name that you typed always stays. Automatic suggestions do not replace it.
+
+### Correct a meeting with several recordings
+
+1. The combined transcript of several Start/Stop groups does not let you click speaker names.
+2. Select one result and open its transcript. Correct the names there.
+
+## BDD acceptance criteria
+
+- Given I named a speaker, when an automatic suggestion arrives later, then my name stays.
+- Given I closed the stale Summary notice, when I make another correction, then the notice can appear again.
+- Given I link a participant, when the dialog opens next time, then it shows **Only this meeting**.
+
+## Related documents
+
+- [Speaker evidence](../../architecture/speaker-evidence.md) — name priority and correction rules.
+- [Recording results](meeting-results.md) — the results panel.

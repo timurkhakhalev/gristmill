@@ -8,7 +8,7 @@ It is different from the Google Meet Companion mode.
 - Supported browser channel: Chrome Stable.
 - Chrome Web Store identity and publication are separate work.
 - Speaker matching: [speaker evidence](speaker-evidence.md).
-- User-facing behavior: [product Companion page](../product/companion.md).
+- User-facing behavior: [Browser calls journey](../product/user-journeys/companion.md).
 
 ## Builds and app channels
 

@@ -1,43 +1,50 @@
 # First launch
 
-As a Gristmill user, I want to set up recording and optional integrations.
-
-## User journey
-
-1. Grant microphone access. Review optional system audio and Accessibility access.
-2. Set a profile name or skip it.
-3. Configure a transcription provider or choose Configure later.
-4. Select spoken languages.
-5. Optionally connect a calendar and finish.
-
-## Behavior and limits
-
-- The main ControlPanel stays unavailable until onboarding completes. Completion is stored in localStorage.
-- Microphone access is required to continue. System audio and Accessibility are optional in this flow.
-- The provider step configures transcription, not Chat or Summary. Its direct picker offers only file models with a working single-key credential handler. AssemblyAI and Corti are excluded from this form. A confirmed choice applies through the existing all-scope transcription setter; Meeting still enforces its narrower file-provider capabilities. Continue and Proceed share one in-flight secure save. The footer is disabled during that save, and a failed save permits Retry. A pending secure save may finish, but its result changes routing and advances the step only while the same configuration and mounted step still own that operation.
-- An empty language selection does not block Continue. Calendar connection is optional.
-- A restart begins the flow again if it is incomplete; the current step is not persisted.
-- Normal Finish opens the main view. The flow does not request automatic Settings opening.
-- Calendar setup in onboarding continues after system audio permission is refused; Settings has a different permission gate.
-
-## Tray startup
-
-Start minimized and launch-at-login load the control panel renderer in a hidden window. The renderer hydrates settings and resolves persisted onboarding before meeting input is allowed. A fresh profile remains gated. Window restore and the load backstop do not show a tray-started panel; an explicit tray or navigation action shows it. A failed hidden load leaves the gate closed and permits tray startup to finish. An explicit open retries that load.
-
-## What to check
-
-- The main view appears after Finish.
-- Skipped provider/calendar setup remains available in Settings.
-
-## BDD acceptance criteria
-
-- Given microphone permission is missing, when I view Permissions, then Continue is unavailable.
-- Given I skip provider and calendar setup, when I finish, then Home opens.
+As a Gristmill user, I want to set up recording and optional integrations before my first meeting.
 
 ## Entry points
 
-- [AppRouter.tsx](../../../src/AppRouter.tsx) — completion gate.
-- [OnboardingFlow.tsx](../../../src/components/OnboardingFlow.tsx) — step order.
-- [CompactPermissionsStep.tsx](../../../src/components/onboarding/CompactPermissionsStep.tsx) — permissions.
-- [ProviderSetupStep.tsx](../../../src/components/onboarding/ProviderSetupStep.tsx) — transcription setup.
-- [CalendarConnectionsStep.tsx](../../../src/components/onboarding/CalendarConnectionsStep.tsx) — optional calendar setup.
+- **Gristmill app → first launch** — the setup flow opens before the main window.
+- **Gristmill app → tray or launch at login** — the app starts hidden. The setup flow opens when you open the window.
+
+## Paths
+
+### Complete the full setup
+
+1. Open Gristmill for the first time. The **Set up Gristmill in 3 minutes** screen opens.
+2. Click **Enable** for the microphone. You cannot continue without microphone access.
+3. Optionally enable System Audio and Accessibility. Gristmill uses System Audio to record the other people on the call.
+4. Click **Continue**. Enter your name in **What should we call you?** Gristmill uses this name for your voice in transcripts.
+5. In **Connect your AI provider**, choose a transcription provider and a model, paste the API key and click **Proceed**. Gristmill checks and saves the key. If the save fails, click **Proceed** again.
+6. In **Which languages do you speak?**, select your languages and click **Continue**.
+7. In the calendar step, connect Google Calendar, Microsoft Outlook or Apple Calendar.
+8. Click **Finish**. Home opens.
+
+### Skip the optional steps
+
+1. Grant microphone access and click **Continue**.
+2. Click **Skip** on the name step.
+3. Click **Configure a provider later** on the provider step.
+4. Continue without languages and without a calendar.
+5. Click **Finish**. Home opens. You can set up the provider, the languages and the calendar later in Settings.
+
+### Connect a calendar without System Audio
+
+1. Refuse the System Audio permission.
+2. Go to the calendar step and connect a calendar. The setup flow lets you continue.
+
+### Return to an incomplete setup
+
+1. Quit Gristmill before you click **Finish**.
+2. Open Gristmill again. The setup flow starts again from the first step.
+
+## BDD acceptance criteria
+
+- Given microphone access is missing, when I view the permissions screen, then I cannot continue.
+- Given I skip the provider and the calendar, when I click **Finish**, then Home opens.
+- Given I quit before **Finish**, when I open Gristmill again, then the setup flow starts again.
+
+## Related documents
+
+- [Application shell](../../architecture/app-shell.md) — setup gate, provider save and tray startup rules.
+- [Processing routes](providers.md) — the transcription routes that you can select.

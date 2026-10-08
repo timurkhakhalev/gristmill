@@ -43,7 +43,7 @@ export function useMeetingCompanionSync(): void {
     () =>
       window.electronAPI?.onMeetingCompanionToggleMic?.(() => {
         const { manualMicMuted: muted } = useMeetingRecordingStore.getState();
-        void setManualMicMuted(!muted);
+        void setManualMicMuted(!muted).catch(() => undefined);
       }),
     []
   );

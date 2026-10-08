@@ -561,7 +561,7 @@ export class AppleCalendarManager {
           ? selfResponseStatus
           : "unknown",
       hangout_link:
-        extractMeetingUrl([event.url, event.location, ...(event.notes_urls || [])]) ??
+        extractMeetingUrl([event.url ?? "", event.location ?? "", ...(event.notes_urls || [])]) ??
         // Generic fallback only for the event's own URL field
         (event.url?.startsWith("https://") ? event.url : null),
       conference_data: null,

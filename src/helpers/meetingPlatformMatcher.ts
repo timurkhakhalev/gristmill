@@ -72,12 +72,27 @@ function union(intervals: Interval[]): Interval[] {
   return result;
 }
 
+type IntervalMapping = { interval: Interval; ids: string[]; binding: string };
+
+type MapFailure =
+  | "clock-uncertainty"
+  | "clock-generation-missing"
+  | "clock-outside-audio"
+  | "clock-rate-mismatch"
+  | "clock-discontinuity"
+  | "clock-coverage-gap"
+  | "activity-unconfirmed";
+
+function isMapFailure(value: IntervalMapping | MapFailure): value is MapFailure {
+  return typeof value === "string";
+}
+
 /** Map only through contiguous actual frame ranges in one saved source epoch.
  * Independent anchors may join only when both frame and host boundaries agree. */
 function mapInterval(
   input: MeetingPlatformMatcherInput,
   observation: MeetingPlatformObservation
-): { interval: Interval; ids: string[]; binding: string } | string {
+): IntervalMapping | MapFailure {
   const policy = policyFor(observation.platform);
 
   if (BigInt(observation.clockUncertaintyNs) > 25_000_000n) return "clock-uncertainty";
@@ -90,16 +105,18 @@ function mapInterval(
   let cursor = BigInt(observation.readStartHostNs);
   const end = BigInt(observation.readEndHostNs);
 
+  // Anchors without both host bounds cannot map audio; drop them up front so
+  // the rest of the mapping can rely on the non-null values.
   const anchors = input.anchors
     .filter(
-      (a) =>
+      (a): a is MeetingAudioClockAnchor & { clock: { hostStartNs: string; hostEndNs: string } } =>
         a.recordingId === observation.recordingId &&
         (!observation.clockGeneration || a.clock.generation === observation.clockGeneration) &&
         a.clock.reason === null &&
         a.clock.hostStartNs !== null &&
         a.clock.hostEndNs !== null
     )
-    .sort((a, b) => (BigInt(a.clock.hostStartNs!) < BigInt(b.clock.hostStartNs!) ? -1 : 1));
+    .sort((a, b) => (BigInt(a.clock.hostStartNs) < BigInt(b.clock.hostStartNs) ? -1 : 1));
 
   let previous: MeetingAudioClockAnchor | undefined;
   let startSeconds: number | undefined;
@@ -108,7 +125,7 @@ function mapInterval(
 
   while (cursor < end) {
     const matching = anchors.filter(
-      (a) => BigInt(a.clock.hostStartNs!) <= cursor && BigInt(a.clock.hostEndNs!) > cursor
+      (a) => BigInt(a.clock.hostStartNs) <= cursor && BigInt(a.clock.hostEndNs) > cursor
     );
 
     if (matching.length !== 1) return "clock-coverage-gap";
@@ -128,8 +145,8 @@ function mapInterval(
       a.epochStartFrame + c.endFrame > part.frameCount
     )
       return "clock-outside-audio";
-    const hostStart = BigInt(c.hostStartNs!);
-    const hostEnd = BigInt(c.hostEndNs!);
+    const hostStart = BigInt(c.hostStartNs);
+    const hostEnd = BigInt(c.hostEndNs);
     const duration = Number(hostEnd - hostStart) / 1e9;
 
     if (
@@ -143,7 +160,8 @@ function mapInterval(
       (previous.epochIndex !== a.epochIndex ||
         previous.clock.generation !== c.generation ||
         previous.clock.endFrame !== c.startFrame ||
-        Math.abs(Number(hostStart - BigInt(previous.clock.hostEndNs!))) / 1e9 >
+        previous.clock.hostEndNs === null ||
+        Math.abs(Number(hostStart - BigInt(previous.clock.hostEndNs))) / 1e9 >
           policy.clockContinuitySeconds)
     )
       return "clock-discontinuity";
@@ -257,7 +275,7 @@ export function matchMeetingPlatformSpeakers(
 
       const mapped = mapInterval(input, sample);
 
-      if (typeof mapped === "string") {
+      if (isMapFailure(mapped)) {
         clockReason = mapped;
         continue;
       }
@@ -284,11 +302,12 @@ export function matchMeetingPlatformSpeakers(
       .filter((i) => i.end > i.start);
 
     const speech = system.filter((s) => cores.some((i) => overlaps(s, i)));
-    const speakers = new Set(speech.map((s) => s.speaker!));
+
+    const speakers = new Set(speech.flatMap((s) => (s.speaker !== null ? [s.speaker] : [])));
 
     if (speakers.size !== 1)
       return { ...decision, reason: speakers.size ? "ambiguous-asr-window" : "no-system-speech" };
-    decision.speakerId = [...speakers][0];
+    decision.speakerId = [...speakers][0] ?? null;
 
     if (o.self === "local" || localNames.has(o.displayName))
       return { ...decision, reason: "local-participant" };

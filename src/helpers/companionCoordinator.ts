@@ -94,10 +94,12 @@ export class CompanionCoordinator {
 
     if (previous && BigInt(context.sourceNs) <= BigInt(previous.context.sourceNs)) return;
 
+    const activeBinding = this.currentBinding();
+
     if (
       previous &&
-      this.currentBinding() &&
-      sameCandidate(this.currentBinding()!, key) &&
+      activeBinding &&
+      sameCandidate(activeBinding, key) &&
       this.deps.now() - previous.receivedAt > COMPANION_CONTEXT_TTL_MS
     )
       this.markUnavailable();
@@ -112,10 +114,12 @@ export class CompanionCoordinator {
       }
     }
 
+    // Eviction order is irrelevant: the set only blocks rebinding to a stale
+    // document until capacity forces the oldest entry out.
     if (this.retiredDocuments.size > 256)
-      this.retiredDocuments.delete(this.retiredDocuments.values().next().value!);
+      this.retiredDocuments.delete(this.retiredDocuments.values().next().value ?? "");
 
-    if (this.candidates.size >= 128) this.candidates.delete(this.candidates.keys().next().value!);
+    if (this.candidates.size >= 128) this.evictOldestCandidate();
     this.candidates.set(keyFor(key), candidate);
     const binding = this.currentBinding();
 
@@ -143,7 +147,9 @@ export class CompanionCoordinator {
       this.reminderShown = false;
     }
 
-    if (this.currentBinding() && sameCandidate(this.currentBinding()!, key)) this.apply(candidate);
+    const current = this.currentBinding();
+
+    if (current && sameCandidate(current, key)) this.apply(candidate);
     this.publish();
   }
   start(scope: CompanionRecordingScope, restartCall?: CompanionCandidateKey | null): void {
@@ -231,7 +237,13 @@ export class CompanionCoordinator {
       this.deps.setPlatformMuted(binding, candidate.context.micMuted);
     }
 
-    this.deps.observe?.(this.binding!, candidate.context);
+    this.deps.observe?.(this.binding ?? binding, candidate.context);
+  }
+  private evictOldestCandidate(): void {
+    const oldest = this.candidates.keys().next();
+
+    if (oldest.done) return;
+    this.candidates.delete(oldest.value);
   }
   private markUnavailable(reason = "meet-context-unavailable"): void {
     this.contextReason = reason;

@@ -522,7 +522,7 @@ export class GoogleCalendarManager {
             ? selfAttendee.responseStatus
             : "unknown",
         hangout_link:
-          item.hangoutLink || extractMeetingUrl([item.location, item.description]) || null,
+          item.hangoutLink || extractMeetingUrl([item.location ?? "", item.description ?? ""]) || null,
         conference_data: item.conferenceData ? JSON.stringify(item.conferenceData) : null,
         event_url: item.htmlLink || null,
         organizer_email: item.organizer?.email || null,

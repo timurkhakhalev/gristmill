@@ -101,7 +101,9 @@ function activityRing(element: Element): boolean {
     element.closest('button, [role="button"], [role="menu"], [role="tooltip"]')
   )
     return false;
-  const style = element.ownerDocument.defaultView!.getComputedStyle(element);
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+
+  if (!style) return false;
 
   return (
     [
@@ -153,7 +155,7 @@ function speakingTile(tile: Element): boolean {
     if (
       activityRing(element) ||
       (rect.width <= 10 &&
-        colored(element.ownerDocument.defaultView!.getComputedStyle(element).backgroundColor))
+        colored(element.ownerDocument.defaultView?.getComputedStyle(element).backgroundColor ?? ""))
     )
       return true;
   }

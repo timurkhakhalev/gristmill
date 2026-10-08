@@ -517,7 +517,7 @@ export class MicrosoftCalendarManager {
       hangout_link:
         item.onlineMeeting?.joinUrl ||
         item.onlineMeetingUrl ||
-        extractMeetingUrl([item.location?.displayName, item.bodyPreview]) ||
+        extractMeetingUrl([item.location?.displayName ?? "", item.bodyPreview ?? ""]) ||
         null,
       conference_data: null,
       event_url: item.webLink || null,

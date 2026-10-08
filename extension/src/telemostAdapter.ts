@@ -104,7 +104,7 @@ function readTiles(doc: Document): Pick<CompanionContext, "participants" | "acti
     );
 
     if (names.length !== 1) continue;
-    const name = names[0].textContent!.trim();
+    const name = names[0]?.textContent?.trim() ?? "";
 
     if (!name || name.length > 200) continue;
     let identity = tileIds.get(video);

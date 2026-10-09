@@ -68,6 +68,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - It keeps the healthy microphone stream, the AudioContext and the Worklet alive. The system capture continues.
 - Pause and Stop release both audio devices.
 - The manual mute intent stays through Pause, Resume, reopen and Restart. A separate Start begins without a mute intent.
+- Renderer capture keeps a five-second unacknowledged buffer. Short UI or writer stalls can drain; a stall beyond that limit fails explicitly. The buffer does not remove this renderer dependency. Use the isolated [capture benchmark](../runbooks/testing.md#real-electron-capture-path) to check the limit before changing capture ownership.
 - `meetingAudioPipeline.ts` owns the Worklet code, the write queue of each processor, gate acknowledgements, epochs and the flush and drain barrier for renderer audio.
 - `meetingRecordingStore.ts` owns the session, streams, contexts, the analyser, device recovery and clock mapping. Thus capture continues when a view remounts.
 - A replacement microphone starts with its gate closed. Its actual track mute state replaces the old device mute; manual and Meet mute keep their own intent. Recovery reports active only after the live track and its current persisted intent are accepted.
@@ -75,7 +76,6 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - Initial and replacement microphone analysers read the Worklet output. A closed gate gives zero microphone level; system audio can still move the Companion bars. Each output path keeps a zero-gain sink.
 - The native system-audio watchdog arms its first-delivery deadline only after a validated helper start ACK. Silent PCM counts as delivery; sleep and each replacement rebase the deadline. An ACK alone does not report recovered audio.
 - The pipeline reports the microphone flush boundary through a typed callback. The session stop barrier waits for the drain. Then it sends the last sequences and that boundary to main.
-- Renderer capture keeps a five-second unacknowledged buffer. Short UI or writer stalls can drain; a stall beyond that limit fails explicitly. The buffer does not remove this renderer dependency. Use the isolated [capture benchmark](../runbooks/testing.md#real-electron-capture-path) to check the limit before changing capture ownership.
 
 ## Run creation
 

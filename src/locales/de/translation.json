@@ -2389,8 +2389,10 @@
       "other": "Verarbeitung fehlgeschlagen"
     },
     "reviewAudioParts": "Audioteile prüfen",
-    "audioAlignmentMissing": "Audio konnte nicht synchronisiert werden",
-    "audioAlignmentMissingReason": "Das Audio ist gespeichert, aber für einen Aufnahmeteil fehlt eine verlässliche Zeitzuordnung. Prüfe die Audioteile und schließe den beschädigten Teil von der nächsten Transkription aus. Alle Originale bleiben erhalten.",
+    "audioPartNotPrepared": "Nicht verarbeitet",
+    "audioAlignmentMissing": "Die Aufnahme konnte nicht vorbereitet werden",
+    "audioAlignmentMissingReason": "Dein Audio ist gespeichert. Teile, die nicht vorbereitet werden konnten, sind in der Liste markiert. Du kannst sie überspringen und die übrigen Teile transkribieren, ohne Audio zu löschen.",
+    "audioAlignmentMissingOnlyPartReason": "Dein Audio ist gespeichert, konnte aber nicht für die Transkription vorbereitet werden. Es wurde kein Originalaudio gelöscht.",
     "captureFailed": "Aufnahme unterbrochen",
     "captureFailedReason": "Das aufgenommene Audio ist gespeichert. Öffne „Transkript und Audio“, um die Aufnahme zu prüfen. Eine erneute Verarbeitung stellt fehlenden Ton nicht wieder her.",
     "failedReason": "Dein Audio ist gespeichert. Die Verarbeitung ist fehlgeschlagen. Versuche es erneut.",

@@ -2389,8 +2389,10 @@
       "other": "处理失败"
     },
     "reviewAudioParts": "检查音频片段",
-    "audioAlignmentMissing": "无法同步音频",
-    "audioAlignmentMissingReason": "音频已保存，但部分录音缺少可靠的时间信息。请检查音频片段，并在下次转写时排除损坏的片段。所有原始音频都会保留。",
+    "audioPartNotPrepared": "未处理",
+    "audioAlignmentMissing": "无法准备录音",
+    "audioAlignmentMissingReason": "音频已保存。无法准备的片段已在列表中标记。您可以跳过这些片段并转录其余部分，不会删除任何音频。",
+    "audioAlignmentMissingOnlyPartReason": "音频已保存，但无法为转录做好准备。原始音频未被删除。",
     "captureFailed": "录音已中断",
     "captureFailedReason": "已录制的音频已保存。打开“转写与音频”检查录音。重新处理无法恢复缺失的声音。",
     "failedReason": "音频已保存。处理失败，请重试。",

@@ -2245,8 +2245,10 @@
   },
   "meetingResults": {
     "reviewAudioParts": "Review audio parts",
-    "audioAlignmentMissing": "Audio timing is missing",
-    "audioAlignmentMissingReason": "Your audio is saved, but a recording part has no reliable timing. Review the audio parts and exclude the damaged part from the next transcription. All originals are kept.",
+    "audioPartNotPrepared": "Not processed",
+    "audioAlignmentMissing": "Could not prepare the recording",
+    "audioAlignmentMissingReason": "Your audio is saved. Parts that could not be prepared are marked in the list. You can skip them and transcribe the remaining parts without deleting any audio.",
+    "audioAlignmentMissingOnlyPartReason": "Your audio is saved, but it could not be prepared for transcription. None of the original audio was deleted.",
     "captureFailed": "Recording was interrupted",
     "captureFailedReason": "The captured audio is saved. Open Transcript and audio to review the recording. Missing sound cannot be restored by retrying.",
     "includePart": "Include in next transcription",

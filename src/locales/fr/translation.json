@@ -2389,8 +2389,10 @@
       "other": "Échec du traitement"
     },
     "reviewAudioParts": "Vérifier les parties audio",
-    "audioAlignmentMissing": "Synchronisation audio impossible",
-    "audioAlignmentMissingReason": "L’audio est sauvegardé, mais une partie de l’enregistrement ne dispose pas de repères temporels fiables. Vérifiez les parties audio et excluez la partie endommagée de la prochaine transcription. Tous les originaux sont conservés.",
+    "audioPartNotPrepared": "Non traitée",
+    "audioAlignmentMissing": "Impossible de préparer l’enregistrement",
+    "audioAlignmentMissingReason": "Votre audio est sauvegardé. Les parties qui n’ont pas pu être préparées sont indiquées dans la liste. Vous pouvez les ignorer et transcrire les autres parties sans supprimer l’audio.",
+    "audioAlignmentMissingOnlyPartReason": "Votre audio est sauvegardé, mais n’a pas pu être préparé pour la transcription. Aucun fichier audio original n’a été supprimé.",
     "captureFailed": "Enregistrement interrompu",
     "captureFailedReason": "L’audio enregistré est sauvegardé. Ouvrez « Transcription et audio » pour vérifier l’enregistrement. Relancer le traitement ne peut pas restaurer le son manquant.",
     "failedReason": "Votre audio est sauvegardé. Le traitement a échoué. Réessayez.",

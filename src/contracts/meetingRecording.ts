@@ -382,6 +382,7 @@ export const meetingProcessingRunDtoSchema = z.object({
   id: meetingRecordingIdSchema,
   recordingId: meetingRecordingIdSchema,
   sourceRecordingIds: z.array(meetingRecordingIdSchema).min(1),
+  hasExplicitAudioParts: z.boolean(),
   kind: z.enum(["initial", "reprocess", "summary"]),
   sourceRunId: meetingRecordingIdSchema.nullable(),
   bbThreadId: z.string().nullable(),

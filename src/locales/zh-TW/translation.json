@@ -2389,8 +2389,10 @@
       "other": "處理失敗"
     },
     "reviewAudioParts": "檢查音訊片段",
-    "audioAlignmentMissing": "無法同步音訊",
-    "audioAlignmentMissingReason": "音訊已儲存，但部分錄音缺少可靠的時間資訊。請檢查音訊片段，並在下次轉寫時排除損壞的片段。所有原始音訊都會保留。",
+    "audioPartNotPrepared": "未處理",
+    "audioAlignmentMissing": "無法準備錄音",
+    "audioAlignmentMissingReason": "音訊已儲存。無法準備的片段已在清單中標記。您可以略過這些片段並轉錄其餘部分，不會刪除任何音訊。",
+    "audioAlignmentMissingOnlyPartReason": "音訊已儲存，但無法為轉錄做好準備。原始音訊未被刪除。",
     "captureFailed": "錄音已中斷",
     "captureFailedReason": "已錄製的音訊已儲存。開啟「轉寫與音訊」檢查錄音。重新處理無法恢復缺失的聲音。",
     "failedReason": "音訊已儲存。處理失敗，請重試。",

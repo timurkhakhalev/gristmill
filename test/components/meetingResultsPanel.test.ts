@@ -111,6 +111,7 @@ function recording(
       captureErrorCode: captureState === "incomplete" ? "system-audio-interrupted" : null,
       audioState: "available",
       audioErrorCode: null,
+      audioPreparationErrorCode: null as "audio-alignment-unavailable" | null,
       currentRunId: run?.run.id ?? null,
     },
     runs: run ? [run] : [],
@@ -123,6 +124,7 @@ function completeRun(): RunBundle {
       id: RUN,
       recordingId: FIRST,
       sourceRecordingIds: [FIRST, SECOND],
+      hasExplicitAudioParts: true,
       kind: "reprocess",
       sourceRunId: null,
       provider: "elevenlabs",
@@ -1558,9 +1560,11 @@ test("missing audio alignment explains the local failure and opens saved parts i
   failed.run.hasSummary = false;
   failed.transcript = undefined;
   failed.summary = undefined;
-  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed)]);
-  assert.match(ui.text(), /Audio timing is missing/);
-  assert.match(ui.text(), /exclude the damaged part/);
+  const part = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed);
+  part.recording.audioPreparationErrorCode = "audio-alignment-unavailable";
+  const ui = await mountPanel(t, [part]);
+  assert.match(ui.text(), /Could not prepare the recording/);
+  assert.match(ui.text(), /could not be prepared for transcription/);
   assert.doesNotMatch(ui.text(), /connection|API key|waiting for settings/);
   assert.equal(ui.button("meetingResults.retry"), null);
   await ui.flush(() => (ui.button("Review audio parts")!.props as { onPress(): void }).onPress());
@@ -1610,4 +1614,43 @@ test("excluding every part disables transcription and including a part restores 
   await ui.clickRenderedButton(["Transcribe & Summary"]);
   assert.deepEqual(ui.calls.create[0].sourceRecordingIds, [FIRST]);
   assert.deepEqual(ui.calls.delete, []);
+});
+
+test("missing timing is marked on the exact audio part among multiple saved parts", async (t: TestContext) => {
+  const failed = completeRun();
+  failed.run.status = "failed";
+  failed.run.stage = "prepare";
+  failed.run.errorCode = "audio-alignment-unavailable";
+  const good = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed);
+  const bad = recording(SECOND, FIRST, "2026-09-25T10:00:01.000Z", null, "incomplete");
+  bad.recording.audioPreparationErrorCode = "audio-alignment-unavailable";
+  const ui = await mountPanel(t, [good, bad]);
+  assert.equal(ui.text().match(/meetingResults.audioPartNotPrepared/g)?.length, 1);
+  assert.match(ui.text(), /Parts that could not be prepared are marked/);
+});
+
+for (const scenario of ["recording", "finalizing", "unavailable", "legacy", "omitted"] as const) {
+  test(`partial-result notice distinguishes ${scenario} from an explicit omission`, async (t: TestContext) => {
+    const run = completeRun();
+    run.run.sourceRecordingIds = [FIRST];
+    run.run.hasExplicitAudioParts = scenario !== "legacy";
+    const other = recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z", null,
+      scenario === "recording" || scenario === "finalizing" ? scenario : "ready");
+    if (scenario === "unavailable") other.recording.captureErrorCode = "recording-audio-unavailable";
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run), other]);
+    if (scenario === "omitted") assert.match(ui.text(), /meetingResults.partialAudioResult/);
+    else assert.doesNotMatch(ui.text(), /meetingResults.partialAudioResult/);
+  });
+}
+
+test("deleting an excluded part clears the exclusion counter without changing another part", async (t: TestContext) => {
+  const first = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
+  const second = recording(SECOND, FIRST, "2026-09-25T10:00:01.000Z");
+  const ui = await mountPanel(t, [first, second]);
+  await ui.flush(() => (ui.menu("Audio part actions")!.props as { onAction(key: string): void }).onAction("exclude"));
+  assert.match(ui.text(), /meetingResults.excludedParts/);
+  await ui.flush(() => (ui.menu("Audio part actions")!.props as { onAction(key: string): void }).onAction("delete"));
+  await ui.flush(() => ui.dialog().onConfirm());
+  assert.deepEqual(ui.calls.delete, [FIRST]);
+  assert.doesNotMatch(ui.text(), /meetingResults.excludedParts/);
 });

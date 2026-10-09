@@ -2389,8 +2389,10 @@
       "other": "Elaborazione non riuscita"
     },
     "reviewAudioParts": "Controlla le parti audio",
-    "audioAlignmentMissing": "Sincronizzazione audio non riuscita",
-    "audioAlignmentMissingReason": "L’audio è salvato, ma una parte della registrazione non dispone di riferimenti temporali affidabili. Controlla le parti audio ed escludi quella danneggiata dalla prossima trascrizione. Tutti gli originali verranno conservati.",
+    "audioPartNotPrepared": "Non elaborata",
+    "audioAlignmentMissing": "Impossibile preparare la registrazione",
+    "audioAlignmentMissingReason": "L’audio è salvato. Le parti che non è stato possibile preparare sono indicate nell’elenco. Puoi saltarle e trascrivere le altre parti senza eliminare l’audio.",
+    "audioAlignmentMissingOnlyPartReason": "L’audio è salvato, ma non è stato possibile prepararlo per la trascrizione. Nessun audio originale è stato eliminato.",
     "captureFailed": "Registrazione interrotta",
     "captureFailedReason": "L’audio registrato è salvato. Apri «Trascrizione e audio» per controllare la registrazione. Ripetere l’elaborazione non ripristinerà l’audio mancante.",
     "failedReason": "L’audio è salvato. L’elaborazione non è riuscita. Riprova.",

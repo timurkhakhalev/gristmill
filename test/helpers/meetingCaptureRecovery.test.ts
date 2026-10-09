@@ -526,7 +526,7 @@ test("write queue stops at its PCM backlog limit and surfaces delayed writer fai
   assert.deepEqual(failures, ["Meeting capture exceeded the 5000 ms write backlog"]);
 });
 
-test("a microphone render gap starts a new epoch and retains both sides without stopping capture", async () => {
+test("bounded startup clock settling preserves both epochs without marking capture incomplete", async () => {
   const { database, storage } = createCaptureFakes();
   const capture = MeetingCaptureSession.create(database, storage, 12, null, new Date(), RECORDING_ID);
   capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.alloc(256));
@@ -534,8 +534,27 @@ test("a microphone render gap starts a new epoch and retains both sides without 
   capture.appendRendererSamples("mic", packet(1, 256, 1, 2400), Buffer.alloc(4800));
   capture.appendNativeSamples("system", 1, Buffer.alloc(4800), 0, 0);
   const result = await capture.stop({ lastSequence: { mic: 1 } });
-  assert.equal(result.captureState, "incomplete", "a real gap must remain visible after Stop");
+  assert.equal(result.captureState, "ready");
+  assert.equal(result.errorCode, null);
   assert.equal(database.epochs.filter((epoch) => epoch.source === "mic").length, 2);
   assert.equal(storage.files.get(`${RECORDING_ID}:mic:0`)!.reduce((sum, bytes) => sum + bytes.length, 0), 256);
   assert.equal(storage.files.get(`${RECORDING_ID}:mic:1`)!.reduce((sum, bytes) => sum + bytes.length, 0), 9600);
 });
+
+for (const [name, firstFrames, gapFrames] of [
+  ["a gap after a full packet", 2400, 128],
+  ["an unbounded startup gap", 128, 2401],
+] as const) {
+  test(`${name} remains incomplete and retains accepted audio`, async () => {
+    const { database, storage } = createCaptureFakes();
+    const capture = MeetingCaptureSession.create(database, storage, 12, null, new Date(), RECORDING_ID);
+    capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.alloc(firstFrames * 2));
+    capture.appendRendererSamples("mic", packet(1, firstFrames + gapFrames, 0, 0), Buffer.alloc(4800));
+    capture.appendNativeSamples("system", 1, Buffer.alloc(4800), 0, 0);
+    const result = await capture.stop({ lastSequence: { mic: 0 } });
+    assert.equal(result.captureState, "incomplete");
+    assert.equal(result.errorCode, "source-restarted");
+    assert.equal(database.epochs.filter((epoch) => epoch.source === "mic").length, 2);
+    assert.equal(storage.files.get(`${RECORDING_ID}:mic:0`)![0].length, firstFrames * 2);
+  });
+}

@@ -2389,8 +2389,10 @@
       "other": "処理に失敗しました"
     },
     "reviewAudioParts": "音声パートを確認",
-    "audioAlignmentMissing": "音声を同期できませんでした",
-    "audioAlignmentMissingReason": "音声は保存されていますが、録音の一部に正確な時刻情報がありません。音声パートを確認し、破損したパートを次の文字起こしから除外してください。元の音声はすべて保持されます。",
+    "audioPartNotPrepared": "未処理",
+    "audioAlignmentMissing": "録音を準備できませんでした",
+    "audioAlignmentMissingReason": "音声は保存されています。準備できなかった部分は一覧に表示されています。その部分を除外し、音声を削除せずに残りの部分を文字起こしできます。",
+    "audioAlignmentMissingOnlyPartReason": "音声は保存されていますが、文字起こしの準備ができませんでした。元の音声は削除されていません。",
     "captureFailed": "録音が中断されました",
     "captureFailedReason": "録音した音声は保存されています。「文字起こしと音声」を開いて録音を確認してください。処理をやり直しても欠落した音声は復元できません。",
     "failedReason": "音声は保存されています。処理に失敗しました。もう一度お試しください。",

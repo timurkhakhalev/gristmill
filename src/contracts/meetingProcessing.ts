@@ -98,6 +98,7 @@ export const meetingProcessingRecordingResultSchema = z.object({
     captureErrorCode: z.string().nullable(),
     audioState: z.enum(["available", "deleting", "deleted"]),
     audioErrorCode: z.string().nullable(),
+    audioPreparationErrorCode: z.literal("audio-alignment-unavailable").nullable(),
     currentRunId: meetingRecordingIdSchema.nullable(),
     startedAt: z.string(),
     endedAt: z.string().nullable(),

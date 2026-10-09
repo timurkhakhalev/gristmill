@@ -5396,3 +5396,40 @@ for (const summaryOnly of [false, true]) {
     );
   });
 }
+
+test("list-for-note diagnoses the unaligned part and retains explicit versus legacy source selection", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage, validConfig);
+  db.db.prepare("UPDATE meeting_recording_epochs SET timeline_start_frame = NULL WHERE recording_id = ? AND source = 'mic'").run(recording.id);
+  const worker = workerFor(db, storage);
+  t.after(() => worker.stop());
+  let result = worker.listForNote(recording.noteId)[0];
+  assert.equal(result.recording.id, recording.id);
+  assert.equal(result.recording.audioPreparationErrorCode, "audio-alignment-unavailable");
+  assert.equal(result.runs[0].run.hasExplicitAudioParts, true);
+  db.db.prepare("UPDATE meeting_recording_epochs SET timeline_start_frame = 0 WHERE recording_id = ? AND source = 'mic'").run(recording.id);
+  db.db.prepare("UPDATE meeting_processing_runs SET source_recording_ids_json = NULL WHERE id = ?").run(run.id);
+  result = worker.listForNote(recording.noteId)[0];
+  assert.equal(result.recording.audioPreparationErrorCode, null);
+  assert.equal(result.runs[0].run.hasExplicitAudioParts, false);
+  assert.deepEqual(result.runs[0].run.sourceRecordingIds, [recording.id]);
+});
+
+test("listing an active recording does not read its growing alignment history", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording } = createFinishedRecording(db, storage, validConfig);
+  db.db.prepare("UPDATE meeting_recordings SET capture_state = 'recording', ended_at = NULL WHERE id = ?").run(recording.id);
+  const original = db.listMeetingRecordingEpochs.bind(db);
+  let reads = 0;
+  db.listMeetingRecordingEpochs = (id: string) => { reads++; return original(id); };
+  const worker = workerFor(db, storage);
+  t.after(() => worker.stop());
+  const result = worker.listForNote(recording.noteId)[0];
+  assert.equal(result.recording.durationSeconds, null);
+  assert.equal(result.recording.audioPreparationErrorCode, null);
+  assert.equal(reads, 0);
+});

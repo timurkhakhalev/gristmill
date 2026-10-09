@@ -2389,8 +2389,10 @@
       "other": "Falha no processamento"
     },
     "reviewAudioParts": "Revisar partes do áudio",
-    "audioAlignmentMissing": "Não foi possível sincronizar o áudio",
-    "audioAlignmentMissingReason": "O áudio está salvo, mas uma parte da gravação não tem uma referência de tempo confiável. Revise as partes do áudio e exclua a parte danificada da próxima transcrição. Todos os originais serão mantidos.",
+    "audioPartNotPrepared": "Não processada",
+    "audioAlignmentMissing": "Não foi possível preparar a gravação",
+    "audioAlignmentMissingReason": "Seu áudio está salvo. As partes que não puderam ser preparadas estão marcadas na lista. Você pode ignorá-las e transcrever as restantes sem excluir o áudio.",
+    "audioAlignmentMissingOnlyPartReason": "Seu áudio está salvo, mas não pôde ser preparado para a transcrição. Nenhum áudio original foi excluído.",
     "captureFailed": "Gravação interrompida",
     "captureFailedReason": "O áudio gravado está salvo. Abra «Transcrição e áudio» para revisar a gravação. Repetir o processamento não recuperará o som ausente.",
     "failedReason": "Seu áudio está salvo. O processamento falhou. Tente novamente.",

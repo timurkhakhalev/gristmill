@@ -1,4 +1,5 @@
-// Run after pnpm run build:main. No microphone, provider or production profile.
+// Run after pnpm run build:main. Synthetic audio by default; --microphone requires existing permission.
+// No provider calls or production profile.
 import { createServer } from "vite";
 import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -8,9 +9,10 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const root = process.cwd();
+const microphone = process.argv.includes("--microphone");
 const ref = process.argv.slice(2).find((arg) => !arg.startsWith("--"));
 const soakSeconds = Number(process.argv.find((arg) => arg.startsWith("--soak-seconds="))?.split("=")[1] ?? 0);
-if (!Number.isInteger(soakSeconds) || soakSeconds < 0 || soakSeconds > 7200 || (ref && soakSeconds))
+if (!Number.isInteger(soakSeconds) || soakSeconds < 0 || soakSeconds > 7200 || (ref && soakSeconds) || (microphone && (ref || soakSeconds)))
   throw new Error("Use a Git ref or --soak-seconds=1..7200");
 const pipelineFile = path.join(root, "src/helpers/meetingAudioPipeline.ts");
 const baseline = ref ? execFileSync("git", ["show", `${ref}:src/helpers/meetingAudioPipeline.ts`], { encoding: "utf8" }) : null;
@@ -39,6 +41,7 @@ const alignment=frame=>{
 };
 window.runScenario=async scenario=>{
  const id=await window.bench.invoke('start');
+ const micStream=${microphone} ? await navigator.mediaDevices.getUserMedia({audio:true}) : null;
  const context=createMeetingCaptureAudioContext();activeContext=context;maxPendingFrames=0;endToEndAckMs=[];
  const oscillator=context.createOscillator();oscillator.frequency.value=440;
  const destination=context.createMediaStreamDestination();oscillator.connect(destination);oscillator.start();
@@ -47,7 +50,7 @@ window.runScenario=async scenario=>{
  try {
   if(!scenario.coldStart){await context.resume();await wait(200);}
   for(const source of ['mic','system']) pipes[source]=await createAudioPipeline({
-   context,stream:destination.stream,source,sessionId:id,epochIndex:0,renderOriginFrame:0,sourceGeneration:1,
+   context,stream:source==='mic'&&micStream?micStream:destination.stream,source,sessionId:id,epochIndex:0,renderOriginFrame:0,sourceGeneration:1,
    alignmentAtRenderFrame:alignment,onAck:sequence=>acks[source]=sequence,
    onMicrophoneBoundary:value=>boundary=value,onFailure:error=>failures.push({source,error:error.message})
   });
@@ -70,7 +73,7 @@ window.runScenario=async scenario=>{
   return {scenario,failures,wallMs:performance.now()-started,maxPendingFrames,endToEndAckMs,...result};
  } finally {
   for(const pipe of Object.values(pipes)){pipe.source.disconnect();pipe.processor.disconnect();}
-  oscillator.stop();destination.stream.getTracks().forEach(track=>track.stop());await context.close();
+  micStream?.getTracks().forEach(track=>track.stop());oscillator.stop();destination.stream.getTracks().forEach(track=>track.stop());await context.close();
  }
 };
 window.bench.ready();
@@ -86,11 +89,12 @@ const address = server.httpServer!.address();
 if (!address || typeof address === "string") throw new Error("No benchmark server address");
 const url = `http://127.0.0.1:${address.port}/@fs${temp}/index.html`;
 fs.writeFileSync(path.join(temp, "main.cjs"), `
-const {app,BrowserWindow,ipcMain,powerSaveBlocker}=require('electron');const fs=require('fs');const {spawn}=require('node:child_process');const assert=require('node:assert/strict');
+const {app,BrowserWindow,ipcMain,powerSaveBlocker,systemPreferences}=require('electron');const fs=require('fs');const {spawn}=require('node:child_process');const assert=require('node:assert/strict');
 app.setPath('userData',${JSON.stringify(path.join(temp, "profile"))});
 app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');app.dock?.hide();
 const percentile=(a,p)=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[Math.min(s.length-1,Math.ceil(s.length*p)-1)]:0};
 app.whenReady().then(async()=>{
+ if(${microphone}&&systemPreferences.getMediaAccessStatus('microphone')!=='granted')throw new Error('Electron microphone permission is not already granted; no permission request was sent');
  const {DatabaseManager}=require(${JSON.stringify(path.join(root, "dist-main/src/helpers/database.js"))});
  const {MeetingCaptureSession}=require(${JSON.stringify(path.join(root, "dist-main/src/helpers/meetingCaptureSession.js"))});
  const {MeetingRecordingStorage}=require(${JSON.stringify(path.join(root, "dist-main/src/helpers/meetingRecordingStorage.js"))});
@@ -126,7 +130,7 @@ app.whenReady().then(async()=>{
     child.on('close',code=>code===0?resolve({frames:bytes/2,rms:Math.sqrt(energy/(bytes/2))}):reject(new Error('Decode failed: '+stderr)));
    });
    assert.equal(decoded.frames,epoch.frameCount,'Decoded Opus must have the exact accepted frame count');
-   assert.ok(decoded.rms>100,'The synthetic tone must survive encoding');
+   if(!${microphone}||source==='system')assert.ok(decoded.rms>100,'The synthetic tone must survive encoding');
   }
   return {result,frames,saved,epochs:epochs.map(e=>({source:e.source,epoch:e.epochIndex,state:e.state,frames:e.frameCount,startFrame:e.sourceStartFrame,error:e.errorCode})),writeMs:{median:percentile(timings.map(t=>t.writeMs),.5),p95:percentile(timings.map(t=>t.writeMs),.95),max:percentile(timings.map(t=>t.writeMs),1)},ackMs:{median:percentile(timings.map(t=>t.ackMs),.5),p95:percentile(timings.map(t=>t.ackMs),.95),max:percentile(timings.map(t=>t.ackMs),1)}};
  });
@@ -137,13 +141,13 @@ app.whenReady().then(async()=>{
  const timer=setInterval(()=>metrics.push({elapsedMs:performance.now()-startedAt,processes:app.getAppMetrics().map(m=>({pid:m.pid,type:m.type,cpu:m.cpu.percentCPUUsage,memory:m.memory}))}),1000);
  const progress=setInterval(()=>console.log('CAPTURE_PROGRESS',JSON.stringify({seconds:Math.round((performance.now()-startedAt)/1000),frames,writeP95Ms:percentile(timings.slice(-600).map(t=>t.writeMs),.95),epochs:capture?db.db.prepare('SELECT COUNT(*) count FROM meeting_recording_epochs WHERE recording_id=?').get(capture.recordingId).count:0,memory:process.memoryUsage()})),30000);
  try {
-  for(const scenario of ${soakSeconds ? JSON.stringify([{name:'soak',seconds:soakSeconds}]) : "[{name:'normal'},{name:'restart-mute',mute:true},{name:'ack-1s',delayMs:1000},{name:'ack-3s',delayMs:3000},{name:'ack-6s',delayMs:6000},{name:'renderer-1s',stallMs:1000},{name:'renderer-3s',stallMs:3000},{name:'renderer-6s',stallMs:6000}]"}){
+  for(const scenario of ${microphone ? JSON.stringify([{name:'microphone-normal',coldStart:true}]) : soakSeconds ? JSON.stringify([{name:'soak',seconds:soakSeconds}]) : "[{name:'normal'},{name:'restart-mute',mute:true},{name:'ack-1s',delayMs:1000},{name:'ack-3s',delayMs:3000},{name:'ack-6s',delayMs:6000},{name:'renderer-1s',stallMs:1000},{name:'renderer-3s',stallMs:3000},{name:'renderer-6s',stallMs:6000}]"}){
    const report=await win.webContents.executeJavaScript('window.runScenario('+JSON.stringify(scenario)+')');reports.push(report);
    const ack=report.endToEndAckMs;report.endToEndAckMs={median:percentile(ack,.5),p95:percentile(ack,.95),max:percentile(ack,1)};
    console.log('CAPTURE_RUNTIME',JSON.stringify(report));
    if(scenario.seconds){for(const source of ['mic','system'])assert.ok(report.saved[source]>=scenario.seconds*24000*.999-2400,'Soak must retain wall-time audio within 0.1% clock drift and one startup packet');}
    if(${Boolean(ref)}){if(report.failures.some(f=>f.error.includes('out of order')))break;else continue;}
-   if(Math.max(scenario.stallMs||0,scenario.delayMs||0)<5000){assert.deepEqual(report.failures,[]);if(report.result.captureState==='incomplete'){assert.equal(report.result.errorCode,'source-restarted');const system=report.epochs.filter(e=>e.source==='system');assert.equal(system.length,2);const gap=system[1].startFrame-system[0].startFrame-system[0].frames;assert.ok(gap>0&&gap<=2400,'Startup gap must be explicit and shorter than one packet');}else assert.equal(report.result.captureState,'ready');}
+   if(Math.max(scenario.stallMs||0,scenario.delayMs||0)<5000){assert.deepEqual(report.failures,[]);assert.equal(report.result.captureState,'ready','A bounded startup clock gap must not mark normal capture incomplete');assert.equal(report.result.errorCode,null);}
    else assert.ok(report.failures.some(f=>f.error==='capture-queue-overflow'),'A renderer stall longer than the buffer must be detected');
   }
   if(${Boolean(ref)})assert.ok(reports.some(r=>r.failures.some(f=>f.error.includes('out of order'))),'Reference must reproduce packet ordering failure');

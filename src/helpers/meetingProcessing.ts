@@ -800,6 +800,26 @@ export class MeetingProcessingWorker {
     const request = meetingProcessingListRequestSchema.parse({ noteId });
 
     return this.deps.database.listMeetingRecordingsForNote(request.noteId).map((recording) => {
+      let audioPreparationErrorCode: "audio-alignment-unavailable" | null = null;
+      let durationSeconds: number | null = null;
+
+      if (recording.endedAt) {
+        const epochs = this.deps.database.listMeetingRecordingEpochs(recording.id);
+
+        try {
+          durationSeconds = meetingTimelineFrameCount(recording, epochs) / 24_000;
+        } catch (error) {
+          if (errorCodeOf(error) !== "audio-alignment-unavailable") throw error;
+          durationSeconds = meetingTimelineFrameCount(recording, epochs, true) / 24_000;
+
+          if (
+            recording.audioState === "available" &&
+            ["ready", "incomplete"].includes(recording.captureState)
+          )
+            audioPreparationErrorCode = "audio-alignment-unavailable";
+        }
+      }
+
       const runs = this.deps.database
         .listMeetingProcessingRuns(recording.id)
         .map((run) => this.getResult(run));
@@ -813,16 +833,11 @@ export class MeetingProcessingWorker {
           platformCoverage: this.deps.database.getMeetingPlatformCoverage(recording.id) ?? null,
           audioState: recording.audioState,
           audioErrorCode: recording.audioErrorCode,
+          audioPreparationErrorCode,
           currentRunId: recording.currentRunId,
           startedAt: recording.startedAt,
           endedAt: recording.endedAt,
-          durationSeconds: recording.endedAt
-            ? meetingTimelineFrameCount(
-                recording,
-                this.deps.database.listMeetingRecordingEpochs(recording.id),
-                true
-              ) / 24_000
-            : null,
+          durationSeconds,
         },
         runs,
       };

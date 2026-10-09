@@ -570,6 +570,16 @@ export class MeetingCaptureSession {
         const minimumStart =
           sameGeneration && epoch ? epoch.sourceStartFrame + epoch.frameCount : 0;
 
+        // A fresh Web Audio graph can settle its clock after the first quantum.
+        // Keep that bounded startup gap and both tails without calling it a restart.
+        const startupClockGap =
+          sameGeneration &&
+          epoch?.index === 0 &&
+          epoch.frameCount > 0 &&
+          epoch.frameCount < MAX_PACKET_FRAMES &&
+          packet.sourceFrameStart > minimumStart &&
+          packet.sourceFrameStart - minimumStart <= MAX_PACKET_FRAMES;
+
         if (
           packet.epochSourceStartFrame !== packet.sourceFrameStart ||
           packet.sourceFrameStart < minimumStart ||
@@ -583,10 +593,10 @@ export class MeetingCaptureSession {
           if (packet.sourceGeneration !== this.micSourceGeneration)
             throw new Error("Microphone packet has a stale source generation");
 
-          if (epoch && !this.allowIntentionalMicEpoch)
+          if (epoch && !this.allowIntentionalMicEpoch && !startupClockGap)
             this.setSourceError(source, "source-restarted");
           this.allowIntentionalMicEpoch = false;
-        } else if (epoch) this.setSourceError(source, "source-restarted");
+        } else if (epoch && !startupClockGap) this.setSourceError(source, "source-restarted");
 
         if (packet.sourceGeneration !== (this.sourceGenerations.get(source) ?? 1))
           this.sourceGenerations.set(source, packet.sourceGeneration);

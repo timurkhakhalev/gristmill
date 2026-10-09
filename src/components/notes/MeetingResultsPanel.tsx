@@ -422,6 +422,17 @@ export default function MeetingResultsPanel({
   const [profiles, setProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
   const [excludedPartIds, setExcludedPartIds] = useState<string[]>([]);
   useEffect(() => setExcludedPartIds([]), [noteId]);
+  useEffect(() => {
+    setExcludedPartIds((ids) => {
+      const available = ids.filter((id) =>
+        recordings.some(
+          (part) => part.recording.id === id && part.recording.audioState === "available"
+        )
+      );
+
+      return available.length === ids.length ? ids : available;
+    });
+  }, [recordings]);
 
   const playbackError = useCallback(
     (error?: string) => notify(error || t("meetingResults.playbackError"), "destructive"),
@@ -775,15 +786,21 @@ export default function MeetingResultsPanel({
 
   const gateActive = gateSeconds > 0 && !captureBlocksAsr;
 
+  const processableParts = recordings.filter(
+    (part) =>
+      part.recording.audioState === "available" &&
+      ["ready", "incomplete"].includes(part.recording.captureState) &&
+      part.recording.captureErrorCode !== "recording-audio-unavailable"
+  );
+
+  const alignedParts = processableParts.filter(
+    (part) => part.recording.audioPreparationErrorCode === null
+  );
+
   const reprocessGroupIds = [
     ...new Set(
-      recordings
-        .filter(
-          (part) =>
-            part.recording.audioState === "available" &&
-            !excludedPartIds.includes(part.recording.id) &&
-            ["ready", "incomplete"].includes(part.recording.captureState)
-        )
+      processableParts
+        .filter((part) => !excludedPartIds.includes(part.recording.id))
         .map((part) => part.recording.groupId)
     ),
   ];
@@ -994,13 +1011,8 @@ export default function MeetingResultsPanel({
 
     const ids = choice.partId
       ? [choice.partId]
-      : recordings
-          .filter(
-            (part) =>
-              part.recording.audioState === "available" &&
-              !excludedPartIds.includes(part.recording.id) &&
-              ["ready", "incomplete"].includes(part.recording.captureState)
-          )
+      : processableParts
+          .filter((part) => !excludedPartIds.includes(part.recording.id))
           .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt))
           .map((part) => part.recording.id);
 
@@ -1642,6 +1654,12 @@ export default function MeetingResultsPanel({
                                     tr={tr}
                                   />
                                 )}
+                                {part.recording.audioPreparationErrorCode ===
+                                  "audio-alignment-unavailable" && (
+                                  <span className="text-xs text-danger">
+                                    {t("meetingResults.audioPartNotPrepared")}
+                                  </span>
+                                )}
                                 {excludedPartIds.includes(part.recording.id) && (
                                   <span className="text-xs text-warning">
                                     {t("meetingResults.partExcluded")}
@@ -1804,10 +1822,9 @@ export default function MeetingResultsPanel({
       </div>
       {notice}
       {selected?.run.hasTranscript &&
-        recordings.some(
-          (part) =>
-            part.recording.audioState === "available" &&
-            !selected.run.sourceRecordingIds.includes(part.recording.id)
+        selected.run.hasExplicitAudioParts &&
+        processableParts.some(
+          (part) => !selected.run.sourceRecordingIds.includes(part.recording.id)
         ) && (
           <NoteNotice
             status="warning"
@@ -2029,15 +2046,20 @@ export default function MeetingResultsPanel({
                 status="danger"
                 title={
                   missingAlignment
-                    ? tr("audioAlignmentMissing", "Audio timing is missing")
+                    ? tr("audioAlignmentMissing", "Could not prepare the recording")
                     : tr("captureFailed", "Recording was interrupted")
                 }
                 description={
                   missingAlignment
-                    ? tr(
-                        "audioAlignmentMissingReason",
-                        "Your audio is saved, but a recording part has no reliable timing. Review the audio parts and exclude the damaged part from the next transcription. All originals are kept."
-                      )
+                    ? alignedParts.length === 0
+                      ? tr(
+                          "audioAlignmentMissingOnlyPartReason",
+                          "Your audio is saved, but it could not be prepared for transcription. None of the original audio was deleted."
+                        )
+                      : tr(
+                          "audioAlignmentMissingReason",
+                          "Your audio is saved. Parts that could not be prepared are marked in the list. You can skip them and transcribe the remaining parts without deleting any audio."
+                        )
                     : tr(
                         "captureFailedReason",
                         "The captured audio is saved. Open Transcript and audio to review the recording. Missing sound cannot be restored by retrying."

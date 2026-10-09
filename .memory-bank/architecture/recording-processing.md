@@ -63,7 +63,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 ## Renderer capture
 
 - The microphone Worklet counts render frames continuously, also during mute.
-- A forward render-frame gap starts a new epoch and retains the buffered tail. It must not join noncontiguous samples under one frame anchor. ACK identity includes the epoch and sequence. A real gap remains visible as an incomplete capture.
+- A forward render-frame gap starts a new epoch and retains the buffered tail. It must not join noncontiguous samples under one frame anchor. ACK identity includes the epoch and sequence. A startup clock-settling gap keeps capture ready only when the first epoch is shorter than one packet and the gap is at most one packet. Both epochs and the gap remain saved. Later or larger gaps remain visible as incomplete capture.
 - It discards gated samples before transfer, analysis, encoding or storage.
 - It keeps the healthy microphone stream, the AudioContext and the Worklet alive. The system capture continues.
 - Pause and Stop release both audio devices.
@@ -181,6 +181,8 @@ User paths: [Recording results](../product/user-journeys/meeting-results.md).
 - A short-transcript notice explains a skipped automatic Summary. Manual Summary stays available for a ready transcript.
 - Results appends transcript segments in batches of 60. Rows that are already shown stay in the DOM. The separate fallback `MeetingTranscriptChat` uses row virtualization.
 - Runs are persisted, but Results has no user control to select an earlier completed version.
+- Main identifies saved audio parts that cannot be prepared. Results marks those parts and lets the user exclude them without deleting originals. If no usable part remains, the notice does not suggest exclusion as recovery.
+- The partial-result notice compares only finished, available parts with an explicitly saved source selection. Active capture, unavailable parts and an unknown historical selection do not imply user exclusion.
 - Copy transcript is available. File export as Markdown, text, JSON or SRT exists in the backend without a Results control.
 - Audio export covers the mixed audio of the selected part. There is no original-track picker or whole-meeting export control here.
 

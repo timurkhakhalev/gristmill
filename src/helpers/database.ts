@@ -635,6 +635,7 @@ function toMeetingRunDto(row: MeetingProcessingRunDbRow): MeetingProcessingRunDt
     sourceRecordingIds: row.source_recording_ids_json
       ? (JSON.parse(row.source_recording_ids_json) as string[])
       : [row.recording_id],
+    hasExplicitAudioParts: row.source_recording_ids_json !== null,
     kind: row.kind,
     sourceRunId: row.source_run_id,
     bbThreadId: row.bb_thread_id,

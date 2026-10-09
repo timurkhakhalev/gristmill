@@ -6,6 +6,71 @@ import { createMeetingCompanionBridge } from "../../../../src/preload/meetingCom
 import { meetingCompanionChannels, meetingCompanionEventChannels } from "../../../../src/contracts/meetingCompanion.ts";
 import { createRendererServer, installBrowserGlobals, installHookDom } from "../../../lib/rendererTestHarness.ts";
 
+test("main reports demand through ready, focus, pause, close and stop", async (t) => {
+  const vite = await createRendererServer(t, { noExternal: ["electron"], mockModules: {
+    electron: `
+      import {EventEmitter} from 'node:events';
+      export const app = new EventEmitter();
+      const display = () => ({workArea:{x:0,y:0,width:1000,height:800}});
+      export const screen = {getPrimaryDisplay: display, getDisplayNearestPoint: display};
+      export const windows = [];
+      export class BrowserWindow extends EventEmitter {
+        visible = false; destroyed = false;
+        webContents = {send() {}};
+        constructor() {super(); windows.push(this);}
+        isVisible() {return this.visible;}
+        isDestroyed() {return this.destroyed;}
+        showInactive() {this.visible = true;}
+        hide() {this.visible = false;}
+        destroy() {this.destroyed = true; this.visible = false; this.emit('closed');}
+        setContentProtection() {}
+        async loadFile() {}
+      }`,
+    "./debugLogger.js": "export default {warn() {}};",
+    "./devServerManager.js": "export const DevServerManager = {getAppFilePath: () => ({path:'synthetic.html',query:{}})};",
+    "./windowConfig.js": "export const NOTIFICATION_WINDOW_CONFIG = {}; export const WindowPositionUtil = {setupAlwaysOnTop() {}};",
+  } });
+  const { MeetingCompanionWindow } = await vite.ssrLoadModule("/helpers/meetingCompanionWindow.ts");
+  const { app, windows } = await vite.ssrLoadModule("electron");
+  const received: boolean[] = [];
+  let focused = false;
+  const panel = {
+    isDestroyed: () => false, isVisible: () => true, isFocused: () => focused,
+    webContents: { send: (channel: string, value: boolean) => {
+      assert.equal(channel, meetingCompanionEventChannels.levelDemand);
+      received.push(value);
+    } },
+  };
+  const companion = new MeetingCompanionWindow({getControlPanelWindow: () => panel, openNote: async () => {}});
+  t.after(() => { companion.destroy(); app.removeAllListeners(); });
+  const state = {active:true,paused:false,noteId:1,folderId:null,micMuted:false};
+  companion.update(state);
+  assert.equal(received.at(-1), false, "wait for the window to load");
+  companion.handleReady();
+  assert.equal(received.at(-1), true);
+  focused = true;
+  app.emit("browser-window-focus");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(received.at(-1), false);
+  focused = false;
+  app.emit("browser-window-blur");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(received.at(-1), true);
+  companion.update({...state,paused:true});
+  assert.equal(received.at(-1), false);
+  companion.update(state);
+  assert.equal(received.at(-1), true);
+  companion.reportLevelDemand();
+  assert.equal(received.at(-1), true, "snapshot after panel reload");
+  windows.at(-1).destroy();
+  assert.equal(received.at(-1), false);
+  companion.update(state);
+  companion.handleReady();
+  assert.equal(received.at(-1), true);
+  companion.update({...state,active:false});
+  assert.equal(received.at(-1), false);
+});
+
 test("level demand bridge subscribes before requesting the snapshot and rejects invalid events", () => {
   const listeners = new Map<string, (event: unknown, ...args: unknown[]) => void>();
   const received: boolean[] = [];

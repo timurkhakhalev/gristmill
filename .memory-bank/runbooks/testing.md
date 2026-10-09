@@ -93,7 +93,7 @@ Each duration measures 100 packets and reports median, p95 and maximum write tim
 Measure the floating recording window in isolated Electron processes:
 
 ```sh
-node test/benchmarks/meeting-companion.mts HEAD
+node test/benchmarks/meeting-companion.mts e9e5a37ae
 node test/benchmarks/meeting-companion.mts
 ```
 

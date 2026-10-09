@@ -10,7 +10,8 @@ import { createHash } from "node:crypto";
 
 const require = createRequire(import.meta.url);
 const ffmpeg: string = require("ffmpeg-static");
-const durations = process.argv.slice(2).map(Number);
+const compareDecode = process.argv.includes("--compare-decode");
+const durations = process.argv.slice(2).filter((arg) => arg !== "--compare-decode").map(Number);
 if (!durations.length) durations.push(60);
 assert.ok(durations.every((n) => Number.isInteger(n) && n >= 8 && n <= 7200));
 assert.equal(process.platform, "darwin", "RSS accounting in this prototype is macOS-specific");
@@ -185,6 +186,34 @@ try {
   assert.equal(fs.existsSync(invalidOutput), false);
   await assert.rejects(run(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-f", "null", "-"], 120), /timeout=true/);
   console.log("RESAMPLER_GUARDS", JSON.stringify({ overlapRejected: true, sourceGapRejected: true, truncatedInputRejected: true, cancellationChildExited: true }));
+  if (compareDecode) {
+    const jitterInput = path.join(root, "jitter.f32");
+    fs.writeFileSync(jitterInput, Buffer.alloc(2000 * 4));
+    const jitterResults = [];
+    for (const delta of [-50, -1, 1, 50]) {
+      const mapping = path.join(root, `jitter-${delta}.txt`);
+      const output = path.join(root, `jitter-${delta}.out`);
+      fs.writeFileSync(mapping, `0 1000 0 1000\n1000 2000 ${1000 + delta} ${2000 + delta}\n`);
+      try {
+        const result = await run(executable, [jitterInput, mapping, output, "2100"]);
+        const stats = JSON.parse(result.stdout) as { continuousRuns: number };
+        jitterResults.push({ delta, result: "accepted", continuousRuns: stats.continuousRuns });
+      } catch (error) {
+        assert.match(String(error), /unsupported source gap or output overlap/);
+        jitterResults.push({ delta, result: "rejected-overlap" });
+      }
+    }
+    console.log("JITTER_DIAGNOSTIC", JSON.stringify(jitterResults));
+  }
+  if (compareDecode) {
+    const results = await Promise.allSettled([120, 120_000].map((timeout) =>
+      run(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-f", "null", "-"], timeout)
+        .catch((error) => { cancel(); throw error; })));
+    assert.ok(results.every((result) => result.status === "rejected"));
+    assert.equal(owned.size, 0);
+    interrupted = false;
+    console.log("PARALLEL_DECODE_GUARD", JSON.stringify({ failureStopsPeer: true, bothGroupsExited: true }));
+  }
   for (const seconds of durations) {
     const directory = path.join(root, String(seconds));
     fs.mkdirSync(directory);
@@ -196,15 +225,27 @@ try {
       fs.rmSync(f.raw);
     }
     const originals = await Promise.all(sources.map((f) => hash(f.opus)));
+    for (const mode of compareDecode ? ["sequential", "parallel", "parallel", "sequential"] : ["sequential"]) {
     const started = performance.now();
     let decodeMs = 0, resampleMs = 0, childCpuSeconds = 0, maxChildRssBytes = 0;
     const resourceUsage: Array<{ cpuSeconds: number; maxRssBytes: number }> = [];
-    for (const f of sources) {
+    let decodeRssUpperBoundBytes = 0;
+    const decode = async (f: Fixture) => {
       const decoded = await run(ffmpeg, ["-v", "error", "-i", f.opus, "-ar", "24000", "-ac", "1", "-f", "f32le", f.decoded]);
-      decodeMs += decoded.wallMs;
       assert.notEqual(decoded.cpuSeconds, null); assert.notEqual(decoded.maxRssBytes, null);
       childCpuSeconds += decoded.cpuSeconds!;
       maxChildRssBytes = Math.max(maxChildRssBytes, decoded.maxRssBytes!);
+      decodeRssUpperBoundBytes = mode === "parallel" ? decodeRssUpperBoundBytes + decoded.maxRssBytes! : Math.max(decodeRssUpperBoundBytes, decoded.maxRssBytes!);
+    };
+    const decodingStarted = performance.now();
+    if (mode === "parallel") {
+      const results = await Promise.allSettled(sources.map((f) => decode(f).catch((error) => { cancel(); throw error; })));
+      for (const result of results) if (result.status === "rejected") throw result.reason;
+    } else {
+      for (const f of sources) await decode(f);
+    }
+    decodeMs = performance.now() - decodingStarted;
+    for (const f of sources) {
       const rendered = await run(executable, [f.decoded, f.mapping, f.corrected, String(extent)]);
       resampleMs += rendered.wallMs;
       const usage = JSON.parse(rendered.stdout) as { cpuSeconds: number; maxRssBytes: number };
@@ -234,8 +275,11 @@ try {
     assert.equal(header.readUInt32LE(offset + 4), extent * 4);
     const alignment = sources.map((f, channel) => validate(output, offset + 8, 4, channel, f, extent));
     assert.deepEqual(await Promise.all(sources.map((f) => hash(f.opus))), originals);
-    console.log("RESAMPLER_RESULT", JSON.stringify({ seconds, rangesPerSource: sources[0].ranges.length,
+    console.log("RESAMPLER_RESULT", JSON.stringify({ mode, decodeRssUpperBoundBytes, seconds, rangesPerSource: sources[0].ranges.length,
       wallMs, childCpuSeconds, maxChildRssBytes, decodeMs, resampleMs, joinMs: join.wallMs, frameCount: extent, alignment, resourceUsage }));
+    fs.rmSync(output);
+    for (const f of sources) fs.rmSync(f.corrected);
+    }
     fs.rmSync(directory, { recursive: true });
   }
 } finally {

@@ -1,0 +1,664 @@
+{
+  "scale": [
+    {
+      "event": "RESAMPLER_ENVIRONMENT",
+      "data": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtime": "v24.12.0",
+        "libraries": "6.3.101\n60.26.101",
+        "decoder": "ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers"
+      }
+    },
+    {
+      "event": "RESAMPLER_GUARDS",
+      "data": {
+        "overlapRejected": true,
+        "sourceGapRejected": true,
+        "truncatedInputRejected": true,
+        "cancellationChildExited": true
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "sequential",
+        "decodeRssUpperBoundBytes": 17039360,
+        "seconds": 3600,
+        "rangesPerSource": 900,
+        "wallMs": 12288.595417,
+        "childCpuSeconds": 15.358139999999999,
+        "maxChildRssBytes": 17743872,
+        "decodeMs": 8410.356207999997,
+        "resampleMs": 2801.7014999999956,
+        "joinMs": 1016.9647909999985,
+        "frameCount": 86426389,
+        "alignment": [
+          {
+            "markers": 900,
+            "maxMarkerErrorFrames": 2,
+            "maxMarkerErrorMs": 0.08333333333333333,
+            "maxBoundaryStep": 0.00140380859375
+          },
+          {
+            "markers": 900,
+            "maxMarkerErrorFrames": 8,
+            "maxMarkerErrorMs": 0.3333333333333333,
+            "maxBoundaryStep": 0.003173828125
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 900,
+            "continuousRuns": 3,
+            "convertedFrames": 86400020,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 1.25771,
+            "maxRssBytes": 7192576
+          },
+          {
+            "ranges": 900,
+            "continuousRuns": 3,
+            "convertedFrames": 86399990,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 1.27043,
+            "maxRssBytes": 7176192
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "parallel",
+        "decodeRssUpperBoundBytes": 33931264,
+        "seconds": 3600,
+        "rangesPerSource": 900,
+        "wallMs": 8396.168915999995,
+        "childCpuSeconds": 16.029223,
+        "maxChildRssBytes": 17743872,
+        "decodeMs": 4578.5977920000005,
+        "resampleMs": 2888.1847500000003,
+        "joinMs": 859.2089170000036,
+        "frameCount": 86426389,
+        "alignment": [
+          {
+            "markers": 900,
+            "maxMarkerErrorFrames": 2,
+            "maxMarkerErrorMs": 0.08333333333333333,
+            "maxBoundaryStep": 0.00140380859375
+          },
+          {
+            "markers": 900,
+            "maxMarkerErrorFrames": 8,
+            "maxMarkerErrorMs": 0.3333333333333333,
+            "maxBoundaryStep": 0.003173828125
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 900,
+            "continuousRuns": 3,
+            "convertedFrames": 86400020,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 1.258255,
+            "maxRssBytes": 7634944
+          },
+          {
+            "ranges": 900,
+            "continuousRuns": 3,
+            "convertedFrames": 86399990,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 1.250968,
+            "maxRssBytes": 7159808
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "parallel",
+        "decodeRssUpperBoundBytes": 34078720,
+        "seconds": 3600,
+        "rangesPerSource": 900,
+        "wallMs": 8216.642584000001,
+        "childCpuSeconds": 16.099750999999998,
+        "maxChildRssBytes": 17678336,
+        "decodeMs": 4591.774541999999,
+        "resampleMs": 2697.021332999997,
+        "joinMs": 866.057375000004,
+        "frameCount": 86426389,
+        "alignment": [
+          {
+            "markers": 900,
+            "maxMarkerErrorFrames": 2,
+            "maxMarkerErrorMs": 0.08333333333333333,
+            "maxBoundaryStep": 0.00140380859375
+          },
+          {
+            "markers": 900,
+            "maxMarkerErrorFrames": 8,
+            "maxMarkerErrorMs": 0.3333333333333333,
+            "maxBoundaryStep": 0.003173828125
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 900,
+            "continuousRuns": 3,
+            "convertedFrames": 86400020,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 1.2654,
+            "maxRssBytes": 7667712
+          },
+          {
+            "ranges": 900,
+            "continuousRuns": 3,
+            "convertedFrames": 86399990,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 1.274351,
+            "maxRssBytes": 7192576
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "sequential",
+        "decodeRssUpperBoundBytes": 17006592,
+        "seconds": 3600,
+        "rangesPerSource": 900,
+        "wallMs": 11659.140499999994,
+        "childCpuSeconds": 14.760489,
+        "maxChildRssBytes": 17760256,
+        "decodeMs": 8183.397875000002,
+        "resampleMs": 2548.9809590000004,
+        "joinMs": 878.6216669999994,
+        "frameCount": 86426389,
+        "alignment": [
+          {
+            "markers": 900,
+            "maxMarkerErrorFrames": 2,
+            "maxMarkerErrorMs": 0.08333333333333333,
+            "maxBoundaryStep": 0.00140380859375
+          },
+          {
+            "markers": 900,
+            "maxMarkerErrorFrames": 8,
+            "maxMarkerErrorMs": 0.3333333333333333,
+            "maxBoundaryStep": 0.003173828125
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 900,
+            "continuousRuns": 3,
+            "convertedFrames": 86400020,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 1.233873,
+            "maxRssBytes": 7176192
+          },
+          {
+            "ranges": 900,
+            "continuousRuns": 3,
+            "convertedFrames": 86399990,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 1.236616,
+            "maxRssBytes": 7618560
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "sequential",
+        "decodeRssUpperBoundBytes": 16875520,
+        "seconds": 7200,
+        "rangesPerSource": 1800,
+        "wallMs": 23898.126875,
+        "childCpuSeconds": 30.300487999999994,
+        "maxChildRssBytes": 17776640,
+        "decodeMs": 16518.008417000005,
+        "resampleMs": 5422.354332999967,
+        "joinMs": 1859.444709000003,
+        "frameCount": 172826375,
+        "alignment": [
+          {
+            "markers": 1800,
+            "maxMarkerErrorFrames": 2,
+            "maxMarkerErrorMs": 0.08333333333333333,
+            "maxBoundaryStep": 0.00140380859375
+          },
+          {
+            "markers": 1800,
+            "maxMarkerErrorFrames": 8,
+            "maxMarkerErrorMs": 0.3333333333333333,
+            "maxBoundaryStep": 0.003173828125
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 1800,
+            "continuousRuns": 3,
+            "convertedFrames": 172800041,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 2.557335,
+            "maxRssBytes": 7667712
+          },
+          {
+            "ranges": 1800,
+            "continuousRuns": 3,
+            "convertedFrames": 172799977,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 2.533153,
+            "maxRssBytes": 7192576
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "parallel",
+        "decodeRssUpperBoundBytes": 33947648,
+        "seconds": 7200,
+        "rangesPerSource": 1800,
+        "wallMs": 16108.121916000004,
+        "childCpuSeconds": 31.430888000000003,
+        "maxChildRssBytes": 17809408,
+        "decodeMs": 8949.95874999999,
+        "resampleMs": 5175.016167000023,
+        "joinMs": 1872.556958000001,
+        "frameCount": 172826375,
+        "alignment": [
+          {
+            "markers": 1800,
+            "maxMarkerErrorFrames": 2,
+            "maxMarkerErrorMs": 0.08333333333333333,
+            "maxBoundaryStep": 0.00140380859375
+          },
+          {
+            "markers": 1800,
+            "maxMarkerErrorFrames": 8,
+            "maxMarkerErrorMs": 0.3333333333333333,
+            "maxBoundaryStep": 0.003173828125
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 1800,
+            "continuousRuns": 3,
+            "convertedFrames": 172800041,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 2.480276,
+            "maxRssBytes": 7651328
+          },
+          {
+            "ranges": 1800,
+            "continuousRuns": 3,
+            "convertedFrames": 172799977,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 2.540612,
+            "maxRssBytes": 7667712
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "parallel",
+        "decodeRssUpperBoundBytes": 33800192,
+        "seconds": 7200,
+        "rangesPerSource": 1800,
+        "wallMs": 16129.153667000006,
+        "childCpuSeconds": 31.358283,
+        "maxChildRssBytes": 17678336,
+        "decodeMs": 8899.748999999982,
+        "resampleMs": 5270.616624999995,
+        "joinMs": 1836.677416999999,
+        "frameCount": 172826375,
+        "alignment": [
+          {
+            "markers": 1800,
+            "maxMarkerErrorFrames": 2,
+            "maxMarkerErrorMs": 0.08333333333333333,
+            "maxBoundaryStep": 0.00140380859375
+          },
+          {
+            "markers": 1800,
+            "maxMarkerErrorFrames": 8,
+            "maxMarkerErrorMs": 0.3333333333333333,
+            "maxBoundaryStep": 0.003173828125
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 1800,
+            "continuousRuns": 3,
+            "convertedFrames": 172800041,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 2.500089,
+            "maxRssBytes": 7192576
+          },
+          {
+            "ranges": 1800,
+            "continuousRuns": 3,
+            "convertedFrames": 172799977,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 2.558194,
+            "maxRssBytes": 7192576
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "sequential",
+        "decodeRssUpperBoundBytes": 16875520,
+        "seconds": 7200,
+        "rangesPerSource": 1800,
+        "wallMs": 24689.618292,
+        "childCpuSeconds": 30.815718,
+        "maxChildRssBytes": 17776640,
+        "decodeMs": 17167.700332999986,
+        "resampleMs": 5432.928667,
+        "joinMs": 1980.3355830000073,
+        "frameCount": 172826375,
+        "alignment": [
+          {
+            "markers": 1800,
+            "maxMarkerErrorFrames": 2,
+            "maxMarkerErrorMs": 0.08333333333333333,
+            "maxBoundaryStep": 0.00140380859375
+          },
+          {
+            "markers": 1800,
+            "maxMarkerErrorFrames": 8,
+            "maxMarkerErrorMs": 0.3333333333333333,
+            "maxBoundaryStep": 0.003173828125
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 1800,
+            "continuousRuns": 3,
+            "convertedFrames": 172800041,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 2.585994,
+            "maxRssBytes": 7208960
+          },
+          {
+            "ranges": 1800,
+            "continuousRuns": 3,
+            "convertedFrames": 172799977,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 2.539724,
+            "maxRssBytes": 7192576
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_CLEANUP",
+      "data": {
+        "ownedGroupsExited": true,
+        "temporaryDirectoryRemoved": true
+      }
+    }
+  ],
+  "guards": [
+    {
+      "event": "RESAMPLER_ENVIRONMENT",
+      "data": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtime": "v24.12.0",
+        "libraries": "6.3.101\n60.26.101",
+        "decoder": "ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers"
+      }
+    },
+    {
+      "event": "RESAMPLER_GUARDS",
+      "data": {
+        "overlapRejected": true,
+        "sourceGapRejected": true,
+        "truncatedInputRejected": true,
+        "cancellationChildExited": true
+      }
+    },
+    {
+      "event": "JITTER_DIAGNOSTIC",
+      "data": [
+        {
+          "delta": -50,
+          "result": "rejected-overlap"
+        },
+        {
+          "delta": -1,
+          "result": "rejected-overlap"
+        },
+        {
+          "delta": 1,
+          "result": "accepted",
+          "continuousRuns": 2
+        },
+        {
+          "delta": 50,
+          "result": "accepted",
+          "continuousRuns": 2
+        }
+      ]
+    },
+    {
+      "event": "PARALLEL_DECODE_GUARD",
+      "data": {
+        "failureStopsPeer": true,
+        "bothGroupsExited": true
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "sequential",
+        "decodeRssUpperBoundBytes": 15286272,
+        "seconds": 8,
+        "rangesPerSource": 2,
+        "wallMs": 63.71891699999992,
+        "childCpuSeconds": 0.03404,
+        "maxChildRssBytes": 15286272,
+        "decodeMs": 37.407916000000114,
+        "resampleMs": 15.788625000000138,
+        "joinMs": 10.074832999999899,
+        "frameCount": 218384,
+        "alignment": [
+          {
+            "markers": 2,
+            "maxMarkerErrorFrames": 0,
+            "maxMarkerErrorMs": 0,
+            "maxBoundaryStep": 0
+          },
+          {
+            "markers": 2,
+            "maxMarkerErrorFrames": 1,
+            "maxMarkerErrorMs": 0.041666666666666664,
+            "maxBoundaryStep": 0
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 2,
+            "continuousRuns": 2,
+            "convertedFrames": 192026,
+            "maxEndpointRoundingFrames": 0,
+            "cpuSeconds": 0.006787,
+            "maxRssBytes": 7143424
+          },
+          {
+            "ranges": 2,
+            "continuousRuns": 2,
+            "convertedFrames": 191986,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 0.007253,
+            "maxRssBytes": 7143424
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "parallel",
+        "decodeRssUpperBoundBytes": 30638080,
+        "seconds": 8,
+        "rangesPerSource": 2,
+        "wallMs": 46.52516700000001,
+        "childCpuSeconds": 0.033738,
+        "maxChildRssBytes": 15335424,
+        "decodeMs": 19.177333999999973,
+        "resampleMs": 15.612875000000031,
+        "joinMs": 11.283500000000004,
+        "frameCount": 218384,
+        "alignment": [
+          {
+            "markers": 2,
+            "maxMarkerErrorFrames": 0,
+            "maxMarkerErrorMs": 0,
+            "maxBoundaryStep": 0
+          },
+          {
+            "markers": 2,
+            "maxMarkerErrorFrames": 1,
+            "maxMarkerErrorMs": 0.041666666666666664,
+            "maxBoundaryStep": 0
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 2,
+            "continuousRuns": 2,
+            "convertedFrames": 192026,
+            "maxEndpointRoundingFrames": 0,
+            "cpuSeconds": 0.006993,
+            "maxRssBytes": 7143424
+          },
+          {
+            "ranges": 2,
+            "continuousRuns": 2,
+            "convertedFrames": 191986,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 0.006745,
+            "maxRssBytes": 7127040
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "parallel",
+        "decodeRssUpperBoundBytes": 30507008,
+        "seconds": 8,
+        "rangesPerSource": 2,
+        "wallMs": 44.13716700000009,
+        "childCpuSeconds": 0.033696000000000004,
+        "maxChildRssBytes": 15335424,
+        "decodeMs": 18.35008300000004,
+        "resampleMs": 15.37545699999987,
+        "joinMs": 10.043166999999812,
+        "frameCount": 218384,
+        "alignment": [
+          {
+            "markers": 2,
+            "maxMarkerErrorFrames": 0,
+            "maxMarkerErrorMs": 0,
+            "maxBoundaryStep": 0
+          },
+          {
+            "markers": 2,
+            "maxMarkerErrorFrames": 1,
+            "maxMarkerErrorMs": 0.041666666666666664,
+            "maxBoundaryStep": 0
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 2,
+            "continuousRuns": 2,
+            "convertedFrames": 192026,
+            "maxEndpointRoundingFrames": 0,
+            "cpuSeconds": 0.006867,
+            "maxRssBytes": 7127040
+          },
+          {
+            "ranges": 2,
+            "continuousRuns": 2,
+            "convertedFrames": 191986,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 0.006829,
+            "maxRssBytes": 7127040
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_RESULT",
+      "data": {
+        "mode": "sequential",
+        "decodeRssUpperBoundBytes": 15351808,
+        "seconds": 8,
+        "rangesPerSource": 2,
+        "wallMs": 63.206249999999955,
+        "childCpuSeconds": 0.033655,
+        "maxChildRssBytes": 15351808,
+        "decodeMs": 36.97966600000018,
+        "resampleMs": 15.889251000000058,
+        "joinMs": 9.984042000000045,
+        "frameCount": 218384,
+        "alignment": [
+          {
+            "markers": 2,
+            "maxMarkerErrorFrames": 0,
+            "maxMarkerErrorMs": 0,
+            "maxBoundaryStep": 0
+          },
+          {
+            "markers": 2,
+            "maxMarkerErrorFrames": 1,
+            "maxMarkerErrorMs": 0.041666666666666664,
+            "maxBoundaryStep": 0
+          }
+        ],
+        "resourceUsage": [
+          {
+            "ranges": 2,
+            "continuousRuns": 2,
+            "convertedFrames": 192026,
+            "maxEndpointRoundingFrames": 0,
+            "cpuSeconds": 0.006913,
+            "maxRssBytes": 7143424
+          },
+          {
+            "ranges": 2,
+            "continuousRuns": 2,
+            "convertedFrames": 191986,
+            "maxEndpointRoundingFrames": 1,
+            "cpuSeconds": 0.006742,
+            "maxRssBytes": 7127040
+          }
+        ]
+      }
+    },
+    {
+      "event": "RESAMPLER_CLEANUP",
+      "data": {
+        "ownedGroupsExited": true,
+        "temporaryDirectoryRemoved": true
+      }
+    }
+  ]
+}

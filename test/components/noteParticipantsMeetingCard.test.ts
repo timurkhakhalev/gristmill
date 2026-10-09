@@ -50,20 +50,21 @@ async function renderCard(t: TestContext, props: Record<string, unknown>) {
 
   const vite = await createRendererServer(t, {
     cachePrefix: "openwhispr-note-participants-",
-    noExternal: ["@heroui/react"],
+    noExternal: ["@heroui/react", "react-i18next"],
     mockModules: {
       "@heroui/react": heroMock,
-      "react-i18next": `export function useTranslation() { return { t: (key, options) => options?.defaultValue ?? key }; }`,
+      "react-i18next": `export function useTranslation() { return { t: (key, options) => typeof options === "string" ? options : options?.defaultValue ?? key }; }`,
       "/stores/meetingRecordingStore": `export const syncSessionExpectedCountFromParticipants = () => {};`,
       "/hooks/useUiLocale": `export function useUiLocale() { return "en"; }`,
       "/hooks/useDateTimePreferences": `export function useDateTimePreferences() { return { dateFormat: "locale", timeFormat: "locale" }; }`,
+      "/hooks/usePersonProfile": `export function usePersonProfile(){return null;} export function usePersonName(email, name){return name || email;} export function refreshPersonProfile(){return Promise.resolve();}`,
     },
   });
 
   const mod = await vite.ssrLoadModule("/components/notes/NoteParticipants.tsx");
 
   return renderToStaticMarkup(
-    createElement(mod.default, { noteId: 1, participants: [], ...props })
+    createElement(mod.default, { noteId: 1, participants: [], canRenameContacts: true, ...props })
   );
 }
 
@@ -103,4 +104,19 @@ test("an event description shows as a preview and stays hidden when absent", asy
 
   const without = await renderCard(t, { event: makeEvent() });
   assert.doesNotMatch(without, /notes\.participants\.description/, "no empty description block");
+});
+
+test("an unsaved event draft allows contact rename, while a debug preview does not", async (t: TestContext) => {
+  const draft = {
+    noteId: 0,
+    preview: true,
+    participants: [{ email: "test@example.com", displayName: "Test", self: false, responseStatus: null }],
+    event: makeEvent(),
+  };
+  const editable = await renderCard(t, { ...draft, canRenameContacts: true });
+  assert.match(editable, /aria-label="Rename contact"/,
+    "the contact rename action is available before a note is saved");
+  const debug = await renderCard(t, { ...draft, canRenameContacts: false });
+  assert.doesNotMatch(debug, /aria-label="Rename contact"/,
+    "synthetic debug contacts cannot change the stored contacts");
 });

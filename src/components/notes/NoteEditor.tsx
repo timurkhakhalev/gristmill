@@ -903,6 +903,7 @@ export default function NoteEditor({
             <NoteParticipants
               noteId={note.id}
               participants={parsedParticipants}
+              canRenameContacts={!debugPreview}
               event={calendarEvent}
               dateLabel={meetingDay || undefined}
               dateTitle={noteDate}

@@ -199,7 +199,7 @@ function ContactName({
           type="button"
           onClick={startEditing}
           aria-label={t("notes.participants.renameContact", "Rename contact")}
-          className="shrink-0 rounded p-0.5 text-muted opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring/40 group-hover/card:opacity-100"
+          className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
         >
           <Pencil size={12} />
         </button>
@@ -355,6 +355,7 @@ function AttendeeRow({
 interface NoteParticipantsProps {
   noteId: number;
   participants: CalendarAttendee[];
+  canRenameContacts: boolean;
   /** The linked calendar event; when absent the card shows only participants. */
   event?: CalendarEvent | null;
   /** When present the capsule leads with the note's date, so date and people read as one fact. */
@@ -366,6 +367,7 @@ interface NoteParticipantsProps {
 export default function NoteParticipants({
   noteId,
   participants,
+  canRenameContacts,
   event,
   dateLabel,
   dateTitle,
@@ -627,7 +629,7 @@ export default function NoteParticipants({
                 <AttendeeRow
                   key={p.email}
                   attendee={p}
-                  editable={!preview}
+                  editable={canRenameContacts}
                   onRemove={() => removeParticipant(p.email)}
                 />
               ))}

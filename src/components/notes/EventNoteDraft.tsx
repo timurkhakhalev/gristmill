@@ -132,6 +132,7 @@ export default function EventNoteDraft({
           <NoteParticipants
             noteId={0}
             participants={participants}
+            canRenameContacts
             event={event}
             dateLabel={dateLabel}
             preview

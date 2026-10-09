@@ -188,9 +188,9 @@ Use `pnpm test --verbose <exact test paths>` for focused regressions, `pnpm run 
 
 | Milestone | Status | Commits |
 | --- | --- | --- |
-| M1 — Native continuous audio preparation | in progress | e35644dbd, cfe0311db; short-input verification reopened in M2.1 |
-| M2 — Shared consumer cutover and lifecycle | in progress | 23792c7a1, 57270f8ec; short-input verification pending M2.1 |
-| M2.1 — Preserve short decoded audio and resampler tails | in progress | |
-| M3 — Documentation, performance and final validation | not started | |
+| M1 — Native continuous audio preparation | done | e35644dbd, cfe0311db; corrective verification ba8f509da, 0093abdcc |
+| M2 — Shared consumer cutover and lifecycle | done | 23792c7a1, 57270f8ec; corrective verification ba8f509da, 0093abdcc |
+| M2.1 — Preserve short decoded audio and resampler tails | done | ba8f509da, 0093abdcc |
+| M3 — Documentation, performance and final validation | in progress | |
 | Reviewer | not started | |
 | Code Reviewer | not started | |

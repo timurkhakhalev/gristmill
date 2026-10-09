@@ -5498,7 +5498,46 @@ test("Stop automatically processes usable parts, preserves skipped audio and per
   } finally { reopened.close(); }
 });
 
-test("startup resumes a selected local preparation failure once without replaying a completed provider request", async (t) => {
+test("a malformed historical recording cannot block healthy queued work or trigger historical requests", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const broken = createFinishedRecording(db, storage, validConfig);
+  db.db
+    .prepare("UPDATE meeting_recordings SET ended_at = ?, source_metadata_json = '{}' WHERE id = ?")
+    .run(new Date(Date.parse(broken.recording.startedAt) - 1000).toISOString(), broken.recording.id);
+  const historical = createFinishedRecording(db, storage, validConfig);
+  for (const run of [broken.run, historical.run]) {
+    db.setMeetingProcessingRunState(run.id, {
+      stage: "prepare",
+      status: "failed",
+      errorCode: "audio-alignment-unavailable",
+      retryAt: null,
+    });
+  }
+  const healthy = createFinishedRecording(db, storage, validConfig);
+  let requests = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      requests++;
+      await saveRaw(elevenResponse);
+      return { success: true, text: "parsed by adapter" };
+    },
+  }, false);
+  t.after(() => worker.stop());
+  assert.doesNotThrow(() => worker.onRetentionReady());
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(broken.run.id)!.status, "failed");
+  assert.equal(db.getMeetingProcessingRun(historical.run.id)!.status, "failed");
+  assert.equal(db.getMeetingProcessingRun(healthy.run.id)!.status, "complete");
+  assert.equal(db.getMeetingProcessingRun(healthy.run.id)!.hasTranscript, true);
+  assert.equal(requests, 2, "only the queued meeting may be sent to ASR");
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(requests, 2, "retention synchronization must not replay historical errors");
+});
+
+test("a historical preparation failure needs one explicit retry and is not replayed after restart", async (t) => {
   const db = createDb(t);
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -5516,6 +5555,10 @@ test("startup resumes a selected local preparation failure once without replayin
   t.after(() => worker.stop());
   worker.onRetentionReady();
   worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)!.status, "failed");
+  assert.equal(requests, 0, "opening the app does not submit failed historical audio");
+  assert.ok(worker.retry(run.id));
   await worker.waitForIdle();
   assert.equal(db.getMeetingProcessingRun(run.id)!.hasTranscript, true);
   assert.equal(requests, 2);

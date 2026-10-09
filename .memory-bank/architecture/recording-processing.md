@@ -83,7 +83,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - Before the first captured frame, main saves the selected configuration.
 - Capture does no ASR and no provider request.
 - Stop closes both source epochs, recovers their frame counts and gaps, finalizes the recording and creates its initial run.
-- The worker waits until the retention settings are synchronized. It pauses while capture is active. At startup it resumes only the selected local preparation failures with usable audio and no saved provider response; cancelled jobs and provider failures are not replayed.
+- The worker waits until the retention settings are synchronized. It pauses while capture is active. Startup continues queued work, but does not retry failed or blocked historical recordings. An explicit retry prepares saved audio with the same automatic part selection as a new run.
 - A successful Stop also saves a 15-second not-before deadline in `retry_at`. Preparation and ASR cannot claim the run before this deadline, also after a restart.
 - Pause does not put work in the queue. Resume makes the pending work of the previous Note audio version invalid.
 - The worker examines eligibility again at the claim and before ASR.

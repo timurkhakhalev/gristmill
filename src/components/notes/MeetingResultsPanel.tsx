@@ -788,8 +788,23 @@ export default function MeetingResultsPanel({
     captureBlocksAsr ||
     groupIds.some((groupId) => (groupAsrDeadlines.get(groupId) ?? 0) > countdownNow);
 
+  const canRetryAudioPreparation = Boolean(
+    latestRun &&
+    latestRun.run.stage === "prepare" &&
+    !latestRun.run.hasRawProviderResponse &&
+    latestRun.run.omittedRecordingIds.length === 0 &&
+    [
+      "capture-write-failed",
+      "audio-write-failed",
+      "audio-alignment-unavailable",
+      "mic-source-unavailable",
+      "system-source-unavailable",
+    ].includes(latestRun.run.errorCode ?? "")
+  );
+
   const failedAudioVersion = Boolean(
     latestRun &&
+    !canRetryAudioPreparation &&
     ["failed", "blocked"].includes(latestRun.run.status) &&
     latestRun.run.stage === "prepare" &&
     [
@@ -1965,8 +1980,7 @@ export default function MeetingResultsPanel({
                   {t("meetingResults.updateRunSettings")}
                 </Button>
               )}
-              {!missingAlignment &&
-                !captureFailed &&
+              {((!missingAlignment && !captureFailed) || canRetryAudioPreparation) &&
                 !noAudio &&
                 (status === "failed" || (status === "blocked" && !needsConfig)) && (
                   <Button

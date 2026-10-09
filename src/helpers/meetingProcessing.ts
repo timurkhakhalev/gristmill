@@ -357,40 +357,8 @@ export class MeetingProcessingWorker {
   }
 
   onRetentionReady(): void {
-    if (!this.retentionReady) this.resumeFailedAudioPreparation();
     this.retentionReady = true;
     this.processPending();
-  }
-
-  private resumeFailedAudioPreparation(): void {
-    for (const run of this.deps.database.listAllMeetingProcessingRuns()) {
-      const recording = this.deps.database.getMeetingRecording(run.recordingId);
-
-      if (
-        run.stage !== "prepare" ||
-        !["failed", "blocked"].includes(run.status) ||
-        ![
-          "capture-write-failed",
-          "audio-write-failed",
-          "audio-alignment-unavailable",
-          "mic-source-unavailable",
-          "system-source-unavailable",
-        ].includes(run.errorCode ?? "") ||
-        run.hasRawProviderResponse ||
-        !run.config ||
-        run.configError ||
-        recording?.currentRunId !== run.id ||
-        !this.isCurrentNoteAudioVersion(run)
-      )
-        continue;
-      const omitted = this.findUnusableAudioParts(run, recording);
-
-      if (omitted.length < run.sourceRecordingIds.length) {
-        const resumed = this.deps.database.retryMeetingProcessingRun(run.id);
-
-        if (resumed) this.notify(resumed);
-      }
-    }
   }
 
   captureStarted(noteId?: number): void {

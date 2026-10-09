@@ -1556,6 +1556,9 @@ test("an unrecoverable recording explains that audio is saved without manual rep
   failed.run.status = "failed";
   failed.run.stage = "prepare";
   failed.run.errorCode = "audio-alignment-unavailable";
+  failed.run.omittedRecordingIds = [FIRST];
+  failed.run.sourceRecordingIds = [FIRST];
+  failed.run.hasRawProviderResponse = false;
   failed.run.hasTranscript = false;
   failed.run.hasSummary = false;
   failed.transcript = undefined;
@@ -1570,6 +1573,36 @@ test("an unrecoverable recording explains that audio is saved without manual rep
   assert.deepEqual(ui.calls.retry, []);
   assert.deepEqual(ui.calls.delete, []);
 });
+
+for (const errorCode of [
+  "audio-alignment-unavailable",
+  "capture-write-failed",
+  "mic-source-unavailable",
+]) {
+  test(`an unprepared saved recording offers one explicit recovery action for ${errorCode}`, async (t: TestContext) => {
+    const failed = completeRun();
+    Object.assign(failed.run, {
+      sourceRecordingIds: [FIRST],
+      omittedRecordingIds: [],
+      status: "failed",
+      stage: "prepare",
+      errorCode,
+      hasRawProviderResponse: false,
+      hasTranscript: false,
+      hasSummary: false,
+    });
+    failed.transcript = undefined;
+    failed.summary = undefined;
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed)]);
+    assert.deepEqual(ui.calls.retry, [], "opening an old error must not send audio");
+    const retry = ui.button("meetingResults.retry");
+    assert.ok(retry);
+    await ui.flush(() => (retry.props as { onPress(): void }).onPress());
+    assert.deepEqual(ui.calls.retry, [RUN]);
+    assert.deepEqual(ui.calls.delete, []);
+    assert.equal(ui.button("Review audio parts"), null);
+  });
+}
 
 test("a capture write failure does not ask the user to change provider settings", async (t: TestContext) => {
   const failed = completeRun();

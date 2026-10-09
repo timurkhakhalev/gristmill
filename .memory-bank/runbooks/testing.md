@@ -28,6 +28,7 @@ Check selection policy lives in [quality steering](../steerings/quality.md); com
 | `native`      | GUI, Swift or native helpers, or OS process integration                  |
 
 - Classification is for each file. For mixed files, use the stronger requirement.
+- On macOS, a selection with native tests runs `compile:native` before the tests. The build checks cached helpers and compiles missing or changed binaries. A failed helper build stops test execution.
 - A unit selection gives a fast development loop. It does not replace the integration, type or native checks that the changed behavior needs.
 - For a local change, start with the least expensive related kind. Before completion, add the checks that the scope table requires.
 - For public contract changes, include type and integration checks for consumers.

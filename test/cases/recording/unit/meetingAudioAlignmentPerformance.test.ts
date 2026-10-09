@@ -42,7 +42,7 @@ test("alignment chooses the furthest overlap, preserves input-order ties, and re
   const b = { ...segment(0, 4800), timelineStartFrame: 10 };
   const tie = { ...segment(0, 4800), timelineStartFrame: 20 };
   const c = segment(2400, 7200);
-  assert.deepEqual(alignedAudioRanges(epoch([b, a, tie, c], 7200)), [
+  assert.deepEqual(alignedAudioRanges(epoch([b, a, tie, c], 7200)).map(({ provenance, ...numeric }) => numeric), [
     { fileStartFrame: 0, frameCount: 4800, timelineStartFrame: 10, rate: 1 },
     { fileStartFrame: 4800, frameCount: 2400, timelineStartFrame: 4800, rate: 1 },
   ]);

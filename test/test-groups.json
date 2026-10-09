@@ -859,5 +859,23 @@
     "kind": "integration",
     "buildMain": false,
     "files": ["test/stores/actionProcessingNoteOutput.test.ts"]
+  },
+  {
+    "domains": ["recording"],
+    "kind": "unit",
+    "buildMain": false,
+    "files": ["test/cases/recording/unit/meetingResamplerMapping.test.ts"]
+  },
+  {
+    "domains": ["recording"],
+    "kind": "native",
+    "buildMain": false,
+    "files": ["test/cases/recording/native/meetingResampler.test.ts"]
+  },
+  {
+    "domains": ["platform"],
+    "kind": "integration",
+    "buildMain": false,
+    "files": ["test/cases/platform/integration/meetingResamplerBuildCache.test.ts"]
   }
 ]

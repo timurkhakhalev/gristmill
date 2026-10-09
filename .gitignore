@@ -321,3 +321,10 @@ src/assets/fonts/yowza/*.otf
 # Compiled Electron application
 dist-main/
 dist-dev*/
+
+# Native resampler source/build delivery, generated from pinned inputs.
+resources/licenses/meeting-resampler/ffmpeg-*.tar.xz
+resources/licenses/meeting-resampler/meeting-resampler.c
+resources/licenses/meeting-resampler/build-meeting-resampler.cts
+resources/licenses/meeting-resampler/build.json
+resources/licenses/meeting-resampler/BUILDING.md

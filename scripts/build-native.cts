@@ -11,6 +11,10 @@ const path = require("node:path") as typeof import("node:path");
 const { buildMacosSwiftBinary } =
   require("./lib/build-macos-swift-binary.cts") as import("./lib/build-macos-swift-binary.cts").API;
 
+// SAFETY: CJS require seam for the native build script.
+const { buildMeetingResampler } =
+  require("./lib/build-meeting-resampler.cts") as import("./lib/build-meeting-resampler.cts").API;
+
 const root = path.resolve(__dirname, "..");
 
 // Dev builds are launched from a terminal, so macOS attributes the helper's
@@ -73,7 +77,7 @@ const helpers = {
 
 const requested = process.argv.slice(2);
 
-if (requested.some((name) => !(name in helpers)))
+if (requested.some((name) => !(name in helpers) && name !== "meeting-resampler"))
   throw new Error(`Unknown native helper: ${requested.join(", ")}`);
 
 for (const [name, config] of Object.entries(helpers)) {
@@ -90,5 +94,7 @@ for (const [name, config] of Object.entries(helpers)) {
     ...(name === "audio-tap" ? { target: "arm64-apple-macosx14.2" } : {}),
   });
 }
+
+if (!requested.length || requested.includes("meeting-resampler")) buildMeetingResampler(root);
 
 export type {};

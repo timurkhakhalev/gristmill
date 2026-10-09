@@ -81,7 +81,10 @@
         "macos-globe-listener",
         "macos-mic-listener",
         "macos-meeting-ax",
-        "macos-calendar-listener"
+        "macos-calendar-listener",
+        "meeting-resampler",
+        "libswresample.6.dylib",
+        "libavutil.60.dylib"
       ]
     },
     {
@@ -96,6 +99,11 @@
     {
       "from": "build/companion",
       "to": "companion",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/licenses/meeting-resampler/",
+      "to": "licenses/meeting-resampler/",
       "filter": ["**/*"]
     }
   ],

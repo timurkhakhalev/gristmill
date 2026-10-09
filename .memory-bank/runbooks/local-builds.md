@@ -29,6 +29,9 @@ The package does not include Whisper, llama.cpp or sherpa-onnx executables.
 The first use of a downloaded local model installs the necessary engine into the user data of the app.
 Cloud routes do not install engines.
 
+Renderer-only packages are development dependencies. Vite includes them in the renderer bundle; the app does not need a second copy in `node_modules`.
+The packaging hook replaces an identical versioned ONNX Runtime library with a relative link to its SONAME library before signing. Different binaries are kept.
+
 ## Local update
 
 1. Save active or paused recordings.

@@ -229,6 +229,27 @@ function verifyUnpackedBinaries(context: import("electron-builder").AfterPackCon
   console.log("  afterPack: verified unpacked bundled binaries");
 }
 
+// npm ships identical versioned and SONAME libraries. Link before signing so
+// only one copy is signed, while both loader paths remain available.
+function deduplicateOnnxruntimeLibraries(directory: string) {
+  if (!fs.existsSync(directory)) return;
+  const library = path.join(directory, "libonnxruntime.1.dylib");
+
+  if (!fs.existsSync(library)) return;
+
+  for (const name of fs.readdirSync(directory)) {
+    if (!/^libonnxruntime\.1\.\d+\.\d+\.dylib$/.test(name)) continue;
+    const duplicate = path.join(directory, name);
+
+    if (!fs.lstatSync(duplicate).isFile()) continue;
+
+    if (!fs.readFileSync(library).equals(fs.readFileSync(duplicate))) continue;
+    fs.unlinkSync(duplicate);
+    fs.symlinkSync(path.basename(library), duplicate);
+    console.log(`  afterPack: linked duplicate ONNX library ${name}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main hook
 // ---------------------------------------------------------------------------
@@ -265,11 +286,23 @@ function verifySqliteRuntime(context: import("electron-builder").AfterPackContex
 
 async function afterPack(context: import("electron-builder").AfterPackContext) {
   stripOnnxruntimeBinaries(context);
+  deduplicateOnnxruntimeLibraries(
+    path.join(
+      resolveResourcesDir(context),
+      "app.asar.unpacked",
+      "node_modules",
+      "onnxruntime-node",
+      "bin",
+      "napi-v6",
+      "darwin",
+      "arm64"
+    )
+  );
   verifyUnpackedBinaries(context);
   verifySqliteRuntime(context);
   registerMacResourceBinariesForSigning(context);
 }
 
-module.exports = { default: afterPack };
+module.exports = { default: afterPack, deduplicateOnnxruntimeLibraries };
 
 export type {};

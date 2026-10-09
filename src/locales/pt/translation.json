@@ -2253,6 +2253,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "includePart": "Include in next transcription",
+    "excludePart": "Exclude from next transcription",
+    "partExcluded": "Excluded",
+    "excludedParts": "Parts excluded from the next transcription: {{count}}",
+    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
+    "partialAudioResult": "This result uses selected audio parts",
+    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
     "platformName": "Zoom",
     "platformNameHint": "Nome identificado no {{platform}}. Clique para alterar.",
     "platformEvidenceUnavailable": "Os dados de quem fala no Zoom / Google Meet estão incompletos. O áudio e a transcrição são preservados.",
@@ -2381,7 +2388,12 @@
       "summary": "Falha no resumo",
       "other": "Falha no processamento"
     },
-    "failedReason": "Seu áudio está salvo. Verifique a conexão e a chave de API e tente novamente.",
+    "reviewAudioParts": "Revisar partes do áudio",
+    "audioAlignmentMissing": "Não foi possível sincronizar o áudio",
+    "audioAlignmentMissingReason": "O áudio está salvo, mas uma parte da gravação não tem uma referência de tempo confiável. Revise as partes do áudio e exclua a parte danificada da próxima transcrição. Todos os originais serão mantidos.",
+    "captureFailed": "Gravação interrompida",
+    "captureFailedReason": "O áudio gravado está salvo. Abra «Transcrição e áudio» para revisar a gravação. Repetir o processamento não recuperará o som ausente.",
+    "failedReason": "Seu áudio está salvo. O processamento falhou. Tente novamente.",
     "progress": {
       "pending": "Aguardando o início.",
       "running": "Isso pode levar alguns minutos. Você pode continuar escrevendo notas."

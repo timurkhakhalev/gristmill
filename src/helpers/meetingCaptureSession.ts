@@ -611,7 +611,11 @@ export class MeetingCaptureSession {
         packet.sampleOffset !== epoch.frameCount ||
         packet.sourceFrameStart !== epoch.sourceStartFrame + epoch.frameCount
       ) {
-        throw new Error("Meeting capture packet is out of order");
+        throw new Error(
+          `Meeting capture packet is out of order: sequence=${packet.sequence}/${epoch.nextSequence}, ` +
+            `offset=${packet.sampleOffset}/${epoch.frameCount}, ` +
+            `frame=${packet.sourceFrameStart}/${epoch.sourceStartFrame + epoch.frameCount}`
+        );
       }
 
       if (

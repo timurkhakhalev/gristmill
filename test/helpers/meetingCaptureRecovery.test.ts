@@ -525,3 +525,17 @@ test("write queue stops at its PCM backlog limit and surfaces delayed writer fai
   await assert.rejects(queue.drain(), /5000 ms/);
   assert.deepEqual(failures, ["Meeting capture exceeded the 5000 ms write backlog"]);
 });
+
+test("a microphone render gap starts a new epoch and retains both sides without stopping capture", async () => {
+  const { database, storage } = createCaptureFakes();
+  const capture = MeetingCaptureSession.create(database, storage, 12, null, new Date(), RECORDING_ID);
+  capture.appendRendererSamples("mic", packet(0, 0, 0, 0), Buffer.alloc(256));
+  capture.appendRendererSamples("mic", packet(1, 256, 0, 0), Buffer.alloc(4800));
+  capture.appendRendererSamples("mic", packet(1, 256, 1, 2400), Buffer.alloc(4800));
+  capture.appendNativeSamples("system", 1, Buffer.alloc(4800), 0, 0);
+  const result = await capture.stop({ lastSequence: { mic: 1 } });
+  assert.equal(result.captureState, "incomplete", "a real gap must remain visible after Stop");
+  assert.equal(database.epochs.filter((epoch) => epoch.source === "mic").length, 2);
+  assert.equal(storage.files.get(`${RECORDING_ID}:mic:0`)!.reduce((sum, bytes) => sum + bytes.length, 0), 256);
+  assert.equal(storage.files.get(`${RECORDING_ID}:mic:1`)!.reduce((sum, bytes) => sum + bytes.length, 0), 9600);
+});

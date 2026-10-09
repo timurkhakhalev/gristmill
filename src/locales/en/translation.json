@@ -2244,6 +2244,18 @@
     }
   },
   "meetingResults": {
+    "reviewAudioParts": "Review audio parts",
+    "audioAlignmentMissing": "Audio timing is missing",
+    "audioAlignmentMissingReason": "Your audio is saved, but a recording part has no reliable timing. Review the audio parts and exclude the damaged part from the next transcription. All originals are kept.",
+    "captureFailed": "Recording was interrupted",
+    "captureFailedReason": "The captured audio is saved. Open Transcript and audio to review the recording. Missing sound cannot be restored by retrying.",
+    "includePart": "Include in next transcription",
+    "excludePart": "Exclude from next transcription",
+    "partExcluded": "Excluded",
+    "excludedParts": "Parts excluded from the next transcription: {{count}}",
+    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
+    "partialAudioResult": "This result uses selected audio parts",
+    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
     "platformName": "Zoom",
     "platformNameHint": "Name matched from {{platform}}. Click the name to change it.",
     "platformEvidenceUnavailable": "Call speaker evidence is incomplete. Audio and transcript are preserved.",
@@ -2372,7 +2384,7 @@
       "summary": "Summary failed",
       "other": "Processing failed"
     },
-    "failedReason": "Your audio is saved. Check your connection and API key, then retry.",
+    "failedReason": "Your audio is saved. Processing failed; try again.",
     "progress": {
       "pending": "Waiting to start.",
       "running": "This can take a few minutes. You can keep writing notes."

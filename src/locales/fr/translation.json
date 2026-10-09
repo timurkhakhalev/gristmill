@@ -2253,6 +2253,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "includePart": "Include in next transcription",
+    "excludePart": "Exclude from next transcription",
+    "partExcluded": "Excluded",
+    "excludedParts": "Parts excluded from the next transcription: {{count}}",
+    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
+    "partialAudioResult": "This result uses selected audio parts",
+    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
     "platformName": "Zoom",
     "platformNameHint": "Nom identifié dans {{platform}}. Cliquez pour le modifier.",
     "platformEvidenceUnavailable": "Les données des locuteurs Zoom / Google Meet sont incomplètes. L’audio et la transcription sont conservés.",
@@ -2381,7 +2388,12 @@
       "summary": "Échec du résumé",
       "other": "Échec du traitement"
     },
-    "failedReason": "Votre audio est enregistré. Vérifiez la connexion et la clé API, puis réessayez.",
+    "reviewAudioParts": "Vérifier les parties audio",
+    "audioAlignmentMissing": "Synchronisation audio impossible",
+    "audioAlignmentMissingReason": "L’audio est sauvegardé, mais une partie de l’enregistrement ne dispose pas de repères temporels fiables. Vérifiez les parties audio et excluez la partie endommagée de la prochaine transcription. Tous les originaux sont conservés.",
+    "captureFailed": "Enregistrement interrompu",
+    "captureFailedReason": "L’audio enregistré est sauvegardé. Ouvrez « Transcription et audio » pour vérifier l’enregistrement. Relancer le traitement ne peut pas restaurer le son manquant.",
+    "failedReason": "Votre audio est sauvegardé. Le traitement a échoué. Réessayez.",
     "progress": {
       "pending": "En attente de démarrage.",
       "running": "Cela peut prendre quelques minutes. Vous pouvez continuer à écrire vos notes."

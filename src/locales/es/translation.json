@@ -2253,6 +2253,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "includePart": "Include in next transcription",
+    "excludePart": "Exclude from next transcription",
+    "partExcluded": "Excluded",
+    "excludedParts": "Parts excluded from the next transcription: {{count}}",
+    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
+    "partialAudioResult": "This result uses selected audio parts",
+    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
     "platformName": "Zoom",
     "platformNameHint": "Nombre identificado en {{platform}}. Haz clic para cambiarlo.",
     "platformEvidenceUnavailable": "Los datos del hablante de Zoom / Google Meet están incompletos. El audio y la transcripción se conservan.",
@@ -2381,7 +2388,12 @@
       "summary": "Error en el resumen",
       "other": "Error en el procesamiento"
     },
-    "failedReason": "Tu audio está guardado. Revisa la conexión y la clave de API y vuelve a intentarlo.",
+    "reviewAudioParts": "Revisar partes de audio",
+    "audioAlignmentMissing": "No se pudo sincronizar el audio",
+    "audioAlignmentMissingReason": "El audio está guardado, pero una parte de la grabación no tiene una referencia temporal fiable. Revisa las partes de audio y excluye la parte dañada de la próxima transcripción. Se conservarán todos los originales.",
+    "captureFailed": "Grabación interrumpida",
+    "captureFailedReason": "El audio grabado está guardado. Abre «Transcripción y audio» para revisar la grabación. Repetir el procesamiento no recuperará el sonido que falta.",
+    "failedReason": "Tu audio está guardado. El procesamiento falló. Inténtalo de nuevo.",
     "progress": {
       "pending": "Esperando para empezar.",
       "running": "Puede tardar unos minutos. Puedes seguir escribiendo notas."

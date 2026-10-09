@@ -2253,6 +2253,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "includePart": "Include in next transcription",
+    "excludePart": "Exclude from next transcription",
+    "partExcluded": "Excluded",
+    "excludedParts": "Parts excluded from the next transcription: {{count}}",
+    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
+    "partialAudioResult": "This result uses selected audio parts",
+    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
     "platformName": "Zoom",
     "platformNameHint": "{{platform}}から照合した名前です。クリックして変更できます。",
     "platformEvidenceUnavailable": "Zoom / Google Meetの発言者情報が不完全です。音声と文字起こしは保存されています。",
@@ -2381,7 +2388,12 @@
       "summary": "要約に失敗しました",
       "other": "処理に失敗しました"
     },
-    "failedReason": "音声は保存されています。接続と API キーを確認してから、再試行してください。",
+    "reviewAudioParts": "音声パートを確認",
+    "audioAlignmentMissing": "音声を同期できませんでした",
+    "audioAlignmentMissingReason": "音声は保存されていますが、録音の一部に正確な時刻情報がありません。音声パートを確認し、破損したパートを次の文字起こしから除外してください。元の音声はすべて保持されます。",
+    "captureFailed": "録音が中断されました",
+    "captureFailedReason": "録音した音声は保存されています。「文字起こしと音声」を開いて録音を確認してください。処理をやり直しても欠落した音声は復元できません。",
+    "failedReason": "音声は保存されています。処理に失敗しました。もう一度お試しください。",
     "progress": {
       "pending": "開始を待っています。",
       "running": "数分かかることがあります。その間もノートを書き続けられます。"

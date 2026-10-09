@@ -2253,6 +2253,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "includePart": "Include in next transcription",
+    "excludePart": "Exclude from next transcription",
+    "partExcluded": "Excluded",
+    "excludedParts": "Parts excluded from the next transcription: {{count}}",
+    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
+    "partialAudioResult": "This result uses selected audio parts",
+    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
     "platformName": "Zoom",
     "platformNameHint": "Nome associato da {{platform}}. Fai clic per modificarlo.",
     "platformEvidenceUnavailable": "I dati dei relatori Zoom / Google Meet sono incompleti. Audio e trascrizione sono conservati.",
@@ -2381,7 +2388,12 @@
       "summary": "Riepilogo non riuscito",
       "other": "Elaborazione non riuscita"
     },
-    "failedReason": "L'audio è salvato. Controlla la connessione e la chiave API, poi riprova.",
+    "reviewAudioParts": "Controlla le parti audio",
+    "audioAlignmentMissing": "Sincronizzazione audio non riuscita",
+    "audioAlignmentMissingReason": "L’audio è salvato, ma una parte della registrazione non dispone di riferimenti temporali affidabili. Controlla le parti audio ed escludi quella danneggiata dalla prossima trascrizione. Tutti gli originali verranno conservati.",
+    "captureFailed": "Registrazione interrotta",
+    "captureFailedReason": "L’audio registrato è salvato. Apri «Trascrizione e audio» per controllare la registrazione. Ripetere l’elaborazione non ripristinerà l’audio mancante.",
+    "failedReason": "L’audio è salvato. L’elaborazione non è riuscita. Riprova.",
     "progress": {
       "pending": "In attesa di avvio.",
       "running": "Può richiedere qualche minuto. Puoi continuare a scrivere note."

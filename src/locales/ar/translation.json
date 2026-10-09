@@ -2276,6 +2276,13 @@
     }
   },
   "meetingResults": {
+    "includePart": "Include in next transcription",
+    "excludePart": "Exclude from next transcription",
+    "partExcluded": "Excluded",
+    "excludedParts": "Parts excluded from the next transcription: {{count}}",
+    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
+    "partialAudioResult": "This result uses selected audio parts",
+    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
     "platformName": "Zoom",
     "platformNameHint": "تمت مطابقة الاسم من {{platform}}. انقر لتغييره.",
     "platformEvidenceUnavailable": "بيانات المتحدثين في Zoom / Google Meet غير مكتملة. تم الاحتفاظ بالصوت والنص.",
@@ -2404,7 +2411,12 @@
       "summary": "فشل الملخص",
       "other": "فشلت المعالجة"
     },
-    "failedReason": "تم حفظ الصوت. تحقق من الاتصال ومفتاح API، ثم أعد المحاولة.",
+    "reviewAudioParts": "مراجعة أجزاء الصوت",
+    "audioAlignmentMissing": "تعذرت مزامنة الصوت",
+    "audioAlignmentMissingReason": "تم حفظ الصوت، لكن أحد أجزاء التسجيل لا يحتوي على معلومات توقيت موثوقة. راجع أجزاء الصوت واستبعد الجزء التالف من التفريغ التالي. سيتم الاحتفاظ بجميع الملفات الأصلية.",
+    "captureFailed": "انقطع التسجيل",
+    "captureFailedReason": "تم حفظ الصوت المسجل. افتح «النص والصوت» لمراجعة التسجيل. لن تؤدي إعادة المعالجة إلى استعادة الصوت المفقود.",
+    "failedReason": "تم حفظ الصوت. فشلت المعالجة. حاول مرة أخرى.",
     "progress": {
       "pending": "في انتظار البدء.",
       "running": "قد يستغرق ذلك بضع دقائق. يمكنك متابعة كتابة الملاحظات."

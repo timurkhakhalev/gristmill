@@ -63,6 +63,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 ## Renderer capture
 
 - The microphone Worklet counts render frames continuously, also during mute.
+- A forward render-frame gap starts a new epoch and retains the buffered tail. It must not join noncontiguous samples under one frame anchor. ACK identity includes the epoch and sequence. A real gap remains visible as an incomplete capture.
 - It discards gated samples before transfer, analysis, encoding or storage.
 - It keeps the healthy microphone stream, the AudioContext and the Worklet alive. The system capture continues.
 - Pause and Stop release both audio devices.

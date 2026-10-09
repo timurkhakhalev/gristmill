@@ -2253,6 +2253,13 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "includePart": "Include in next transcription",
+    "excludePart": "Exclude from next transcription",
+    "partExcluded": "Excluded",
+    "excludedParts": "Parts excluded from the next transcription: {{count}}",
+    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
+    "partialAudioResult": "This result uses selected audio parts",
+    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
     "platformName": "Zoom",
     "platformNameHint": "Name aus {{platform}} zugeordnet. Zum Ändern auf den Namen klicken.",
     "platformEvidenceUnavailable": "Zoom / Google Meet-Sprecherdaten sind unvollständig. Audio und Transkript bleiben erhalten.",
@@ -2381,7 +2388,12 @@
       "summary": "Zusammenfassung fehlgeschlagen",
       "other": "Verarbeitung fehlgeschlagen"
     },
-    "failedReason": "Dein Audio ist gespeichert. Prüfe Verbindung und API-Schlüssel, dann versuche es erneut.",
+    "reviewAudioParts": "Audioteile prüfen",
+    "audioAlignmentMissing": "Audio konnte nicht synchronisiert werden",
+    "audioAlignmentMissingReason": "Das Audio ist gespeichert, aber für einen Aufnahmeteil fehlt eine verlässliche Zeitzuordnung. Prüfe die Audioteile und schließe den beschädigten Teil von der nächsten Transkription aus. Alle Originale bleiben erhalten.",
+    "captureFailed": "Aufnahme unterbrochen",
+    "captureFailedReason": "Das aufgenommene Audio ist gespeichert. Öffne „Transkript und Audio“, um die Aufnahme zu prüfen. Eine erneute Verarbeitung stellt fehlenden Ton nicht wieder her.",
+    "failedReason": "Dein Audio ist gespeichert. Die Verarbeitung ist fehlgeschlagen. Versuche es erneut.",
     "progress": {
       "pending": "Wartet auf den Start.",
       "running": "Das kann einige Minuten dauern. Du kannst weiter Notizen schreiben."

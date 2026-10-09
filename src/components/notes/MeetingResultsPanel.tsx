@@ -63,7 +63,11 @@ type ViewMode = "raw" | "enhanced";
 
 const TRANSCRIPT_CHUNK = 60;
 
-type RunChoice = { kind: "reprocess" | "summary"; partId?: string; generateSummary?: boolean };
+type RunChoice = {
+  kind: "reprocess" | "summary";
+  partId?: string;
+  generateSummary?: boolean;
+};
 
 export interface SummaryActionState {
   available: boolean;
@@ -416,6 +420,8 @@ export default function MeetingResultsPanel({
     };
   }, [noteId, previewRecordings, speakerId, notify, t]);
   const [profiles, setProfiles] = useState<Array<{ id: number; display_name: string }>>([]);
+  const [excludedPartIds, setExcludedPartIds] = useState<string[]>([]);
+  useEffect(() => setExcludedPartIds([]), [noteId]);
 
   const playbackError = useCallback(
     (error?: string) => notify(error || t("meetingResults.playbackError"), "destructive"),
@@ -775,6 +781,7 @@ export default function MeetingResultsPanel({
         .filter(
           (part) =>
             part.recording.audioState === "available" &&
+            !excludedPartIds.includes(part.recording.id) &&
             ["ready", "incomplete"].includes(part.recording.captureState)
         )
         .map((part) => part.recording.groupId)
@@ -786,7 +793,8 @@ export default function MeetingResultsPanel({
     captureBlocksAsr ||
     groupIds.some((groupId) => (groupAsrDeadlines.get(groupId) ?? 0) > countdownNow);
 
-  const wholeMeetingAsrBlocked = manualAsrBlockedForGroups(reprocessGroupIds);
+  const wholeMeetingAsrBlocked =
+    reprocessGroupIds.length === 0 || manualAsrBlockedForGroups(reprocessGroupIds);
 
   const selectedTranscriptCharacters = selected?.transcript
     ? selected.transcript.segments?.length
@@ -917,10 +925,7 @@ export default function MeetingResultsPanel({
   };
 
   /** Starts a run with the settings-selected providers; no per-run picker. */
-  const openRun = (
-    kind: "reprocess" | "summary",
-    target: { partId?: string; generateSummary?: boolean } = {}
-  ) => {
+  const openRun = (kind: "reprocess" | "summary", target: Omit<RunChoice, "kind"> = {}) => {
     if (
       kind === "summary" &&
       !previewRecordings &&
@@ -993,6 +998,7 @@ export default function MeetingResultsPanel({
           .filter(
             (part) =>
               part.recording.audioState === "available" &&
+              !excludedPartIds.includes(part.recording.id) &&
               ["ready", "incomplete"].includes(part.recording.captureState)
           )
           .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt))
@@ -1636,6 +1642,11 @@ export default function MeetingResultsPanel({
                                     tr={tr}
                                   />
                                 )}
+                                {excludedPartIds.includes(part.recording.id) && (
+                                  <span className="text-xs text-warning">
+                                    {t("meetingResults.partExcluded")}
+                                  </span>
+                                )}
                                 <Dropdown>
                                   <Button
                                     isIconOnly
@@ -1656,6 +1667,13 @@ export default function MeetingResultsPanel({
                                           runInBackground(
                                             exportPart(part.recording.id),
                                             "Export audio part failed"
+                                          );
+
+                                        if (key === "exclude")
+                                          setExcludedPartIds((ids) =>
+                                            ids.includes(part.recording.id)
+                                              ? ids.filter((id) => id !== part.recording.id)
+                                              : [...ids, part.recording.id]
                                           );
 
                                         if (key === "delete") deletePart(part.recording.id);
@@ -1684,6 +1702,23 @@ export default function MeetingResultsPanel({
                                         {t("meetingResults.exportMixed")}
                                       </Dropdown.Item>
                                       <Dropdown.Item
+                                        id="exclude"
+                                        isDisabled={
+                                          runBusy || part.recording.audioState !== "available"
+                                        }
+                                        textValue={t(
+                                          excludedPartIds.includes(part.recording.id)
+                                            ? "meetingResults.includePart"
+                                            : "meetingResults.excludePart"
+                                        )}
+                                      >
+                                        {t(
+                                          excludedPartIds.includes(part.recording.id)
+                                            ? "meetingResults.includePart"
+                                            : "meetingResults.excludePart"
+                                        )}
+                                      </Dropdown.Item>
+                                      <Dropdown.Item
                                         id="delete"
                                         isDisabled={busy || part.recording.audioState === "deleted"}
                                         variant="danger"
@@ -1709,6 +1744,13 @@ export default function MeetingResultsPanel({
                         );
                       })}
                     </div>
+                    {excludedPartIds.length > 0 && (
+                      <NoteNotice
+                        status="warning"
+                        title={t("meetingResults.excludedParts", { count: excludedPartIds.length })}
+                        description={t("meetingResults.excludedPartsDescription")}
+                      />
+                    )}
                     {audioGroups.some((group) =>
                       group.parts.some(
                         (part) =>
@@ -1761,6 +1803,18 @@ export default function MeetingResultsPanel({
         </div>
       </div>
       {notice}
+      {selected?.run.hasTranscript &&
+        recordings.some(
+          (part) =>
+            part.recording.audioState === "available" &&
+            !selected.run.sourceRecordingIds.includes(part.recording.id)
+        ) && (
+          <NoteNotice
+            status="warning"
+            title={t("meetingResults.partialAudioResult")}
+            description={t("meetingResults.partialAudioResultDescription")}
+          />
+        )}
       {!previewRecordings &&
         selected?.run.speakerNamingErrorCode === "calendar-participants-invalid" && (
           <NoteNotice
@@ -1867,6 +1921,11 @@ export default function MeetingResultsPanel({
         !(latestRun.run.status === "pending" && (captureBlocksAsr || gateActive)) &&
         (() => {
           const { status, stage, errorCode } = latestRun.run;
+          const missingAlignment = errorCode === "audio-alignment-unavailable";
+
+          const captureFailed =
+            errorCode === "capture-write-failed" || errorCode === "audio-write-failed";
+
           const stageKey = stage === "asr" || stage === "summary" ? stage : "other";
 
           const needsConfig =
@@ -1884,6 +1943,18 @@ export default function MeetingResultsPanel({
 
           const actions = (
             <>
+              {missingAlignment && (
+                <Button
+                  size="sm"
+                  isDisabled={captureBlocksAsr || busy}
+                  onPress={() => {
+                    setPopoverTab("audio");
+                    setAudioOpen(true);
+                  }}
+                >
+                  {tr("reviewAudioParts", "Review audio parts")}
+                </Button>
+              )}
               {needsConfig && (
                 <Button size="sm" onPress={() => openSettings(settingsSection)}>
                   {t("meetingResults.openSettings")}
@@ -1923,33 +1994,58 @@ export default function MeetingResultsPanel({
                   {t("meetingResults.updateRunSettings")}
                 </Button>
               )}
-              {(status === "failed" || (status === "blocked" && !needsConfig)) && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  isPending={busy}
-                  onPress={() =>
-                    void runTask(async () => {
-                      if (previewRecordings) {
-                        notify("Mock retry queued in memory");
+              {!missingAlignment &&
+                (status === "failed" || (status === "blocked" && !needsConfig)) && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    isPending={busy}
+                    onPress={() =>
+                      void runTask(async () => {
+                        if (previewRecordings) {
+                          notify("Mock retry queued in memory");
 
-                        return;
-                      }
+                          return;
+                        }
 
-                      const result = await window.electronAPI.meetingProcessingRetryRun(
-                        latestRun.run.id
-                      );
+                        const result = await window.electronAPI.meetingProcessingRetryRun(
+                          latestRun.run.id
+                        );
 
-                      if (!result.success)
-                        throw new Error(result.error || t("meetingResults.retryError"));
-                    })
-                  }
-                >
-                  {t("meetingResults.retry")}
-                </Button>
-              )}
+                        if (!result.success)
+                          throw new Error(result.error || t("meetingResults.retryError"));
+                      })
+                    }
+                  >
+                    {t("meetingResults.retry")}
+                  </Button>
+                )}
             </>
           );
+
+          if (missingAlignment || captureFailed)
+            return (
+              <NoteNotice
+                status="danger"
+                title={
+                  missingAlignment
+                    ? tr("audioAlignmentMissing", "Audio timing is missing")
+                    : tr("captureFailed", "Recording was interrupted")
+                }
+                description={
+                  missingAlignment
+                    ? tr(
+                        "audioAlignmentMissingReason",
+                        "Your audio is saved, but a recording part has no reliable timing. Review the audio parts and exclude the damaged part from the next transcription. All originals are kept."
+                      )
+                    : tr(
+                        "captureFailedReason",
+                        "The captured audio is saved. Open Transcript and audio to review the recording. Missing sound cannot be restored by retrying."
+                      )
+                }
+                actions={actions}
+              />
+            );
 
           if (status === "blocked")
             return (

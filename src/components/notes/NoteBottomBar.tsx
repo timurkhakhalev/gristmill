@@ -50,7 +50,7 @@ export default function NoteBottomBar({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasText = inputText.trim().length > 0;
 
@@ -72,8 +72,8 @@ export default function NoteBottomBar({
   }, [inputText, askDisabled, onAskSubmit]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         handleSubmit();
       }
@@ -148,41 +148,44 @@ export default function NoteBottomBar({
           className={cn(
             "relative flex-1 min-w-0 flex items-center",
             isRecording ? RECORDING_SURFACE : GLASS_SURFACE,
-            "border",
             // Only height and opacity tween. A fixed 22px radius is a pill at
             // 44px and a card at 76px, so the outline never morphs; the surface
             // swap must land instantly, or every recording start/stop tweens
             // backdrop-filter. The chat panel replaces the bar with a fade
             // rather than the bar collapsing sideways into it.
-            "rounded-[22px] border-border ps-4 pe-1.5",
+            "rounded-[22px] ps-4 pe-1.5 py-[7px]",
             "transition-[opacity,box-shadow] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]",
             hideInput ? "opacity-0 pointer-events-none" : "opacity-100",
-            "h-11",
-            isExpanded && "ring-[3px] ring-primary/8"
+            "min-h-11"
           )}
           onClick={(e) => {
             if (e.target === e.currentTarget) inputRef.current?.focus();
           }}
         >
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+          {/* Bottom-aligned, so the pickers and send button stay on the last line as the text grows. */}
+          <div className="flex min-w-0 flex-1 items-end gap-2">
             {isExpanded && !hideInput && history && history.conversations.length > 0 && (
-              <ConversationPicker
-                variant="history"
-                conversations={history.conversations}
-                activeConversationId={history.activeConversationId}
-                onSwitchConversation={history.onSwitchConversation}
-                onNewChat={history.onNewChat}
-                onOpenChange={(open) => {
-                  setIsHistoryOpen(open);
+              // One line tall, so the shorter trigger stays centred on the bottom line.
+              <div className="flex h-7 shrink-0 items-center">
+                <ConversationPicker
+                  variant="history"
+                  conversations={history.conversations}
+                  activeConversationId={history.activeConversationId}
+                  onSwitchConversation={history.onSwitchConversation}
+                  onNewChat={history.onNewChat}
+                  onOpenChange={(open) => {
+                    setIsHistoryOpen(open);
 
-                  if (!open && !hasText) setIsExpanded(false);
-                }}
-              />
+                    if (!open && !hasText) setIsExpanded(false);
+                  }}
+                />
+              </div>
             )}
-            <input
+            {/* Grows with its content up to 160px (max-h-40), then scrolls inside. */}
+            <textarea
               dir="auto"
               ref={inputRef}
-              type="text"
+              rows={1}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -191,7 +194,8 @@ export default function NoteBottomBar({
               tabIndex={hideInput ? -1 : undefined}
               placeholder={t("embeddedChat.askPlaceholder")}
               className={cn(
-                "input-inline flex-1 bg-transparent outline-none min-w-0 p-0 caret-primary",
+                "input-inline flex-1 bg-transparent outline-none min-w-0 px-0 py-1 caret-primary",
+                "resize-none [field-sizing:content] max-h-40 overflow-y-auto",
                 "text-ui text-foreground",
                 "placeholder:text-muted dark:placeholder:text-muted"
               )}

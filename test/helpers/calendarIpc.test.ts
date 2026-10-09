@@ -68,6 +68,7 @@ function setup({ google, microsoft, apple, upcoming, eventById, opener }: SetupO
             disconnect: () => {},
             getConnectionStatus: () => ({
               connected: true,
+    sync: { state: "synced" as const, requiresReconnect: false },
               configured: true,
               accounts: [{ email: "g@x.io" }],
               email: "g@x.io",
@@ -85,10 +86,12 @@ function setup({ google, microsoft, apple, upcoming, eventById, opener }: SetupO
             disconnect: () => {},
             getConnectionStatus: () => ({
               connected: false,
+    sync: { state: "pending" as const, requiresReconnect: false },
               configured: false,
               accounts: [],
             }),
             setPrimaryOnly: async () => {},
+            syncEvents: async () => {},
           }
         : microsoft,
     apple:
@@ -145,6 +148,7 @@ test("google status: live manager fields vs unconfigured fallback", async () => 
   const live = setup();
   assert.deepEqual(await live.call("gcal-get-connection-status"), {
     connected: true,
+    sync: { state: "synced" as const, requiresReconnect: false },
     configured: true,
     accounts: [{ email: "g@x.io" }],
     email: "g@x.io",
@@ -167,6 +171,7 @@ test("google status: live manager fields vs unconfigured fallback", async () => 
   // The fallback has NO configured/accounts — absence is the signal.
   assert.deepEqual(await failing.call("gcal-get-connection-status"), {
     connected: false,
+    sync: { state: "error" as const, requiresReconnect: false },
     email: null,
   });
 });
@@ -180,11 +185,13 @@ test("microsoft status: fallback omits configured, keeps accounts", async () => 
         throw new Error("no oauth client");
       },
       setPrimaryOnly: async () => {},
+            syncEvents: async () => {},
     },
   });
 
   assert.deepEqual(await failing.call("mcal-get-connection-status"), {
     connected: false,
+    sync: { state: "error" as const, requiresReconnect: false },
     accounts: [],
   });
   assert.equal("configured" in (await failing.call("mcal-get-connection-status")), false);
@@ -213,7 +220,8 @@ test("a malformed successful status never passes as valid", async () => {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
       getConnectionStatus: () =>
-        ({ connected: "yes", email: "g@x.io" }) as unknown as {
+        ({ connected: "yes", email: "g@x.io", sync: { state: "pending" as const, requiresReconnect: false } }) as unknown as {
+          sync: import("../../src/contracts/calendar.ts").CalendarSyncStatus;
           connected: boolean;
           email: string | null;
         },
@@ -226,6 +234,7 @@ test("a malformed successful status never passes as valid", async () => {
 
   assert.deepEqual(await junk.call("gcal-get-connection-status"), {
     connected: false,
+    sync: { state: "error" as const, requiresReconnect: false },
     email: null,
   });
 });
@@ -243,7 +252,7 @@ test("oauth success and failure detail per provider", async () => {
         throw new Error("access_denied");
       },
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: false, email: null }),
+      getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
       getCalendars: () => [],
       setCalendarSelection: async () => {},
       setPrimaryOnly: async () => {},
@@ -265,7 +274,7 @@ test("disconnect: invalid email rejected before the manager; failures carry deta
       disconnect: () => {
         throw new Error("db locked");
       },
-      getConnectionStatus: () => ({ connected: false, email: null }),
+      getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
       getCalendars: () => [],
       setCalendarSelection: async () => {},
       setPrimaryOnly: async () => {},
@@ -324,7 +333,7 @@ test("selection and primary-only validate args before calling the manager", asyn
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: false, email: null }),
+      getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
       getCalendars: () => [],
       setCalendarSelection: async (id: unknown, value: boolean) => {
         calls.push(["selection", id, value]);
@@ -376,7 +385,7 @@ test("gcal sync reports full failure, partial failure and success from the manag
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: false, email: null }),
+      getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
       getCalendars: () => [],
       setCalendarSelection: async () => {},
       setPrimaryOnly: async () => {},
@@ -399,7 +408,7 @@ test("gcal sync surfaces a thrown manager error and accepts an empty outcome", a
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: false, email: null }),
+      getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
       getCalendars: () => [],
       setCalendarSelection: async () => {},
       setPrimaryOnly: async () => {},
@@ -415,7 +424,7 @@ test("gcal sync surfaces a thrown manager error and accepts an empty outcome", a
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: false, email: null }),
+      getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
       getCalendars: () => [],
       setCalendarSelection: async () => {},
       setPrimaryOnly: async () => {},
@@ -495,7 +504,7 @@ test("calendar list projection drops sync tokens", async () => {
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: false, email: null }),
+      getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
       getCalendars: () => [
         {
           id: "cal-1",
@@ -548,7 +557,7 @@ test("read failures degrade to empty shapes, not error surfaces", async () => {
     google: {
       startOAuth: async () => ({ success: true }),
       disconnect: () => {},
-      getConnectionStatus: () => ({ connected: false, email: null }),
+      getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
       getCalendars: () => {
         throw new Error("db");
       },

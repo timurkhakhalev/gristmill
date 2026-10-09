@@ -20,6 +20,9 @@ User paths: [Connect calendars](../product/user-journeys/calendars.md).
 ## Sync lifecycle
 
 - Google and Microsoft normally refresh every two minutes, with error backoff.
+- Their connection status includes live sync health: pending until checked, synced after a clean pass, or error after any calendar fails. A rejected refresh token requires reconnecting; other failures offer retry. Failed calendar-list reads also count, even with an empty event cache. Late outcomes from an older sync or a stopped connection cannot overwrite current health.
+- Settings replaces the green Connected badge with Reconnect required or Out of sync on failure. Home shows the same warning above cached events and opens Calendar settings for recovery. An empty cache during a failed sync does not claim No events today.
+- Renderer account lists are reconciled with the current manager status. A cached email without a saved account is not a connection. Pending checks show a loading indicator; unavailable status reads show an error while preserving the cached account list.
 - Stop invalidates in-flight interval and focus outcomes. A late completion cannot re-arm polling. A new explicit sync keeps its normal backoff policy.
 - Disconnect invalidates pending token refresh, calendar-list and event-sync results. Reconnecting the same email creates a new connection identity. Old results cannot change it.
 - Each Google or Microsoft account removal reconciles the cached active meeting with live calendar rows and reschedules reminders. Removing one account keeps delivered-reminder deduplication for the remaining accounts.

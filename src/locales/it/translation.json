@@ -2029,6 +2029,17 @@
     },
     "status": {
       "notConfigured": "Non configurato"
+    },
+    "sync": {
+      "outOfSync": "Non sincronizzato",
+      "reconnectRequired": "Riconnessione richiesta",
+      "checking": "Verifica della sincronizzazione…",
+      "outOfSyncTitle": "{{provider}} non sincronizzato",
+      "authRequired": "L’accesso al calendario è scaduto o è stato revocato. Ricollega l’account. Gli eventi salvati potrebbero non essere aggiornati.",
+      "failed": "Impossibile aggiornare il calendario. Gli eventi salvati potrebbero non essere aggiornati. Gristmill riproverà automaticamente.",
+      "reconnect": "Ricollega",
+      "retry": "Riprova sincronizzazione",
+      "openSettings": "Impostazioni calendario"
     }
   },
   "calendar": {

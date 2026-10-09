@@ -8,7 +8,11 @@ import {
   type PeoplePage,
   type PeoplePerson,
 } from "./googlePeople.js";
-import { CalendarSyncInterval, type CalendarSyncOutcome } from "./calendarSyncInterval.js";
+import {
+  CalendarSyncInterval,
+  calendarSyncStatus,
+  type CalendarSyncOutcome,
+} from "./calendarSyncInterval.js";
 import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
 import { extractMeetingUrl } from "./meetingJoinUrl.js";
 import { calendarDescriptionText } from "./calendarDescription.js";
@@ -19,6 +23,8 @@ import type {
   GoogleCalendarInput,
   GoogleCalendarRow,
 } from "./database.js";
+
+import type { CalendarSyncStatus } from "../contracts/calendar.js";
 
 const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
 
@@ -114,6 +120,7 @@ export interface GoogleManagerDb {
 }
 
 export interface GoogleConnectionStatus {
+  sync: CalendarSyncStatus;
   connected: boolean;
   configured: boolean;
   accounts: CalendarAccountRow[];
@@ -142,6 +149,10 @@ export class GoogleCalendarManager {
   private readonly oauth: GoogleCalendarOAuth;
   private accounts = new Map<string, { email: string }>();
   private primaryOnly = true;
+  private syncStatus: CalendarSyncStatus = { state: "pending", requiresReconnect: false };
+  private calendarListErrors = new Map<string, unknown>();
+  private connectionRevision = 0;
+  private syncRevision = 0;
   private readonly syncRunner: CalendarSyncInterval;
   private readonly peopleSyncedAt = new Map<string, number>();
 
@@ -182,6 +193,7 @@ export class GoogleCalendarManager {
   }
 
   stop(): void {
+    this.connectionRevision++;
     this.syncRunner.stop();
   }
 
@@ -194,13 +206,21 @@ export class GoogleCalendarManager {
   }
 
   addAccount(email: string): void {
+    this.connectionRevision++;
+    this.syncStatus = { state: "pending", requiresReconnect: false };
+    this.calendarListErrors.delete(email);
     this.accounts.set(email, { email });
   }
 
   removeAccount(email: string): void {
+    this.connectionRevision++;
+    this.calendarListErrors.delete(email);
+    this.syncStatus = { state: "pending", requiresReconnect: false };
     this.accounts.delete(email);
     this.databaseManager.removeGoogleAccount(email);
     this._broadcastAccountsChanged();
+
+    if (this.accounts.size > 0) this.syncOnFocus();
     this.reminderScheduler.reconcileProvider("google");
 
     if (this.accounts.size === 0) {
@@ -247,6 +267,8 @@ export class GoogleCalendarManager {
     } else {
       this.stop();
       this.accounts.clear();
+      this.calendarListErrors.clear();
+      this.syncStatus = { state: "pending", requiresReconnect: false };
       this.databaseManager.clearGoogleCalendarData();
       this.reminderScheduler.reset("google");
       this.reminderScheduler.scheduleNextMeeting();
@@ -258,6 +280,7 @@ export class GoogleCalendarManager {
     const accounts = this.databaseManager.getGoogleAccounts();
 
     return {
+      sync: this.syncStatus,
       connected: accounts.length > 0,
       configured: this.isConfigured(),
       accounts,
@@ -277,6 +300,7 @@ export class GoogleCalendarManager {
 
   async fetchCalendars(accountEmail: string | null = null): Promise<GoogleCalendarInput[]> {
     const emails = accountEmail ? [accountEmail] : this._getAccountEmails();
+    const revision = this.connectionRevision;
     const allCalendars: GoogleCalendarInput[] = [];
 
     for (const email of emails) {
@@ -301,8 +325,10 @@ export class GoogleCalendarManager {
 
         this._assertAccountCurrent(email, accountId);
         this.databaseManager.saveGoogleCalendars(calendars, email);
+        this.calendarListErrors.delete(email);
         allCalendars.push(...calendars);
       } catch (err) {
+        if (revision === this.connectionRevision) this.calendarListErrors.set(email, err);
         debugLogger.error(
           "Error fetching calendars",
           { email, error: err instanceof Error ? err.message : String(err) },
@@ -321,11 +347,19 @@ export class GoogleCalendarManager {
   // whole-pass result is returned so orchestration can back off and the IPC
   // can report failure instead of a false success.
   async syncEvents(): Promise<CalendarSyncOutcome> {
+    const syncRevision = ++this.syncRevision;
+    const revision = this.connectionRevision;
+
+    if (this.calendarListErrors.size > 0) await this.fetchCalendars();
+
     const selectedCalendars = this.databaseManager.getSelectedCalendars();
 
-    if (selectedCalendars.length === 0) return { total: 0, succeeded: 0, failed: 0, errors: [] };
+    const failures: unknown[] = [...this.calendarListErrors.values()];
 
-    const errors: string[] = [];
+    const errors = failures.map((error) =>
+      error instanceof Error ? error.message : String(error)
+    );
+
     let succeeded = 0;
 
     for (const calendar of selectedCalendars) {
@@ -333,6 +367,7 @@ export class GoogleCalendarManager {
         await this._syncCalendar(calendar);
         succeeded++;
       } catch (err) {
+        failures.push(err);
         errors.push(err instanceof Error ? err.message : String(err));
         debugLogger.error(
           "Error syncing calendar",
@@ -345,7 +380,11 @@ export class GoogleCalendarManager {
       }
     }
 
-    sendGcalEventsSynced();
+    if (revision === this.connectionRevision && syncRevision === this.syncRevision) {
+      this.syncStatus = calendarSyncStatus(failures);
+      sendGcalEventsSynced();
+    }
+
     this.reminderScheduler.scheduleNextMeeting();
     this.syncPeople().catch((err) =>
       debugLogger.error(
@@ -355,7 +394,12 @@ export class GoogleCalendarManager {
       )
     );
 
-    return { total: selectedCalendars.length, succeeded, failed: errors.length, errors };
+    return {
+      total: selectedCalendars.length + this.calendarListErrors.size,
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
   }
 
   /**

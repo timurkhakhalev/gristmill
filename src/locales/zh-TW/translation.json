@@ -2029,6 +2029,17 @@
     },
     "status": {
       "notConfigured": "尚未設定"
+    },
+    "sync": {
+      "outOfSync": "未同步",
+      "reconnectRequired": "需要重新連線",
+      "checking": "正在檢查同步…",
+      "outOfSyncTitle": "{{provider}} 未同步",
+      "authRequired": "行事曆存取權已過期或被撤銷。請重新連線帳號以更新行程。已儲存的行程可能已過時。",
+      "failed": "無法更新行事曆。已儲存的行程可能已過時。Gristmill 將自動重試。",
+      "reconnect": "重新連線",
+      "retry": "重試同步",
+      "openSettings": "行事曆設定"
     }
   },
   "calendar": {

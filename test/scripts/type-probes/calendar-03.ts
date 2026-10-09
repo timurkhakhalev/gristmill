@@ -20,7 +20,7 @@ registerCalendarIntegrationHandlers(ipcMain, {
     disconnect: (email?: string) => {
       void email;
     },
-    getConnectionStatus: () => ({ connected: true, email: "g@x.io", configured: true }),
+    getConnectionStatus: () => ({ connected: true, email: "g@x.io", configured: true, sync: { state: "pending" as const, requiresReconnect: false } }),
     getCalendars: () => [],
     setCalendarSelection: async (calendarId: string, isSelected: boolean) => {
       void calendarId;
@@ -34,8 +34,9 @@ registerCalendarIntegrationHandlers(ipcMain, {
   microsoftManager: {
     startOAuth: async () => ({ success: true, email: "m@x.io" }),
     disconnect: () => {},
-    getConnectionStatus: () => ({ connected: false, accounts: [] }),
+    getConnectionStatus: () => ({ connected: false, accounts: [], sync: { state: "pending" as const, requiresReconnect: false } }),
     setPrimaryOnly: async () => {},
+            syncEvents: async () => {},
   },
   appleManager: {
     connect: async () => ({ success: true }),

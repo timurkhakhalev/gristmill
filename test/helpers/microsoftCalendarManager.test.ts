@@ -325,6 +325,7 @@ test("syncEvents reports a full failure when every selected calendar errors", as
   const MicrosoftCalendarManager = loadManagerModule();
 
   const manager = createManager(MicrosoftCalendarManager, [], [], {
+    getMicrosoftAccounts: () => [{ email: "me@example.com" }],
     getSelectedMicrosoftCalendars: () => [
       { id: "cal-1", account_email: "me@example.com" },
       { id: "cal-2", account_email: "me@example.com" },
@@ -341,6 +342,15 @@ test("syncEvents reports a full failure when every selected calendar errors", as
   assert.equal(outcome.succeeded, 0);
   assert.equal(outcome.failed, 2);
   assert.deepEqual(outcome.errors, ["graph down", "graph down"]);
+  assert.deepEqual(manager.getConnectionStatus().sync, { state: "error", requiresReconnect: false });
+  manager._apiGet = async () => {
+    throw Object.assign(new Error("Authorization expired"), { code: "CALENDAR_AUTH_REQUIRED" });
+  };
+  await manager.syncEvents();
+  assert.deepEqual(manager.getConnectionStatus().sync, { state: "error", requiresReconnect: true });
+  manager._apiGet = async () => ({ value: [] });
+  await manager.syncEvents();
+  assert.deepEqual(manager.getConnectionStatus().sync, { state: "synced", requiresReconnect: false });
 });
 
 test("syncEvents keeps successful updates and reports a partial outcome", async () => {
@@ -423,4 +433,16 @@ test("_syncCalendar keeps the stored row when a stripped occurrence's master fet
     ["evt-1"]
   );
   assert.deepEqual(staleKeepLists, [["occ-1", "evt-1"]]);
+});
+
+test("Microsoft invalid_grant requires reconnect, unlike a transient refresh error", async () => {
+  loadManagerModule();
+  const MicrosoftCalendarOAuth = require("../../src/helpers/microsoftCalendarOAuth.ts");
+  const oauth = new MicrosoftCalendarOAuth({
+    getMicrosoftTokensByEmail: () => ({ id: 1, expires_at: 0, refresh_token: "synthetic" }),
+  });
+  oauth.refreshAccessToken = async () => ({ error: "invalid_grant", error_description: "expired" });
+  await assert.rejects(oauth.getValidAccessToken("test@example.com"), { code: "CALENDAR_AUTH_REQUIRED" });
+  oauth.refreshAccessToken = async () => ({ error: "temporarily_unavailable" });
+  await assert.rejects(oauth.getValidAccessToken("test@example.com"), { code: "CALENDAR_REFRESH_FAILED" });
 });

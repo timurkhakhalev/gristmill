@@ -181,7 +181,15 @@ export class MicrosoftCalendarOAuth {
     const refreshed = await this.refreshAccessToken(tokens.refresh_token);
 
     if (refreshed.error) {
-      throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
+      throw Object.assign(
+        new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`),
+        {
+          code:
+            refreshed.error === "invalid_grant"
+              ? "CALENDAR_AUTH_REQUIRED"
+              : "CALENDAR_REFRESH_FAILED",
+        }
+      );
     }
 
     const accessToken = refreshed.access_token;

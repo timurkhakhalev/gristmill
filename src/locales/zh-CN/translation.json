@@ -2029,6 +2029,17 @@
     },
     "status": {
       "notConfigured": "未配置"
+    },
+    "sync": {
+      "outOfSync": "未同步",
+      "reconnectRequired": "需要重新连接",
+      "checking": "正在检查同步…",
+      "outOfSyncTitle": "{{provider}} 未同步",
+      "authRequired": "日历访问权限已过期或被撤销。请重新连接账号以更新日程。已保存的日程可能已过时。",
+      "failed": "无法更新日历。已保存的日程可能已过时。Gristmill 将自动重试。",
+      "reconnect": "重新连接",
+      "retry": "重试同步",
+      "openSettings": "日历设置"
     }
   },
   "calendar": {

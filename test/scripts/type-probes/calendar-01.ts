@@ -13,7 +13,7 @@ registerCalendarIntegrationHandlers(ipcMain, {
   googleManager: {
     startOAuth: async () => ({ success: true, email: "g@x.io" }),
     disconnect: () => {},
-    getConnectionStatus: () => ({ connected: false, email: null }),
+    getConnectionStatus: () => ({ connected: false, email: null, sync: { state: "pending" as const, requiresReconnect: false } }),
     getCalendars: () => [],
     setCalendarSelection: async () => {},
     setPrimaryOnly: async () => {},
@@ -22,8 +22,9 @@ registerCalendarIntegrationHandlers(ipcMain, {
   microsoftManager: {
     startOAuth: async () => ({ success: true }),
     disconnect: () => {},
-    getConnectionStatus: () => ({ connected: false, accounts: [] }),
+    getConnectionStatus: () => ({ connected: false, accounts: [], sync: { state: "pending" as const, requiresReconnect: false } }),
     setPrimaryOnly: async () => {},
+            syncEvents: async () => {},
   },
   openCalendarPrivacySettings: async () => ({ success: true }),
   logError: () => {},

@@ -46,6 +46,7 @@ export interface GoogleCalendarManagerLike {
 }
 
 export interface MicrosoftCalendarManagerLike {
+  syncEvents(): Promise<CalendarSyncOutcome | void>;
   startOAuth(): Promise<{ success: boolean; email?: string; error?: string }>;
   disconnect(email?: string): void;
   getConnectionStatus(): MicrosoftConnectionStatus;
@@ -143,9 +144,15 @@ export function registerCalendarIntegrationHandlers(
 
         // Absence versus false is signal: the unconfigured fallback keeps
         // exactly its own field set.
-        return parsed.success ? parsed.data : { connected: false, email: null };
+        return parsed.success
+          ? parsed.data
+          : { connected: false, email: null, sync: { state: "error", requiresReconnect: false } };
       } catch {
-        return { connected: false, email: null };
+        return {
+          connected: false,
+          email: null,
+          sync: { state: "error", requiresReconnect: false },
+        };
       }
     }
   );
@@ -210,11 +217,13 @@ export function registerCalendarIntegrationHandlers(
     }
   );
 
-  ipcMain.handle(
-    calendarIntegrationChannels.gcalSyncEvents,
-    async (): Promise<CalendarCommandResult> => {
+  for (const [channel, manager] of [
+    [calendarIntegrationChannels.gcalSyncEvents, deps.googleManager],
+    [calendarIntegrationChannels.mcalSyncEvents, deps.microsoftManager],
+  ] as const) {
+    ipcMain.handle(channel, async (): Promise<CalendarCommandResult> => {
       try {
-        const outcome = await deps.googleManager.syncEvents();
+        const outcome = await manager.syncEvents();
 
         if (outcome && outcome.failed > 0) {
           // Every calendar failed: no successful update, report failure.
@@ -232,8 +241,8 @@ export function registerCalendarIntegrationHandlers(
 
         return { success: false, ...(err?.message !== undefined ? { error: err.message } : {}) };
       }
-    }
-  );
+    });
+  }
 
   // Despite the historical name, this is the provider-neutral upcoming read
   // over the shared calendar_events table. Invalid windows are rejected
@@ -328,7 +337,13 @@ export function registerCalendarIntegrationHandlers(
         const parsed = microsoftConnectionStatusSchema.safeParse(status);
 
         // The unconfigured fallback omits `configured`; keep its exact shape.
-        return parsed.success ? parsed.data : { connected: false, accounts: [] };
+        return parsed.success
+          ? parsed.data
+          : {
+              connected: false,
+              accounts: [],
+              sync: { state: "error", requiresReconnect: false },
+            };
       } catch (error) {
         const err = thrownError(error);
         deps.logError(
@@ -337,7 +352,11 @@ export function registerCalendarIntegrationHandlers(
           "calendar"
         );
 
-        return { connected: false, accounts: [] };
+        return {
+          connected: false,
+          accounts: [],
+          sync: { state: "error", requiresReconnect: false },
+        };
       }
     }
   );

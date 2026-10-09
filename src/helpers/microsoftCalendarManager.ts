@@ -1,7 +1,11 @@
 import { net } from "electron";
 import debugLogger from "./debugLogger.js";
 import { MicrosoftCalendarOAuth } from "./microsoftCalendarOAuth.js";
-import { CalendarSyncInterval, type CalendarSyncOutcome } from "./calendarSyncInterval.js";
+import {
+  CalendarSyncInterval,
+  calendarSyncStatus,
+  type CalendarSyncOutcome,
+} from "./calendarSyncInterval.js";
 import { MAX_BUFFER_MINUTES } from "./calendarAvailability.js";
 import { extractMeetingUrl } from "./meetingJoinUrl.js";
 import { calendarDescriptionText } from "./calendarDescription.js";
@@ -12,6 +16,8 @@ import type {
   MicrosoftCalendarInput,
   MicrosoftCalendarRow,
 } from "./database.js";
+
+import type { CalendarSyncStatus } from "../contracts/calendar.js";
 
 const GRAPH_API_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -143,6 +149,7 @@ export interface MicrosoftManagerDb {
 }
 
 export interface MicrosoftConnectionStatus {
+  sync: CalendarSyncStatus;
   connected: boolean;
   configured: boolean;
   accounts: CalendarAccountRow[];
@@ -159,6 +166,10 @@ export class MicrosoftCalendarManager {
   private readonly oauth: MicrosoftCalendarOAuth;
   private accounts = new Map<string, { email: string }>();
   private primaryOnly = true;
+  private syncStatus: CalendarSyncStatus = { state: "pending", requiresReconnect: false };
+  private calendarListErrors = new Map<string, unknown>();
+  private connectionRevision = 0;
+  private syncRevision = 0;
   private readonly syncRunner: CalendarSyncInterval;
 
   constructor(
@@ -199,6 +210,7 @@ export class MicrosoftCalendarManager {
   }
 
   stop(): void {
+    this.connectionRevision++;
     this.syncRunner.stop();
   }
 
@@ -211,13 +223,21 @@ export class MicrosoftCalendarManager {
   }
 
   addAccount(email: string): void {
+    this.connectionRevision++;
+    this.syncStatus = { state: "pending", requiresReconnect: false };
+    this.calendarListErrors.delete(email);
     this.accounts.set(email, { email });
   }
 
   removeAccount(email: string): void {
+    this.connectionRevision++;
+    this.calendarListErrors.delete(email);
+    this.syncStatus = { state: "pending", requiresReconnect: false };
     this.accounts.delete(email);
     this.databaseManager.removeMicrosoftAccount(email);
     this._broadcastAccountsChanged();
+
+    if (this.accounts.size > 0) this.syncOnFocus();
     this.reminderScheduler.reconcileProvider("microsoft");
 
     if (this.accounts.size === 0) {
@@ -249,6 +269,8 @@ export class MicrosoftCalendarManager {
     } else {
       this.stop();
       this.accounts.clear();
+      this.calendarListErrors.clear();
+      this.syncStatus = { state: "pending", requiresReconnect: false };
       this.databaseManager.clearMicrosoftCalendarData();
       this.reminderScheduler.reset("microsoft");
       this.reminderScheduler.scheduleNextMeeting();
@@ -259,7 +281,12 @@ export class MicrosoftCalendarManager {
   getConnectionStatus(): MicrosoftConnectionStatus {
     const accounts = this.databaseManager.getMicrosoftAccounts();
 
-    return { connected: accounts.length > 0, configured: this.isConfigured(), accounts };
+    return {
+      sync: this.syncStatus,
+      connected: accounts.length > 0,
+      configured: this.isConfigured(),
+      accounts,
+    };
   }
 
   getAccounts(): CalendarAccountRow[] {
@@ -268,6 +295,7 @@ export class MicrosoftCalendarManager {
 
   async fetchCalendars(accountEmail: string | null = null): Promise<MicrosoftCalendarInput[]> {
     const emails = accountEmail ? [accountEmail] : this._getAccountEmails();
+    const revision = this.connectionRevision;
     const allCalendars: MicrosoftCalendarInput[] = [];
 
     for (const email of emails) {
@@ -296,8 +324,10 @@ export class MicrosoftCalendarManager {
 
         this._assertAccountCurrent(email, accountId);
         this.databaseManager.saveMicrosoftCalendars(calendars, email);
+        this.calendarListErrors.delete(email);
         allCalendars.push(...calendars);
       } catch (err) {
+        if (revision === this.connectionRevision) this.calendarListErrors.set(email, err);
         debugLogger.error(
           "Error fetching calendars",
           { email, error: err instanceof Error ? err.message : String(err) },
@@ -316,11 +346,19 @@ export class MicrosoftCalendarManager {
   // whole-pass result is returned so orchestration can back off instead of
   // treating a fully-failed pass as success.
   async syncEvents(): Promise<CalendarSyncOutcome> {
+    const syncRevision = ++this.syncRevision;
+    const revision = this.connectionRevision;
+
+    if (this.calendarListErrors.size > 0) await this.fetchCalendars();
+
     const selectedCalendars = this.databaseManager.getSelectedMicrosoftCalendars();
 
-    if (selectedCalendars.length === 0) return { total: 0, succeeded: 0, failed: 0, errors: [] };
+    const failures: unknown[] = [...this.calendarListErrors.values()];
 
-    const errors: string[] = [];
+    const errors = failures.map((error) =>
+      error instanceof Error ? error.message : String(error)
+    );
+
     let succeeded = 0;
 
     for (const calendar of selectedCalendars) {
@@ -328,6 +366,7 @@ export class MicrosoftCalendarManager {
         await this._syncCalendar(calendar);
         succeeded++;
       } catch (err) {
+        failures.push(err);
         errors.push(err instanceof Error ? err.message : String(err));
         debugLogger.error(
           "Error syncing calendar",
@@ -340,10 +379,19 @@ export class MicrosoftCalendarManager {
       }
     }
 
-    sendMcalEventsSynced();
+    if (revision === this.connectionRevision && syncRevision === this.syncRevision) {
+      this.syncStatus = calendarSyncStatus(failures);
+      sendMcalEventsSynced();
+    }
+
     this.reminderScheduler.scheduleNextMeeting();
 
-    return { total: selectedCalendars.length, succeeded, failed: errors.length, errors };
+    return {
+      total: selectedCalendars.length + this.calendarListErrors.size,
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
   }
 
   private async _syncCalendar(calendar: MicrosoftCalendarRow): Promise<void> {

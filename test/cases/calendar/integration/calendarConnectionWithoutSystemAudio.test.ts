@@ -55,9 +55,11 @@ test("Settings connects each calendar without System Audio permission", async (t
 
           return { granted: false, status: "denied", mode: "native" };
         },
-        gcalGetConnectionStatus: async () => ({ configured: true }),
-        mcalGetConnectionStatus: async () => ({ configured: true }),
+        gcalGetConnectionStatus: async () => ({ configured: true, sync: { state: "pending", requiresReconnect: false } }),
+        mcalGetConnectionStatus: async () => ({ configured: true, sync: { state: "pending", requiresReconnect: false } }),
         acalGetConnectionStatus: async () => ({ connected: false, sourceNames: [] }),
+        onGcalEventsSynced: noOpSubscription,
+        onMcalEventsSynced: noOpSubscription,
         onGcalConnectionChanged: noOpSubscription,
         onMcalConnectionChanged: noOpSubscription,
         onAcalConnectionChanged: noOpSubscription,

@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { CalendarEvent } from "../contracts/calendar";
+import { useCalendarSyncStatus } from "./useCalendarSyncStatus";
+import type { CalendarSyncStatus } from "../contracts/calendar";
 import { hasOtherAttendees } from "../utils/calendarAttendees";
 
 export interface UseUpcomingEventsReturn {
   events: CalendarEvent[];
   isLoading: boolean;
   isConnected: boolean;
+  syncIssues: Array<{ provider: "google" | "microsoft"; sync: CalendarSyncStatus }>;
 }
 
 const LOOKAHEAD_DAYS = 7;
@@ -28,6 +31,7 @@ export function useUpcomingEvents(): UseUpcomingEventsReturn {
   const gcalAccounts = useSettingsStore((s) => s.gcalAccounts);
   const mcalAccounts = useSettingsStore((s) => s.mcalAccounts);
   const appleCalendarConnected = useSettingsStore((s) => s.appleCalendarConnected);
+  const sync = useCalendarSyncStatus();
   const isConnected = gcalAccounts.length > 0 || mcalAccounts.length > 0 || appleCalendarConnected;
 
   const [events, setEvents] = useState<CalendarEvent[]>(() => cachedEvents ?? []);
@@ -88,5 +92,13 @@ export function useUpcomingEvents(): UseUpcomingEventsReturn {
     };
   }, [isConnected, fetchEvents]);
 
-  return { events, isLoading, isConnected };
+  const syncIssues: UseUpcomingEventsReturn["syncIssues"] = [];
+
+  if (gcalAccounts.length > 0 && sync.google.state === "error")
+    syncIssues.push({ provider: "google", sync: sync.google });
+
+  if (mcalAccounts.length > 0 && sync.microsoft.state === "error")
+    syncIssues.push({ provider: "microsoft", sync: sync.microsoft });
+
+  return { events, isLoading, isConnected, syncIssues };
 }

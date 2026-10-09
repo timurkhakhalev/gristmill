@@ -2070,6 +2070,17 @@
     },
     "status": {
       "notConfigured": "Nicht konfiguriert"
+    },
+    "sync": {
+      "outOfSync": "Nicht synchronisiert",
+      "reconnectRequired": "Erneut verbinden",
+      "checking": "Synchronisierung wird geprüft…",
+      "outOfSyncTitle": "{{provider}} nicht synchronisiert",
+      "authRequired": "Der Kalenderzugriff ist abgelaufen oder wurde widerrufen. Verbinden Sie das Konto erneut. Gespeicherte Termine können veraltet sein.",
+      "failed": "Der Kalender konnte nicht aktualisiert werden. Gespeicherte Termine können veraltet sein. Gristmill versucht es automatisch erneut.",
+      "reconnect": "Erneut verbinden",
+      "retry": "Erneut synchronisieren",
+      "openSettings": "Kalendereinstellungen"
     }
   },
   "notesView": {

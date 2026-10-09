@@ -27,6 +27,7 @@ export const calendarIntegrationChannels = {
   mcalDisconnect: "mcal-disconnect",
   mcalGetConnectionStatus: "mcal-get-connection-status",
   mcalSetPrimaryOnly: "mcal-set-primary-only",
+  mcalSyncEvents: "mcal-sync-events",
   acalConnect: "acal-connect",
   acalDisconnect: "acal-disconnect",
   acalGetConnectionStatus: "acal-get-connection-status",
@@ -100,12 +101,19 @@ export const googleCalendarSummarySchema = z.object({
 export type GoogleCalendarSummary = z.infer<typeof googleCalendarSummarySchema>;
 
 // --- Connection status -------------------------------------------------------
+export const calendarSyncStatusSchema = z.object({
+  state: z.enum(["pending", "synced", "error"]),
+  requiresReconnect: z.boolean(),
+});
+
+export type CalendarSyncStatus = z.infer<typeof calendarSyncStatusSchema>;
 //
 // Absence versus false is real signal: the unconfigured/manager-missing
 // fallbacks return fewer fields than a live manager, and the renderer reads
 // `configured` only when present. These shapes pin that exactly.
 
 export const googleConnectionStatusSchema = z.object({
+  sync: calendarSyncStatusSchema,
   connected: z.boolean(),
   email: z.string().nullable(),
   configured: z.boolean().optional(),
@@ -117,6 +125,7 @@ export const googleConnectionStatusSchema = z.object({
 export type GoogleConnectionStatus = z.infer<typeof googleConnectionStatusSchema>;
 
 export const microsoftConnectionStatusSchema = z.object({
+  sync: calendarSyncStatusSchema,
   connected: z.boolean(),
   accounts: z.array(z.object({ email: z.string() })),
   configured: z.boolean().optional(),
@@ -318,6 +327,7 @@ export interface CalendarIntegrationApi {
   mcalDisconnect(email?: string): Promise<CalendarCommandResult>;
   mcalGetConnectionStatus(): Promise<MicrosoftConnectionStatus>;
   mcalSetPrimaryOnly(value: boolean): Promise<CalendarCommandResult>;
+  mcalSyncEvents(): Promise<CalendarCommandResult>;
   acalConnect(): Promise<AppleConnectResult>;
   acalDisconnect(): Promise<CalendarCommandResult>;
   acalGetConnectionStatus(): Promise<AppleConnectionStatus>;

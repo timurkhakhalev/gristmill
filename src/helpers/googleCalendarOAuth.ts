@@ -220,7 +220,15 @@ export class GoogleCalendarOAuth {
     const accessToken = refreshed.access_token;
 
     if (refreshed.error || !accessToken) {
-      throw new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`);
+      throw Object.assign(
+        new Error(`Token refresh failed: ${refreshed.error_description || refreshed.error}`),
+        {
+          code:
+            refreshed.error === "invalid_grant"
+              ? "CALENDAR_AUTH_REQUIRED"
+              : "CALENDAR_REFRESH_FAILED",
+        }
+      );
     }
 
     const result = this.databaseManager.refreshGoogleTokens(tokens.id, {

@@ -16,12 +16,15 @@ import { useUiLocale } from "../../hooks/useUiLocale";
 import { canManageSystemAudioInApp } from "../../utils/systemAudioAccess";
 import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
 import { formatTime, parseEventDate, type TimeFormat } from "../../utils/dateFormatting";
+import CalendarSyncWarning from "../CalendarSyncWarning";
+import type { UseUpcomingEventsReturn } from "../../hooks/useUpcomingEvents";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 
 interface ComingUpProps {
   events: CalendarEvent[];
   isLoading: boolean;
   isConnected: boolean;
+  syncIssues?: UseUpcomingEventsReturn["syncIssues"];
   onConnectCalendar: () => void;
   /** Opens the event's note (existing or new and empty) without starting a recording. */
   onOpenEvent: (event: CalendarEvent) => void;
@@ -349,6 +352,7 @@ export default function ComingUp({
   events,
   isLoading,
   isConnected,
+  syncIssues = [],
   onConnectCalendar,
   onOpenEvent,
 }: ComingUpProps) {
@@ -358,8 +362,8 @@ export default function ComingUp({
 
   // Fade the list in only when it replaces the skeleton, not on cached remounts.
   const [mountedLoading] = useState(isLoading);
-  const now = useMemo(() => new Date(), []);
-  const groupedEvents = useMemo(() => groupEventsByDay(events, now), [events, now]);
+  const now = new Date();
+  const groupedEvents = groupEventsByDay(events, now);
 
   const isNowFn = (event: CalendarEvent) => {
     const start = new Date(event.start_time);
@@ -371,6 +375,19 @@ export default function ComingUp({
   return (
     <section>
       <h2 className="pb-4 text-2xl text-foreground">{t("upcoming.title")}</h2>
+
+      {syncIssues.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {syncIssues.map(({ provider, sync }) => (
+            <CalendarSyncWarning
+              key={provider}
+              provider={provider}
+              sync={sync}
+              onAction={onConnectCalendar}
+            />
+          ))}
+        </div>
+      )}
 
       {isLoading && events.length === 0 && <ComingUpSkeleton />}
 
@@ -391,39 +408,41 @@ export default function ComingUp({
         </EmptyStateCard>
       )}
 
-      {isConnected && (!isLoading || events.length > 0) && (
-        <div className={cn(mountedLoading && CONTENT_ENTER_CLASS)}>
-          <div className="divide-y divide-dashed divide-border overflow-clip rounded-2xl border border-border bg-surface-2">
-            {groupedEvents.map((group) => (
-              <DayRow key={group.key} group={group} isNowFn={isNowFn} onOpenEvent={onOpenEvent} />
-            ))}
-          </div>
-          {needsSystemAudioGrant ? (
-            <div className="mt-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
-              <Monitor size={12} className="shrink-0" />
-              <span className="flex-1">{t("upcoming.systemAudioRequired")}</span>
-              <button
-                onClick={() => void systemAudio.request()}
-                className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
-              >
-                {systemAudio.mode === "native"
-                  ? t("upcoming.openSettings")
-                  : t("onboarding.permissions.grantAccess")}
-              </button>
+      {isConnected &&
+        (!isLoading || events.length > 0) &&
+        (syncIssues.length === 0 || events.length > 0) && (
+          <div className={cn(mountedLoading && CONTENT_ENTER_CLASS)}>
+            <div className="divide-y divide-dashed divide-border overflow-clip rounded-2xl border border-border bg-surface-2">
+              {groupedEvents.map((group) => (
+                <DayRow key={group.key} group={group} isNowFn={isNowFn} onOpenEvent={onOpenEvent} />
+              ))}
             </div>
-          ) : events.length === 0 ? (
-            <p className="mt-2 px-1 text-xs text-muted-foreground">
-              {t("upcoming.moreCalendarsHint")}{" "}
-              <button
-                onClick={onConnectCalendar}
-                className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
-              >
-                {t("upcoming.connectHere")}
-              </button>
-            </p>
-          ) : null}
-        </div>
-      )}
+            {needsSystemAudioGrant ? (
+              <div className="mt-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                <Monitor size={12} className="shrink-0" />
+                <span className="flex-1">{t("upcoming.systemAudioRequired")}</span>
+                <button
+                  onClick={() => void systemAudio.request()}
+                  className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
+                >
+                  {systemAudio.mode === "native"
+                    ? t("upcoming.openSettings")
+                    : t("onboarding.permissions.grantAccess")}
+                </button>
+              </div>
+            ) : events.length === 0 ? (
+              <p className="mt-2 px-1 text-xs text-muted-foreground">
+                {t("upcoming.moreCalendarsHint")}{" "}
+                <button
+                  onClick={onConnectCalendar}
+                  className="cursor-pointer text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
+                >
+                  {t("upcoming.connectHere")}
+                </button>
+              </p>
+            ) : null}
+          </div>
+        )}
     </section>
   );
 }

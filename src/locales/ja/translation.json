@@ -2029,6 +2029,17 @@
     },
     "status": {
       "notConfigured": "未設定"
+    },
+    "sync": {
+      "outOfSync": "未同期",
+      "reconnectRequired": "再接続が必要",
+      "checking": "同期を確認中…",
+      "outOfSyncTitle": "{{provider}} が未同期",
+      "authRequired": "カレンダーへのアクセスが期限切れ、または取り消されました。アカウントを再接続してください。保存済みの予定は古い可能性があります。",
+      "failed": "カレンダーを更新できませんでした。保存済みの予定は古い可能性があります。Gristmill は自動で再試行します。",
+      "reconnect": "再接続",
+      "retry": "同期を再試行",
+      "openSettings": "カレンダー設定"
     }
   },
   "calendar": {

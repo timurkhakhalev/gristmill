@@ -56,6 +56,7 @@ As a Gristmill user, I want to find upcoming meetings and return to my notes.
 ## BDD acceptance criteria
 
 - Given an event has no saved note, when I click its row, then I see an unsaved draft until I edit, record or ask.
+- Given a Google or Microsoft calendar fails to sync, when I open Home, then I see an out-of-sync warning with a Calendar settings action, even if no events are cached. The warning clears after a successful sync.
 - Given I click an event row, when the draft opens, then no recording starts.
 - Given I delete a recent note, when the deletion is confirmed, then the note leaves Home.
 - Given I click **New Note** in the tray while the window loads, when the window is ready, then the new note opens.

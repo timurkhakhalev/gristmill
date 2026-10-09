@@ -2070,6 +2070,17 @@
     },
     "status": {
       "notConfigured": "Not configured"
+    },
+    "sync": {
+      "outOfSync": "Out of sync",
+      "reconnectRequired": "Reconnect required",
+      "checking": "Checking sync…",
+      "outOfSyncTitle": "{{provider}} out of sync",
+      "authRequired": "Calendar access expired or was revoked. Reconnect to update events. Saved events may be outdated.",
+      "failed": "Calendar could not update. Saved events may be outdated. Gristmill will retry automatically.",
+      "reconnect": "Reconnect",
+      "retry": "Retry sync",
+      "openSettings": "Calendar settings"
     }
   },
   "notesView": {

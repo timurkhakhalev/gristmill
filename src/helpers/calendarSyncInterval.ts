@@ -1,4 +1,15 @@
 import debugLogger from "./debugLogger.js";
+import type { CalendarSyncStatus } from "../contracts/calendar.js";
+
+export function calendarSyncStatus(errors: readonly unknown[]): CalendarSyncStatus {
+  return {
+    state: errors.length > 0 ? "error" : "synced",
+    requiresReconnect: errors.some(
+      (error) =>
+        error instanceof Error && "code" in error && error.code === "CALENDAR_AUTH_REQUIRED"
+    ),
+  };
+}
 
 export const FOCUS_SYNC_THROTTLE_MS = 30 * 1000;
 
@@ -175,4 +186,5 @@ Object.assign(module.exports, {
   CalendarSyncInterval,
   FOCUS_SYNC_THROTTLE_MS,
   isCalendarSyncFailure,
+  calendarSyncStatus,
 });

@@ -112,6 +112,7 @@ export default function HomeView({ onOpenNote, onConnectCalendar, onOpenEvent }:
           events={upcoming.events}
           isLoading={upcoming.isLoading}
           isConnected={upcoming.isConnected}
+          syncIssues={upcoming.syncIssues}
           onConnectCalendar={onConnectCalendar}
           onOpenEvent={onOpenEvent}
         />

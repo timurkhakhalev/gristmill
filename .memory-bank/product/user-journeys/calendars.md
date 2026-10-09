@@ -15,7 +15,7 @@ As a Gristmill user, I want to see my meetings in Gristmill and get a prompt to 
 
 1. Open Settings → Calendar.
 2. Click **Connect Google Calendar** or **Connect Microsoft Calendar**.
-3. The browser opens the account sign-in. Sign in and allow access. The account appears as **Connected**. System Audio permission is not required to connect a calendar.
+3. The browser opens the account sign-in. Sign in and allow access. The account appears as **Connected** after successful synchronization. System Audio permission is not required to connect a calendar.
 4. To add another account, click **Add another calendar**.
 5. If the provider shows **Set up OAuth to connect**, this build cannot connect it.
 
@@ -24,6 +24,12 @@ As a Gristmill user, I want to see my meetings in Gristmill and get a prompt to 
 1. Open Settings → Calendar and click **Connect Apple Calendar**.
 2. Allow calendar access in the macOS prompt. Gristmill reads the accounts of Calendar.app. System Audio permission is not required.
 3. If you refused calendar access, Gristmill shows **Calendar Access Required**. Click **Open System Settings** and allow access.
+
+### Recover Google or Microsoft calendar sync
+
+1. When access expires or is revoked, Settings shows **Reconnect required** and a visible **Reconnect** action. Sign in again to restore synchronization.
+2. Other sync failures show **Out of sync** and **Retry sync**. Gristmill also retries automatically.
+3. Home shows **Google Calendar out of sync** or **Microsoft Calendar out of sync** above any saved events. **Calendar settings** opens the recovery controls. Saved events may be outdated until a successful sync clears the warning.
 
 ### Select which calendars to read
 

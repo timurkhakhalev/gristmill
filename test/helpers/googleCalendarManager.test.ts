@@ -346,6 +346,15 @@ test("syncEvents reports a full failure when every calendar errors", async () =>
   assert.equal(outcome.succeeded, 0);
   assert.equal(outcome.failed, 2);
   assert.deepEqual(outcome.errors, ["provider down", "provider down"]);
+  assert.deepEqual(manager.getConnectionStatus().sync, { state: "error", requiresReconnect: false });
+  manager._apiGet = async () => {
+    throw Object.assign(new Error("Token has been expired or revoked"), { code: "CALENDAR_AUTH_REQUIRED" });
+  };
+  await manager.syncEvents();
+  assert.deepEqual(manager.getConnectionStatus().sync, { state: "error", requiresReconnect: true });
+  manager._apiGet = async () => ({ items: [], nextSyncToken: "fresh" });
+  await manager.syncEvents();
+  assert.deepEqual(manager.getConnectionStatus().sync, { state: "synced", requiresReconnect: false });
 });
 
 // Regression: a partial pass must keep the successful calendar's updates and
@@ -398,6 +407,7 @@ test("syncEvents keeps successful updates and reports a partial outcome", async 
   assert.equal(outcome.failed, 1);
   assert.deepEqual(outcome.errors, ["calendar b failed"]);
   assert.deepEqual(upsertedIds, ["evt-ok"], "the successful calendar's update persists");
+  assert.equal(manager.getConnectionStatus().sync.state, "error");
 });
 
 test("syncEvents reports a clean outcome when every calendar succeeds", async () => {
@@ -502,4 +512,63 @@ test("_syncCalendar preserves meeting links from Google event location and descr
       },
     ]
   );
+});
+
+test("an initial calendar-list auth failure stays visible with an empty event cache, then recovers", async () => {
+  const GoogleCalendarManager = loadManagerModule();
+  const manager = new GoogleCalendarManager({
+    getGoogleAccounts: () => [{ email: "test@example.com" }],
+    getGoogleTokensByEmail: () => ({ id: 1, scope: "calendar" }),
+    getSelectedCalendars: () => [],
+    saveGoogleCalendars() {}, applyPrimaryOnlyToSelection() {}, removeEventsFromDeselectedCalendars() {},
+  }, null, { scheduleNextMeeting() {}, reset() {} });
+  manager.addAccount("test@example.com");
+  manager._apiGet = async () => {
+    throw Object.assign(new Error("expired"), { code: "CALENDAR_AUTH_REQUIRED" });
+  };
+  await manager.fetchCalendars();
+  const failed = await manager.syncEvents();
+  assert.equal(failed.failed, 1);
+  assert.deepEqual(manager.getConnectionStatus().sync, { state: "error", requiresReconnect: true });
+  manager._apiGet = async () => ({ items: [] });
+  const recovered = await manager.syncEvents();
+  assert.equal(recovered.failed, 0);
+  assert.deepEqual(manager.getConnectionStatus().sync, { state: "synced", requiresReconnect: false });
+});
+
+test("older and stopped sync completions cannot overwrite current calendar health", async () => {
+  const GoogleCalendarManager = loadManagerModule();
+  const manager = new GoogleCalendarManager({
+    getGoogleAccounts: () => [],
+    getSelectedCalendars: () => [{ id: "cal", account_email: "test@example.com" }],
+  }, null, { scheduleNextMeeting() {}, reset() {} });
+  let rejectOld!: (error: Error) => void;
+  const oldRequest = new Promise<void>((_resolve, reject) => { rejectOld = reject; });
+  manager._syncCalendar = () => oldRequest;
+  const older = manager.syncEvents();
+  manager._syncCalendar = async () => {};
+  await manager.syncEvents();
+  rejectOld(new Error("old outage"));
+  await older;
+  assert.equal(manager.getConnectionStatus().sync.state, "synced");
+
+  let rejectStopped!: (error: Error) => void;
+  manager._syncCalendar = () => new Promise<void>((_resolve, reject) => { rejectStopped = reject; });
+  const stopped = manager.syncEvents();
+  manager.stop();
+  rejectStopped(new Error("stopped outage"));
+  await stopped;
+  assert.equal(manager.getConnectionStatus().sync.state, "synced");
+});
+
+test("Google invalid_grant identifies a reconnect requirement, unlike a transient token endpoint error", async () => {
+  loadManagerModule();
+  const GoogleCalendarOAuth = require("../../src/helpers/googleCalendarOAuth.ts");
+  const oauth = new GoogleCalendarOAuth({
+    getGoogleTokensByEmail: () => ({ id: 1, expires_at: 0, refresh_token: "synthetic" }),
+  });
+  oauth.refreshAccessToken = async () => ({ error: "invalid_grant", error_description: "expired" });
+  await assert.rejects(oauth.getValidAccessToken("test@example.com"), { code: "CALENDAR_AUTH_REQUIRED" });
+  oauth.refreshAccessToken = async () => ({ error: "temporarily_unavailable" });
+  await assert.rejects(oauth.getValidAccessToken("test@example.com"), { code: "CALENDAR_REFRESH_FAILED" });
 });

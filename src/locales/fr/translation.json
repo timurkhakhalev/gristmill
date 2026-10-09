@@ -2070,6 +2070,17 @@
     },
     "status": {
       "notConfigured": "Non configuré"
+    },
+    "sync": {
+      "outOfSync": "Non synchronisé",
+      "reconnectRequired": "Reconnexion requise",
+      "checking": "Vérification de la synchronisation…",
+      "outOfSyncTitle": "{{provider}} non synchronisé",
+      "authRequired": "L’accès au calendrier a expiré ou a été révoqué. Reconnectez le compte. Les événements enregistrés peuvent être obsolètes.",
+      "failed": "Le calendrier n’a pas pu être actualisé. Les événements enregistrés peuvent être obsolètes. Gristmill réessaiera automatiquement.",
+      "reconnect": "Reconnecter",
+      "retry": "Relancer la synchronisation",
+      "openSettings": "Réglages du calendrier"
     }
   },
   "notesView": {

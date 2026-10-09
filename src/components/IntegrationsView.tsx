@@ -9,6 +9,9 @@ import { Toggle } from "./ui/toggle";
 import { AlertDialog, ConfirmDialog } from "./ui/dialog";
 import { useSettingsStore } from "../stores/settingsStore";
 import { runInBackground } from "../stores/noteStore";
+import CalendarSyncWarning from "./CalendarSyncWarning";
+import { useCalendarSyncStatus } from "../hooks/useCalendarSyncStatus";
+import type { CalendarSyncStatus } from "../contracts/calendar";
 import type { CalendarAccount } from "../contracts/calendar";
 import googleCalendarIcon from "../assets/icons/google-calendar.svg";
 import microsoftCalendarIcon from "../assets/icons/microsoft-calendar.svg";
@@ -29,6 +32,7 @@ interface ProviderRowProps {
   isConnecting: boolean;
   onConnect: () => void;
   configured?: boolean;
+  sync?: CalendarSyncStatus;
 }
 
 function ProviderRow({
@@ -38,6 +42,7 @@ function ProviderRow({
   isConnecting,
   onConnect,
   configured = true,
+  sync,
 }: ProviderRowProps) {
   const { t } = useTranslation();
 
@@ -56,7 +61,22 @@ function ProviderRow({
             <p className="mt-1 text-xs text-muted">{t(`${i18nKey}.notConfigured`)}</p>
           )}
         </div>
-        {configured === false ? (
+        {connected && sync?.state === "error" ? (
+          <Chip size="sm" variant="soft" color="warning" className="shrink-0">
+            {t(
+              sync.requiresReconnect
+                ? "integrations.sync.reconnectRequired"
+                : "integrations.sync.outOfSync"
+            )}
+          </Chip>
+        ) : connected && sync?.state === "pending" ? (
+          <Chip size="sm" variant="soft" className="shrink-0" role="status">
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="size-3 motion-safe:animate-spin" aria-hidden="true" />
+              {t("integrations.sync.checking")}
+            </span>
+          </Chip>
+        ) : configured === false ? (
           <Chip size="sm" variant="soft" color="warning" className="shrink-0">
             {t("integrations.status.notConfigured")}
           </Chip>
@@ -154,6 +174,7 @@ function CalendarAccountRows({
 
 export default function IntegrationsView() {
   const { t } = useTranslation();
+  const sync = useCalendarSyncStatus();
 
   const {
     gcalAccounts,
@@ -168,6 +189,7 @@ export default function IntegrationsView() {
     setAppleCalendarConnected,
   } = useSettingsStore();
 
+  const [retryingProvider, setRetryingProvider] = useState<"google" | "microsoft" | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [disconnectingEmail, setDisconnectingEmail] = useState<string | null>(null);
   const [confirmDisconnectEmail, setConfirmDisconnectEmail] = useState<string | null>(null);
@@ -204,6 +226,8 @@ export default function IntegrationsView() {
         // access_denied means the user cancelled on the consent screen
         setOauthErrorKey("integrations.googleCalendar");
       }
+    } catch {
+      setOauthErrorKey("integrations.googleCalendar");
     } finally {
       setIsConnecting(false);
     }
@@ -224,10 +248,25 @@ export default function IntegrationsView() {
       } else if (!(result?.success === false && result.error?.includes("access_denied"))) {
         setOauthErrorKey("integrations.microsoftCalendar");
       }
+    } catch {
+      setOauthErrorKey("integrations.microsoftCalendar");
     } finally {
       setIsMsConnecting(false);
     }
   }, [setMcalAccounts]);
+
+  const retrySync = async (provider: "google" | "microsoft") => {
+    setRetryingProvider(provider);
+
+    try {
+      if (provider === "google") await window.electronAPI.gcalSyncEvents();
+      else await window.electronAPI.mcalSyncEvents();
+    } catch {
+      // Keep the sync warning visible when the bridge is unavailable.
+    } finally {
+      setRetryingProvider(null);
+    }
+  };
 
   const connectAppleCalendar = useCallback(async () => {
     setIsAppleConnecting(true);
@@ -378,9 +417,23 @@ export default function IntegrationsView() {
             i18nKey="integrations.googleCalendar"
             connected={hasAccounts}
             configured={googleConfigured}
+            sync={sync.google}
             isConnecting={isConnecting}
             onConnect={() => void startOAuth()}
           />
+          {hasAccounts && sync.google.state === "error" && (
+            <SettingsPanelRow>
+              <CalendarSyncWarning
+                provider="google"
+                sync={sync.google}
+                action={sync.google.requiresReconnect ? "reconnect" : "retry"}
+                disabled={isConnecting || retryingProvider === "google"}
+                onAction={() =>
+                  void (sync.google.requiresReconnect ? startOAuth() : retrySync("google"))
+                }
+              />
+            </SettingsPanelRow>
+          )}
           <CalendarAccountRows
             i18nKey="integrations.googleCalendar"
             accounts={gcalAccounts}
@@ -391,7 +444,7 @@ export default function IntegrationsView() {
             isConnecting={isConnecting}
             onAddAnother={() => void startOAuth()}
           />
-          {peopleAccessMissing.length > 0 && (
+          {peopleAccessMissing.length > 0 && !sync.google.requiresReconnect && (
             <div className="flex items-center gap-3 px-4 py-2.5">
               <p className="min-w-0 flex-1 text-xs text-muted-foreground">
                 {t("integrations.googleCalendar.peopleAccessMissing", {
@@ -414,9 +467,25 @@ export default function IntegrationsView() {
             i18nKey="integrations.microsoftCalendar"
             connected={mcalAccounts.length > 0}
             configured={microsoftConfigured}
+            sync={sync.microsoft}
             isConnecting={isMsConnecting}
             onConnect={() => void startMicrosoftOAuth()}
           />
+          {mcalAccounts.length > 0 && sync.microsoft.state === "error" && (
+            <SettingsPanelRow>
+              <CalendarSyncWarning
+                provider="microsoft"
+                sync={sync.microsoft}
+                action={sync.microsoft.requiresReconnect ? "reconnect" : "retry"}
+                disabled={isMsConnecting || retryingProvider === "microsoft"}
+                onAction={() =>
+                  void (sync.microsoft.requiresReconnect
+                    ? startMicrosoftOAuth()
+                    : retrySync("microsoft"))
+                }
+              />
+            </SettingsPanelRow>
+          )}
           <CalendarAccountRows
             i18nKey="integrations.microsoftCalendar"
             accounts={mcalAccounts}

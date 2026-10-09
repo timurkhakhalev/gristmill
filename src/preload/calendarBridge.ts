@@ -124,6 +124,8 @@ export function createCalendarIntegrationBridge(
       );
     },
 
+    mcalSyncEvents: (): Promise<CalendarCommandResult> =>
+      invoke(calendarIntegrationChannels.mcalSyncEvents, calendarCommandResultSchema),
     gcalSyncEvents: (): Promise<CalendarCommandResult> =>
       invoke(calendarIntegrationChannels.gcalSyncEvents, calendarCommandResultSchema),
 

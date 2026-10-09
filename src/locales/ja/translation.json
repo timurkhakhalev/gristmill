@@ -2253,13 +2253,11 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
-    "includePart": "Include in next transcription",
-    "excludePart": "Exclude from next transcription",
-    "partExcluded": "Excluded",
-    "excludedParts": "Parts excluded from the next transcription: {{count}}",
-    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
-    "partialAudioResult": "This result uses selected audio parts",
-    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
+    "omittedPart": "スキップ済み",
+    "noUsableAudio": "文字起こしできる音声がありません",
+    "noUsableAudioReason": "この録音には音声が保存されていません。",
+    "partialAudioResult": "利用可能な音声を文字起こししました",
+    "partialAudioResultDescription": "結果に含まれない部分がある可能性があります。元の録音は保存されています。",
     "platformName": "Zoom",
     "platformNameHint": "{{platform}}から照合した名前です。クリックして変更できます。",
     "platformEvidenceUnavailable": "Zoom / Google Meetの発言者情報が不完全です。音声と文字起こしは保存されています。",
@@ -2388,13 +2386,10 @@
       "summary": "要約に失敗しました",
       "other": "処理に失敗しました"
     },
-    "reviewAudioParts": "音声パートを確認",
-    "audioPartNotPrepared": "未処理",
     "audioAlignmentMissing": "録音を準備できませんでした",
-    "audioAlignmentMissingReason": "音声は保存されています。準備できなかった部分は一覧に表示されています。その部分を除外し、音声を削除せずに残りの部分を文字起こしできます。",
     "audioAlignmentMissingOnlyPartReason": "音声は保存されていますが、文字起こしの準備ができませんでした。元の音声は削除されていません。",
     "captureFailed": "録音が中断されました",
-    "captureFailedReason": "録音した音声は保存されています。「文字起こしと音声」を開いて録音を確認してください。処理をやり直しても欠落した音声は復元できません。",
+    "captureFailedReason": "音声は保存されていますが、この録音は文字起こしできませんでした。",
     "failedReason": "音声は保存されています。処理に失敗しました。もう一度お試しください。",
     "progress": {
       "pending": "開始を待っています。",

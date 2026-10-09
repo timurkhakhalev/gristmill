@@ -83,7 +83,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - Before the first captured frame, main saves the selected configuration.
 - Capture does no ASR and no provider request.
 - Stop closes both source epochs, recovers their frame counts and gaps, finalizes the recording and creates its initial run.
-- The worker waits until the retention settings are synchronized. It pauses while capture is active.
+- The worker waits until the retention settings are synchronized. It pauses while capture is active. At startup it resumes only the selected local preparation failures with usable audio and no saved provider response; cancelled jobs and provider failures are not replayed.
 - A successful Stop also saves a 15-second not-before deadline in `retry_at`. Preparation and ASR cannot claim the run before this deadline, also after a restart.
 - Pause does not put work in the queue. Resume makes the pending work of the previous Note audio version invalid.
 - The worker examines eligibility again at the claim and before ASR.
@@ -97,7 +97,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - Raw source frames stay continuous, independently of calibration. This includes the frames discarded during mute.
 - Source-generation coordinates and nullable timeline coordinates are stored separately.
 - A late valid calibration can cover earlier frames in the same continuous generation. It does not change the source audio.
-- Unknown alignment never stops healthy capture. If necessary frames have no bounded alignment, prepare fails with `audio-alignment-unavailable`.
+- Unknown alignment never stops healthy capture. Preparation uses only parts with proven alignment and available required sources. Unusable parts are omitted automatically, with their originals and IDs kept. No new alignment is guessed. If no usable part remains, processing stops before any provider request.
 - Solver limits: a maximum of eight probes, a span of 250 ms or more, rate bounds of 0.999–1.001, and freshness or continuation of five seconds or less.
 - Prepare accepts an endpoint uncertainty of 25 ms or less.
 - Saved capture-time bounds do not expire at processing time.
@@ -181,8 +181,8 @@ User paths: [Recording results](../product/user-journeys/meeting-results.md).
 - A short-transcript notice explains a skipped automatic Summary. Manual Summary stays available for a ready transcript.
 - Results appends transcript segments in batches of 60. Rows that are already shown stay in the DOM. The separate fallback `MeetingTranscriptChat` uses row virtualization.
 - Runs are persisted, but Results has no user control to select an earlier completed version.
-- Main identifies saved audio parts that cannot be prepared. Results marks those parts and lets the user exclude them without deleting originals. If no usable part remains, the notice does not suggest exclusion as recovery.
-- The partial-result notice compares only finished, available parts with an explicitly saved source selection. Active capture, unavailable parts and an unknown historical selection do not imply user exclusion.
+- Main checks audio parts before processing and omits unusable parts automatically. It persists the omission list before ASR and carries it into Summary-only runs. A cached provider response keeps its original audio selection. There are no manual exclude/include recovery controls.
+- A completed result shows one short notice if audio was omitted or capture was incomplete. The detail list can show which part was skipped. Active capture, unavailable parts and an unknown historical selection do not imply omission. All original audio remains saved.
 - Copy transcript is available. File export as Markdown, text, JSON or SRT exists in the backend without a Results control.
 - Audio export covers the mixed audio of the selected part. There is no original-track picker or whole-meeting export control here.
 

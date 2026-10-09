@@ -2253,13 +2253,11 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
-    "includePart": "Include in next transcription",
-    "excludePart": "Exclude from next transcription",
-    "partExcluded": "Excluded",
-    "excludedParts": "Parts excluded from the next transcription: {{count}}",
-    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
-    "partialAudioResult": "This result uses selected audio parts",
-    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
+    "omittedPart": "已跳过",
+    "noUsableAudio": "没有可转录的音频",
+    "noUsableAudioReason": "此录音未保存任何声音。",
+    "partialAudioResult": "可用音频已转录",
+    "partialAudioResultDescription": "结果中可能缺少部分片段。原始录音已保留。",
     "platformName": "Zoom",
     "platformNameHint": "从 {{platform}} 匹配的姓名。点击可修改。",
     "platformEvidenceUnavailable": "Zoom / Google Meet 发言者信息不完整。音频和转录已保留。",
@@ -2388,13 +2386,10 @@
       "summary": "摘要生成失败",
       "other": "处理失败"
     },
-    "reviewAudioParts": "检查音频片段",
-    "audioPartNotPrepared": "未处理",
     "audioAlignmentMissing": "无法准备录音",
-    "audioAlignmentMissingReason": "音频已保存。无法准备的片段已在列表中标记。您可以跳过这些片段并转录其余部分，不会删除任何音频。",
     "audioAlignmentMissingOnlyPartReason": "音频已保存，但无法为转录做好准备。原始音频未被删除。",
     "captureFailed": "录音已中断",
-    "captureFailedReason": "已录制的音频已保存。打开“转写与音频”检查录音。重新处理无法恢复缺失的声音。",
+    "captureFailedReason": "音频已保存，但无法转录此录音。",
     "failedReason": "音频已保存。处理失败，请重试。",
     "progress": {
       "pending": "等待开始。",

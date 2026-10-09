@@ -1,9 +1,10 @@
-import type {
-  MeetingProcessingRunDto,
-  MeetingRecordingDto,
-  MeetingRecordingEpochDto,
-  MeetingSpeakerCorrection,
-  MeetingTranscriptArtifact,
+import {
+  meetingRunAudioPartIds,
+  type MeetingProcessingRunDto,
+  type MeetingRecordingDto,
+  type MeetingRecordingEpochDto,
+  type MeetingSpeakerCorrection,
+  type MeetingTranscriptArtifact,
 } from "../contracts/meetingRecording.js";
 import {
   NoteReadError,
@@ -98,33 +99,6 @@ export function readNoteTranscriptOutput(
   let failed = false;
   let uncovered = false;
 
-  // Display uses proven capture lengths; alignment gaps must not fail assembly.
-  // Processing keeps meetingTimelineFrameCount strict — this does not weaken it.
-  const partOffsets = new Map<string, number | null>();
-
-  for (const part of recordings) {
-    // A part's own start offset is proven by everything before it, even while it records.
-    partOffsets.set(part.id, durationKnown ? Math.round(durationMs) : null);
-
-    if (part.captureState === "recording" || part.captureState === "finalizing") {
-      pending = true;
-      durationKnown = false;
-      continue;
-    }
-
-    if (part.captureState === "incomplete") {
-      uncovered = true;
-      diagnostics.push(`part-capture-incomplete:${part.id}`);
-    }
-
-    try {
-      durationMs += meetingTimelineFrameCount(part, deps.listEpochs(part.id), true) / FRAMES_PER_MS;
-    } catch {
-      durationKnown = false;
-      diagnostics.push(`part-timeline-invalid:${part.id}`);
-    }
-  }
-
   const candidates = new Map<string, MeetingProcessingRunDto>();
 
   for (const part of recordings) {
@@ -149,21 +123,65 @@ export function readNoteTranscriptOutput(
       b.createdAt.localeCompare(a.createdAt)
   );
 
-  let pieceOrder = 0;
+  const selectedRuns: Array<{
+    run: MeetingProcessingRunDto;
+    transcript: MeetingTranscriptArtifact;
+  }> = [];
 
   for (const run of orderedRuns) {
     if (run.sourceRecordingIds.some((id) => covered.has(id))) continue;
     const transcript = run.hasTranscript ? deps.readTranscript(run.id) : null;
 
-    if (!transcript) continue;
+    if (!transcript || !recordings.some((part) => part.id === run.sourceRecordingIds[0])) continue;
+    run.sourceRecordingIds.forEach((id) => covered.add(id));
+    selectedRuns.push({ run, transcript });
+  }
+
+  const omitted = new Set(selectedRuns.flatMap(({ run }) => run.omittedRecordingIds));
+
+  // Display uses proven capture lengths; alignment gaps must not fail assembly.
+  // Processing keeps meetingTimelineFrameCount strict — this does not weaken it.
+  const partOffsets = new Map<string, number | null>();
+
+  for (const part of recordings) {
+    // A part's own start offset is proven by everything before it, even while it records.
+    partOffsets.set(part.id, durationKnown ? Math.round(durationMs) : null);
+
+    if (omitted.has(part.id)) {
+      uncovered = true;
+      diagnostics.push(`part-omitted:${part.id}`);
+      continue;
+    }
+
+    if (part.captureState === "recording" || part.captureState === "finalizing") {
+      pending = true;
+      durationKnown = false;
+      continue;
+    }
+
+    if (part.captureState === "incomplete") {
+      uncovered = true;
+      diagnostics.push(`part-capture-incomplete:${part.id}`);
+    }
+
+    try {
+      durationMs += meetingTimelineFrameCount(part, deps.listEpochs(part.id), true) / FRAMES_PER_MS;
+    } catch {
+      durationKnown = false;
+      diagnostics.push(`part-timeline-invalid:${part.id}`);
+    }
+  }
+
+  let pieceOrder = 0;
+
+  for (const { run, transcript } of selectedRuns) {
     const offset = partOffsets.get(run.sourceRecordingIds[0]);
 
     if (offset === undefined) continue;
-    run.sourceRecordingIds.forEach((id) => covered.add(id));
     pieces.push({
       offsetMs: offset,
       order: pieceOrder++,
-      sourceIds: run.sourceRecordingIds,
+      sourceIds: meetingRunAudioPartIds(run),
       runId: run.id,
       transcript,
       corrections: deps.getCorrections(run.id),

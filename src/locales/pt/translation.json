@@ -2253,13 +2253,11 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
-    "includePart": "Include in next transcription",
-    "excludePart": "Exclude from next transcription",
-    "partExcluded": "Excluded",
-    "excludedParts": "Parts excluded from the next transcription: {{count}}",
-    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
-    "partialAudioResult": "This result uses selected audio parts",
-    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
+    "omittedPart": "Ignorada",
+    "noUsableAudio": "Não há áudio para transcrever",
+    "noUsableAudioReason": "Nenhum som foi salvo nesta gravação.",
+    "partialAudioResult": "Áudio disponível transcrito",
+    "partialAudioResultDescription": "Alguns trechos podem estar ausentes no resultado. As gravações originais são mantidas.",
     "platformName": "Zoom",
     "platformNameHint": "Nome identificado no {{platform}}. Clique para alterar.",
     "platformEvidenceUnavailable": "Os dados de quem fala no Zoom / Google Meet estão incompletos. O áudio e a transcrição são preservados.",
@@ -2388,13 +2386,10 @@
       "summary": "Falha no resumo",
       "other": "Falha no processamento"
     },
-    "reviewAudioParts": "Revisar partes do áudio",
-    "audioPartNotPrepared": "Não processada",
     "audioAlignmentMissing": "Não foi possível preparar a gravação",
-    "audioAlignmentMissingReason": "Seu áudio está salvo. As partes que não puderam ser preparadas estão marcadas na lista. Você pode ignorá-las e transcrever as restantes sem excluir o áudio.",
     "audioAlignmentMissingOnlyPartReason": "Seu áudio está salvo, mas não pôde ser preparado para a transcrição. Nenhum áudio original foi excluído.",
     "captureFailed": "Gravação interrompida",
-    "captureFailedReason": "O áudio gravado está salvo. Abra «Transcrição e áudio» para revisar a gravação. Repetir o processamento não recuperará o som ausente.",
+    "captureFailedReason": "Seu áudio está salvo, mas não foi possível transcrever esta gravação.",
     "failedReason": "Seu áudio está salvo. O processamento falhou. Tente novamente.",
     "progress": {
       "pending": "Aguardando o início.",

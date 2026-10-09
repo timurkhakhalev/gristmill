@@ -7,7 +7,7 @@
 Automatic processing after Stop or End call includes all available finished audio parts of the Note.
 The `group_id` value does not limit this set.
 The parts are sorted by `startedAt`, then by ID.
-Main saves this set before ASR.
+Main saves this requested set before ASR. Preparation also saves the IDs of unusable parts that it omits automatically. The transcript, Summary, playback and Note timeline use the remaining parts. A partial result is marked as such, and all originals stay.
 A new capture cancels the pending processing of the same Note.
 Groups describe capture sessions. They do not show if the transcript is complete.
 The audio assembly sorts the parts itself.
@@ -81,7 +81,7 @@ flowchart TD
     A[Start recording] --> B[Save mic and system separately]
     B --> C[Show duration and track health]
     C --> D[Stop]
-    D -->|success| E[Close both tracks, save run and deadline]
+    D -->|audio saved| E[Close both tracks, save run and deadline]
     E --> F[Wait 15 seconds; the deadline survives a restart]
     F --> G[Prepare the full recording for the selected route]
     G --> H[ASR; save the raw response]

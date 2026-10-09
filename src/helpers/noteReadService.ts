@@ -8,6 +8,7 @@ import {
 } from "../contracts/noteOutput.js";
 import {
   meetingLlmSourceSnapshotSchema,
+  meetingRunAudioPartIds,
   type MeetingProcessingRunDto,
   type MeetingSummaryArtifact,
 } from "../contracts/meetingRecording.js";
@@ -309,7 +310,7 @@ export class NoteReadService {
     const saved = snapshot.data;
 
     if (
-      JSON.stringify(saved.sourceRecordingIds) !== JSON.stringify(run.sourceRecordingIds) ||
+      JSON.stringify(saved.sourceRecordingIds) !== JSON.stringify(meetingRunAudioPartIds(run)) ||
       (summary.manualNoteRevision !== undefined &&
         summary.manualNoteRevision !== saved.manualNoteRevision) ||
       saved.manualNoteRevision !==

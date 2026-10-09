@@ -111,7 +111,6 @@ function recording(
       captureErrorCode: captureState === "incomplete" ? "system-audio-interrupted" : null,
       audioState: "available",
       audioErrorCode: null,
-      audioPreparationErrorCode: null as "audio-alignment-unavailable" | null,
       currentRunId: run?.run.id ?? null,
     },
     runs: run ? [run] : [],
@@ -125,6 +124,7 @@ function completeRun(): RunBundle {
       recordingId: FIRST,
       sourceRecordingIds: [FIRST, SECOND],
       hasExplicitAudioParts: true,
+      omittedRecordingIds: [],
       kind: "reprocess",
       sourceRunId: null,
       provider: "elevenlabs",
@@ -1551,7 +1551,7 @@ test("calendar participant failure shows one toast without restarting the reques
   assert.equal(ui.notifications.length, 1);
 });
 
-test("missing audio alignment explains the local failure and opens saved parts instead of retrying", async (t: TestContext) => {
+test("an unrecoverable recording explains that audio is saved without manual repair controls", async (t: TestContext) => {
   const failed = completeRun();
   failed.run.status = "failed";
   failed.run.stage = "prepare";
@@ -1561,13 +1561,12 @@ test("missing audio alignment explains the local failure and opens saved parts i
   failed.transcript = undefined;
   failed.summary = undefined;
   const part = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed);
-  part.recording.audioPreparationErrorCode = "audio-alignment-unavailable";
   const ui = await mountPanel(t, [part]);
   assert.match(ui.text(), /Could not prepare the recording/);
   assert.match(ui.text(), /could not be prepared for transcription/);
   assert.doesNotMatch(ui.text(), /connection|API key|waiting for settings/);
   assert.equal(ui.button("meetingResults.retry"), null);
-  await ui.flush(() => (ui.button("Review audio parts")!.props as { onPress(): void }).onPress());
+  assert.equal(ui.button("Review audio parts"), null);
   assert.deepEqual(ui.calls.retry, []);
   assert.deepEqual(ui.calls.delete, []);
 });
@@ -1582,52 +1581,11 @@ test("a capture write failure does not ask the user to change provider settings"
   assert.doesNotMatch(ui.text(), /connection|API key|meetingResults.blocked.other/);
 });
 
-test("excluding a damaged part creates a run for the remaining audio without deleting originals", async (t: TestContext) => {
-  const failed = completeRun();
-  failed.run.status = "failed";
-  failed.run.stage = "prepare";
-  failed.run.errorCode = "audio-alignment-unavailable";
-  failed.run.hasTranscript = false;
-  failed.run.hasSummary = false;
-  failed.transcript = undefined;
-  failed.summary = undefined;
-  const ui = await mountPanel(t, [
-    recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed, "incomplete"),
-    recording(SECOND, FIRST, "2026-09-25T10:00:01.000Z"),
-  ]);
-  const menus = findNodes(ui.tree(), (node) => node.props?.["aria-label"] === "Audio part actions" && typeof node.props?.onAction === "function");
-  assert.equal(menus.length, 2);
-  await ui.flush(() => (menus[0].props as { onAction(key: string): void }).onAction("exclude"));
-  assert.match(ui.text(), /meetingResults.excludedParts/);
-  await ui.clickRenderedButton(["Transcribe & Summary"]);
-  assert.deepEqual(ui.calls.create[0].sourceRecordingIds, [SECOND]);
-  assert.deepEqual(ui.calls.delete, []);
-});
 
-test("excluding every part disables transcription and including a part restores it", async (t: TestContext) => {
-  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z")]);
-  const toggle = () => (ui.menu("Audio part actions")!.props as { onAction(key: string): void }).onAction("exclude");
-  await ui.flush(toggle);
-  assert.equal(ui.button("Transcribe & Summary")!.props?.isDisabled, true);
-  await ui.flush(toggle);
-  assert.equal(ui.button("Transcribe & Summary")!.props?.isDisabled, false);
-  await ui.clickRenderedButton(["Transcribe & Summary"]);
-  assert.deepEqual(ui.calls.create[0].sourceRecordingIds, [FIRST]);
-  assert.deepEqual(ui.calls.delete, []);
-});
 
-test("missing timing is marked on the exact audio part among multiple saved parts", async (t: TestContext) => {
-  const failed = completeRun();
-  failed.run.status = "failed";
-  failed.run.stage = "prepare";
-  failed.run.errorCode = "audio-alignment-unavailable";
-  const good = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed);
-  const bad = recording(SECOND, FIRST, "2026-09-25T10:00:01.000Z", null, "incomplete");
-  bad.recording.audioPreparationErrorCode = "audio-alignment-unavailable";
-  const ui = await mountPanel(t, [good, bad]);
-  assert.equal(ui.text().match(/meetingResults.audioPartNotPrepared/g)?.length, 1);
-  assert.match(ui.text(), /Parts that could not be prepared are marked/);
-});
+
+
+
 
 for (const scenario of ["recording", "finalizing", "unavailable", "legacy", "omitted"] as const) {
   test(`partial-result notice distinguishes ${scenario} from an explicit omission`, async (t: TestContext) => {
@@ -1643,14 +1601,19 @@ for (const scenario of ["recording", "finalizing", "unavailable", "legacy", "omi
   });
 }
 
-test("deleting an excluded part clears the exclusion counter without changing another part", async (t: TestContext) => {
-  const first = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
-  const second = recording(SECOND, FIRST, "2026-09-25T10:00:01.000Z");
-  const ui = await mountPanel(t, [first, second]);
-  await ui.flush(() => (ui.menu("Audio part actions")!.props as { onAction(key: string): void }).onAction("exclude"));
-  assert.match(ui.text(), /meetingResults.excludedParts/);
-  await ui.flush(() => (ui.menu("Audio part actions")!.props as { onAction(key: string): void }).onAction("delete"));
-  await ui.flush(() => ui.dialog().onConfirm());
-  assert.deepEqual(ui.calls.delete, [FIRST]);
-  assert.doesNotMatch(ui.text(), /meetingResults.excludedParts/);
+
+
+test("automatic recovery shows the available result without exclusion or retry controls", async (t: TestContext) => {
+  const ready = completeRun();
+  ready.run.omittedRecordingIds = [SECOND];
+  const ui = await mountPanel(t, [
+    recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", ready),
+    recording(SECOND, FIRST, "2026-09-25T10:00:01.000Z", null, "incomplete"),
+  ]);
+  assert.match(ui.text(), /meetingResults.partialAudioResult/);
+  assert.match(ui.text(), /meetingResults.omittedPart/);
+  assert.doesNotMatch(ui.text(), /meetingResults.excludePart|meetingResults.includePart|Review audio parts|Audio timing/);
+  assert.equal(ui.button("meetingResults.retry"), null);
+  assert.deepEqual(ui.calls.create, [], "opening the result does not require another processing click");
+  assert.deepEqual(ui.calls.delete, []);
 });

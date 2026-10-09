@@ -2276,13 +2276,11 @@
     }
   },
   "meetingResults": {
-    "includePart": "Include in next transcription",
-    "excludePart": "Exclude from next transcription",
-    "partExcluded": "Excluded",
-    "excludedParts": "Parts excluded from the next transcription: {{count}}",
-    "excludedPartsDescription": "Their original audio is kept. Include them again from the audio part menu.",
-    "partialAudioResult": "This result uses selected audio parts",
-    "partialAudioResultDescription": "Some saved parts were not included. Their original audio remains available.",
+    "omittedPart": "تم تخطيها",
+    "noUsableAudio": "لا يوجد صوت للتفريغ",
+    "noUsableAudioReason": "لم يُحفظ أي صوت في هذا التسجيل.",
+    "partialAudioResult": "تم تفريغ الصوت المتاح",
+    "partialAudioResultDescription": "قد تكون بعض المقاطع مفقودة من النتيجة. التسجيلات الأصلية محفوظة.",
     "platformName": "Zoom",
     "platformNameHint": "تمت مطابقة الاسم من {{platform}}. انقر لتغييره.",
     "platformEvidenceUnavailable": "بيانات المتحدثين في Zoom / Google Meet غير مكتملة. تم الاحتفاظ بالصوت والنص.",
@@ -2411,13 +2409,10 @@
       "summary": "فشل الملخص",
       "other": "فشلت المعالجة"
     },
-    "reviewAudioParts": "مراجعة أجزاء الصوت",
-    "audioPartNotPrepared": "لم تتم المعالجة",
     "audioAlignmentMissing": "تعذر إعداد التسجيل",
-    "audioAlignmentMissingReason": "تم حفظ الصوت. الأجزاء التي تعذر إعدادها محددة في القائمة. يمكنك تخطيها وتفريغ الأجزاء المتبقية دون حذف أي صوت.",
     "audioAlignmentMissingOnlyPartReason": "تم حفظ الصوت، لكن تعذر إعداده للتفريغ النصي. لم يتم حذف أي صوت أصلي.",
     "captureFailed": "انقطع التسجيل",
-    "captureFailedReason": "تم حفظ الصوت المسجل. افتح «النص والصوت» لمراجعة التسجيل. لن تؤدي إعادة المعالجة إلى استعادة الصوت المفقود.",
+    "captureFailedReason": "تم حفظ الصوت، لكن تعذر تفريغ هذا التسجيل.",
     "failedReason": "تم حفظ الصوت. فشلت المعالجة. حاول مرة أخرى.",
     "progress": {
       "pending": "في انتظار البدء.",

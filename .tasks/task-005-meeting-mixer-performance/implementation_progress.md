@@ -1,5 +1,7 @@
 # Implementation progress
 
+Current evidence: M2.1 below completes the reopened M1/M2 short-input verification. Earlier sections retain the historical checkpoints and their then-current contracts; the current single input path is decoded 48 kHz float with 24 kHz coordinates/output.
+
 ## M1 — Native continuous audio preparation
 
 Status: done
@@ -82,7 +84,7 @@ The verification log is committed separately after recording the implementation 
 
 ## M2 — Shared consumer cutover and lifecycle
 
-Status: blocked
+Status: done after M2.1 corrective verification (historical blocked checkpoint follows).
 
 Implemented the shared native cutover and its operation-owned file/child lifecycle for
 all four layouts. Independent verification passes, but M2 cannot satisfy preservation
@@ -173,4 +175,99 @@ the user updated the workflow; M2 remains blocked, and M3/reviews were not start
 
 ## M2.1 — Corrective short-input verification
 
-Status: in progress. The user-directed synthetic diagnosis reopens M1 verification: direct valid float32 input can lose the entire 1–2-frame signal while reporting success, and some other short runs fail at flush. This is independent of the bundled Opus decoder's short-input rate-conversion defect. The approved corrective milestone addresses both without relaxing source coverage or substituting silence. M1/M2 remain incomplete until content-sensitive native and end-to-end regressions pass. Earlier passed checks remain evidence for their tested cases only.
+Status: done
+
+Preserved valid short audio in one 48 kHz decode → native 24 kHz conversion path.
+The native helper uses reflected filter-boundary context for every run after actual
+source validation; it no longer loses tiny signals or substitutes endpoint silence.
+M1/M2 short-input evidence is now complete under this corrected input contract.
+
+Contract sync: the user-approved corrective scope in `1672f6ecf` authorizes diagnosis
+and correction of both short-input losses, including evaluation of a 48 kHz input.
+No Ponytail, worktree, fallback/dual path, permission request or tolerance change was
+used. Original capture/schema/provider/UI/scheduler/recovery contracts are unchanged.
+Alignment coordinates, original calibration/effective rates, conservative uncertainty,
+fixed anchors, generation resets, overlap summation, gains/channels, final extent,
+operation ownership, atomic publication, leases and explicit Retry remain intact.
+
+Diagnosis reproduced before the fix (synthetic nonzero data only):
+
+- Native 24 kHz float input filled with 0.25: lengths 1 and 2 returned exit 0 with
+  zero energy. Lengths 3, 10, 16, 17 and 18 failed with exit 5 and zero energy.
+  Lengths 23, 24 and 25 failed after emitting only part of the signal. Around 31/32
+  frames success still missed one endpoint sample; 33 frames were intact.
+- Bundled FFmpeg 6.0: valid Opus with strong nonzero PCM from 1, 2, 3, 10 and 16
+  original frames decoded to zero 24 kHz frames. A 24-frame source emitted only 20.
+  Direct 48 kHz decode retained exactly twice the original frame count and nonzero
+  signal for every required size. The pinned library's source identifies the native
+  cause: `invert_initial_buffer` waits for a complete filter initialization window;
+  its flush reflection is not enough for very small buffered input.
+
+Corrective implementation:
+
+- The bundled decoder stays unchanged and decodes once per epoch at 48 kHz. The
+  manifest declares this fixed private rate. Mapping/`inputFrames` argv still use
+  original 24 kHz recording-frame units, so the helper requires exactly eight decoded
+  bytes per original frame before creating output. No decoder-side resampling or
+  padding can conceal missing data. Disk admission now counts these actual decoded
+  lengths; corrected timelines/final WAV remain 24 kHz.
+- The native context converts 48 kHz to 24 kHz and applies the same compensation
+  endpoints. Buffered delay is measured in 24 kHz units, and the remaining physical
+  input count converts exactly to those units. Large API windows retain even physical
+  input counts. Buffers stay fixed at 4096 input / 16384 output samples.
+- Every run retains a bounded 128-sample real tail. Once its complete real input is
+  read/validated, 128 reflected samples provide ordinary filter-boundary context,
+  including repeated reflection for a very short signal. This initializes the normal
+  reflected left boundary and drains genuine endpoint samples. This is one algorithm
+  for all run lengths, not a tiny-input fallback. Output clips to the exact mapped
+  endpoint; the 64 nominal context outputs are excluded from source coverage and the
+  rounding calculation. Remaining endpoint rounding still must be <=2 samples.
+  Missing real endpoint samples fail instead of being filled with silence.
+- The generated helper build instructions now document the 48 kHz input / 24 kHz
+  coordinate and output contract. Source/library pin, deployment floor and license
+  delivery remain unchanged.
+
+Content-sensitive corrective evidence:
+
+- Tested original 24 kHz frame lengths 1, 2, 3, 10, 16, 17, 18, 23, 24, 25, 29, 30,
+  31, 32, 33, 34, 63, 64, 65, 66 and 67. Decoded physical input contains 2x samples.
+  Every native standalone DC sample remains 0.25 within 1e-6, with exact extent and
+  silence outside its bounds. The same lengths survive numeric-confidence run breaks
+  embedded in a longer source, including flush/reset and independent surrounding gaps.
+- Nonconstant direct float signals match an independent bundled-FFmpeg conversion of
+  an explicitly reflected mature-length signal within 1e-5 at every target sample.
+  No expected output is taken from the helper or an old PCM hash.
+- Real short Opus → helper → PCM16 WAV matches the independent reflected decoder/
+  filter oracle within 2 PCM16 units at every source sample; reference signals are
+  explicitly nonzero. Short real epochs/generations embedded in a longer recording
+  also preserve their signal, silence and extent. Original hashes/results stay intact.
+- Shortened inputs of 1, 2, 3 and 10 frames fail native length validation with exit 3
+  before output creation. A missing input fails with exit 4. Existing nonfinite,
+  corrupt/truncated Opus, bad mapping, extra decoded input and lifecycle regressions
+  still pass. Reflection cannot create source coverage from absent data.
+
+Final verification (serialized):
+
+- `pnpm run compile:native`: passed; helper rebuilt with `-Wall -Wextra -Werror`.
+- `pnpm test --verbose test/cases/recording/unit/meetingResamplerMapping.test.ts test/cases/recording/native/meetingResampler.test.ts test/cases/recording/unit/meetingAudioAlignmentPerformance.test.ts test/cases/recording/integration/meetingAudioPipeline.test.ts test/cases/recording/integration/meetingAlignmentPersistence.test.ts test/cases/recording/integration/meetingSourceExportAlignment.test.ts test/cases/recording/integration/meetingIntentionalIntervals.test.ts test/cases/recording/integration/meetingNoteAudioContinuity.test.ts test/cases/recording/integration/meetingPlaybackLease.test.ts test/helpers/meetingProcessing.test.ts test/helpers/meetingRecordingStorage.test.ts`:
+  285 passed, 0 failed, 0 skipped (196 ordinary and 89 native); runner wall time 17.027 s.
+  The M2 subset has 180 passing checks; M1-related coverage includes 89 native,
+  14 mapping, 2 alignment-performance and 3 shared persistence checks.
+- Existing jitter/marker fixtures measured <=0.5 sample error and maximum accepted
+  boundary step 0.011521284 (<0.02); endpoint rounding remains <=2 in every fixture.
+- `pnpm test --verbose test/cases/platform/integration/meetingResamplerBuildCache.test.ts`:
+  12 passed, 0 failed, 0 skipped; runner wall time 0.547 s.
+- Second real `pnpm run compile:native`: verified cache reuse, no download/recompile;
+  an independent SHA-256/nanosecond-mtime comparison confirms 3/3 binaries unchanged.
+- `pnpm run lint`, `pnpm run typecheck:main`, `pnpm run typecheck:tests`,
+  `pnpm run typecheck:scripts`, and `git diff --check`: passed.
+
+An initial embedded-epoch test attempted to add epochs after database finalization;
+the fixture now creates all real epochs before finalization. No production state rule
+was changed. Both diagnosed data-loss defects are resolved, and the historical M2
+short-input blocker is cleared. M3, reviews, package/hardware/listening and hour-scale
+production performance checks were not started by this implementer.
+
+Commits: `ba8f509da77b23e38ff515f02a2e6050ff90a873` — M2.1 corrective implementation,
+independent content oracles and regressions. This evidence log is committed separately.
+All earlier commits, including `23792c7a1`, remain intact.

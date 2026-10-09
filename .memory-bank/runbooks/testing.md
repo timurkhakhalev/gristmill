@@ -75,3 +75,43 @@ pnpm test --domain calendar --domain notes
 - Compatible cases in one file can share a Vite server. Restore stores, globals, mocks and singleton state between cases.
 - Keep different module-mock environments separate until their isolation is proved.
 - Do not disable test process isolation globally.
+
+## Recording performance without a meeting
+
+Run the synthetic database and alignment workloads:
+
+```sh
+GRISTMILL_CAPTURE_BENCH_REPORT=/tmp/gristmill-capture.json pnpm test --verbose test/cases/recording/integration/meetingCapturePerformance.test.ts test/cases/recording/unit/meetingAudioAlignmentPerformance.test.ts test/cases/recording/integration/meetingCompanionDemand.test.ts
+```
+
+The capture fixture seeds metadata for 0, 5, 53 and 120 minutes in a temporary database. It measures real capture-session writes and checks that packet processing keeps up with the 100 ms arrival interval. It counts PCM frames instead of encoding audio. The alignment fixture checks full frame coverage after two hours. These tests do not use a microphone, call service, provider or production profile.
+
+Each duration measures 100 packets and reports median, p95 and maximum write time. To reproduce the old duration-dependent database cost, set `GRISTMILL_CAPTURE_BENCH_REF` to a Git revision before the optimization. The fixture loads that revision's database read/write methods and removes the new coverage index in its temporary database only. All other fixture code and dependencies stay the same. The old revision is expected to fail the processing-budget assertion; the JSON report is written before that assertion.
+
+`pnpm test --verbose test/cases/recording/unit/meetingCaptureBackpressure.test.ts` runs the actual AudioWorklet with a virtual render clock and serial write acknowledgements. It reproduces overflow with 150 ms writes, then checks two virtual minutes with 1 ms writes. The selected latencies are workload assumptions; the separate database benchmark measures the current write cost.
+
+Measure the floating recording window in isolated Electron processes:
+
+```sh
+node test/benchmarks/meeting-companion.mts HEAD
+node test/benchmarks/meeting-companion.mts
+```
+
+The optional Git ref selects the component and synchronization hook from that revision. Both runs use the current dependencies, CSS and benchmark shell. Each run uses the same synthetic audio-level function, a temporary profile, a warm-up, and separate visible and hidden samples. The command prints the path to CPU and wakeup measurements. The same directory contains `visible.png` for visual inspection. The current-code run fails if the hidden window still sends level updates.
+
+Run A/B measurements sequentially with other builds and tests stopped. Repeat them if host load changes. These samples compare the measured component; they do not measure whole-Mac battery savings or prove physical audio capture. Native device changes, permissions and real audio still require the related hardware smoke test.
+
+### Real Electron capture path
+
+```sh
+pnpm run build:main
+node test/benchmarks/meeting-capture.mts HEAD
+node test/benchmarks/meeting-capture.mts
+node test/benchmarks/meeting-capture.mts --soak-seconds=3600
+```
+
+This fixture sends a synthetic tone through real Web Audio, the capture pipeline, Electron IPC, SQLite and FFmpeg. It uses a temporary profile and no microphone or provider. Both synthetic sources use the renderer path; it does not exercise the native system-audio helper or physical clock calibration.
+
+The Git ref replaces only `meetingAudioPipeline.ts`. Use a revision with the old packet-ordering defect to reproduce that failure. The default run checks repeated Start/Stop, mute/unmute, and 1, 3 and 6 second ACK or renderer stalls. A stall beyond the five-second buffer must report overflow and retain accepted audio. Short stalls must drain. A small startup render-clock gap may make a capture incomplete; the test requires that gap to be explicit, bounded to less than one packet, and separate from a packet-ordering failure.
+
+The report includes write and end-to-end ACK latency, maximum queued frames, process CPU and memory, and saved frame counts. It also decodes the longest epoch of each source and checks its frame count and audible signal. The soak option records in real time and prints progress every 30 seconds. Its timeout is the selected duration plus two minutes. Temporary profiles retain only the synthetic audio and measurements for inspection.

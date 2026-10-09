@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   getMicAnalyser,
   getSystemAudioLevel,
@@ -10,12 +10,14 @@ import { INACTIVE_MEETING_COMPANION_STATE } from "../contracts/meetingCompanion"
 
 // Timers, not rAF: the control panel is usually minimized or hidden exactly
 // when the companion is on screen, and rAF stops for hidden documents.
-const LEVEL_INTERVAL_MS = 50;
+const LEVEL_INTERVAL_MS = 100;
 
 const LEVEL_SMOOTHING = 0.5;
 
 /** Mirrors the meeting recording into the main-process companion bubble. */
 export function useMeetingCompanionSync(): void {
+  const [levelNeeded, setLevelNeeded] = useState(false);
+  useEffect(() => window.electronAPI?.onMeetingCompanionLevelDemand?.(setLevelNeeded), []);
   const enabled = useSettingsStore((s) => s.meetingCompanionEnabled);
   const isRecording = useMeetingRecordingStore((s) => s.isRecording);
   const capturePhase = useMeetingRecordingStore((s) => s.capturePhase);
@@ -54,8 +56,9 @@ export function useMeetingCompanionSync(): void {
   );
 
   useEffect(() => {
-    if (!active || paused) return;
+    if (!active || paused || !levelNeeded) return;
     let smoothed = 0;
+    let lastDisplayLevel = -1;
     let buf = new Float32Array(256);
 
     const timer = setInterval(() => {
@@ -74,6 +77,11 @@ export function useMeetingCompanionSync(): void {
       // Either side talking moves the bars: the mic is you, system audio is everyone else.
       const rms = Math.max(micRms, getSystemAudioLevel());
       smoothed = LEVEL_SMOOTHING * smoothed + (1 - LEVEL_SMOOTHING) * rms;
+      // Quantize by visible bar movement, keeping quiet speech above rest.
+      const displayLevel = Math.round(Math.min(1, Math.sqrt(smoothed) * 1.8) * 48);
+
+      if (displayLevel === lastDisplayLevel) return;
+      lastDisplayLevel = displayLevel;
       window.electronAPI?.sendMeetingCompanionLevel?.(Math.min(1, smoothed));
     }, LEVEL_INTERVAL_MS);
 
@@ -81,5 +89,5 @@ export function useMeetingCompanionSync(): void {
       clearInterval(timer);
       window.electronAPI?.sendMeetingCompanionLevel?.(0);
     };
-  }, [active, paused]);
+  }, [active, paused, levelNeeded]);
 }

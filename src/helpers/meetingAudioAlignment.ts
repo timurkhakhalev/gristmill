@@ -41,20 +41,40 @@ export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudi
       BigInt(segment.sourceEndNs) <= BigInt(segment.sampledSourceEndNs) + 5_000_000_000n
   );
 
+  // Keep input order for equal endpoints, as the previous selection did.
+  const ordered = segments
+    .map((segment, order) => ({ segment, order }))
+    .sort((a, b) => a.segment.sourceStartFrame - b.segment.sourceStartFrame || a.order - b.order);
+
+  let nextSegment = 0;
   const result: AlignedAudioRange[] = [];
   const end = epoch.sourceStartFrame + epoch.frameCount;
   let cursor = epoch.sourceStartFrame;
   let helperGeneration: string | undefined;
 
   while (cursor < end) {
-    const segment = segments
-      .filter(
-        (item) =>
-          item.sourceStartFrame <= cursor &&
-          item.sourceEndFrame > cursor &&
-          (!helperGeneration || helperGeneration === item.helperGeneration)
+    let best: (typeof ordered)[number] | undefined;
+
+    // Once the furthest endpoint is reached, no earlier candidate can extend
+    // coverage. Each segment therefore needs to be visited only once.
+    while (nextSegment < ordered.length) {
+      const candidate = ordered[nextSegment];
+
+      if (candidate.segment.sourceStartFrame > cursor) break;
+      nextSegment++;
+      const item = candidate.segment;
+
+      if (
+        item.sourceEndFrame > cursor &&
+        (!helperGeneration || helperGeneration === item.helperGeneration) &&
+        (!best ||
+          item.sourceEndFrame > best.segment.sourceEndFrame ||
+          (item.sourceEndFrame === best.segment.sourceEndFrame && candidate.order < best.order))
       )
-      .sort((a, b) => b.sourceEndFrame - a.sourceEndFrame)[0];
+        best = candidate;
+    }
+
+    const segment = best?.segment;
 
     if (!segment)
       throw Object.assign(new Error("audio-alignment-unavailable"), {

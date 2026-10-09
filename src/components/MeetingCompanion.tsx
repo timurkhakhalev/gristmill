@@ -17,10 +17,10 @@ const DRAG_THRESHOLD_PX = 3;
 
 // Add speech movement above the resting height so quiet system audio isn't
 // hidden below a hard floor. This changes the display, never the recorded signal.
-const barHeight = (level: number, index: number) => {
+const barScale = (level: number, index: number) => {
   const phase = 0.7 + 0.3 * Math.sin(index * 1.7);
 
-  return `${Math.min(100, BAR_FLOOR + Math.sqrt(level) * 180 * phase)}%`;
+  return Math.min(100, BAR_FLOOR + Math.sqrt(level) * 180 * phase) / 100;
 };
 
 /** The app mark from assets/logo.svg, drawn in the current text color. */
@@ -139,7 +139,7 @@ export default function MeetingCompanion() {
         onLostPointerCapture={resetPress}
         className={cn(
           "flex h-16 w-8 cursor-grab flex-col items-center justify-center gap-2.5 rounded-full outline-none active:cursor-grabbing",
-          "border bg-surface-2/95 shadow-elevated backdrop-blur-xl",
+          "border bg-surface-2 shadow-elevated",
           warning ? "border-warning/40" : "border-border",
           "focus-visible:ring-2 focus-visible:ring-focus"
         )}
@@ -150,10 +150,10 @@ export default function MeetingCompanion() {
             <span
               key={i}
               className={cn(
-                "w-0.5 rounded-full transition-[height] duration-75",
+                "h-full w-0.5 origin-center rounded-full",
                 warning ? "bg-warning" : "bg-primary"
               )}
-              style={{ height: warning ? `${BAR_FLOOR}%` : barHeight(level, i) }}
+              style={{ transform: `scaleY(${warning ? BAR_FLOOR / 100 : barScale(level, i)})` }}
             />
           ))}
         </span>
@@ -166,10 +166,10 @@ export default function MeetingCompanion() {
         onClick={() => window.electronAPI?.meetingCompanionToggleMic?.()}
         className={cn(
           "absolute bottom-1.5 flex size-8 items-center justify-center rounded-full outline-none",
-          "border shadow-elevated backdrop-blur-xl focus-visible:ring-2 focus-visible:ring-focus",
+          "border shadow-elevated focus-visible:ring-2 focus-visible:ring-focus",
           state.micMuted
             ? "border-danger/50 bg-danger text-white"
-            : "border-border bg-surface-2/95 text-foreground/85 hover:bg-surface-2"
+            : "border-border bg-surface-2 text-foreground/85 hover:bg-surface-2"
         )}
       >
         {state.micMuted ? <MicSlashIcon size={16} /> : <Mic size={16} />}

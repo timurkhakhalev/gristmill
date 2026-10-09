@@ -4,6 +4,7 @@ import {
   meetingCompanionChannels,
   meetingCompanionEventChannels,
   meetingCompanionLevelSchema,
+  meetingCompanionLevelDemandSchema,
   meetingCompanionStateSchema,
   type MeetingCompanionApi,
   type MeetingCompanionState,
@@ -41,6 +42,17 @@ export function createMeetingCompanionBridge(ipcRenderer: IpcRendererLike): Meet
         (raw) => meetingCompanionStateSchema.safeParse(raw).data,
         callback
       ),
+    onMeetingCompanionLevelDemand: (callback) => {
+      const unsubscribe = subscribe(
+        meetingCompanionEventChannels.levelDemand,
+        (raw) => meetingCompanionLevelDemandSchema.safeParse(raw).data,
+        callback
+      );
+
+      ipcRenderer.send(meetingCompanionChannels.watchLevelDemand);
+
+      return unsubscribe;
+    },
     onMeetingCompanionLevel: (callback) =>
       subscribe(
         meetingCompanionEventChannels.level,

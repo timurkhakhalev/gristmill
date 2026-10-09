@@ -988,6 +988,9 @@ export class DatabaseManager {
             REFERENCES meeting_recording_epochs(recording_id, source, epoch_index) ON DELETE CASCADE,
           PRIMARY KEY (recording_id, source, epoch_index, segment_index)
         );
+        CREATE INDEX IF NOT EXISTS idx_meeting_alignment_coverage
+          ON meeting_recording_epoch_alignments
+          (recording_id, source, epoch_index, helper_generation, source_start_frame);
 
         CREATE TABLE IF NOT EXISTS meeting_processing_runs (
           id TEXT PRIMARY KEY,
@@ -1734,11 +1737,21 @@ export class DatabaseManager {
     source: MeetingSource,
     epochIndex: number,
     input: MeetingFrameAlignmentSegment
-  ): MeetingRecordingEpochDto {
+  ): void {
     meetingRecordingIdSchema.parse(recordingId);
     meetingSourceSchema.parse(source);
     const segment = meetingFrameAlignmentSegmentSchema.parse(input);
-    const epoch = this.getMeetingRecordingEpoch(recordingId, source, epochIndex);
+
+    // Capture needs the epoch identity, never its growing alignment history.
+    const epoch = this.sql
+      .prepare(
+        "SELECT source_generation AS sourceGeneration, source_start_frame AS sourceStartFrame FROM meeting_recording_epochs WHERE recording_id = ? AND source = ? AND epoch_index = ?"
+      )
+      .get<{ sourceGeneration: number | null; sourceStartFrame: number | null }>(
+        recordingId,
+        source,
+        epochIndex
+      );
 
     if (
       !epoch ||
@@ -1803,13 +1816,6 @@ export class DatabaseManager {
         segment.sampledSourceEndNs,
         segment.freshnessSourceNs
       );
-
-    // SAFETY: the write above just touched this epoch row; it cannot be absent.
-    return this.getMeetingRecordingEpoch(
-      recordingId,
-      source,
-      epochIndex
-    ) as MeetingRecordingEpochDto;
   }
 
   markMeetingRecordingEpochAlignmentUnknown(

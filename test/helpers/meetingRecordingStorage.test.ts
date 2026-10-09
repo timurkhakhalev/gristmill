@@ -262,3 +262,31 @@ test("run JSON recovers after rename and a failed replacement keeps the last val
     reopened.close();
   }
 });
+
+test("restart removes abandoned preparation float/mapping directories without changing originals or durable responses", async t => {
+  const db = createDb(t); if (!db) return;
+  const root = getUserDataDir(), storage = new MeetingRecordingStorage({ userDataPath: root });
+  const recording = createRecording(db);
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
+  storage.openEpochWriter(recording.id, "mic", 0); storage.appendEpochSamples(recording.id, "mic", 0, Buffer.alloc(4800, 2));
+  await storage.closeRecordingWriters(recording.id);
+  db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, storage.recoverEpoch(recording.id, "mic", 0));
+  const finalized = db.finalizeMeetingRecording(recording.id, { captureState: "incomplete", endedAt: new Date(Date.parse(recording.startedAt) + 100).toISOString() });
+  db.setMeetingProcessingRunState(finalized.initialRun.id, { stage: "prepare", status: "failed", errorCode: "audio-preparation-disk-full", retryAt: null });
+  const original = fs.readFileSync(storage.getEpochFilePath(recording.id, "mic", 0));
+  const response = storage.writeRunArtifact(finalized.initialRun.id, "provider-response", { saved: "durable response" });
+  const protectedBytes = fs.readFileSync(response);
+  const abandoned = storage.createDerivedAudioWorkingDirectory(recording.id, finalized.initialRun.id, "mono");
+  assert.equal(fs.statSync(abandoned).mode & 0o777, 0o700);
+  fs.writeFileSync(path.join(abandoned, "mic-0.f32"), "abandoned PCM");
+  fs.writeFileSync(path.join(abandoned, "mic-0.mapping"), "abandoned mapping");
+  fs.writeFileSync(path.join(abandoned, "mic-timeline.f32"), "partial timeline");
+  assert.throws(() => storage.removeDerivedAudioWorkingDirectory(recording.id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", abandoned), /Unsafe/);
+  assert.equal(fs.existsSync(abandoned), true);
+  db.close(); const reopened = new DatabaseManager(); t.after(() => reopened.close());
+  const recovery = storage.recover(reopened);
+  assert.deepEqual(recovery.errors, []); assert.equal(fs.existsSync(abandoned), false);
+  assert.deepEqual(fs.readFileSync(storage.getEpochFilePath(recording.id, "mic", 0)), original);
+  assert.deepEqual(fs.readFileSync(response), protectedBytes);
+  assert.equal(reopened.getMeetingProcessingRun(finalized.initialRun.id).status, "failed");
+});

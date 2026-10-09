@@ -177,8 +177,8 @@ Use `pnpm test --verbose <exact test paths>` for focused regressions, `pnpm run 
 
 | Milestone | Status | Commits |
 | --- | --- | --- |
-| M1 — Native continuous audio preparation | not started | |
-| M2 — Shared consumer cutover and lifecycle | not started | |
+| M1 — Native continuous audio preparation | done | e35644dbd, cfe0311db |
+| M2 — Shared consumer cutover and lifecycle | in progress | |
 | M3 — Documentation, performance and final validation | not started | |
 | Reviewer | not started | |
 | Code Reviewer | not started | |

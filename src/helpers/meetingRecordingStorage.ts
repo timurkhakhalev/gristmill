@@ -434,6 +434,39 @@ export class MeetingRecordingStorage {
     return filePath;
   }
 
+  createDerivedAudioWorkingDirectory(
+    recordingId: string,
+    runId: string,
+    layout: MeetingAudioLayout
+  ): string {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingRecordingIdSchema.parse(runId);
+
+    const directory = path.join(
+      this.recordingsRoot,
+      recordingId,
+      "derived",
+      `.tmp-${runId}-${layout}-${randomUUID()}`
+    );
+
+    this.ensureManagedDirectory(path.dirname(directory));
+    fs.mkdirSync(directory, { mode: 0o700 });
+
+    return directory;
+  }
+
+  removeDerivedAudioWorkingDirectory(recordingId: string, runId: string, directory: string): void {
+    meetingRecordingIdSchema.parse(recordingId);
+    meetingRecordingIdSchema.parse(runId);
+
+    if (
+      path.dirname(directory) !== path.join(this.recordingsRoot, recordingId, "derived") ||
+      !path.basename(directory).startsWith(`.tmp-${runId}-`)
+    )
+      throw new Error("Unsafe derived audio working directory");
+    this.removeManagedTree(directory);
+  }
+
   removeRecordingAudio(recordingId: string): void {
     meetingRecordingIdSchema.parse(recordingId);
     this.assertNoWriters(recordingId);

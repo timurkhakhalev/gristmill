@@ -101,6 +101,7 @@ function PopoverContent({
   align = "start",
   sideOffset = 6,
   isNonModal,
+  focusOnOpen = true,
   shouldCloseOnInteractOutside,
 }: {
   className?: string;
@@ -110,6 +111,11 @@ function PopoverContent({
   sideOffset?: number;
   /** Keep focus where it is (e.g. on an anchored input) instead of moving it into the popover. */
   isNonModal?: boolean;
+  /**
+   * False renders the content without a dialog, which would take focus on open;
+   * a hover card uses this so the focused field keeps focus. Implies isNonModal.
+   */
+  focusOnOpen?: boolean;
   shouldCloseOnInteractOutside?: (element: Element) => boolean;
 }) {
   const anchorRef = React.useContext(AnchorContext);
@@ -119,7 +125,7 @@ function PopoverContent({
     <HeroPopover.Content
       placement={placement}
       offset={sideOffset}
-      isNonModal={isNonModal}
+      isNonModal={isNonModal || !focusOnOpen}
       shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
       triggerRef={anchorRef?.current ? anchorRef : undefined}
       // A popover opening under the frameless titlebar would otherwise be swallowed by its native drag region.
@@ -128,9 +134,13 @@ function PopoverContent({
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       className={cn("flex min-w-[220px] flex-col p-0", OVERLAY_CLASS)}
     >
-      <HeroPopover.Dialog className={cn("min-h-0 overflow-y-auto p-2 outline-none", className)}>
-        {children}
-      </HeroPopover.Dialog>
+      {focusOnOpen ? (
+        <HeroPopover.Dialog className={cn("min-h-0 overflow-y-auto p-2 outline-none", className)}>
+          {children}
+        </HeroPopover.Dialog>
+      ) : (
+        <div className={cn("min-h-0 overflow-y-auto p-2", className)}>{children}</div>
+      )}
     </HeroPopover.Content>
   );
 }

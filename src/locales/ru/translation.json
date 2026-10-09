@@ -1532,6 +1532,8 @@
       "copyEmail": "Скопировать email",
       "emailCopied": "Email скопирован",
       "removeAttendee": "Удалить участника",
+      "contactName": "Имя контакта",
+      "renameContact": "Переименовать контакт",
       "join": "Подключиться",
       "calendar": "Календарь",
       "description": "Описание"

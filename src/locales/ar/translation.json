@@ -840,6 +840,8 @@
       "copyEmail": "انسخ البريد",
       "emailCopied": "تم نسخ البريد",
       "removeAttendee": "إزالة الحاضر",
+      "contactName": "اسم جهة الاتصال",
+      "renameContact": "إعادة تسمية جهة الاتصال",
       "join": "انضمام",
       "calendar": "التقويم",
       "description": "الوصف"

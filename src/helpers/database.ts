@@ -5213,6 +5213,22 @@ export class DatabaseManager {
 
     return { success: true };
   }
+  /** The user's own name for a contact, ahead of Google and invite names; blank clears it. */
+  setContactName(email: string, name: string | null): void {
+    const trimmed = name?.trim() || null;
+
+    if (trimmed) {
+      this.rememberContactName(email, trimmed);
+
+      return;
+    }
+
+    this.sql
+      .prepare(
+        "UPDATE contacts SET learned_name = NULL, updated_at = CURRENT_TIMESTAMP WHERE email = ?"
+      )
+      .run(email.trim().toLowerCase());
+  }
   rememberContactName(email: string, name: string): void {
     this.sql
       .prepare(

@@ -1530,6 +1530,8 @@
       "copyEmail": "复制邮箱",
       "emailCopied": "邮箱已复制",
       "removeAttendee": "移除参会者",
+      "contactName": "联系人姓名",
+      "renameContact": "重命名联系人",
       "join": "加入",
       "calendar": "日历",
       "description": "描述"

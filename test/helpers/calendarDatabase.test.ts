@@ -435,6 +435,23 @@ test("Google People names and photos outrank calendar names and survive later ca
   db.db.close();
 });
 
+test("a contact name the user set outranks Google and invite names until it is cleared", (t: import("node:test").TestContext) => {
+  const db = createDb(t) as DbUnderTest;
+
+  if (!db) return;
+
+  db.upsertContacts([{ email: "sanya@example.com", displayName: "arealsanya" }]);
+  db.upsertGooglePeople([{ email: "sanya@example.com", displayName: "Sanya G", photoUrl: null }]);
+  db.setContactName("Sanya@Example.com", "  Alexandra  ");
+  // Later syncs must not overwrite the user's choice.
+  db.upsertGooglePeople([{ email: "sanya@example.com", displayName: "Sanya G", photoUrl: null }]);
+  assert.equal(db.getContactProfiles(["sanya@example.com"])[0]?.display_name, "Alexandra");
+
+  db.setContactName("sanya@example.com", "   ");
+  assert.equal(db.getContactProfiles(["sanya@example.com"])[0]?.display_name, "Sanya G");
+  db.db.close();
+});
+
 test("upsertCalendarEvents round-trips the description and defaults it to null", (t: import("node:test").TestContext) => {
   const db = createDb(t) as DbUnderTest;
 

@@ -52,7 +52,12 @@ import {
 } from "../../stores/noteStore";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
 import type { Message } from "../chat/types";
-import { formatNoteDate, formatRelativeDay, parseEventDate } from "../../utils/dateFormatting";
+import {
+  formatNoteDate,
+  formatRelativeDay,
+  normalizeDbDate,
+  parseEventDate,
+} from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { collectKnownPeople } from "../../utils/llmTranscript";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
@@ -859,11 +864,12 @@ export default function NoteEditor({
   const { dateFormat, timeFormat } = useDateTimePreferences();
   const noteDate = formatNoteDate(note.created_at, locale, dateFormat, timeFormat);
 
-  const calendarStartDate = parseEventDate(calendarEvent?.start_time);
+  // The meeting's start when a calendar event is linked, else when the note was created.
+  const meetingDate = parseEventDate(calendarEvent?.start_time) ?? normalizeDbDate(note.created_at);
 
-  const calendarStart = calendarStartDate
-    ? formatRelativeDay(calendarStartDate, t, locale, dateFormat)
-    : "";
+  const meetingDay = Number.isNaN(meetingDate.getTime())
+    ? ""
+    : formatRelativeDay(meetingDate, t, locale, dateFormat);
 
   return (
     <div className="relative flex h-full min-h-0">
@@ -898,7 +904,7 @@ export default function NoteEditor({
               noteId={note.id}
               participants={parsedParticipants}
               event={calendarEvent}
-              dateLabel={calendarStart || undefined}
+              dateLabel={meetingDay || undefined}
               dateTitle={noteDate}
               preview={Boolean(debugPreview)}
             />

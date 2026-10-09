@@ -1530,6 +1530,8 @@
       "copyEmail": "Copiar e-mail",
       "emailCopied": "E-mail copiado",
       "removeAttendee": "Remover participante",
+      "contactName": "Nome do contato",
+      "renameContact": "Renomear contato",
       "join": "Entrar",
       "calendar": "Calendário",
       "description": "Descrição"

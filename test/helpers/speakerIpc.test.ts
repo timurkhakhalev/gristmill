@@ -30,6 +30,10 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     upsertContacts: (contacts: unknown) => {
       calls.upserts.push(contacts);
     },
+    setContactName: (email: unknown, name: unknown) => {
+      calls.renames = calls.renames || [];
+      calls.renames.push([email, name]);
+    },
     upsertSpeakerProfile: (
       displayName: unknown,
       email: unknown,
@@ -259,6 +263,17 @@ test("contacts pass through the database and swallow failures", async () => {
     success: true,
   });
   assert.deepEqual(h.calls.upserts, [[{ email: "c@d.io" }]]);
+  assert.deepEqual(await h.invoke(speakerChannels.renameContact, "c@d.io", "Cee"), {
+    success: true,
+  });
+  assert.deepEqual(await h.invoke(speakerChannels.renameContact, "c@d.io", null), {
+    success: true,
+  });
+  assert.deepEqual(h.calls.renames, [
+    ["c@d.io", "Cee"],
+    ["c@d.io", null],
+  ]);
+  assert.deepEqual(await h.invoke(speakerChannels.renameContact, "", "x"), { success: false });
 
   const broken = createHarness({
     database: {

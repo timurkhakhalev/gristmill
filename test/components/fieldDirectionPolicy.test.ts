@@ -104,7 +104,7 @@ const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/notes/NoteBottomBar.tsx": ["auto"],
   "src/components/notes/NoteEditor.tsx": ["auto", "auto"],
   "src/components/notes/NoteFindBar.tsx": ["auto"],
-  "src/components/notes/NoteParticipants.tsx": ["auto"],
+  "src/components/notes/NoteParticipants.tsx": ["auto", "auto"],
   "src/components/notes/NotesTree.tsx": ["auto", "auto", "auto"],
   "src/components/notes/UploadAudioView.tsx": ["ltr", "ltr", "inherit", "inherit"],
   "src/components/onboarding/LanguageSelectionStep.tsx": ["auto"],

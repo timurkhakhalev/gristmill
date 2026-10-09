@@ -22,6 +22,8 @@ const upsertContactArgs = z.tuple([
   z.object({ email: z.string(), displayName: z.string().nullish() }),
 ]);
 
+const renameContactArgs = z.tuple([z.string().min(1), z.string().nullable()]);
+
 const noteIdArgs = z.tuple([z.number()]);
 
 const setSpeakerMappingArgs = z.tuple([
@@ -66,6 +68,7 @@ interface RequestEvent {
 export interface SpeakerDatabase {
   searchContacts(query: string): Array<{ email: string; display_name: string | null }>;
   upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): void;
+  setContactName(email: string, name: string | null): void;
   getContactProfiles(
     emails: string[]
   ): Array<{ email: string; display_name: string | null; photo_url: string | null }>;
@@ -151,6 +154,18 @@ export function registerSpeakerHandlers(ipcMain: IpcMainLike, deps: SpeakerIpcDe
       const [contact] = upsertContactArgs.parse(args);
 
       deps.databaseManager.upsertContacts([contact]);
+
+      return { success: true };
+    } catch {
+      return { success: false };
+    }
+  });
+
+  ipcMain.handle(c.renameContact, async (_event, ...args: unknown[]) => {
+    try {
+      const [email, name] = renameContactArgs.parse(args);
+
+      deps.databaseManager.setContactName(email, name);
 
       return { success: true };
     } catch {

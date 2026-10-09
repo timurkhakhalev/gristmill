@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, Calendar, Check, ChevronDown, Copy, Trash2, Users } from "../icons";
+import { AlignLeft, Calendar, Check, ChevronDown, Copy, Pencil, Trash2, Users } from "../icons";
 import { cn } from "../lib/utils";
 import { NOTE_META_CHIP_CLASS } from "./shared";
 import { CalendarProviderIcon, MeetingPlatformIcon } from "./meetingPlatform";
 import { Popover, PopoverAnchor, PopoverTrigger, PopoverContent } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
 import PersonName from "../ui/PersonName";
+import { refreshPersonProfile, usePersonName } from "../../hooks/usePersonProfile";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
 import { syncSessionExpectedCountFromParticipants } from "../../stores/meetingRecordingStore";
 import { runInBackground } from "../../stores/noteStore";
@@ -121,17 +122,116 @@ const HOVER_OPEN_DELAY_MS = 150;
 
 const HOVER_CLOSE_DELAY_MS = 200;
 
+/** The contact's name with a rename action; the new name is stored for the email everywhere. */
+function ContactName({
+  attendee,
+  editable,
+  editing,
+  onEditingChange,
+}: {
+  attendee: CalendarAttendee;
+  editable: boolean;
+  editing: boolean;
+  onEditingChange: (editing: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const name = usePersonName(attendee.email, attendee.displayName);
+  const [draft, setDraft] = useState(name);
+  // Escape unmounts the input; its blur must not save the discarded draft.
+  const cancelled = useRef(false);
+
+  const startEditing = () => {
+    cancelled.current = false;
+    setDraft(name);
+    onEditingChange(true);
+  };
+
+  const save = () => {
+    if (cancelled.current) return;
+    cancelled.current = true;
+    onEditingChange(false);
+    const next = draft.trim();
+
+    if (next === name) return;
+    runInBackground(
+      window.electronAPI
+        .renameContact(attendee.email, next || null)
+        .then(() => refreshPersonProfile(attendee.email)),
+      "Contact rename failed"
+    );
+  };
+
+  if (editing) {
+    return (
+      <input
+        dir="auto"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            save();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            cancelled.current = true;
+            onEditingChange(false);
+          }
+        }}
+        aria-label={t("notes.participants.contactName", "Contact name")}
+        className="w-full rounded border border-border bg-transparent px-1 py-0.5 text-sm font-medium text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <p dir="auto" className="min-w-0 truncate text-sm font-medium text-foreground">
+        {name}
+        {attendee.self && (
+          <span className="ms-1 font-normal text-muted">{t("notes.participants.me", "(me)")}</span>
+        )}
+      </p>
+      {editable && (
+        <button
+          type="button"
+          onClick={startEditing}
+          aria-label={t("notes.participants.renameContact", "Rename contact")}
+          className="shrink-0 rounded p-0.5 text-muted opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring/40 group-hover/card:opacity-100"
+        >
+          <Pencil size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Full name, email and copy action for one attendee, beside the list on hover or focus. */
-function AttendeeRow({ attendee, onRemove }: { attendee: CalendarAttendee; onRemove: () => void }) {
+function AttendeeRow({
+  attendee,
+  editable,
+  onRemove,
+}: {
+  attendee: CalendarAttendee;
+  editable: boolean;
+  onRemove: () => void;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editingRef = useRef(false);
+  editingRef.current = editing;
+  const hoveredRef = useRef(false);
 
   const schedule = useCallback((next: boolean) => {
     if (timer.current) clearTimeout(timer.current);
+    // The card stays open while its name is being edited, wherever the pointer goes.
     timer.current = setTimeout(
-      () => setOpen(next),
+      () => setOpen((current) => (next ? true : current && editingRef.current)),
       next ? HOVER_OPEN_DELAY_MS : HOVER_CLOSE_DELAY_MS
     );
   }, []);
@@ -144,9 +244,22 @@ function AttendeeRow({ attendee, onRemove }: { attendee: CalendarAttendee; onRem
   );
 
   const hoverProps = {
-    onMouseEnter: () => schedule(true),
-    onMouseLeave: () => schedule(false),
+    onMouseEnter: () => {
+      hoveredRef.current = true;
+      schedule(true);
+    },
+    onMouseLeave: () => {
+      hoveredRef.current = false;
+      schedule(false);
+    },
   };
+
+  // The open card tops React Aria's overlay stack but is not dismissable, so
+  // while it is open a click outside closes nothing. Once a rename ends away
+  // from the card, close it at once so the attendee list closes normally again.
+  useEffect(() => {
+    if (!editing && !hoveredRef.current) setOpen(false);
+  }, [editing]);
 
   const copyEmail = useCallback(() => {
     navigator.clipboard
@@ -159,7 +272,14 @@ function AttendeeRow({ attendee, onRemove }: { attendee: CalendarAttendee; onRem
   }, [attendee.email]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+
+        if (!next) setEditing(false);
+      }}
+    >
       <PopoverAnchor>
         <button
           type="button"
@@ -180,22 +300,26 @@ function AttendeeRow({ attendee, onRemove }: { attendee: CalendarAttendee; onRem
           </span>
         </button>
       </PopoverAnchor>
-      <PopoverContent side="right" align="start" sideOffset={16} isNonModal className="w-72 p-0">
+      <PopoverContent
+        side="right"
+        align="start"
+        sideOffset={16}
+        focusOnOpen={false}
+        className="w-72 p-0"
+      >
         <div
           {...{ [ATTENDEE_CARD_ATTR]: "" }}
           {...hoverProps}
-          className="flex items-center gap-3 p-3"
+          className="group/card flex items-center gap-3 p-3"
         >
           <PersonAvatar email={attendee.email} displayName={attendee.displayName} size={40} />
           <div className="min-w-0 flex-1">
-            <p dir="auto" className="truncate text-sm font-medium text-foreground">
-              <PersonName email={attendee.email} inviteName={attendee.displayName} />
-              {attendee.self && (
-                <span className="ms-1 font-normal text-muted">
-                  {t("notes.participants.me", "(me)")}
-                </span>
-              )}
-            </p>
+            <ContactName
+              attendee={attendee}
+              editable={editable}
+              editing={editing}
+              onEditingChange={setEditing}
+            />
             <div className="mt-0.5 flex items-center gap-1">
               <span dir="ltr" className="min-w-0 flex-1 truncate text-xs text-muted">
                 {attendee.email}
@@ -503,6 +627,7 @@ export default function NoteParticipants({
                 <AttendeeRow
                   key={p.email}
                   attendee={p}
+                  editable={!preview}
                   onRemove={() => removeParticipant(p.email)}
                 />
               ))}

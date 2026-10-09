@@ -76,6 +76,8 @@ export function createSpeakerBridge(ipcRenderer: IpcRendererLike): SpeakerApi {
       ),
     upsertContact: (contact: { email: string; displayName?: string | null }) =>
       passthroughInvoke<{ success: boolean }>(ipcRenderer, c.upsertContact, contact),
+    renameContact: (email: string, name: string | null) =>
+      passthroughInvoke<{ success: boolean }>(ipcRenderer, c.renameContact, email, name),
     getContactProfiles: (emails: string[]) =>
       ipcRenderer
         .invoke(c.getContactProfiles, emails)

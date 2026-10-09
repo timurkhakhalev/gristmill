@@ -1606,6 +1606,8 @@
       "copyEmail": "Copy email",
       "emailCopied": "Email copied",
       "removeAttendee": "Remove attendee",
+      "contactName": "Contact name",
+      "renameContact": "Rename contact",
       "join": "Join",
       "calendar": "Calendar",
       "description": "Description"

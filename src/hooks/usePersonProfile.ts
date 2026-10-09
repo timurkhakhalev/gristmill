@@ -68,6 +68,13 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Reloads one person's profile, e.g. after the user renamed them. */
+export function refreshPersonProfile(email: string): void {
+  const key = keyOf(email);
+
+  if (key) request(key);
+}
+
 /** The stored profile for an email; null until loaded or when nothing is known. */
 export function usePersonProfile(email: string | null | undefined): ContactProfile | null {
   const key = email ? keyOf(email) : "";

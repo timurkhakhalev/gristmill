@@ -1498,6 +1498,8 @@
       "copyEmail": "メールをコピー",
       "emailCopied": "メールをコピーしました",
       "removeAttendee": "参加者を削除",
+      "contactName": "連絡先の名前",
+      "renameContact": "連絡先の名前を変更",
       "join": "参加",
       "calendar": "カレンダー",
       "description": "説明"

@@ -7,6 +7,7 @@ import { z } from "zod";
 export const speakerChannels = {
   searchContacts: "search-contacts",
   upsertContact: "upsert-contact",
+  renameContact: "rename-contact",
   getContactProfiles: "get-contact-profiles",
   getSpeakerMappings: "get-speaker-mappings",
   setSpeakerMapping: "set-speaker-mapping",
@@ -120,6 +121,8 @@ export interface SpeakerApi {
     email: string;
     displayName?: string | null;
   }): Promise<{ success: boolean }>;
+  /** Sets the name the user chose for a contact; null or blank falls back to Google or invite names. */
+  renameContact(email: string, name: string | null): Promise<{ success: boolean }>;
   getContactProfiles(emails: string[]): Promise<ContactProfile[]>;
   getSpeakerMappings(noteId: number): Promise<SpeakerMappingEntry[]>;
   setSpeakerMapping(

@@ -75,6 +75,7 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - Initial and replacement microphone analysers read the Worklet output. A closed gate gives zero microphone level; system audio can still move the Companion bars. Each output path keeps a zero-gain sink.
 - The native system-audio watchdog arms its first-delivery deadline only after a validated helper start ACK. Silent PCM counts as delivery; sleep and each replacement rebase the deadline. An ACK alone does not report recovered audio.
 - The pipeline reports the microphone flush boundary through a typed callback. The session stop barrier waits for the drain. Then it sends the last sequences and that boundary to main.
+- Renderer capture keeps a five-second unacknowledged buffer. Short UI or writer stalls can drain; a stall beyond that limit fails explicitly. The buffer does not remove this renderer dependency. Use the isolated [capture benchmark](../runbooks/testing.md#real-electron-capture-path) to check the limit before changing capture ownership.
 
 ## Run creation
 

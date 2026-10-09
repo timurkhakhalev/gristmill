@@ -75,3 +75,18 @@ pnpm test --domain calendar --domain notes
 - Compatible cases in one file can share a Vite server. Restore stores, globals, mocks and singleton state between cases.
 - Keep different module-mock environments separate until their isolation is proved.
 - Do not disable test process isolation globally.
+
+## Real Electron capture path
+
+```sh
+pnpm run build:main
+node test/benchmarks/meeting-capture.mts e9e5a37ae
+node test/benchmarks/meeting-capture.mts
+node test/benchmarks/meeting-capture.mts --soak-seconds=3600
+```
+
+This fixture sends a synthetic tone through real Web Audio, the capture pipeline, Electron IPC, SQLite and FFmpeg. It uses a temporary profile and no microphone or provider. Both synthetic sources use the renderer path; it does not exercise the native system-audio helper or physical clock calibration.
+
+The Git ref replaces only `meetingAudioPipeline.ts`. Use a revision with the old packet-ordering defect to reproduce that failure. The default run checks repeated Start/Stop, mute/unmute, and 1, 3 and 6 second ACK or renderer stalls. A stall beyond the five-second buffer must report overflow and retain accepted audio. Short stalls must drain. A small startup render-clock gap may make a capture incomplete; the test requires that gap to be explicit, bounded to less than one packet, and separate from a packet-ordering failure.
+
+The report includes write and end-to-end ACK latency, maximum queued frames, process CPU and memory, and saved frame counts. It also decodes the longest epoch of each source and checks its frame count and audible signal. The soak option records in real time and prints progress every 30 seconds. Its timeout is the selected duration plus two minutes. Temporary profiles retain only the synthetic audio and measurements for inspection.

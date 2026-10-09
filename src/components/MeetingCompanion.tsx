@@ -169,7 +169,7 @@ export default function MeetingCompanion() {
           "border shadow-elevated focus-visible:ring-2 focus-visible:ring-focus",
           state.micMuted
             ? "border-danger/50 bg-danger text-white"
-            : "border-border bg-surface-2 text-foreground/85 hover:bg-surface-2"
+            : "border-border bg-surface-2 text-foreground/85 hover:bg-surface-3"
         )}
       >
         {state.micMuted ? <MicSlashIcon size={16} /> : <Mic size={16} />}

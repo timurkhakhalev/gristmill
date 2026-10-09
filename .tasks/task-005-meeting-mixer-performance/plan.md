@@ -35,7 +35,8 @@ Execute milestones sequentially. Each milestone includes its own regression chec
 | --- | --- | --- | --- |
 | M1 | Native continuous audio preparation | none | Mapping, overlap, bounded processing and build |
 | M2 | Shared consumer cutover and lifecycle | M1 | All layouts, failures and cleanup |
-| M3 | Documentation, performance and final validation | M2 | Memory Bank updates, reproduction, full/package checks and user listening |
+| M2.1 | Preserve short decoded audio and resampler tails | M2 implementation | Short-input corrective verification |
+| M3 | Documentation, performance and final validation | M2.1 | Memory Bank updates, reproduction, full/package checks and user listening |
 
 ## 5. Milestone details
 
@@ -117,11 +118,21 @@ ASR preparation, playback, mixed and selected-source export, part composition, p
 
 Keep existing processing waiting/preparing states and scheduling. During preparation the existing cancel/quit controls retain ownership. Success advances to the selected provider or returns the playback/export file. Local failure stays retryable under existing policy, with an actionable local cause. Intentional empty microphone retains its supported silence; unexpectedly absent audio is an error. No new loading screen or technical mapping text.
 
+### 5.2.1 M2.1 — Preserve short decoded audio and resampler tails
+
+Depends on: the committed M1/M2 implementation; this corrective milestone resolves their outstanding short-input verification rather than treating either affected contract as verified.
+
+Scope: preserve valid short audio at both the Opus decode/rate-conversion boundary and the native continuous resampler flush/reset boundary, including a short continuous run within a longer recording. Diagnose and select the smallest correct fix within the existing single path. A 48 kHz input contract is an option to evaluate, not a mandated architecture change. Do not use Ponytail or create a worktree.
+
+Acceptance criteria: nonzero valid signals of 1, 2, 3, 10, 16, 24, 32 and 64 frames, and sizes around the measured filter boundary, retain their signal and exact timeline extent. Neither successful exit nor output length alone proves preservation. Cover standalone input, short epochs/runs inside longer recordings, flush and reset, and end-to-end Opus preparation. Corrupt, truncated or genuinely missing decoded input must still fail. Preserve all earlier alignment, gain/channel, original-file, overlap, cleanup and publication guarantees. Do not weaken tolerances, fill lost audio with silence or add a fallback/dual path. Normal filter-boundary extension is allowed only after validating the actual source length, with independent evidence of correct signal and length.
+
+Verification: first reproduce both defects using synthetic nonzero fixtures: the bundled decoder can emit zero 24 kHz frames for valid tiny Opus; the native helper alone can silently lose 1–2 float frames or fail short runs on flush. Add content-sensitive native and consumer regressions for the lengths above, boundary-adjacent sizes, embedded short runs and corrupted/shortened inputs. Run the related M1 native/mapping and M2 consumer checks through the canonical runner, rebuild the native helper, and run lint and affected typechecks sequentially. Update implementation_progress.md and M1/M2 evidence honestly. Check staged diff before each focused commit; preserve existing history including 23792c7a1. Only after corrective verification passes may M1/M2 be considered complete and M3 begin. Keep every reproduction synthetic; no real-call data in Git, PR or reports.
+
 ### 5.3 M3 — Documentation, performance and final validation
 
 #### 5.3.1 Depends on
 
-Depends on: M2.
+Depends on: M2.1.
 
 #### 5.3.2 Scope
 
@@ -167,7 +178,7 @@ Verify the unchanged visible journey after Stop, successful playback/export and 
 
 ## 6. Execution order (derived from dependencies)
 
-M1 → M2 → M3. Finish each milestone's checks before continuing. Reuse the persistent PlanAct Implementer/Reviewer pair during Act, then perform the final code review. Do not merge or install the task automatically. If timing, correctness or signing fails, reproduce and fix within the approved design and rerun affected checks. Do not weaken thresholds, enable fallback or claim completion. A needed scope/architecture change returns to Brainstorm; missing user permissions or release credentials stay explicitly pending.
+M1 → M2 implementation → M2.1 corrective verification → M3. Finish each milestone's checks before continuing. Reuse the persistent PlanAct Implementer during Act, then run milestone review and code review in parallel under the current Act workflow. Do not merge or install the task automatically. If timing, correctness or signing fails, reproduce and fix within the approved design and rerun affected checks. Do not weaken thresholds, enable fallback or claim completion. A needed scope/architecture change returns to Brainstorm; missing user permissions or release credentials stay explicitly pending.
 
 ## 7. Shared verification commands
 
@@ -177,8 +188,9 @@ Use `pnpm test --verbose <exact test paths>` for focused regressions, `pnpm run 
 
 | Milestone | Status | Commits |
 | --- | --- | --- |
-| M1 — Native continuous audio preparation | done | e35644dbd, cfe0311db |
-| M2 — Shared consumer cutover and lifecycle | in progress | |
+| M1 — Native continuous audio preparation | in progress | e35644dbd, cfe0311db; short-input verification reopened in M2.1 |
+| M2 — Shared consumer cutover and lifecycle | in progress | 23792c7a1, 57270f8ec; short-input verification pending M2.1 |
+| M2.1 — Preserve short decoded audio and resampler tails | in progress | |
 | M3 — Documentation, performance and final validation | not started | |
 | Reviewer | not started | |
 | Code Reviewer | not started | |

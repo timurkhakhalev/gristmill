@@ -170,3 +170,7 @@ files along with its orchestration-table update. The existing commit is preserve
 no reset, amendment or history rewrite was attempted. This report is committed
 separately. Current PlanAct `ACT.md` and `implementer_worker.toml` were re-read after
 the user updated the workflow; M2 remains blocked, and M3/reviews were not started.
+
+## M2.1 — Corrective short-input verification
+
+Status: in progress. The user-directed synthetic diagnosis reopens M1 verification: direct valid float32 input can lose the entire 1–2-frame signal while reporting success, and some other short runs fail at flush. This is independent of the bundled Opus decoder's short-input rate-conversion defect. The approved corrective milestone addresses both without relaxing source coverage or substituting silence. M1/M2 remain incomplete until content-sensitive native and end-to-end regressions pass. Earlier passed checks remain evidence for their tested cases only.

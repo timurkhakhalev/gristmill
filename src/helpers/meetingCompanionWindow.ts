@@ -60,6 +60,16 @@ export class MeetingCompanionWindow {
     if (this.win?.isVisible()) this.send(meetingCompanionEventChannels.level, level);
   }
 
+  reportLevelDemand(): void {
+    const panel = this.deps.getControlPanelWindow();
+
+    if (panel && !panel.isDestroyed())
+      panel.webContents.send(
+        meetingCompanionEventChannels.levelDemand,
+        Boolean(this.win?.isVisible() && this.state.active && !this.state.paused)
+      );
+  }
+
   dragStart(pointer: Point): void {
     if (!this.win || this.win.isDestroyed()) return;
     const [x, y] = this.win.getPosition();
@@ -116,6 +126,7 @@ export class MeetingCompanionWindow {
     this.dragOrigin = null;
 
     if (win && !win.isDestroyed()) win.destroy();
+    this.reportLevelDemand();
   }
 
   private isControlPanelFocused(): boolean {
@@ -130,12 +141,15 @@ export class MeetingCompanionWindow {
 
       if (this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.hide();
 
+      this.reportLevelDemand();
+
       return;
     }
 
     const win = this.ensureWindow();
 
     if (this.loaded && !win.isVisible()) win.showInactive();
+    this.reportLevelDemand();
   }
 
   private ensureWindow(): BrowserWindow {
@@ -168,6 +182,7 @@ export class MeetingCompanionWindow {
       if (this.win === win) {
         this.win = null;
         this.loaded = false;
+        this.reportLevelDemand();
       }
     });
 
@@ -226,6 +241,7 @@ export function registerMeetingCompanionHandlers(
   ipcMain: IpcMainLike,
   companion: MeetingCompanionWindow
 ): void {
+  ipcMain.on(meetingCompanionChannels.watchLevelDemand, () => companion.reportLevelDemand());
   ipcMain.on(meetingCompanionChannels.update, (_event, raw) => {
     const parsed = meetingCompanionStateSchema.safeParse(raw);
 

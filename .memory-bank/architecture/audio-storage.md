@@ -13,6 +13,7 @@ Decision: [ADR-0004](../adr/0004-opus-capture.md). The product is macOS Apple Si
 
 - Main accepts a maximum of five seconds of unencoded samples for each writer.
 - A packet ACK means that the packet is in this bounded encoder queue. It does not promise an fsync.
+- Alignment writes read the epoch header and use indexed coverage updates. They must not load the growing alignment history for each packet. The synthetic long-recording check is in the [testing runbook](../runbooks/testing.md#recording-performance-without-a-meeting).
 - Main writes complete, CRC-checked Ogg pages. It requests 250 ms pages and does an fsync one time each second.
 - At Stop, main waits for each encoder. It verifies the end-of-stream and the exact 24 kHz input frame count. Then it does an fsync and closes the file.
 - An error keeps the saved pages and marks the capture incomplete.
@@ -51,6 +52,7 @@ Live microphone and system capture and power-loss tail limits need an isolated h
 - Export length retains the saved common frame extent (or historical UTC duration) and fully proven later epoch ends. This keeps source gaps and trailing silence; it does not promise an exact physical Stop boundary.
 - An open epoch on either source blocks export. An empty selected track is not synthesized as silence.
 - Mixed playback, mixed export, ASR preparation and part composition remain strict for all nonempty epochs. See [ADR-0008](../adr/0008-source-export-alignment.md).
+- Alignment selection sorts eligible segments once, then scans coverage in source-frame order. It retains the same uncertainty, clock-generation and full-coverage requirements.
 - Startup removes abandoned derived directories before processing continues.
 
 ## Legacy PCM profiles

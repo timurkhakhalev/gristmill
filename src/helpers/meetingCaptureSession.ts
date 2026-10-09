@@ -40,7 +40,7 @@ export interface MeetingCaptureDatabase {
     source: MeetingSource,
     epochIndex: number,
     segment: MeetingFrameAlignmentSegment
-  ): MeetingRecordingEpochDto;
+  ): void;
   markMeetingRecordingEpochAlignmentUnknown(
     recordingId: string,
     source: MeetingSource,

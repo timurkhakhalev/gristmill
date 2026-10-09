@@ -8,6 +8,7 @@ export const meetingCompanionChannels = {
   // control panel → main
   update: "meeting-companion-update",
   level: "meeting-companion-level",
+  watchLevelDemand: "meeting-companion-watch-level-demand",
   // companion → main
   dragStart: "meeting-companion-drag-start",
   dragMove: "meeting-companion-drag-move",
@@ -21,6 +22,7 @@ export const meetingCompanionEventChannels = {
   level: "meeting-companion-level-changed",
   // main → control panel
   toggleMic: "meeting-companion-toggle-mic-requested",
+  levelDemand: "meeting-companion-level-demand",
 } as const;
 
 export const meetingCompanionStateSchema = z.object({
@@ -38,6 +40,8 @@ export const meetingCompanionStateSchema = z.object({
 export type MeetingCompanionState = z.infer<typeof meetingCompanionStateSchema>;
 
 export const meetingCompanionLevelSchema = z.number().min(0).max(1);
+
+export const meetingCompanionLevelDemandSchema = z.boolean();
 
 export const meetingCompanionPointSchema = z.tuple([z.number(), z.number()]);
 
@@ -62,4 +66,5 @@ export interface MeetingCompanionApi {
   onMeetingCompanionToggleMic(callback: () => void): () => void;
   onMeetingCompanionState(callback: (state: MeetingCompanionState) => void): () => void;
   onMeetingCompanionLevel(callback: (level: number) => void): () => void;
+  onMeetingCompanionLevelDemand(callback: (needed: boolean) => void): () => void;
 }

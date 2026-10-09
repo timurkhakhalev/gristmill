@@ -62,10 +62,10 @@ test("quiet system-audio levels move companion bars above rest, while pause stay
         return;
       }
 
-      if (!React.isValidElement<{ style?: { height?: string }; children?: ReactNode }>(node))
+      if (!React.isValidElement<{ style?: { transform?: string }; children?: ReactNode }>(node))
         return;
 
-      if (node.props.style?.height) found.push(parseFloat(node.props.style.height));
+      if (node.props.style?.transform) found.push(Number(node.props.style.transform.match(/scaleY\(([^)]+)\)/)?.[1]) * 100);
       visit(node.props.children);
     };
 

@@ -25,9 +25,10 @@ test("main reports demand through ready, focus, pause, close and stop", async (t
         destroy() {this.destroyed = true; this.visible = false; this.emit('closed');}
         setContentProtection() {}
         async loadFile() {}
+        async loadURL() {}
       }`,
     "./debugLogger.js": "export default {warn() {}};",
-    "./devServerManager.js": "export const DevServerManager = {getAppFilePath: () => ({path:'synthetic.html',query:{}})};",
+    "./devServerManager.js": "export const DevServerManager = {waitForDevServer: async () => {}, DEV_SERVER_URL:'http://synthetic.invalid', getAppFilePath: () => ({path:'synthetic.html',query:{}})};",
     "./windowConfig.js": "export const NOTIFICATION_WINDOW_CONFIG = {}; export const WindowPositionUtil = {setupAlwaysOnTop() {}};",
   } });
   const { MeetingCompanionWindow } = await vite.ssrLoadModule("/helpers/meetingCompanionWindow.ts");

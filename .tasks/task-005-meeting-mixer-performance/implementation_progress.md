@@ -79,3 +79,94 @@ no new resolver or runtime installation path was added.
 
 Commits: `e35644dbd8c38a56e3ffeaa0f2bf3b43d1e5d424` — M1 native implementation, build inputs and tests.
 The verification log is committed separately after recording the implementation hash.
+
+## M2 — Shared consumer cutover and lifecycle
+
+Status: blocked
+
+Implemented the shared native cutover and its operation-owned file/child lifecycle for
+all four layouts. Independent verification passes, but M2 cannot satisfy preservation
+of valid tiny historical Opus epochs with the current decoded-input contract.
+The orchestrator confirmed that this must return to a plan/user decision; it is not an
+approved exception to format support.
+
+Contract sync: M1's mapper/helper and exact decoded coverage remain binding. M2 uses
+`INPUT MAPPING OUTPUT EXTENT INPUT_FRAMES create|add`, mono float timelines and native
+exit categories 2/3/4/5. Alignment selection, conservative provenance, fixed anchors,
+rate limits, rejected gaps/overlaps, generation resets and the two-sample run-end bound
+are unchanged. No native/M1 contract, capture, schema, provider, scheduler, recovery,
+UI or completed-artifact change was made.
+
+Completed work:
+
+- Replaced the per-range FFmpeg graph with one decoder/correction sequence per epoch.
+  Each source stays ordered; at most two source decoders run concurrently. Assembly
+  uses a fixed number of source timelines with 24 kHz PCM16 output, existing mono
+  half gain, mic-left/system-right stereo and unity-gain individual tracks.
+- Added private 0700 operation directories under managed `derived`, with UUID paths
+  owned by MeetingRecordingStorage. Decoded files/mappings are released after each
+  epoch; corrected timelines are removed after closed final assembly and before WAV
+  validation/publication. Existing final paths, cache validation, leases and lifetimes
+  remain unchanged. Startup's existing derived cleanup handles abandoned directories.
+- Peak admission is corrected-timeline bytes plus the larger of concurrent decoded
+  epochs/mappings or final WAV/header bytes, based on actual selected sources and
+  epoch lengths. It is not a reservation or fixed GiB/hour rule. Later ENOSPC fails
+  only the affected operation and removes unpublished files.
+- Owned detached child groups stop on first failure/abort. Promises settle on close,
+  including spawn errors; source outcomes are all awaited before operation cleanup.
+  Local failures use `audio-preparation-failed` / `audio-preparation-disk-full`, the
+  existing failed/Retry path and actionable local messages. Bounded child stderr is
+  retained as a cause, without resampler details in normal error messages.
+- Traced ASR/ensureAudio, playback, mixed/source export and part composition. Their
+  public results, strict mixed/selected-source rules and caller ownership are intact.
+  Quit leaves interrupted work pending as before; audio/note deletion cancels it.
+
+Final independent verification (serialized):
+
+- `pnpm test --verbose test/cases/recording/integration/meetingAudioPipeline.test.ts test/cases/recording/integration/meetingAlignmentPersistence.test.ts test/cases/recording/integration/meetingSourceExportAlignment.test.ts test/cases/recording/integration/meetingIntentionalIntervals.test.ts test/cases/recording/integration/meetingNoteAudioContinuity.test.ts test/cases/recording/integration/meetingPlaybackLease.test.ts test/helpers/meetingProcessing.test.ts test/helpers/meetingRecordingStorage.test.ts`:
+  158 passed, 0 failed, 0 skipped; canonical runner wall time 11.896 s.
+- Evidence includes real Opus → native helper → PCM16 WAV in all layouts, independently
+  decoded source sums/gain/channels, exact extent and silence, decode-once/source order
+  and <=2 concurrent decoders, original SHA-256 and protected result bytes, selected
+  export with invalid peer, late ends, overlap, mute, cache reuse, pre-abort/mid-decode/
+  mid-correction/final-publication abort, child-error and failed-decoder peer settlement,
+  native exit categories, truncated decoded input, admission/write/publication ENOSPC,
+  two admitted competing operations with one succeeding, invalid final WAV rejection,
+  real worker quit/audio/note barriers, restart cleanup and historical non-retry.
+- `pnpm run lint`, `pnpm run typecheck:main`, `pnpm run typecheck:tests`, and
+  `git diff --check`: passed. The final lint follow-up changes spacing only.
+- Earlier targeted failures were resolved without production tolerance/policy changes:
+  the graph-only mock now verifies real execution with ordinary-length epochs, and
+  the quit test asserts the existing pending state rather than inventing cancellation.
+
+Blocking reproduction (synthetic data only; existing bundled decoder is FFmpeg 6.0,
+libswresample 4.10.100; M1's separate native library remains FFmpeg 8.1.1):
+
+1. Write two PCM16 mono frames `[1, 2]` at 24 kHz, then run the existing
+   `convertMeetingPcm` encoder/migration function. It returns 2. The unchanged
+   `inspectMeetingOpus` reports `{frameCount:2, ignoredTrailingBytes:0, errorCode:null}`.
+2. Decode that exact valid Opus with bundled FFmpeg:
+   `-nostdin -hide_banner -loglevel error -i INPUT.opus -ar 48000 -ac 1 -c:a pcm_f32le -f f32le pipe:1`:
+   exit 0, 4 float frames.
+3. Change only `-ar` to `24000` (the production M2 decoder request): exit 0,
+   0 float frames. M1 correctly rejects this empty decoded file with exit category 3
+   before creating its timeline. The new operation fails, keeping originals intact.
+4. Replay the old production graph on that same file, with a two-frame source and
+   24-frame recording extent:
+   `[0:a]aresample=24000,atrim=start_sample=0:end_sample=2,asetpts=PTS-STARTPTS,apad=whole_len=2,atrim=end_sample=2,adelay=0S:all=1,volume=0.5[a0];[a0]amix=inputs=1:duration=longest:dropout_transition=0:normalize=0,apad=whole_len=24,atrim=end_sample=24[out]`:
+   exit 0, valid 24-frame PCM16 WAV, all silence. Thus this is a previously successful
+   preparation case, not corrupt source data. A longer meeting containing such an
+   epoch can also fail the new preparation.
+
+The conflict is between preserving that valid historical input and M1's explicit
+full decoded coverage rule, which forbids using the endpoint-rounding allowance to
+accept absent input. No padding, alternate filter/decoder path, tolerance relaxation,
+new cap or unilateral native-contract redesign was applied. Do not mark M2 done or
+start M3 until the decoding contract is resolved and verified.
+
+Commits: `23792c7a1af5da9148643532d980f544f4904be5` — M2 implementation and tests.
+Shared-index collision: the orchestrator's plan commit included the five staged M2
+files along with its orchestration-table update. The existing commit is preserved;
+no reset, amendment or history rewrite was attempted. This report is committed
+separately. Current PlanAct `ACT.md` and `implementer_worker.toml` were re-read after
+the user updated the workflow; M2 remains blocked, and M3/reviews were not started.

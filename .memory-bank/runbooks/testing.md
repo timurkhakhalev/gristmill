@@ -119,3 +119,85 @@ node test/benchmarks/meeting-companion.mts
 The optional Git ref selects the component and synchronization hook from that revision. Both runs use the current dependencies, CSS and benchmark shell. Each run uses the same synthetic audio-level function, a temporary profile, a warm-up, and separate visible and hidden samples. The command prints the path to CPU and wakeup measurements. The same directory contains `visible.png` for visual inspection. The current-code run fails if the hidden window still sends level updates.
 
 Run A/B measurements sequentially with other builds and tests stopped. Repeat them if host load changes. These samples compare the measured component; they do not measure whole-Mac battery savings or prove physical audio capture. Native device changes, permissions and real audio still require the related hardware smoke test.
+
+### Post-Stop mixer performance
+
+The mixer stand uses a temporary database, synthetic tones, real saved Opus files,
+the application's alignment selector and `prepareMeetingAudio`, and bundled FFmpeg.
+It does not read production recordings, use a microphone, or call a provider.
+
+```sh
+pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
+GRISTMILL_MIXER_SECONDS=120 GRISTMILL_MIXER_RANGES=30 pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
+GRISTMILL_MIXER_SECONDS=120 GRISTMILL_MIXER_RANGES=900 GRISTMILL_MIXER_TIMEOUT=20 pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
+GRISTMILL_MIXER_SECONDS=3600 GRISTMILL_MIXER_RANGES=900 GRISTMILL_MIXER_TIMEOUT=20 pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
+```
+
+The default is eight seconds and eight microphone alignment ranges. Increase duration
+and range count independently to distinguish their costs. The system source has one
+range. The microphone has an initial offset, alternating clock rates, and gaps after
+each seven ranges. `GRISTMILL_MIXER_DRIFT_PPM=0` disables clock drift; the default is
+200 ppm. This fixture does not model overlapping output ranges or multiple parts.
+
+Five variants run sequentially: the current mixer, one resampler before the split,
+`asegment` instead of full-stream fan-out, sequential concatenation, and
+`asegment` plus concatenation. Only the dependency-injected
+spawn hook changes the experimental graphs; application code stays unchanged.
+The stand checks exact output length, original-file hashes, and owned-child exit.
+Shared resampling and segmentation must produce the same PCM hash as the completed baseline.
+Concatenation reports PCM equality separately; a passing stand does **not** qualify
+this prototype for production. It rejects overlapping ranges instead of guessing
+how to join them.
+
+JSON lines report wall time, sampled child RSS, filter-chain count, and PCM hashes. RSS is
+sampled every 250 ms and is null when the process finishes before a sample. It is
+not an exact peak. Environment output records runtime, FFmpeg version and Git HEAD;
+also preserve the working diff when comparing an uncommitted experiment.
+The timeout applies to each mixer process, not fixture generation. A timeout kills
+only that owned FFmpeg process, reports its last observed output size, then runs
+the remaining variants. Any timeout makes the command fail. A prototype without a
+completed baseline reports unknown PCM equality. Temporary files are removed after
+the test. Run large scenarios explicitly and sequentially; do not add them to CI.
+
+### Continuous-resampler prototype
+
+```sh
+node test/benchmarks/meeting-resampler.mts 60
+node test/benchmarks/meeting-resampler.mts 600 3600 7200
+```
+
+This macOS-only experiment compiles `meeting-resampler.c` into a temporary
+directory with the installed `clang`, `pkg-config`, `libswresample` and `libavutil`
+development files. It does not install dependencies or modify the app. Missing
+development tools are an error. The report records library and decoder versions;
+the development libraries are not assumed to match bundled FFmpeg.
+
+Two synthetic sources have different tones, known-time pulse markers, changing
+clock drift, and explicit gaps. Each source has one calibration range per four
+seconds. The stand encodes real Opus, then measures sequential decoding to float
+PCM, continuous resampling and stereo WAV assembly. Fixture creation and oracle
+verification are outside the processing time. Every process has a timeout and an
+owned process group; interruption kills only owned groups. Temporary files and
+the compiled binary are removed on exit.
+
+The resampler updates soft compensation without resetting at calibration points.
+It flushes and resets at explicit gaps. Its source coverage must be consecutive
+and output ranges must not overlap. These restrictions are prototype limits, not
+new application policies. Endpoint rounding is bounded to two samples; a larger
+error fails the run. Exact file duration, channel identity, marker timing within
+four milliseconds, silence inside gaps, tone continuity at calibration boundaries,
+and unchanged original hashes are assertions. The stand also rejects malformed
+coverage and truncated input, and exercises owned-process timeout cleanup.
+
+`RESAMPLER_RESULT` reports total and per-stage wall time, child CPU time, the
+largest individual child RSS, and alignment results. CPU/RSS use macOS
+`/usr/bin/time` for FFmpeg and `getrusage` for the native prototype. They exclude
+the Node orchestrator and are not a whole-machine battery measurement. Processes
+run sequentially. The first prototype used native-only RSS; preserve report
+fields when comparing different versions of the stand.
+
+The prototype uses intermediate float PCM files, roughly one GiB per hour at
+the peak, plus original Opus. It does not exercise the application database,
+alignment-validity checks, multiple saved epochs, overlapping mappings, device
+generation changes without gaps, other provider layouts, or packaged delivery.
+Passing it validates the experiment, not production readiness or speech quality.

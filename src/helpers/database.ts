@@ -39,6 +39,7 @@ import {
   meetingProcessingConfigErrorSchema,
   MEETING_ASR_GATE_MS,
   meetingRecordingIdSchema,
+  meetingRunAudioPartIds,
   meetingRecordingConfigInputSchema,
   meetingRunArtifactSchema,
   meetingSourceSchema,
@@ -250,6 +251,7 @@ interface MeetingProcessingRunDbRow {
   id: string;
   recording_id: string;
   source_recording_ids_json: string | null;
+  omitted_recording_ids_json: string;
   kind: "initial" | "reprocess" | "summary";
   source_run_id: string | null;
   bb_thread_id: string | null;
@@ -635,6 +637,10 @@ function toMeetingRunDto(row: MeetingProcessingRunDbRow): MeetingProcessingRunDt
     sourceRecordingIds: row.source_recording_ids_json
       ? (JSON.parse(row.source_recording_ids_json) as string[])
       : [row.recording_id],
+    hasExplicitAudioParts: row.source_recording_ids_json !== null,
+    omittedRecordingIds: z
+      .array(meetingRecordingIdSchema)
+      .parse(JSON.parse(row.omitted_recording_ids_json)),
     kind: row.kind,
     sourceRunId: row.source_run_id,
     bbThreadId: row.bb_thread_id,
@@ -996,6 +1002,7 @@ export class DatabaseManager {
           id TEXT PRIMARY KEY,
           recording_id TEXT NOT NULL REFERENCES meeting_recordings(id) ON DELETE CASCADE,
           source_recording_ids_json TEXT,
+          omitted_recording_ids_json TEXT NOT NULL DEFAULT '[]',
           kind TEXT NOT NULL CHECK(kind IN ('initial', 'reprocess', 'summary')),
           source_run_id TEXT REFERENCES meeting_processing_runs(id) ON DELETE SET NULL,
           bb_thread_id TEXT,
@@ -1362,6 +1369,12 @@ export class DatabaseManager {
       if (!runColumns.some((column) => column.name === "source_recording_ids_json")) {
         this.sql.exec(
           "ALTER TABLE meeting_processing_runs ADD COLUMN source_recording_ids_json TEXT"
+        );
+      }
+
+      if (!runColumns.some((column) => column.name === "omitted_recording_ids_json")) {
+        this.sql.exec(
+          "ALTER TABLE meeting_processing_runs ADD COLUMN omitted_recording_ids_json TEXT NOT NULL DEFAULT '[]'"
         );
       }
 
@@ -2251,13 +2264,12 @@ export class DatabaseManager {
       );
 
       const runId = randomUUID();
-      const status = config === null || noAudioError || input.errorCode ? "blocked" : "pending";
-      const errorCode = noAudioError ?? input.errorCode ?? configError?.code ?? null;
+      const status = config === null || noAudioError ? "blocked" : "pending";
+      const errorCode = noAudioError ?? configError?.code ?? null;
 
-      const retryAt =
-        !noAudioError && !input.errorCode
-          ? (input.processingNotBefore ?? new Date(Date.now() + MEETING_ASR_GATE_MS).toISOString())
-          : null;
+      const retryAt = !noAudioError
+        ? (input.processingNotBefore ?? new Date(Date.now() + MEETING_ASR_GATE_MS).toISOString())
+        : null;
 
       const transcription = config?.transcription;
 
@@ -2412,7 +2424,7 @@ export class DatabaseManager {
 
       this.sql
         .prepare(
-          "INSERT INTO meeting_processing_runs (id, recording_id, source_recording_ids_json, kind, source_run_id, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code, retry_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT INTO meeting_processing_runs (id, recording_id, source_recording_ids_json, omitted_recording_ids_json, kind, source_run_id, provider, model, config_json, config_error_code, config_error_message_key, stage, status, error_code, retry_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .run(
           runId,
@@ -2423,6 +2435,7 @@ export class DatabaseManager {
                   JSON.parse(sourceRun.source_recording_ids_json ?? JSON.stringify([recordingId]))
               : sourceRecordingIds
           ),
+          sourceRun ? sourceRun.omitted_recording_ids_json : "[]",
           input.kind,
           sourceRun?.id ?? null,
           provider,
@@ -2597,6 +2610,29 @@ export class DatabaseManager {
       );
 
     return { success: result.changes > 0 };
+  }
+
+  setMeetingRunOmittedRecordings(id: string, ids: string[]): boolean {
+    meetingRecordingIdSchema.parse(id);
+    const omitted = z.array(meetingRecordingIdSchema).parse(ids);
+    const run = this.getMeetingProcessingRun(id);
+
+    if (!run || run.status !== "running" || run.stage !== "prepare" || run.hasRawProviderResponse)
+      return false;
+
+    if (
+      new Set(omitted).size !== omitted.length ||
+      omitted.some((part) => !run.sourceRecordingIds.includes(part))
+    )
+      throw new Error("Invalid omitted meeting audio parts");
+
+    const result = this.sql
+      .prepare(
+        "UPDATE meeting_processing_runs SET omitted_recording_ids_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND stage = 'prepare' AND status = 'running' AND raw_response_path IS NULL"
+      )
+      .run(JSON.stringify(omitted), id);
+
+    return result.changes === 1;
   }
 
   setMeetingRunArtifact(id: string, artifact: MeetingRunArtifact): SuccessResult {
@@ -3150,11 +3186,11 @@ export class DatabaseManager {
         )
           return false;
 
-        const observations = run.sourceRecordingIds.flatMap((id) =>
+        const observations = meetingRunAudioPartIds(run).flatMap((id) =>
           this.listMeetingPlatformObservations(id)
         );
 
-        const anchors = run.sourceRecordingIds.flatMap((id) =>
+        const anchors = meetingRunAudioPartIds(run).flatMap((id) =>
           this.listMeetingAudioClockAnchors(id)
         );
 

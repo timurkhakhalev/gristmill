@@ -279,6 +279,8 @@ function makePreview(scenario: NotesDebugScenario) {
     id: RUN_ID,
     recordingId: RECORDING_ID,
     sourceRecordingIds: [RECORDING_ID, SECOND_RECORDING_ID],
+    hasExplicitAudioParts: true,
+    omittedRecordingIds: [],
     kind: "initial",
     sourceRunId: null,
     bbThreadId: null,

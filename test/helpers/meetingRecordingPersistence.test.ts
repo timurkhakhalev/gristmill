@@ -297,3 +297,22 @@ test("failed file deletion keeps a durable intent and retries successfully after
     reopened.close();
   }
 });
+
+test("omission metadata migrates existing runs without changing their audio selection", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const note = db.saveNote("Migration", "Original notes", "meeting").note!;
+  const recording = db.createMeetingRecording(note.id, { config: null });
+  db.createMeetingRecordingEpoch(recording.id, "mic", 0, 1, 0, 0);
+  db.updateMeetingRecordingEpochRecovery(recording.id, "mic", 0, { frameCount: 2, ignoredTrailingBytes: 0 });
+  const { initialRun } = db.finalizeMeetingRecording(recording.id, { captureState: "ready", endedAt: new Date().toISOString() });
+  db.db.exec("ALTER TABLE meeting_processing_runs DROP COLUMN omitted_recording_ids_json");
+  db.close();
+  const reopened = new DatabaseManager();
+  try {
+    const run = reopened.getMeetingProcessingRun(initialRun.id)!;
+    assert.deepEqual(run.omittedRecordingIds, []);
+    assert.deepEqual(run.sourceRecordingIds, [recording.id]);
+    assert.equal(reopened.getNote(note.id)!.content, "Original notes");
+  } finally { reopened.close(); }
+});

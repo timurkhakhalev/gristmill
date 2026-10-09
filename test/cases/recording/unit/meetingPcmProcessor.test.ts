@@ -8,7 +8,7 @@ const path: typeof import("node:path") = require("node:path");
 
 const vm: typeof import("node:vm") = require("node:vm");
 
-test("microphone gate counts muted render frames without sending, then sends at the real unmute frame", () => {
+function processorHarness() {
   const pipeline = fs.readFileSync(
     path.join(__dirname, "../../../../src/helpers/meetingAudioPipeline.ts"),
     "utf8"
@@ -57,6 +57,11 @@ test("microphone gate counts muted render frames without sending, then sends at 
     processorOptions: { gateClosed: false, epochIndex: 0, sourceGeneration: 1 },
   });
 
+  return { processor, sent, setFrame: (frame: number) => { currentFrame = frame; } };
+}
+
+test("microphone gate counts muted render frames without sending, then sends at the real unmute frame", () => {
+  const { processor, sent, setFrame } = processorHarness();
   const chunks = () => sent.filter((message) => message.type === "chunk");
   const loud = new Float32Array(2400).fill(0.5);
   const audibleOutput = new Float32Array(2400);
@@ -65,9 +70,9 @@ test("microphone gate counts muted render frames without sending, then sends at 
   assert.equal(sent[0].renderStartFrame, 0);
   assert.equal(sent[0].sourceGeneration, 1);
   assert.equal(audibleOutput[0], 0.5);
-  processor.port.onmessage?.({ data: { type: "ack", sequence: 0 } });
+  processor.port.onmessage?.({ data: { type: "ack", sequence: 0, epochIndex: 0 } });
 
-  currentFrame = 2400;
+  setFrame(2400);
   processor.port.onmessage?.({
     data: {
       type: "set-gate",
@@ -84,7 +89,7 @@ test("microphone gate counts muted render frames without sending, then sends at 
   assert.equal(muteAck.effectiveMuted, true);
   assert.equal(muteAck.boundaryRenderFrame, 2400);
   assert.equal(muteAck.lastSequence, 0);
-  currentFrame = 7200;
+  setFrame(7200);
   const mutedOutput = new Float32Array(2400).fill(1);
   assert.equal(processor.process([[loud]], [[mutedOutput]]), true);
   assert.equal(
@@ -93,7 +98,7 @@ test("microphone gate counts muted render frames without sending, then sends at 
   );
   assert.equal(chunks().length, 1);
 
-  currentFrame = 9600;
+  setFrame(9600);
   processor.port.onmessage?.({
     data: {
       type: "set-gate",
@@ -120,7 +125,7 @@ test("microphone gate counts muted render frames without sending, then sends at 
   assert.equal(chunks()[1].sampleOffset, 0);
   assert.equal(resumedOutput[0], 0.5);
 
-  currentFrame = 12000;
+  setFrame(12000);
   assert.equal(processor.process([[new Float32Array([0.25])]], [[new Float32Array(1)]]), true);
   processor.port.onmessage?.({
     data: {
@@ -153,4 +158,29 @@ test("microphone gate counts muted render frames without sending, then sends at 
   assert.equal(tail.buffer.byteLength, 2);
   assert.equal(flushed.lastSequence, 1);
   assert.equal(processor.process([[]], [[]]), false);
+});
+
+
+test("128-frame render quanta keep 100ms packets contiguous", () => {
+  const { processor, sent, setFrame } = processorHarness();
+  for (let i = 0; i < 40; i++) {
+    setFrame(i * 128);
+    assert.equal(processor.process([[new Float32Array(128)]], [[new Float32Array(128)]]), true);
+  }
+  const chunks = sent.filter((message) => message.type === "chunk");
+  assert.deepEqual(chunks.map((message) => [message.sequence, message.sampleOffset, message.renderStartFrame]), [[0, 0, 0], [1, 2400, 2400]]);
+});
+
+test("a forward render gap saves the buffered tail and continues in a distinct epoch", () => {
+  const { processor, sent, setFrame } = processorHarness();
+  assert.equal(processor.process([[new Float32Array(128)]], [[new Float32Array(128)]]), true);
+  setFrame(256);
+  assert.equal(processor.process([[new Float32Array(2400)]], [[new Float32Array(2400)]]), true);
+  assert.deepEqual(sent.map((message) => message.type), ["chunk", "source-gap", "chunk"]);
+  const chunks = sent.filter((message) => message.type === "chunk");
+  assert.deepEqual(chunks.map((message) => [message.epochIndex, message.sequence, message.sampleOffset, message.renderStartFrame, message.buffer.byteLength]), [[0, 0, 0, 0, 256], [1, 0, 0, 256, 4800]]);
+  processor.port.onmessage?.({ data: { type: "ack", sequence: 0, epochIndex: 0 } });
+  setFrame(256 + 2400 + 240000);
+  assert.equal(processor.process([[new Float32Array(128)]], [[new Float32Array(128)]]), false);
+  assert.equal(sent.at(-1)!.code, "capture-ack-timeout", "the old epoch ACK must not acknowledge the new epoch's sequence zero");
 });

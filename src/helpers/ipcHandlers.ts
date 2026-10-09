@@ -53,6 +53,7 @@ import {
   type WebContents,
 } from "electron";
 import path from "path";
+import { meetingRunAudioPartIds } from "../contracts/meetingRecording.js";
 import fs from "fs";
 import crypto from "crypto";
 import debugLogger from "./debugLogger.js";
@@ -945,9 +946,9 @@ export class IPCHandlers {
           let leased = false;
 
           try {
-            const sources = currentRun?.sourceRecordingIds.map((id) =>
-              database.getMeetingRecording(id)
-            ) ?? [currentRecording];
+            const sources = currentRun
+              ? meetingRunAudioPartIds(currentRun).map((id) => database.getMeetingRecording(id))
+              : [currentRecording];
 
             if (sources.some((source) => !source || source.audioState !== "available"))
               throw new Error("meeting-audio-part-unavailable");
@@ -1061,7 +1062,7 @@ export class IPCHandlers {
           try {
             if (!fs.existsSync(sourcePath)) {
               const sources = latestRun
-                ? latestRun.sourceRecordingIds.map((id) => database.getMeetingRecording(id))
+                ? meetingRunAudioPartIds(latestRun).map((id) => database.getMeetingRecording(id))
                 : [latestRecording];
 
               if (sources.some((source) => !source || source.audioState !== "available"))

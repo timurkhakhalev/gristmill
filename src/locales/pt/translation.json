@@ -2253,6 +2253,11 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "omittedPart": "Ignorada",
+    "noUsableAudio": "Não há áudio para transcrever",
+    "noUsableAudioReason": "Nenhum som foi salvo nesta gravação.",
+    "partialAudioResult": "Áudio disponível transcrito",
+    "partialAudioResultDescription": "Alguns trechos podem estar ausentes no resultado. As gravações originais são mantidas.",
     "platformName": "Zoom",
     "platformNameHint": "Nome identificado no {{platform}}. Clique para alterar.",
     "platformEvidenceUnavailable": "Os dados de quem fala no Zoom / Google Meet estão incompletos. O áudio e a transcrição são preservados.",
@@ -2381,7 +2386,11 @@
       "summary": "Falha no resumo",
       "other": "Falha no processamento"
     },
-    "failedReason": "Seu áudio está salvo. Verifique a conexão e a chave de API e tente novamente.",
+    "audioAlignmentMissing": "Não foi possível preparar a gravação",
+    "audioAlignmentMissingOnlyPartReason": "Seu áudio está salvo, mas não pôde ser preparado para a transcrição. Nenhum áudio original foi excluído.",
+    "captureFailed": "Gravação interrompida",
+    "captureFailedReason": "Seu áudio está salvo, mas não foi possível transcrever esta gravação.",
+    "failedReason": "Seu áudio está salvo. O processamento falhou. Tente novamente.",
     "progress": {
       "pending": "Aguardando o início.",
       "running": "Isso pode levar alguns minutos. Você pode continuar escrevendo notas."

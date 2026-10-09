@@ -28,6 +28,7 @@ Check selection policy lives in [quality steering](../steerings/quality.md); com
 | `native`      | GUI, Swift or native helpers, or OS process integration                  |
 
 - Classification is for each file. For mixed files, use the stronger requirement.
+- On macOS, a selection with native tests runs `compile:native` before the tests. The build checks cached helpers and compiles missing or changed binaries. A failed helper build stops test execution.
 - A unit selection gives a fast development loop. It does not replace the integration, type or native checks that the changed behavior needs.
 - For a local change, start with the least expensive related kind. Before completion, add the checks that the scope table requires.
 - For public contract changes, include type and integration checks for consumers.
@@ -50,6 +51,24 @@ pnpm test --domain calendar --domain notes
 - Unknown locations and stale, duplicate or invalid registrations fail before runtime preparation.
 - Mark consumers of compiled main and preload output with `buildMain: true`. The runner builds one time if a selected test needs it.
 - Use narrow patterns only for tests with the same domain and environment contract.
+
+## Real Electron capture path
+
+```sh
+pnpm run build:main
+node test/benchmarks/meeting-capture.mts e9e5a37ae
+node test/benchmarks/meeting-capture.mts
+node test/benchmarks/meeting-capture.mts --soak-seconds=3600
+node test/benchmarks/meeting-capture.mts --microphone
+```
+
+This fixture sends a synthetic tone through real Web Audio, the capture pipeline, Electron IPC, SQLite and FFmpeg. It uses a temporary profile and no microphone or provider. Both synthetic sources use the renderer path; it does not exercise the native system-audio helper or physical clock calibration.
+
+The `--microphone` mode checks one Start/Stop with the physical microphone and a synthetic system track. It runs only if Electron already has microphone permission; it does not request a permission change. It uses the same temporary profile and does not call a provider. This mode does not check the native system-audio helper.
+
+The Git ref replaces only `meetingAudioPipeline.ts`. Use a revision with the old packet-ordering defect to reproduce that failure. The default run checks repeated Start/Stop, mute/unmute, and 1, 3 and 6 second ACK or renderer stalls. A stall beyond the five-second buffer must report overflow and retain accepted audio. Short stalls must drain. A fresh Web Audio graph settles its render clock after the first quantum in this fixture. Capture preserves the short initial epoch and the explicit startup gap. If the first epoch is shorter than one packet and the gap is at most one packet, normal Start/Stop must finish as ready. Later or larger gaps remain incomplete.
+
+The report includes write and end-to-end ACK latency, maximum queued frames, process CPU and memory, and saved frame counts. It also decodes the longest epoch of each source and checks its frame count and audible signal. The soak option records in real time and prints progress every 30 seconds. Its timeout is the selected duration plus two minutes. Temporary profiles retain only the synthetic audio and measurements for inspection.
 
 ## Compiler and renderer fixtures
 

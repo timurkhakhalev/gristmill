@@ -2244,6 +2244,15 @@
     }
   },
   "meetingResults": {
+    "omittedPart": "Skipped",
+    "noUsableAudio": "No audio to transcribe",
+    "noUsableAudioReason": "No sound was saved in this recording.",
+    "audioAlignmentMissing": "Could not prepare the recording",
+    "audioAlignmentMissingOnlyPartReason": "Your audio is saved, but it could not be prepared for transcription. None of the original audio was deleted.",
+    "captureFailed": "Recording was interrupted",
+    "captureFailedReason": "Your audio is saved, but this recording could not be transcribed.",
+    "partialAudioResult": "Available audio transcribed",
+    "partialAudioResultDescription": "Some fragments may be missing from the result. The original recordings are kept.",
     "platformName": "Zoom",
     "platformNameHint": "Name matched from {{platform}}. Click the name to change it.",
     "platformEvidenceUnavailable": "Call speaker evidence is incomplete. Audio and transcript are preserved.",
@@ -2372,7 +2381,7 @@
       "summary": "Summary failed",
       "other": "Processing failed"
     },
-    "failedReason": "Your audio is saved. Check your connection and API key, then retry.",
+    "failedReason": "Your audio is saved. Processing failed; try again.",
     "progress": {
       "pending": "Waiting to start.",
       "running": "This can take a few minutes. You can keep writing notes."

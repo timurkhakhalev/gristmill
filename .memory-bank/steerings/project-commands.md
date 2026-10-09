@@ -42,6 +42,7 @@ Run all commands from the repository root.
 ### Runner behavior
 
 - Executed selections prepare SQLite.
+- On macOS, a selection with native tests runs `compile:native` one time before test execution. Missing or changed helper binaries are built; a compilation failure stops the run.
 - The runner runs `build:main` one time, only if a selected test needs compiled output. Combine checks in one call. Do not run a separate main build immediately before, when the plan includes it.
 - On macOS, tests use Electron Node mode. Linux CI uses Node.
 - Ordinary files use a maximum of two isolated processes. Compiler, native and marked shared-resource files run in a later phase with one worker.

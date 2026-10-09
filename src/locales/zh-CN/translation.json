@@ -2253,6 +2253,11 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "omittedPart": "已跳过",
+    "noUsableAudio": "没有可转录的音频",
+    "noUsableAudioReason": "此录音未保存任何声音。",
+    "partialAudioResult": "可用音频已转录",
+    "partialAudioResultDescription": "结果中可能缺少部分片段。原始录音已保留。",
     "platformName": "Zoom",
     "platformNameHint": "从 {{platform}} 匹配的姓名。点击可修改。",
     "platformEvidenceUnavailable": "Zoom / Google Meet 发言者信息不完整。音频和转录已保留。",
@@ -2381,7 +2386,11 @@
       "summary": "摘要生成失败",
       "other": "处理失败"
     },
-    "failedReason": "音频已保存。请检查网络连接和 API 密钥，然后重试。",
+    "audioAlignmentMissing": "无法准备录音",
+    "audioAlignmentMissingOnlyPartReason": "音频已保存，但无法为转录做好准备。原始音频未被删除。",
+    "captureFailed": "录音已中断",
+    "captureFailedReason": "音频已保存，但无法转录此录音。",
+    "failedReason": "音频已保存。处理失败，请重试。",
     "progress": {
       "pending": "等待开始。",
       "running": "这可能需要几分钟。你可以继续写笔记。"

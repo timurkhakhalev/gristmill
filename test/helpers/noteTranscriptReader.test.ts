@@ -46,6 +46,7 @@ function run(id: string, sources: string[], extra: Record<string, unknown> = {})
   return {
     id,
     sourceRecordingIds: sources,
+    omittedRecordingIds: [],
     kind: "reprocess",
     sourceRunId: null,
     status: "complete",
@@ -510,4 +511,21 @@ test("output provenance includes independent groups and deduplicates combined co
 
   assert.deepEqual(combined.sources, [{ runId: "combined", recordingIds: [A, B] }]);
   assert.equal(combined.transcript.text, "a b");
+});
+
+test("automatic omissions preserve transcript timing and cannot make a partial meeting ready", () => {
+  const C = "00000000-0000-4000-8000-00000000000c";
+  const parts = [
+    part({ id: A, group: G1, startMin: 0, minutes: 10, run: "combined" }),
+    part({ id: B, group: G1, startMin: 10, minutes: 1, state: "incomplete", run: null }),
+    part({ id: C, group: G1, startMin: 11, minutes: 5, run: null }),
+  ];
+  const output = readNoteTranscriptOutput(deps(parts, [run("combined", [A, B, C], { omittedRecordingIds: [B] })], {
+    combined: { text: "available", segments: [{ text: "available", start: 601, end: 602 }] },
+  }), 42);
+  assert.equal(output.transcript.status, "partial");
+  assert.equal(output.transcript.timeline.duration_ms, 15 * MIN);
+  assert.equal(output.transcript.segments[0].start_ms, 601000);
+  assert.ok(output.transcript.diagnostics.includes(`part-omitted:${B}`));
+  assert.deepEqual(output.sources, [{ runId: "combined", recordingIds: [A, C] }]);
 });

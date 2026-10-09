@@ -123,6 +123,8 @@ function completeRun(): RunBundle {
       id: RUN,
       recordingId: FIRST,
       sourceRecordingIds: [FIRST, SECOND],
+      hasExplicitAudioParts: true,
+      omittedRecordingIds: [],
       kind: "reprocess",
       sourceRunId: null,
       provider: "elevenlabs",
@@ -1547,4 +1549,104 @@ test("calendar participant failure shows one toast without restarting the reques
   await ui.setCapturePhase("recording");
   assert.equal(ui.participantLoads(), 1);
   assert.equal(ui.notifications.length, 1);
+});
+
+test("an unrecoverable recording explains that audio is saved without manual repair controls", async (t: TestContext) => {
+  const failed = completeRun();
+  failed.run.status = "failed";
+  failed.run.stage = "prepare";
+  failed.run.errorCode = "audio-alignment-unavailable";
+  failed.run.omittedRecordingIds = [FIRST];
+  failed.run.sourceRecordingIds = [FIRST];
+  failed.run.hasRawProviderResponse = false;
+  failed.run.hasTranscript = false;
+  failed.run.hasSummary = false;
+  failed.transcript = undefined;
+  failed.summary = undefined;
+  const part = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed);
+  const ui = await mountPanel(t, [part]);
+  assert.match(ui.text(), /Could not prepare the recording/);
+  assert.match(ui.text(), /could not be prepared for transcription/);
+  assert.doesNotMatch(ui.text(), /connection|API key|waiting for settings/);
+  assert.equal(ui.button("meetingResults.retry"), null);
+  assert.equal(ui.button("Review audio parts"), null);
+  assert.deepEqual(ui.calls.retry, []);
+  assert.deepEqual(ui.calls.delete, []);
+});
+
+for (const errorCode of [
+  "audio-alignment-unavailable",
+  "capture-write-failed",
+  "mic-source-unavailable",
+]) {
+  test(`an unprepared saved recording offers one explicit recovery action for ${errorCode}`, async (t: TestContext) => {
+    const failed = completeRun();
+    Object.assign(failed.run, {
+      sourceRecordingIds: [FIRST],
+      omittedRecordingIds: [],
+      status: "failed",
+      stage: "prepare",
+      errorCode,
+      hasRawProviderResponse: false,
+      hasTranscript: false,
+      hasSummary: false,
+    });
+    failed.transcript = undefined;
+    failed.summary = undefined;
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed)]);
+    assert.deepEqual(ui.calls.retry, [], "opening an old error must not send audio");
+    const retry = ui.button("meetingResults.retry");
+    assert.ok(retry);
+    await ui.flush(() => (retry.props as { onPress(): void }).onPress());
+    assert.deepEqual(ui.calls.retry, [RUN]);
+    assert.deepEqual(ui.calls.delete, []);
+    assert.equal(ui.button("Review audio parts"), null);
+  });
+}
+
+test("a capture write failure does not ask the user to change provider settings", async (t: TestContext) => {
+  const failed = completeRun();
+  failed.run.status = "blocked";
+  failed.run.stage = "prepare";
+  failed.run.errorCode = "capture-write-failed";
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed, "incomplete")]);
+  assert.match(ui.text(), /Recording was interrupted/);
+  assert.doesNotMatch(ui.text(), /connection|API key|meetingResults.blocked.other/);
+});
+
+
+
+
+
+
+
+for (const scenario of ["recording", "finalizing", "unavailable", "legacy", "omitted"] as const) {
+  test(`partial-result notice distinguishes ${scenario} from an explicit omission`, async (t: TestContext) => {
+    const run = completeRun();
+    run.run.sourceRecordingIds = [FIRST];
+    run.run.hasExplicitAudioParts = scenario !== "legacy";
+    const other = recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z", null,
+      scenario === "recording" || scenario === "finalizing" ? scenario : "ready");
+    if (scenario === "unavailable") other.recording.captureErrorCode = "recording-audio-unavailable";
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run), other]);
+    if (scenario === "omitted") assert.match(ui.text(), /meetingResults.partialAudioResult/);
+    else assert.doesNotMatch(ui.text(), /meetingResults.partialAudioResult/);
+  });
+}
+
+
+
+test("automatic recovery shows the available result without exclusion or retry controls", async (t: TestContext) => {
+  const ready = completeRun();
+  ready.run.omittedRecordingIds = [SECOND];
+  const ui = await mountPanel(t, [
+    recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", ready),
+    recording(SECOND, FIRST, "2026-09-25T10:00:01.000Z", null, "incomplete"),
+  ]);
+  assert.match(ui.text(), /meetingResults.partialAudioResult/);
+  assert.match(ui.text(), /meetingResults.omittedPart/);
+  assert.doesNotMatch(ui.text(), /meetingResults.excludePart|meetingResults.includePart|Review audio parts|Audio timing/);
+  assert.equal(ui.button("meetingResults.retry"), null);
+  assert.deepEqual(ui.calls.create, [], "opening the result does not require another processing click");
+  assert.deepEqual(ui.calls.delete, []);
 });

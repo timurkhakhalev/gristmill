@@ -1,6 +1,6 @@
 import { useNoteOutput } from "../../hooks/useNoteOutput";
 import { useMeetingPlayback } from "../../hooks/useMeetingPlayback";
-import { meetingPlatformLabel } from "../../contracts/meetingRecording";
+import { meetingPlatformLabel, meetingRunAudioPartIds } from "../../contracts/meetingRecording";
 import {
   useCallback,
   useContext,
@@ -63,7 +63,11 @@ type ViewMode = "raw" | "enhanced";
 
 const TRANSCRIPT_CHUNK = 60;
 
-type RunChoice = { kind: "reprocess" | "summary"; partId?: string; generateSummary?: boolean };
+type RunChoice = {
+  kind: "reprocess" | "summary";
+  partId?: string;
+  generateSummary?: boolean;
+};
 
 export interface SummaryActionState {
   available: boolean;
@@ -599,10 +603,11 @@ export default function MeetingResultsPanel({
     recordings.find((item) => item.recording.id === displayedRun?.recordingId)?.recording.groupId ??
     latestGroup?.id;
 
-  const selectedSourceIds = displayedRun?.sourceRecordingIds ?? [];
+  const selectedSourceIds = displayedRun ? meetingRunAudioPartIds(displayedRun) : [];
+  const selectedAudioIds = selected ? meetingRunAudioPartIds(selected.run) : [];
 
   const parts =
-    selectedSourceIds.length > 1
+    selectedSourceIds.length > 0
       ? recordings
           .filter((item) => selectedSourceIds.includes(item.recording.id))
           .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt))
@@ -769,24 +774,53 @@ export default function MeetingResultsPanel({
 
   const gateActive = gateSeconds > 0 && !captureBlocksAsr;
 
-  const reprocessGroupIds = [
-    ...new Set(
-      recordings
-        .filter(
-          (part) =>
-            part.recording.audioState === "available" &&
-            ["ready", "incomplete"].includes(part.recording.captureState)
-        )
-        .map((part) => part.recording.groupId)
-    ),
-  ];
+  const processableParts = recordings.filter(
+    (part) =>
+      part.recording.audioState === "available" &&
+      ["ready", "incomplete"].includes(part.recording.captureState) &&
+      part.recording.captureErrorCode !== "recording-audio-unavailable"
+  );
+
+  const reprocessGroupIds = [...new Set(processableParts.map((part) => part.recording.groupId))];
 
   const manualAsrBlockedForGroups = (groupIds: string[]) =>
     mockGateActive ||
     captureBlocksAsr ||
     groupIds.some((groupId) => (groupAsrDeadlines.get(groupId) ?? 0) > countdownNow);
 
-  const wholeMeetingAsrBlocked = manualAsrBlockedForGroups(reprocessGroupIds);
+  const canRetryAudioPreparation = Boolean(
+    latestRun &&
+    latestRun.run.stage === "prepare" &&
+    !latestRun.run.hasRawProviderResponse &&
+    latestRun.run.omittedRecordingIds.length === 0 &&
+    [
+      "capture-write-failed",
+      "audio-write-failed",
+      "audio-alignment-unavailable",
+      "mic-source-unavailable",
+      "system-source-unavailable",
+    ].includes(latestRun.run.errorCode ?? "")
+  );
+
+  const failedAudioVersion = Boolean(
+    latestRun &&
+    !canRetryAudioPreparation &&
+    ["failed", "blocked"].includes(latestRun.run.status) &&
+    latestRun.run.stage === "prepare" &&
+    [
+      "audio-alignment-unavailable",
+      "mic-source-unavailable",
+      "system-source-unavailable",
+      "recording-audio-unavailable",
+    ].includes(latestRun.run.errorCode ?? "") &&
+    latestRun.run.sourceRecordingIds.length === processableParts.length &&
+    processableParts.every((part) => latestRun.run.sourceRecordingIds.includes(part.recording.id))
+  );
+
+  const wholeMeetingAsrBlocked =
+    failedAudioVersion ||
+    reprocessGroupIds.length === 0 ||
+    manualAsrBlockedForGroups(reprocessGroupIds);
 
   const selectedTranscriptCharacters = selected?.transcript
     ? selected.transcript.segments?.length
@@ -796,7 +830,7 @@ export default function MeetingResultsPanel({
 
   const selectedTranscriptDuration = selected
     ? recordings
-        .filter((item) => selected.run.sourceRecordingIds.includes(item.recording.id))
+        .filter((item) => selectedAudioIds.includes(item.recording.id))
         .reduce((duration, item) => duration + (item.recording.durationSeconds ?? 0), 0)
     : 0;
 
@@ -917,10 +951,7 @@ export default function MeetingResultsPanel({
   };
 
   /** Starts a run with the settings-selected providers; no per-run picker. */
-  const openRun = (
-    kind: "reprocess" | "summary",
-    target: { partId?: string; generateSummary?: boolean } = {}
-  ) => {
+  const openRun = (kind: "reprocess" | "summary", target: Omit<RunChoice, "kind"> = {}) => {
     if (
       kind === "summary" &&
       !previewRecordings &&
@@ -989,12 +1020,7 @@ export default function MeetingResultsPanel({
 
     const ids = choice.partId
       ? [choice.partId]
-      : recordings
-          .filter(
-            (part) =>
-              part.recording.audioState === "available" &&
-              ["ready", "incomplete"].includes(part.recording.captureState)
-          )
+      : processableParts
           .sort((a, b) => a.recording.startedAt.localeCompare(b.recording.startedAt))
           .map((part) => part.recording.id);
 
@@ -1180,7 +1206,7 @@ export default function MeetingResultsPanel({
 
   const platformEvidenceIncomplete = recordings.some(
     (item) =>
-      selected?.run.sourceRecordingIds.includes(item.recording.id) &&
+      selectedAudioIds.includes(item.recording.id) &&
       item.recording.platformCoverage?.state === "incomplete"
   );
 
@@ -1226,9 +1252,9 @@ export default function MeetingResultsPanel({
             const partBoundaries: number[] = [];
             let cumulative = 0;
 
-            for (let i = 0; i < selected.run.sourceRecordingIds.length; i++) {
+            for (let i = 0; i < selectedAudioIds.length; i++) {
               if (i > 0) partBoundaries.push(cumulative);
-              const id = selected.run.sourceRecordingIds[i];
+              const id = selectedAudioIds[i];
               const part = parts.find((item) => item.recording.id === id);
               cumulative += part?.recording.durationSeconds ?? 0;
             }
@@ -1239,7 +1265,7 @@ export default function MeetingResultsPanel({
               ...allSegments.slice(0, transcriptLimit).map((segment, index) => {
                 const isPartStart = partBoundaries.includes(segment.start);
                 const partIndex = isPartStart ? partBoundaries.indexOf(segment.start) : -1;
-                const partId = isPartStart ? selected.run.sourceRecordingIds[partIndex + 1] : null;
+                const partId = isPartStart ? selectedAudioIds[partIndex + 1] : null;
 
                 const partRecord = partId
                   ? parts.find((item) => item.recording.id === partId)?.recording
@@ -1280,7 +1306,7 @@ export default function MeetingResultsPanel({
                         onClick={() => {
                           let remaining = segment.start;
 
-                          for (const id of selected.run.sourceRecordingIds) {
+                          for (const id of selectedAudioIds) {
                             const part = parts.find((item) => item.recording.id === id);
 
                             if (!part) continue;
@@ -1636,6 +1662,11 @@ export default function MeetingResultsPanel({
                                     tr={tr}
                                   />
                                 )}
+                                {latestRun?.run.omittedRecordingIds.includes(part.recording.id) && (
+                                  <span className="text-xs text-muted">
+                                    {t("meetingResults.omittedPart")}
+                                  </span>
+                                )}
                                 <Dropdown>
                                   <Button
                                     isIconOnly
@@ -1761,6 +1792,20 @@ export default function MeetingResultsPanel({
         </div>
       </div>
       {notice}
+      {selected?.run.hasTranscript &&
+        (selected.run.omittedRecordingIds.length > 0 ||
+          (selected.run.hasExplicitAudioParts &&
+            processableParts.some(
+              (part) =>
+                !selectedAudioIds.includes(part.recording.id) ||
+                part.recording.captureState === "incomplete"
+            ))) && (
+          <NoteNotice
+            status="warning"
+            title={t("meetingResults.partialAudioResult")}
+            description={t("meetingResults.partialAudioResultDescription")}
+          />
+        )}
       {!previewRecordings &&
         selected?.run.speakerNamingErrorCode === "calendar-participants-invalid" && (
           <NoteNotice
@@ -1867,6 +1912,18 @@ export default function MeetingResultsPanel({
         !(latestRun.run.status === "pending" && (captureBlocksAsr || gateActive)) &&
         (() => {
           const { status, stage, errorCode } = latestRun.run;
+
+          const missingAlignment = [
+            "audio-alignment-unavailable",
+            "mic-source-unavailable",
+            "system-source-unavailable",
+          ].includes(errorCode ?? "");
+
+          const noAudio = errorCode === "recording-audio-unavailable";
+
+          const captureFailed =
+            errorCode === "capture-write-failed" || errorCode === "audio-write-failed";
+
           const stageKey = stage === "asr" || stage === "summary" ? stage : "other";
 
           const needsConfig =
@@ -1923,33 +1980,68 @@ export default function MeetingResultsPanel({
                   {t("meetingResults.updateRunSettings")}
                 </Button>
               )}
-              {(status === "failed" || (status === "blocked" && !needsConfig)) && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  isPending={busy}
-                  onPress={() =>
-                    void runTask(async () => {
-                      if (previewRecordings) {
-                        notify("Mock retry queued in memory");
+              {((!missingAlignment && !captureFailed) || canRetryAudioPreparation) &&
+                !noAudio &&
+                (status === "failed" || (status === "blocked" && !needsConfig)) && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    isPending={busy}
+                    onPress={() =>
+                      void runTask(async () => {
+                        if (previewRecordings) {
+                          notify("Mock retry queued in memory");
 
-                        return;
-                      }
+                          return;
+                        }
 
-                      const result = await window.electronAPI.meetingProcessingRetryRun(
-                        latestRun.run.id
-                      );
+                        const result = await window.electronAPI.meetingProcessingRetryRun(
+                          latestRun.run.id
+                        );
 
-                      if (!result.success)
-                        throw new Error(result.error || t("meetingResults.retryError"));
-                    })
-                  }
-                >
-                  {t("meetingResults.retry")}
-                </Button>
-              )}
+                        if (!result.success)
+                          throw new Error(result.error || t("meetingResults.retryError"));
+                      })
+                    }
+                  >
+                    {t("meetingResults.retry")}
+                  </Button>
+                )}
             </>
           );
+
+          if (noAudio)
+            return (
+              <NoteNotice
+                status="warning"
+                title={tr("noUsableAudio", "No audio to transcribe")}
+                description={tr("noUsableAudioReason", "No sound was saved in this recording.")}
+              />
+            );
+
+          if (missingAlignment || captureFailed)
+            return (
+              <NoteNotice
+                status="danger"
+                title={
+                  missingAlignment
+                    ? tr("audioAlignmentMissing", "Could not prepare the recording")
+                    : tr("captureFailed", "Recording was interrupted")
+                }
+                description={
+                  missingAlignment
+                    ? tr(
+                        "audioAlignmentMissingOnlyPartReason",
+                        "Your audio is saved, but it could not be prepared for transcription. None of the original audio was deleted."
+                      )
+                    : tr(
+                        "captureFailedReason",
+                        "Your audio is saved, but this recording could not be transcribed."
+                      )
+                }
+                actions={actions}
+              />
+            );
 
           if (status === "blocked")
             return (

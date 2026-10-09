@@ -2276,6 +2276,11 @@
     }
   },
   "meetingResults": {
+    "omittedPart": "تم تخطيها",
+    "noUsableAudio": "لا يوجد صوت للتفريغ",
+    "noUsableAudioReason": "لم يُحفظ أي صوت في هذا التسجيل.",
+    "partialAudioResult": "تم تفريغ الصوت المتاح",
+    "partialAudioResultDescription": "قد تكون بعض المقاطع مفقودة من النتيجة. التسجيلات الأصلية محفوظة.",
     "platformName": "Zoom",
     "platformNameHint": "تمت مطابقة الاسم من {{platform}}. انقر لتغييره.",
     "platformEvidenceUnavailable": "بيانات المتحدثين في Zoom / Google Meet غير مكتملة. تم الاحتفاظ بالصوت والنص.",
@@ -2404,7 +2409,11 @@
       "summary": "فشل الملخص",
       "other": "فشلت المعالجة"
     },
-    "failedReason": "تم حفظ الصوت. تحقق من الاتصال ومفتاح API، ثم أعد المحاولة.",
+    "audioAlignmentMissing": "تعذر إعداد التسجيل",
+    "audioAlignmentMissingOnlyPartReason": "تم حفظ الصوت، لكن تعذر إعداده للتفريغ النصي. لم يتم حذف أي صوت أصلي.",
+    "captureFailed": "انقطع التسجيل",
+    "captureFailedReason": "تم حفظ الصوت، لكن تعذر تفريغ هذا التسجيل.",
+    "failedReason": "تم حفظ الصوت. فشلت المعالجة. حاول مرة أخرى.",
     "progress": {
       "pending": "في انتظار البدء.",
       "running": "قد يستغرق ذلك بضع دقائق. يمكنك متابعة كتابة الملاحظات."

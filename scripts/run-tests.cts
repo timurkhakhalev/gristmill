@@ -285,6 +285,13 @@ async function runTests(
     const env: NodeJS.ProcessEnv = { ...process.env, REQUIRE_DB_TESTS: "1" };
     delete env.ELECTRON_RUN_AS_NODE;
 
+    if (platform === "darwin" && plan.tests.some((test) => test.kind === "native")) {
+      const code = await run("pnpm", ["run", "compile:native"], env, plan.options.verbose);
+      reportPhase("compile:native");
+
+      if (code !== 0 || interrupted) return interrupted || code;
+    }
+
     if (plan.buildMain) {
       const code = await run("pnpm", ["run", "build:main"], env, plan.options.verbose);
       reportPhase("build:main");

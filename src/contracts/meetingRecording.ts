@@ -382,6 +382,8 @@ export const meetingProcessingRunDtoSchema = z.object({
   id: meetingRecordingIdSchema,
   recordingId: meetingRecordingIdSchema,
   sourceRecordingIds: z.array(meetingRecordingIdSchema).min(1),
+  omittedRecordingIds: z.array(meetingRecordingIdSchema),
+  hasExplicitAudioParts: z.boolean(),
   kind: z.enum(["initial", "reprocess", "summary"]),
   sourceRunId: meetingRecordingIdSchema.nullable(),
   bbThreadId: z.string().nullable(),
@@ -403,6 +405,12 @@ export const meetingProcessingRunDtoSchema = z.object({
 });
 
 export type MeetingProcessingRunDto = z.infer<typeof meetingProcessingRunDtoSchema>;
+
+export function meetingRunAudioPartIds(
+  run: Pick<MeetingProcessingRunDto, "sourceRecordingIds" | "omittedRecordingIds">
+): string[] {
+  return run.sourceRecordingIds.filter((id) => !run.omittedRecordingIds.includes(id));
+}
 
 export const MEETING_ASR_GATE_MS = 15_000;
 

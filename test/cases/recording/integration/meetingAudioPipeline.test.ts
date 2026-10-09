@@ -196,3 +196,29 @@ test("pipeline drain propagates a worklet failure and disconnects the processor"
     ["mic-input-gap"]
   );
 });
+
+test("a render gap preserves serial writes and epoch-qualified ACKs", async (t) => {
+  const pending = deferred<Awaited<ReturnType<Send>>>();
+  t.after(() => pending.resolve({ success: true, sequence: 0 }));
+  const epochs: number[] = [];
+  const h = await setup(t, async (_buffer, _source, _session, packet) => {
+    epochs.push(packet!.epochIndex);
+    return epochs.length === 1 ? pending.promise : { success: true, sequence: 0 };
+  });
+  h.chunk();
+  h.processor.receive({ type: "source-gap", epochIndex: 3 });
+  h.chunk(0, 3);
+  await new Promise(setImmediate);
+  assert.deepEqual(epochs, [2], "the new epoch must wait for the old epoch's write");
+  pending.resolve({ success: true, sequence: 0 });
+  await new Promise(setImmediate);
+  assert.deepEqual(epochs, [2, 3]);
+  assert.deepEqual(h.messages.filter((message) => message.type === "ack"), [
+    { type: "ack", sequence: 0, epochIndex: 2 },
+    { type: "ack", sequence: 0, epochIndex: 3 },
+  ]);
+  assert.deepEqual(h.failures, []);
+  const stopping = flushAndDisconnectProcessor(h.pipeline.processor);
+  h.processor.receive({ type: "flush-complete", lastSequence: 0, boundaryRenderFrame: 12000 });
+  assert.equal(await stopping, 0);
+});

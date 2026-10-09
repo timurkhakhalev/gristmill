@@ -10,6 +10,7 @@ import {
   meetingLlmSourceSnapshotSchema,
   type MeetingPlatform,
   meetingProcessingConfigSchema,
+  meetingRunAudioPartIds,
   type MeetingProcessingConfig,
   type MeetingProcessingResultDto,
   type MeetingProcessingRunDto,
@@ -115,6 +116,7 @@ export interface MeetingProcessingDatabase {
     }
   ): MeetingProcessingRunDto;
   claimMeetingProcessingRun(id: string, now?: string): boolean;
+  setMeetingRunOmittedRecordings(id: string, ids: string[]): boolean;
   setMeetingProcessingRunState(
     id: string,
     update: {
@@ -980,6 +982,48 @@ export class MeetingProcessingWorker {
     }
   }
 
+  private findUnusableAudioParts(
+    run: MeetingProcessingRunDto,
+    recording: MeetingRecordingDto
+  ): Array<{ recordingId: string; code: string }> {
+    return run.sourceRecordingIds.flatMap((id) => {
+      const part = this.deps.database.getMeetingRecording(id);
+
+      if (!part || part.noteId !== recording.noteId || part.audioState !== "available")
+        throw new MeetingProcessingFailure("audio-part-unavailable", "blocked");
+
+      try {
+        const epochs = this.deps.database.listMeetingRecordingEpochs(id);
+        this.intentionalEmptySources(
+          part,
+          epochs,
+          this.deps.database.listMeetingIntentionalIntervals(id)
+        );
+        meetingTimelineFrameCount(part, epochs);
+
+        return [];
+      } catch (error) {
+        const code = errorCodeOf(error);
+
+        if (
+          ![
+            "audio-alignment-unavailable",
+            "mic-source-unavailable",
+            "system-source-unavailable",
+          ].includes(code)
+        )
+          throw error;
+        debugLogger.warn(
+          "Saved audio part could not be prepared",
+          { recordingId: id, runId: run.id, reason: code },
+          "meeting"
+        );
+
+        return [{ recordingId: id, code }];
+      }
+    });
+  }
+
   private async prepare(
     run: MeetingProcessingRunDto,
     recording: MeetingRecordingDto,
@@ -1002,6 +1046,28 @@ export class MeetingProcessingWorker {
 
     if (config.transcription.mode === "providers" && !provider) {
       throw new MeetingProcessingFailure("unsupported-provider", "blocked");
+    }
+
+    // A cached provider response belongs to the previously saved audio selection.
+    if (!run.hasRawProviderResponse) {
+      const unusable = this.findUnusableAudioParts(run, recording);
+      const omittedRecordingIds = unusable.map((part) => part.recordingId);
+
+      if (!this.deps.database.setMeetingRunOmittedRecordings(run.id, omittedRecordingIds)) {
+        this.cancelRun(run.id, "processing-run-stale");
+
+        return;
+      }
+
+      run = { ...run, omittedRecordingIds };
+
+      if (unusable.length === run.sourceRecordingIds.length) {
+        const code = unusable[0].code;
+        throw new MeetingProcessingFailure(
+          code,
+          code === "audio-alignment-unavailable" ? "failed" : "blocked"
+        );
+      }
     }
 
     const { timeline, epochs, intentionalIntervals } = this.sourceTimeline(run, recording, true);
@@ -1507,25 +1573,23 @@ export class MeetingProcessingWorker {
     const database = this.deps.database;
 
     try {
-      const parts = run.sourceRecordingIds
+      const sourceIds = meetingRunAudioPartIds(run);
+
+      const parts = sourceIds
         .map((id) => database.getMeetingRecording(id))
         .filter((part): part is MeetingRecordingDto => !!part);
 
-      if (parts.length !== run.sourceRecordingIds.length) return;
+      if (parts.length !== sourceIds.length) return;
 
       const { partOffsets, epochs } = composeMeetingAudioParts(parts, (id) =>
         database.listMeetingRecordingEpochs(id)
       );
 
-      const observations = run.sourceRecordingIds.flatMap((id) =>
-        database.listMeetingPlatformObservations(id)
-      );
+      const observations = sourceIds.flatMap((id) => database.listMeetingPlatformObservations(id));
 
       if (!observations.length) return;
 
-      const anchors = run.sourceRecordingIds.flatMap((id) =>
-        database.listMeetingAudioClockAnchors(id)
-      );
+      const anchors = sourceIds.flatMap((id) => database.listMeetingAudioClockAnchors(id));
 
       const decisions = matchMeetingPlatformSpeakers({
         transcript,
@@ -1859,7 +1923,7 @@ export class MeetingProcessingWorker {
     const snapshot: MeetingLlmSourceSnapshot = {
       version: 1,
       sourceRunId,
-      sourceRecordingIds: [...run.sourceRecordingIds],
+      sourceRecordingIds: meetingRunAudioPartIds(run),
       meetingTitle: note.title,
       participants,
       manualNotes: note.content,
@@ -2264,7 +2328,11 @@ export class MeetingProcessingWorker {
     }
 
     // SAFETY: the guard above rejected every null/false entry before this point.
-    const parts = sources as MeetingRecordingDto[];
+    const parts = (sources as MeetingRecordingDto[]).filter(
+      (part) => !run.omittedRecordingIds.includes(part.id)
+    );
+
+    if (!parts.length) throw new MeetingProcessingFailure("audio-alignment-unavailable", "failed");
 
     if (requireAudio) {
       for (const part of parts) {

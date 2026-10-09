@@ -2253,6 +2253,11 @@
     "localPrivacy": "Notes and chat history are stored on this device. External providers receive data using your API key. There is no server sync. Current realtime recording does not guarantee permanent storage of original audio."
   },
   "meetingResults": {
+    "omittedPart": "Saltata",
+    "noUsableAudio": "Nessun audio da trascrivere",
+    "noUsableAudioReason": "Non è stato salvato alcun suono in questa registrazione.",
+    "partialAudioResult": "Audio disponibile trascritto",
+    "partialAudioResultDescription": "Alcuni passaggi potrebbero mancare nel risultato. Le registrazioni originali vengono conservate.",
     "platformName": "Zoom",
     "platformNameHint": "Nome associato da {{platform}}. Fai clic per modificarlo.",
     "platformEvidenceUnavailable": "I dati dei relatori Zoom / Google Meet sono incompleti. Audio e trascrizione sono conservati.",
@@ -2381,7 +2386,11 @@
       "summary": "Riepilogo non riuscito",
       "other": "Elaborazione non riuscita"
     },
-    "failedReason": "L'audio è salvato. Controlla la connessione e la chiave API, poi riprova.",
+    "audioAlignmentMissing": "Impossibile preparare la registrazione",
+    "audioAlignmentMissingOnlyPartReason": "L’audio è salvato, ma non è stato possibile prepararlo per la trascrizione. Nessun audio originale è stato eliminato.",
+    "captureFailed": "Registrazione interrotta",
+    "captureFailedReason": "L’audio è salvato, ma non è stato possibile trascrivere questa registrazione.",
+    "failedReason": "L’audio è salvato. L’elaborazione non è riuscita. Riprova.",
     "progress": {
       "pending": "In attesa di avvio.",
       "running": "Può richiedere qualche minuto. Puoi continuare a scrivere note."

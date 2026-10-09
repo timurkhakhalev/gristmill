@@ -5396,3 +5396,199 @@ for (const summaryOnly of [false, true]) {
     );
   });
 }
+
+test("list-for-note retains explicit versus legacy source selection", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording, run } = createFinishedRecording(db, storage, validConfig);
+  db.db.prepare("UPDATE meeting_recording_epochs SET timeline_start_frame = NULL WHERE recording_id = ? AND source = 'mic'").run(recording.id);
+  const worker = workerFor(db, storage);
+  t.after(() => worker.stop());
+  let result = worker.listForNote(recording.noteId)[0];
+  assert.equal(result.recording.id, recording.id);
+  assert.equal(result.runs[0].run.hasExplicitAudioParts, true);
+  db.db.prepare("UPDATE meeting_recording_epochs SET timeline_start_frame = 0 WHERE recording_id = ? AND source = 'mic'").run(recording.id);
+  db.db.prepare("UPDATE meeting_processing_runs SET source_recording_ids_json = NULL WHERE id = ?").run(run.id);
+  result = worker.listForNote(recording.noteId)[0];
+  assert.equal(result.runs[0].run.hasExplicitAudioParts, false);
+  assert.deepEqual(result.runs[0].run.sourceRecordingIds, [recording.id]);
+});
+
+test("listing an active recording does not read its growing alignment history", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { recording } = createFinishedRecording(db, storage, validConfig);
+  db.db.prepare("UPDATE meeting_recordings SET capture_state = 'recording', ended_at = NULL WHERE id = ?").run(recording.id);
+  const original = db.listMeetingRecordingEpochs.bind(db);
+  let reads = 0;
+  db.listMeetingRecordingEpochs = (id: string) => { reads++; return original(id); };
+  const worker = workerFor(db, storage);
+  t.after(() => worker.stop());
+  const result = worker.listForNote(recording.noteId)[0];
+  assert.equal(result.recording.durationSeconds, null);
+  assert.equal(reads, 0);
+});
+
+test("Stop automatically processes usable parts, preserves skipped audio and persists a partial result", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const note = db.saveNote("Automatic recovery", "", "meeting").note!;
+  const config = { ...validConfig, generateSummary: true };
+  const base = Date.now() - 120000;
+  const parts = [0, 1, 2].map((index) => {
+    const recording = db.createMeetingRecording(note.id, { config }, new Date(base + index * 2000).toISOString());
+    for (const source of ["mic", "system"] as const) {
+      db.createMeetingRecordingEpoch(recording.id, source, 0, 1, 0, index === 1 && source === "mic" ? null : 0);
+      savePcmEpoch(storage, recording.id, source, 0, Buffer.alloc(4800, 1));
+      db.updateMeetingRecordingEpochRecovery(recording.id, source, 0, storage.recoverEpoch(recording.id, source, 0));
+    }
+    return db.finalizeMeetingRecording(recording.id, {
+      captureState: index === 1 ? "incomplete" : "ready",
+      endedAt: new Date(base + index * 2000 + 1000).toISOString(),
+      errorCode: index === 1 ? "audio-write-failed" : null,
+      processingNotBefore: new Date(base + 10000).toISOString(),
+    });
+  });
+  const bad = parts[1].recording;
+  const rawPath = storage.getEpochFilePath(bad.id, "mic", 0);
+  const original = fs.readFileSync(rawPath);
+  const used: string[][] = [];
+  let requests = 0;
+  let summaries = 0;
+  const worker = workerFor(db, storage, {
+    mixAudio: async (recording, runId, epochs) => {
+      used.push([...new Set(epochs.map((epoch) => epoch.recordingId))]);
+      return { path: storage.getDerivedAudioPath(recording.id, runId), frameCount: 48000, durationSeconds: 2, sizeBytes: 4096 };
+    },
+    transcribeRemote: async (_request, saveRaw) => {
+      requests++;
+      await saveRaw(elevenResponse);
+      return { success: true, text: "parsed by adapter" };
+    },
+    nameSpeakers: async () => ({ speakers: [] }),
+    summarize: async () => { summaries++; return "## Summary\nAvailable discussion."; },
+  }, false);
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  const run = db.getMeetingProcessingRun(parts[2].initialRun.id)!;
+  assert.equal(run.status, "complete");
+  assert.equal(run.hasTranscript, true);
+  assert.equal(run.hasSummary, true);
+  assert.deepEqual(run.sourceRecordingIds, parts.map((part) => part.recording.id));
+  assert.deepEqual(run.omittedRecordingIds, [bad.id]);
+  assert.ok(used.length > 0);
+  assert.ok(used.every((ids) => JSON.stringify(ids) === JSON.stringify([parts[0].recording.id, parts[2].recording.id])));
+  assert.equal(requests, 2, "each usable source is sent once, with no request for the failed start");
+  assert.equal(summaries, 1);
+  assert.deepEqual(fs.readFileSync(rawPath), original);
+  assert.equal(db.getMeetingRecording(bad.id)?.captureState, "incomplete");
+  await worker.stop();
+  db.close();
+  const reopened = new DatabaseManagerClass();
+  try {
+    assert.deepEqual(reopened.getMeetingProcessingRun(run.id)!.omittedRecordingIds, [bad.id]);
+    const summary = reopened.createMeetingProcessingRun(run.recordingId, {
+      kind: "summary", sourceRunId: run.id, config, configError: null,
+    });
+    assert.deepEqual(summary.omittedRecordingIds, [bad.id], "summary-only processing keeps the partial-audio marker");
+  } finally { reopened.close(); }
+});
+
+test("a malformed historical recording cannot block healthy queued work or trigger historical requests", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const broken = createFinishedRecording(db, storage, validConfig);
+  db.db
+    .prepare("UPDATE meeting_recordings SET ended_at = ?, source_metadata_json = '{}' WHERE id = ?")
+    .run(new Date(Date.parse(broken.recording.startedAt) - 1000).toISOString(), broken.recording.id);
+  const historical = createFinishedRecording(db, storage, validConfig);
+  for (const run of [broken.run, historical.run]) {
+    db.setMeetingProcessingRunState(run.id, {
+      stage: "prepare",
+      status: "failed",
+      errorCode: "audio-alignment-unavailable",
+      retryAt: null,
+    });
+  }
+  const healthy = createFinishedRecording(db, storage, validConfig);
+  let requests = 0;
+  const worker = workerFor(db, storage, {
+    transcribeRemote: async (_request, saveRaw) => {
+      requests++;
+      await saveRaw(elevenResponse);
+      return { success: true, text: "parsed by adapter" };
+    },
+  }, false);
+  t.after(() => worker.stop());
+  assert.doesNotThrow(() => worker.onRetentionReady());
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(broken.run.id)!.status, "failed");
+  assert.equal(db.getMeetingProcessingRun(historical.run.id)!.status, "failed");
+  assert.equal(db.getMeetingProcessingRun(healthy.run.id)!.status, "complete");
+  assert.equal(db.getMeetingProcessingRun(healthy.run.id)!.hasTranscript, true);
+  assert.equal(requests, 2, "only the queued meeting may be sent to ASR");
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(requests, 2, "retention synchronization must not replay historical errors");
+});
+
+test("a historical preparation failure needs one explicit retry and is not replayed after restart", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { run } = createFinishedRecording(db, storage, validConfig);
+  db.setMeetingProcessingRunState(run.id, { stage: "prepare", status: "failed", errorCode: "audio-alignment-unavailable", retryAt: null });
+  let requests = 0;
+  const overrides = {
+    transcribeRemote: async (_request: unknown, saveRaw: (response: unknown) => Promise<void>) => {
+      requests++;
+      await saveRaw(elevenResponse);
+      return { success: true, text: "parsed by adapter" };
+    },
+  };
+  const worker = workerFor(db, storage, overrides, false);
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)!.status, "failed");
+  assert.equal(requests, 0, "opening the app does not submit failed historical audio");
+  assert.ok(worker.retry(run.id));
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id)!.hasTranscript, true);
+  assert.equal(requests, 2);
+  await worker.stop();
+  const restarted = workerFor(db, storage, overrides, false);
+  t.after(() => restarted.stop());
+  restarted.onRetentionReady();
+  await restarted.waitForIdle();
+  assert.equal(requests, 2, "opening the app after success must not submit the audio again");
+});
+
+for (const scenario of ["cancelled", "provider-error", "cached-response"] as const) {
+  test(`automatic audio recovery does not resubmit ${scenario}`, async (t) => {
+    const db = createDb(t);
+    if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const { run } = createFinishedRecording(db, storage, validConfig);
+    if (scenario === "cached-response") {
+      storage.writeRunArtifact(run.id, "provider-response", elevenResponse);
+      db.setMeetingRunArtifact(run.id, "provider-response");
+    }
+    const status = scenario === "cancelled" ? "cancelled" : "failed";
+    const errorCode = scenario === "provider-error" ? "unsupported-provider" : "audio-alignment-unavailable";
+    db.setMeetingProcessingRunState(run.id, { stage: "prepare", status, errorCode, retryAt: null });
+    let requests = 0;
+    const worker = workerFor(db, storage, { transcribeRemote: async () => { requests++; throw new Error("must not resend"); } }, false);
+    t.after(() => worker.stop());
+    worker.onRetentionReady();
+    await worker.waitForIdle();
+    assert.equal(requests, 0);
+    assert.equal(db.getMeetingProcessingRun(run.id)!.status, status);
+  });
+}

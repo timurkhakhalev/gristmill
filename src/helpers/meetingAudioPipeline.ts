@@ -50,16 +50,18 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
     this._epochIndex = options.processorOptions?.epochIndex ?? 0;
     this._sourceGeneration = options.processorOptions?.sourceGeneration ?? 1;
     this._inputSeen = false;
+    this._nextRenderFrame = null;
     this._pendingFrames = 0;
     this._unacked = new Map();
     this._stopped = false;
     this.port.onmessage = (event) => {
       const message = event.data;
       if (message?.type === "ack") {
-        const pending = this._unacked.get(message.sequence);
+        const key = message.epochIndex + ":" + message.sequence;
+        const pending = this._unacked.get(key);
         if (pending) {
           this._pendingFrames -= pending.frames;
-          this._unacked.delete(message.sequence);
+          this._unacked.delete(key);
         }
       } else if (message?.type === "flush") {
         if (this._stopped) return;
@@ -87,6 +89,7 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
           this._buffer = new Int16Array(BUFFER_SIZE);
           this._offset = 0;
           this._bufferStartFrame = null;
+          this._nextRenderFrame = null;
         }
         this.port.postMessage({
           type: "gate-ack",
@@ -116,7 +119,7 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
       this._fail("capture-frame-anchor-missing");
       return false;
     }
-    this._unacked.set(sequence, { frames, frame: currentFrame });
+    this._unacked.set(this._epochIndex + ":" + sequence, { frames, frame: currentFrame });
     this._pendingFrames += frames;
     const sampleOffset = this._sampleOffset;
     this._sampleOffset += frames;
@@ -143,6 +146,25 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
       return !this._stopped;
     }
     this._inputSeen = true;
+    if (!this._gateClosed && this._nextRenderFrame !== null && currentFrame !== this._nextRenderFrame) {
+      if (currentFrame < this._nextRenderFrame) {
+        this._fail("capture-render-clock-reset");
+        return false;
+      }
+      // A render-clock gap is a new epoch, never contiguous PCM with a false anchor.
+      if (this._offset > 0) {
+        const partial = this._buffer.slice(0, this._offset);
+        this._offset = 0;
+        if (!this._send(partial)) return false;
+      }
+      this._epochIndex++;
+      this._sequence = 0;
+      this._sampleOffset = 0;
+      this._buffer = new Int16Array(BUFFER_SIZE);
+      this._bufferStartFrame = null;
+      this.port.postMessage({ type: "source-gap", epochIndex: this._epochIndex });
+    }
+    this._nextRenderFrame = currentFrame + input.length;
     if (this._pendingFrames + this._offset + input.length > MAX_PENDING_FRAMES) {
       this._fail("capture-queue-overflow");
       return false;
@@ -276,7 +298,11 @@ export const createAudioPipeline = async ({
       }
 
       onAck(packet.sequence, packet.epochIndex);
-      processor.port.postMessage({ type: "ack", sequence: packet.sequence });
+      processor.port.postMessage({
+        type: "ack",
+        sequence: packet.sequence,
+        epochIndex: packet.epochIndex,
+      });
     },
     onFailure: (error) => {
       processor.port.postMessage({ type: "failed" });
@@ -318,6 +344,7 @@ export const createAudioPipeline = async ({
     const message = event.data as
       | MeetingCapturePacketMessage
       | { type: "flush-complete"; lastSequence: number; boundaryRenderFrame: number }
+      | { type: "source-gap"; epochIndex: number }
       | {
           type: "gate-ack";
           commandId: string;
@@ -328,7 +355,16 @@ export const createAudioPipeline = async ({
         }
       | { type: "error"; code?: string };
 
-    if (message?.type === "chunk") {
+    if (message?.type === "source-gap") {
+      if (message.epochIndex !== activeEpochIndex + 1) {
+        onFailure(new Error("Meeting capture gap has an invalid epoch"));
+
+        return;
+      }
+
+      activeEpochIndex = message.epochIndex;
+      hasSentInEpoch = false;
+    } else if (message?.type === "chunk") {
       const frames = message.buffer.byteLength / 2;
 
       if (
@@ -469,7 +505,7 @@ export const createAudioPipeline = async ({
         releaseGateOpening = resolve;
       });
 
-      if (hasSentInEpoch) activeEpochIndex = reserveEpoch();
+      if (hasSentInEpoch) activeEpochIndex = Math.max(activeEpochIndex + 1, reserveEpoch());
       activeSourceGeneration = sourceGeneration;
       hasSentInEpoch = false;
     }

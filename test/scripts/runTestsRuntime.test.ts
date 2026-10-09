@@ -97,6 +97,36 @@ test("compiled bridge selection builds once and Linux uses Node", async () => {
   assert.equal(runCall(calls, 2).env.ELECTRON_RUN_AS_NODE, undefined);
 });
 
+test("macOS native selection compiles helpers before launching tests", async () => {
+  const { calls, options } = fakeRunner();
+  const files = [
+    "test/cases/recording/native/audioTapClockProbe.test.ts",
+    "test/cases/recording/native/zoomCollectorLifecycle.test.ts",
+  ];
+  assert.equal(await runTests(files, options), 0);
+  assert.deepEqual(calls[0], { prepare: "electron" });
+  assert.deepEqual(runCall(calls, 1).args, ["run", "compile:native"]);
+  assert.equal(runCall(calls, 1).env.ELECTRON_RUN_AS_NODE, undefined);
+  assert.equal(runCall(calls, 2).binary, "/electron");
+  assert.deepEqual(runCall(calls, 2).args.filter((arg) => arg.endsWith(".test.ts")), files);
+});
+
+test("failed native compilation stops before tests; Linux native selection does not compile macOS helpers", async () => {
+  const file = "test/cases/recording/native/audioTapClockProbe.test.ts";
+  const failed = fakeRunner();
+  failed.options.run = async (binary, args, env) => {
+    failed.calls.push({ binary, args, env });
+    return 7;
+  };
+  assert.equal(await runTests([file], failed.options), 7);
+  assert.equal(failed.calls.length, 2);
+  assert.deepEqual(runCall(failed.calls, 1).args, ["run", "compile:native"]);
+  const linux = fakeRunner({ platform: "linux" });
+  assert.equal(await runTests([file], linux.options), 0);
+  assert.equal(linux.calls.length, 2);
+  assert.equal(runCall(linux.calls, 1).binary, "/node");
+});
+
 test("two processes run ordinary files before serial compiler and native files", async () => {
   const { calls, options } = fakeRunner({ platform: "linux" });
 

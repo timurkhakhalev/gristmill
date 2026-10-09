@@ -109,19 +109,6 @@ export function formatShortDate(
   return formatDate(date, locale, { month: "short", day: "numeric" }, format);
 }
 
-export function formatShortTime(
-  dateStr: string,
-  locale?: string,
-  format: TimeFormat = "locale"
-): string {
-  if (!dateStr) return "";
-  const date = normalizeDbDate(dateStr);
-
-  if (Number.isNaN(date.getTime())) return "";
-
-  return formatTime(date, locale, { hour: "numeric", minute: "2-digit" }, format);
-}
-
 /** Day and full month name, e.g. "28 September"; the numeric formats only choose the day/month order. */
 export function formatDayMonthName(
   dateStr: string,
@@ -144,21 +131,60 @@ export function formatDayMonthName(
   return format === "dmy" ? `${day} ${month}` : `${month} ${day}`;
 }
 
-/** Date+time stamp, e.g. "28 September · 11:05". Falls back to just the date if the time is missing. */
-export function formatShortDateTime(
-  dateStr: string,
-  locale?: string,
-  dateFormat: DateFormat = "locale",
-  timeFormat: TimeFormat = "locale"
+/**
+ * Short month name and day, e.g. "Oct 9" or with the weekday "Fri, Oct 9"; the
+ * numeric formats only choose the day/month order. The year shows when it is
+ * not the current one.
+ */
+export function formatMonthDay(
+  date: Date,
+  locale: string | undefined,
+  format: DateFormat,
+  { weekday = false }: { weekday?: boolean } = {}
 ): string {
-  const date = formatDayMonthName(dateStr, locale, dateFormat);
-  const time = formatShortTime(dateStr, locale, timeFormat);
+  const options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    ...(weekday && { weekday: "short" }),
+    ...(date.getFullYear() !== new Date().getFullYear() && { year: "numeric" }),
+  };
 
-  if (!date && !time) return "";
+  const formatter = new Intl.DateTimeFormat(locale, options);
 
-  if (!time) return date;
+  if (format === "locale") return formatter.format(date);
+  const parts = formatter.formatToParts(date);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value;
+  const day = value("day");
+  const month = value("month");
 
-  return `${date} \u00b7 ${time}`;
+  if (!day || !month) return formatter.format(date);
+  const dayMonth = format === "dmy" ? `${day} ${month}` : `${month} ${day}`;
+  const year = value("year");
+  const datePart = year ? `${dayMonth} ${year}` : dayMonth;
+  const weekdayPart = value("weekday");
+
+  return weekdayPart ? `${weekdayPart}, ${datePart}` : datePart;
+}
+
+/** "Today", "Yesterday" or "Tomorrow" near now, else the short month and day ("Oct 9"). */
+export function formatRelativeDay(
+  date: Date,
+  t: (key: string) => string,
+  locale: string | undefined,
+  format: DateFormat
+): string {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const days = Math.round((target.getTime() - today.getTime()) / 86400000);
+
+  if (days === 0) return t("notes.dateGroups.today");
+
+  if (days === -1) return t("notes.dateGroups.yesterday");
+
+  if (days === 1) return t("notes.dateGroups.tomorrow");
+
+  return formatMonthDay(date, locale, format);
 }
 
 export function formatNoteDate(

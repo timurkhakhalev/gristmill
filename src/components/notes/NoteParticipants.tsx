@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { AlignLeft, Calendar, Check, ChevronDown, Copy, Trash2, Users } from "../icons";
 import { cn } from "../lib/utils";
 import { NOTE_META_CHIP_CLASS } from "./shared";
 import { CalendarProviderIcon, MeetingPlatformIcon } from "./meetingPlatform";
-import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
+import { Popover, PopoverAnchor, PopoverTrigger, PopoverContent } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
 import PersonName from "../ui/PersonName";
 import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
@@ -13,7 +13,7 @@ import { runInBackground } from "../../stores/noteStore";
 import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
 import { openExternalLink } from "../../utils/externalLinks";
 import {
-  formatDate,
+  formatMonthDay,
   formatTime,
   parseEventDate,
   type DateFormat,
@@ -35,16 +35,7 @@ function formatEventWhen(
 
   if (!start) return "";
 
-  const datePart = formatDate(
-    start,
-    locale,
-    {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    },
-    dateFormat
-  );
+  const datePart = formatMonthDay(start, locale, dateFormat, { weekday: true });
 
   const end = parseEventDate(event.end_time);
 
@@ -56,7 +47,7 @@ function formatEventWhen(
   const endPart =
     start.toDateString() === end.toDateString()
       ? time(end)
-      : `${formatDate(end, locale, { month: "short", day: "numeric" }, dateFormat)} ${time(end)}`;
+      : `${formatMonthDay(end, locale, dateFormat)} ${time(end)}`;
 
   return `${datePart} · ${time(start)} – ${endPart}`;
 }
@@ -123,16 +114,39 @@ function EventDescription({ text }: { text: string }) {
   );
 }
 
-/** Full name, email and copy action for one attendee, opened on click or focus. */
-function AttendeeCard({
-  attendee,
-  onRemove,
-}: {
-  attendee: CalendarAttendee;
-  onRemove: () => void;
-}) {
+// Marks the hover card so the attendee list popover does not close on its clicks.
+const ATTENDEE_CARD_ATTR = "data-attendee-card";
+
+const HOVER_OPEN_DELAY_MS = 150;
+
+const HOVER_CLOSE_DELAY_MS = 200;
+
+/** Full name, email and copy action for one attendee, beside the list on hover or focus. */
+function AttendeeRow({ attendee, onRemove }: { attendee: CalendarAttendee; onRemove: () => void }) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const schedule = useCallback((next: boolean) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(
+      () => setOpen(next),
+      next ? HOVER_OPEN_DELAY_MS : HOVER_CLOSE_DELAY_MS
+    );
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    []
+  );
+
+  const hoverProps = {
+    onMouseEnter: () => schedule(true),
+    onMouseLeave: () => schedule(false),
+  };
 
   const copyEmail = useCallback(() => {
     navigator.clipboard
@@ -145,46 +159,72 @@ function AttendeeCard({
   }, [attendee.email]);
 
   return (
-    <PopoverContent className="w-64 p-3">
-      <div className="flex items-center gap-2.5">
-        <PersonAvatar email={attendee.email} displayName={attendee.displayName} size={36} />
-        <div className="min-w-0 flex-1">
-          <p dir="auto" className="truncate text-sm font-medium text-foreground">
-            <PersonName email={attendee.email} inviteName={attendee.displayName} />
-            {attendee.self && (
-              <span className="ms-1 font-normal text-muted">
-                {t("notes.participants.me", "(me)")}
-              </span>
-            )}
-          </p>
-          <div className="mt-0.5 flex items-center gap-1">
-            <span dir="ltr" className="min-w-0 flex-1 truncate text-xs text-muted">
-              {attendee.email}
-            </span>
-            <button
-              type="button"
-              onClick={copyEmail}
-              aria-label={
-                copied
-                  ? t("notes.participants.emailCopied", "Email copied")
-                  : t("notes.participants.copyEmail", "Copy email")
-              }
-              className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
-            >
-              {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-            </button>
-          </div>
-        </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor>
         <button
           type="button"
-          onClick={onRemove}
-          aria-label={t("notes.participants.removeAttendee", "Remove attendee")}
-          className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
+          {...hoverProps}
+          onFocus={() => schedule(true)}
+          onBlur={(e) => {
+            if (!e.relatedTarget?.closest(`[${ATTENDEE_CARD_ATTR}]`)) schedule(false);
+          }}
+          onClick={() => setOpen(true)}
+          className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-default focus-visible:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
         >
-          <Trash2 size={14} />
+          <PersonAvatar email={attendee.email} displayName={attendee.displayName} />
+          <span dir="auto" className="min-w-0 flex-1 truncate text-xs text-foreground/70">
+            <PersonName email={attendee.email} inviteName={attendee.displayName} />
+            {attendee.self && (
+              <span className="ms-1 text-muted">{t("notes.participants.me", "(me)")}</span>
+            )}
+          </span>
         </button>
-      </div>
-    </PopoverContent>
+      </PopoverAnchor>
+      <PopoverContent side="right" align="start" sideOffset={16} isNonModal className="w-72 p-0">
+        <div
+          {...{ [ATTENDEE_CARD_ATTR]: "" }}
+          {...hoverProps}
+          className="flex items-center gap-3 p-3"
+        >
+          <PersonAvatar email={attendee.email} displayName={attendee.displayName} size={40} />
+          <div className="min-w-0 flex-1">
+            <p dir="auto" className="truncate text-sm font-medium text-foreground">
+              <PersonName email={attendee.email} inviteName={attendee.displayName} />
+              {attendee.self && (
+                <span className="ms-1 font-normal text-muted">
+                  {t("notes.participants.me", "(me)")}
+                </span>
+              )}
+            </p>
+            <div className="mt-0.5 flex items-center gap-1">
+              <span dir="ltr" className="min-w-0 flex-1 truncate text-xs text-muted">
+                {attendee.email}
+              </span>
+              <button
+                type="button"
+                onClick={copyEmail}
+                aria-label={
+                  copied
+                    ? t("notes.participants.emailCopied", "Email copied")
+                    : t("notes.participants.copyEmail", "Copy email")
+                }
+                className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
+              >
+                {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={t("notes.participants.removeAttendee", "Remove attendee")}
+            className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -379,7 +419,10 @@ export default function NoteParticipants({
           <ChevronDown size={14} className="shrink-0 text-muted" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0">
+      <PopoverContent
+        className="w-80 p-0"
+        shouldCloseOnInteractOutside={(element) => !element.closest(`[${ATTENDEE_CARD_ATTR}]`)}
+      >
         {event && (
           <div className="border-b border-border/70 p-3">
             <p dir="auto" className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
@@ -457,28 +500,11 @@ export default function NoteParticipants({
                 {domain}
               </div>
               {members.map((p) => (
-                <Popover key={p.email}>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-default focus-visible:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
-                    >
-                      <PersonAvatar email={p.email} displayName={p.displayName} />
-                      <span
-                        dir="auto"
-                        className="min-w-0 flex-1 truncate text-xs text-foreground/70"
-                      >
-                        <PersonName email={p.email} inviteName={p.displayName} />
-                        {p.self && (
-                          <span className="ms-1 text-muted">
-                            {t("notes.participants.me", "(me)")}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  </PopoverTrigger>
-                  <AttendeeCard attendee={p} onRemove={() => removeParticipant(p.email)} />
-                </Popover>
+                <AttendeeRow
+                  key={p.email}
+                  attendee={p}
+                  onRemove={() => removeParticipant(p.email)}
+                />
               ))}
             </div>
           ))}

@@ -22,6 +22,11 @@ const PEOPLE_API_BASE = "https://people.googleapis.com/v1";
 
 const PAGE_SIZE = 1000;
 
+// Other contacts default to the contact entry alone, which has only placeholder
+// photos for most people (saved contacts already merge profiles); merging
+// in their public Google profile adds the photo they set themselves.
+const PROFILE_MERGED_SOURCES = ["READ_SOURCE_TYPE_CONTACT", "READ_SOURCE_TYPE_PROFILE"];
+
 // Bounds a very large directory or address book to a few requests per sync.
 const MAX_PAGES_PER_SOURCE = 10;
 
@@ -55,11 +60,15 @@ function primary<T extends { metadata?: { primary?: boolean } }>(
   return items?.find((item) => item.metadata?.primary) ?? items?.[0];
 }
 
-/** One profile per email of the person; a Google placeholder photo counts as none. */
+/**
+ * One profile per email of the person; a Google placeholder photo counts as none.
+ * A contact merged with its Google profile can carry a placeholder contact photo
+ * beside the real profile photo, so the first real photo wins.
+ */
 export function profilesOf(person: PeoplePerson): GooglePersonProfile[] {
   const displayName = primary(person.names)?.displayName?.trim() || null;
-  const photo = primary(person.photos);
-  const photoUrl = photo?.url && !photo.default ? photo.url : null;
+  const realPhotos = person.photos?.filter((photo) => photo.url && !photo.default);
+  const photoUrl = primary(realPhotos)?.url ?? null;
 
   if (!displayName && !photoUrl) return [];
 
@@ -72,14 +81,18 @@ export function profilesOf(person: PeoplePerson): GooglePersonProfile[] {
 async function collect(
   apiGet: ApiGet,
   path: string,
-  params: Record<string, string>,
+  params: Record<string, string | string[]>,
   itemsKey: "connections" | "otherContacts" | "people"
 ): Promise<PeoplePerson[]> {
   const people: PeoplePerson[] = [];
   let pageToken: string | undefined;
 
   for (let page = 0; page < MAX_PAGES_PER_SOURCE; page++) {
-    const query = new URLSearchParams({ ...params, pageSize: String(PAGE_SIZE) });
+    const query = new URLSearchParams({ pageSize: String(PAGE_SIZE) });
+
+    for (const [key, value] of Object.entries(params)) {
+      for (const item of [value].flat()) query.append(key, item);
+    }
 
     if (pageToken) query.set("pageToken", pageToken);
 
@@ -116,7 +129,7 @@ export async function fetchGooglePeople(
         collect(
           apiGet,
           "/otherContacts",
-          { readMask: "names,emailAddresses,photos" },
+          { readMask: "names,emailAddresses,photos", sources: PROFILE_MERGED_SOURCES },
           "otherContacts"
         ),
     ]);

@@ -1796,7 +1796,8 @@
     },
     "dateGroups": {
       "today": "Сегодня",
-      "yesterday": "Вчера"
+      "yesterday": "Вчера",
+      "tomorrow": "Завтра"
     },
     "find": {
       "placeholder": "Поиск в заметке",

@@ -145,3 +145,30 @@ test("tokens granted before People access ask for a reconnect", () => {
   assert.equal(lacksPeopleAccess(null), true);
   assert.equal(lacksPeopleAccess(`openid ${PEOPLE_SCOPES.directory}`), false);
 });
+
+test("other contacts merge public Google profiles, so a real profile photo beats the contact placeholder", async () => {
+  const { apiGet, requested } = fakeApi({
+    "/otherContacts": {
+      otherContacts: [
+        {
+          names: [{ displayName: "Arealsanya", metadata: { primary: true } }],
+          emailAddresses: [{ value: "arealsanya@gmail.com" }],
+          photos: [
+            { url: "https://lh3/placeholder.jpg", default: true, metadata: { primary: true } },
+            { url: "https://lh3/profile.jpg" },
+          ],
+        },
+      ],
+    },
+    "/people/me?": person("me@x.com"),
+  });
+
+  const [profile] = await people.fetchGooglePeople(apiGet, PEOPLE_SCOPES.otherContacts, () => {});
+
+  const otherContactsUrl = new URL(requested.find((url) => url.includes("/otherContacts")) ?? "");
+  assert.deepEqual(otherContactsUrl.searchParams.getAll("sources"), [
+    "READ_SOURCE_TYPE_CONTACT",
+    "READ_SOURCE_TYPE_PROFILE",
+  ]);
+  assert.equal(profile?.photoUrl, "https://lh3/profile.jpg");
+});

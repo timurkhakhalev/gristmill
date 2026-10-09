@@ -1870,7 +1870,8 @@
     },
     "dateGroups": {
       "today": "Aujourd'hui",
-      "yesterday": "Hier"
+      "yesterday": "Hier",
+      "tomorrow": "Demain"
     },
     "find": {
       "placeholder": "Rechercher dans la note",

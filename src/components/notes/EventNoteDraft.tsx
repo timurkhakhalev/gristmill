@@ -10,7 +10,7 @@ import type { EventDraftHandoff } from "../../lib/noteEditorPendingSave";
 import type { CalendarEvent } from "../../contracts/calendar";
 import type { NoteItem } from "../../contracts/notes";
 import { parseAttendees } from "../../utils/calendarAttendees";
-import { formatDate, parseEventDate } from "../../utils/dateFormatting";
+import { formatRelativeDay, parseEventDate } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { useUiLocale } from "../../hooks/useUiLocale";
 import logger from "../../utils/logger";
@@ -50,9 +50,7 @@ export default function EventNoteDraft({
   const participants = useMemo(() => parseAttendees(event), [event]);
   const startDate = parseEventDate(event.start_time);
 
-  const dateLabel = startDate
-    ? formatDate(startDate, locale, { month: "short", day: "numeric" }, dateFormat)
-    : undefined;
+  const dateLabel = startDate ? formatRelativeDay(startDate, t, locale, dateFormat) : undefined;
 
   const eventTitle = event.summary || t("upcoming.untitledEvent");
   const titleRef = useRef<HTMLDivElement>(null);

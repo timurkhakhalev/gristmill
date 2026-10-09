@@ -1110,7 +1110,8 @@
     },
     "dateGroups": {
       "today": "اليوم",
-      "yesterday": "أمس"
+      "yesterday": "أمس",
+      "tomorrow": "غدًا"
     },
     "find": {
       "placeholder": "البحث في الملاحظة",

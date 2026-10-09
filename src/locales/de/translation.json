@@ -1870,7 +1870,8 @@
     },
     "dateGroups": {
       "today": "Heute",
-      "yesterday": "Gestern"
+      "yesterday": "Gestern",
+      "tomorrow": "Morgen"
     },
     "find": {
       "placeholder": "In Notiz suchen",

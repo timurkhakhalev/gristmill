@@ -52,7 +52,7 @@ import {
 } from "../../stores/noteStore";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
 import type { Message } from "../chat/types";
-import { formatNoteDate, formatShortDateTime } from "../../utils/dateFormatting";
+import { formatNoteDate, formatRelativeDay, parseEventDate } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { collectKnownPeople } from "../../utils/llmTranscript";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
@@ -859,8 +859,10 @@ export default function NoteEditor({
   const { dateFormat, timeFormat } = useDateTimePreferences();
   const noteDate = formatNoteDate(note.created_at, locale, dateFormat, timeFormat);
 
-  const calendarStart = calendarEvent?.start_time
-    ? formatShortDateTime(calendarEvent.start_time, locale, dateFormat, timeFormat)
+  const calendarStartDate = parseEventDate(calendarEvent?.start_time);
+
+  const calendarStart = calendarStartDate
+    ? formatRelativeDay(calendarStartDate, t, locale, dateFormat)
     : "";
 
   return (

@@ -1794,7 +1794,8 @@
     },
     "dateGroups": {
       "today": "Oggi",
-      "yesterday": "Ieri"
+      "yesterday": "Ieri",
+      "tomorrow": "Domani"
     },
     "find": {
       "placeholder": "Cerca nella nota",

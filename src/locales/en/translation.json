@@ -1870,7 +1870,8 @@
     },
     "dateGroups": {
       "today": "Today",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "tomorrow": "Tomorrow"
     },
     "find": {
       "placeholder": "Find in note",

@@ -74,3 +74,18 @@ test("ago style counts seconds, minutes and hours, then Yesterday, then the day 
     else process.env.TZ = previousTimezone;
   }
 });
+
+test("meeting dates read as Today, Yesterday or Tomorrow near now, else a short month name", async (t: TestContext) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 9, 12).getTime() });
+  const { formatRelativeDay, formatMonthDay } = await load();
+  const key = (k: string) => k;
+
+  assert.equal(formatRelativeDay(new Date(2026, 9, 9, 23, 30), key, "en", "dmy"), "notes.dateGroups.today");
+  assert.equal(formatRelativeDay(new Date(2026, 9, 8, 0, 5), key, "en", "dmy"), "notes.dateGroups.yesterday");
+  assert.equal(formatRelativeDay(new Date(2026, 9, 10, 9), key, "en", "dmy"), "notes.dateGroups.tomorrow");
+  assert.equal(formatRelativeDay(new Date(2026, 9, 2, 9), key, "en", "locale"), "Oct 2");
+  assert.equal(formatRelativeDay(new Date(2026, 9, 2, 9), key, "en", "dmy"), "2 Oct");
+  assert.equal(formatMonthDay(new Date(2026, 9, 9), "en", "locale", { weekday: true }), "Fri, Oct 9");
+  assert.equal(formatMonthDay(new Date(2026, 9, 9), "en", "dmy", { weekday: true }), "Fri, 9 Oct");
+  assert.equal(formatMonthDay(new Date(2025, 9, 9), "en", "mdy"), "Oct 9 2025");
+});

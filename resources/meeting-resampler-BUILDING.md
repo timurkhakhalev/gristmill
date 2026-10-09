@@ -33,3 +33,17 @@ libraries and helper first with your identity (or `codesign --force --sign -` fo
 local use), then re-sign the app with its original hardened-runtime settings and
 entitlements. Verify with `codesign --verify --deep --strict`. Ad-hoc signatures
 are for local use; they do not provide Developer ID notarization or public trust.
+
+## Private preparation interface
+
+The helper reads mono float32 little-endian decoded at 48 kHz. Mapping input
+coordinates and the `inputFrames` argument use the original 24 kHz recording
+frame units; the decoded file must contain exactly two samples per input frame.
+The timeline/output remains 24 kHz float32. The wrapper validates the final
+24 kHz PCM16 WAV before publication.
+
+At each run end the helper supplies 128 reflected input samples as normal filter
+boundary context, after reading and validating the complete real input. This
+context has 64 nominal output samples and is excluded from endpoint rounding and
+published output. The remaining endpoint rounding bound is still two samples;
+missing decoded input fails, and lost source audio is never replaced with silence.

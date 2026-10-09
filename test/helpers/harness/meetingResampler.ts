@@ -17,3 +17,22 @@ export function calibratedEpoch(spec: Array<{ frames: number; start: number; rat
     channels: 1, encoding: "opus", state: "finalized", frameCount: cursor, ignoredTrailingBytes: 0, errorCode: null,
   };
 }
+
+/** Independent fixed-rate oracle over explicit signal reflection, using the bundled decoder's mature-buffer path. */
+export function reflectedRateConversionOracle(raw: Float32Array): Float32Array {
+  const { spawnSync }: typeof import("node:child_process") = require("node:child_process");
+  const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+  const ffmpeg: string = require("ffmpeg-static");
+  assert.ok(raw.length > 0 && raw.length % 2 === 0);
+  const padded = new Float32Array(raw.length + 256);
+  for (let i = 0; i < padded.length; i++) {
+    const coordinate = Math.abs(i - 128), periodIndex = coordinate % (raw.length * 2);
+    const original = periodIndex < raw.length ? periodIndex : raw.length * 2 - 1 - periodIndex;
+    padded[i] = raw[original];
+  }
+  const filtered = spawnSync(ffmpeg, ["-v", "error", "-f", "f32le", "-ar", "48000", "-ac", "1", "-i", "pipe:0", "-ar", "24000", "-f", "f32le", "pipe:1"], { input: Buffer.from(padded.buffer) });
+  assert.equal(filtered.status, 0, filtered.stderr.toString());
+  assert.equal(filtered.stdout.length, (raw.length / 2 + 128) * 4);
+  const output = new Float32Array(filtered.stdout.buffer.slice(filtered.stdout.byteOffset, filtered.stdout.byteOffset + filtered.stdout.byteLength));
+  return output.slice(64, 64 + raw.length / 2);
+}

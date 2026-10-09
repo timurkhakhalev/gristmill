@@ -11,12 +11,14 @@ export interface MeetingResamplerRow {
 
 export interface MeetingResamplerManifest {
   extent: number;
+  decodedSampleRate: 48000;
   source: MeetingSource;
   intentionalSilence: boolean;
   epochs: Array<{
     recordingId: string;
     epochIndex: number;
     inputPath: string;
+    /** Original 24 kHz frame units; the decoded file contains twice as many 48 kHz samples. */
     inputFrames: number;
     sourceGeneration: number | null;
     rows: MeetingResamplerRow[];
@@ -51,6 +53,7 @@ export function meetingResamplerManifest(
 
   const manifest: MeetingResamplerManifest = {
     extent,
+    decodedSampleRate: 48000,
     source,
     intentionalSilence,
     epochs: [],

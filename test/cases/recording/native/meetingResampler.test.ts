@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { meetingResamplerManifest, meetingResamplerMappingText } from "../../../../src/helpers/meetingResamplerMapping.ts";
-import { calibratedEpoch } from "../../../helpers/harness/meetingResampler.ts";
+import { calibratedEpoch, reflectedRateConversionOracle } from "../../../helpers/harness/meetingResampler.ts";
 
 const binary = path.resolve("resources/bin/meeting-resampler");
 function fixture(t: import("node:test").TestContext) {
@@ -15,8 +15,8 @@ function fixture(t: import("node:test").TestContext) {
   return { dir, output: path.join(dir, "output.f32") };
 }
 function input(file: string, count: number, sample: (index: number) => number) {
-  const values = new Float32Array(count);
-  for (let i = 0; i < count; i++) values[i] = sample(i);
+  const values = new Float32Array(count * 2);
+  for (let i = 0; i < count * 2; i++) values[i] = sample(i / 2);
   fs.writeFileSync(file, Buffer.from(values.buffer));
 }
 function run(file: string, mapping: string, output: string, extent: number, frames: number, mode = "create") {
@@ -118,7 +118,7 @@ test("more than 4096 calibration rows and ranges longer than 60 seconds have bou
   const { dir, output } = fixture(t);
   const frames = 4100 * 2400;
   const source = path.join(dir, "input.f32"), mapping = path.join(dir, "mapping");
-  const fd = fs.openSync(source, "w"); fs.ftruncateSync(fd, frames * 4); fs.closeSync(fd);
+  const fd = fs.openSync(source, "w"); fs.ftruncateSync(fd, frames * 8); fs.closeSync(fd);
   fs.writeFileSync(mapping, Array.from({ length: 4100 }, (_, i) => `${i * 2400} ${(i + 1) * 2400} ${i * 2400} ${(i + 1) * 2400} ${i === 0 ? 1 : 0}\n`).join(""));
   assert.equal(run(source, mapping, output, frames + 3, frames).continuousRuns, 1);
   fs.rmSync(output);
@@ -133,7 +133,7 @@ test("extent and input duration exceed the prototype 8000-second cap", t => {
   const { dir, output } = fixture(t);
   const frames = 24000 * 8001;
   const source = path.join(dir, "input.f32"), mapping = path.join(dir, "mapping");
-  const fd = fs.openSync(source, "w"); fs.ftruncateSync(fd, frames * 4); fs.closeSync(fd);
+  const fd = fs.openSync(source, "w"); fs.ftruncateSync(fd, frames * 8); fs.closeSync(fd);
   fs.writeFileSync(mapping, `0 ${frames} 2 ${frames + 2} 1\n`);
   run(source, mapping, output, frames + 5, frames);
 });
@@ -156,10 +156,10 @@ test("malformed, overflow, extra, truncated and incomplete mapping cannot create
     assert.equal(result.status, 2, result.stderr); assert.ok(result.stderr.length < 256); assert.ok(!fs.existsSync(output));
   }
   fs.writeFileSync(mapping, "0 2400 0 2400 1\n");
-  fs.truncateSync(source, 2399 * 4);
+  fs.truncateSync(source, 2399 * 8);
   assert.equal(spawnSync(binary, [source, mapping, output, "3000", "2400", "create"]).status, 3);
   assert.ok(!fs.existsSync(output));
-  fs.truncateSync(source, 2401 * 4);
+  fs.truncateSync(source, 2401 * 8);
   assert.equal(spawnSync(binary, [source, mapping, output, "3000", "2400", "create"]).status, 3);
   assert.ok(!fs.existsSync(output));
 });
@@ -217,4 +217,67 @@ test("independent native source timelines retain mic-left/system-right identity"
   }
   assert.ok(audio.slice(0, 2000).every(value => value === 0));
   assert.ok(audio.slice(25000 * 2).every(value => value === 0));
+});
+
+const shortLengths = [1, 2, 3, 10, 16, 17, 18, 23, 24, 25, 29, 30, 31, 32, 33, 34, 63, 64, 65, 66, 67];
+for (const count of shortLengths) {
+  test(`native preserves every nonzero sample of a ${count}-frame standalone signal`, t => {
+    const { dir, output } = fixture(t);
+    const source = path.join(dir, "input.f32"), mapping = path.join(dir, "mapping");
+    input(source, count, () => 0.25);
+    fs.writeFileSync(mapping, `0 ${count} 5 ${count + 5} 1\n`);
+    const metrics = run(source, mapping, output, count + 10, count);
+    assert.equal(metrics.continuousRuns, 1);
+    const audio = samples(output);
+    assert.ok(audio.slice(0, 5).every(value => value === 0));
+    for (let i = 5; i < count + 5; i++) assert.ok(Math.abs(audio[i] - 0.25) < 0.000001, `lost/changed sample ${i - 5}: ${audio[i]}`);
+    assert.ok(audio.slice(count + 5).every(value => value === 0));
+  });
+  test(`native flush/reset preserves a ${count}-frame run inside a longer source`, t => {
+    const { dir, output } = fixture(t);
+    const source = path.join(dir, "input.f32"), mapping = path.join(dir, "mapping");
+    const epoch = calibratedEpoch([{ frames: 2400, start: 100 }, { frames: count, start: 3000 }, { frames: 2400, start: 3500 + count }]);
+    const manifest = meetingResamplerManifest("mic", [epoch], () => source, 10000);
+    assert.deepEqual(manifest.decisions.map(decision => decision.reason), ["uncertainty", "uncertainty"]);
+    input(source, epoch.frameCount, index => index < 2400 ? 0.1 : index < 2400 + count ? 0.25 : -0.1);
+    fs.writeFileSync(mapping, meetingResamplerMappingText(manifest.epochs[0].rows));
+    assert.equal(run(source, mapping, output, 10000, epoch.frameCount).continuousRuns, 3);
+    const audio = samples(output);
+    for (let i = 3000; i < 3000 + count; i++) assert.ok(Math.abs(audio[i] - 0.25) < 0.000001, `lost embedded sample ${i - 3000}`);
+    assert.ok(audio.slice(2500, 3000).every(value => value === 0));
+    assert.ok(audio.slice(3000 + count, 3500 + count).every(value => value === 0));
+    assert.ok(Math.abs(audio[2499] - 0.1) < 0.000001);
+    assert.ok(Math.abs(audio[3500 + count] + 0.1) < 0.000001);
+  });
+}
+
+for (const count of shortLengths) test(`native retains independently filtered nonconstant ${count}-frame content through flush`, t => {
+  const { dir, output } = fixture(t);
+  const source = path.join(dir, "input.f32"), mapping = path.join(dir, "mapping");
+  input(source, count, index => 0.3 + 0.1 * Math.sin(2 * Math.PI * 1200 * index / 24000));
+  const bytes = fs.readFileSync(source);
+  const raw = new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const expected = reflectedRateConversionOracle(raw);
+  fs.writeFileSync(mapping, `0 ${count} 0 ${count} 1\n`);
+  run(source, mapping, output, count, count);
+  const actual = samples(output);
+  assert.ok(actual.some(value => Math.abs(value) > 0.1));
+  for (let i = 0; i < count; i++) assert.ok(Math.abs(actual[i] - expected[i]) < 0.00001, `short signal ${count}/${i}: ${actual[i]} vs ${expected[i]}`);
+});
+
+for (const count of [1, 2, 3, 10]) test(`filter-boundary reflection cannot conceal shortened ${count}-frame input`, t => {
+  const { dir, output } = fixture(t);
+  const source = path.join(dir, "input.f32"), mapping = path.join(dir, "mapping");
+  input(source, count, () => 0.25);
+  fs.truncateSync(source, count * 8 - 4);
+  fs.writeFileSync(mapping, `0 ${count} 0 ${count} 1\n`);
+  const result = spawnSync(binary, [source, mapping, output, String(count), String(count), "create"]);
+  assert.equal(result.status, 3); assert.equal(fs.existsSync(output), false);
+});
+
+test("missing decoded input cannot become a reflected synthetic signal", t => {
+  const { dir, output } = fixture(t);
+  const mapping = path.join(dir, "mapping"); fs.writeFileSync(mapping, "0 1 0 1 1\n");
+  const result = spawnSync(binary, [path.join(dir, "absent.f32"), mapping, output, "1", "1", "create"]);
+  assert.equal(result.status, 4); assert.equal(fs.existsSync(output), false);
 });

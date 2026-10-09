@@ -233,13 +233,14 @@ const { createDb }: typeof import("../../../helpers/harness/db.ts") = require(".
 const { getUserDataDir }: typeof import("../../../helpers/harness/electronStub.ts") = require("../../../helpers/harness/electronStub.ts");
 const { savePcmEpoch }: typeof import("../../../lib/meetingAudioFixture.ts") = require("../../../lib/meetingAudioFixture.ts");
 const { MeetingRecordingStorage }: typeof import("../../../../src/helpers/meetingRecordingStorage.ts") = require("../../../../src/helpers/meetingRecordingStorage.ts");
+const { reflectedRateConversionOracle }: typeof import("../../../helpers/harness/meetingResampler.ts") = require("../../../helpers/harness/meetingResampler.ts");
 const { prepareMeetingAudio }: typeof import("../../../../src/helpers/meetingAudioMixer.ts") = require("../../../../src/helpers/meetingAudioMixer.ts");
 
 type MixerDeps = import("../../../../src/helpers/meetingAudioMixer.ts").MeetingAudioMixerDeps;
 const ffmpeg: string = require("ffmpeg-static");
 const helper = path.resolve("resources/bin/meeting-resampler");
 
-function postStopFixture(t: TestContext, overlap = false) {
+function postStopFixture(t: TestContext, overlap = false, shortFrames?: number, embeddedCounts?: number[]) {
   const db = createDb(t);
   assert.ok(db);
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
@@ -250,10 +251,13 @@ function postStopFixture(t: TestContext, overlap = false) {
     { source: "system", index: 0, start: 8000, frames: 48000, hz: 440, amplitude: 6000 },
   ];
   if (overlap) specs.push({ source: "mic", index: 1, start: 24000, frames: 24000, hz: 330, amplitude: 5000 });
+  if (shortFrames !== undefined) for (const spec of specs) spec.frames = shortFrames;
+  if (embeddedCounts) for (const [index, frames] of embeddedCounts.entries())
+    specs.push({ source: "mic", index: index + 1, start: 60000 + index * 2000, frames, hz: 0, amplitude: 20000 });
   for (const spec of specs) {
     db.createMeetingRecordingEpoch(recording.id, spec.source, spec.index, spec.index + 1, 0, spec.start);
     const pcm = Buffer.alloc(spec.frames * 2);
-    for (let i = 0; i < spec.frames; i++) pcm.writeInt16LE(Math.round(spec.amplitude * Math.sin(2 * Math.PI * spec.hz * i / 24000)), i * 2);
+    for (let i = 0; i < spec.frames; i++) pcm.writeInt16LE(shortFrames !== undefined ? (spec.source === "mic" ? 20000 : -15000) : spec.hz === 0 ? spec.amplitude : Math.round(spec.amplitude * Math.sin(2 * Math.PI * spec.hz * i / 24000)), i * 2);
     savePcmEpoch(storage, recording.id, spec.source, spec.index, pcm);
     db.updateMeetingRecordingEpochRecovery(recording.id, spec.source, spec.index, storage.recoverEpoch(recording.id, spec.source, spec.index));
   }
@@ -486,4 +490,43 @@ test("closed but invalid final WAV never reaches the atomic publication boundary
   } } }); h.own(pending);
   await assert.rejects(pending, { code: "audio-preparation-failed" }); assert.equal(renames, 0);
   assert.equal(fs.existsSync(f.storage.getDerivedAudioPath(f.recording.id, runId)), false); assertNoWorkingFiles(f); f.assertPreserved();
+});
+
+/** Independent decoder/filter oracle: a long reflected signal avoids the known tiny-buffer flush defect. */
+function shortOpusOracle(file: string, frames: number): Float32Array {
+  const decoded = spawnSync(ffmpeg, ["-v", "error", "-i", file, "-ar", "48000", "-ac", "1", "-f", "f32le", "pipe:1"]);
+  assert.equal(decoded.status, 0, decoded.stderr.toString());
+  assert.equal(decoded.stdout.length, frames * 8);
+  const raw = new Float32Array(decoded.stdout.buffer.slice(decoded.stdout.byteOffset, decoded.stdout.byteOffset + decoded.stdout.byteLength));
+  return reflectedRateConversionOracle(raw);
+}
+
+for (const count of [1, 2, 3, 10, 16, 17, 18, 23, 24, 25, 29, 30, 31, 32, 33, 34, 63, 64, 65, 66, 67]) {
+  test(`real Opus preparation retains a nonzero ${count}-frame signal, not just output length`, async t => {
+    const f = postStopFixture(t, false, count);
+    const oracle = shortOpusOracle(f.originals[f.epochs.findIndex(epoch => epoch.source === "mic")], count);
+    assert.ok(oracle.some(sample => Math.abs(sample) > 0.1), "the codec/reference signal must be nonzero");
+    const prepared = await prepareMeetingAudio(f.storage, f.recording, randomUUID(), f.epochs, { layout: "mic", deps: nativeDeps() });
+    const data = wavSamples(prepared.path);
+    assert.equal(data.length, 96000 * 2);
+    for (let i = 0; i < count; i++) assert.ok(Math.abs(data.readInt16LE(i * 2) - Math.round(oracle[i] * 32768)) <= 2, `changed/lost short Opus sample ${i}: ${data.readInt16LE(i * 2)} vs ${oracle[i] * 32768}`);
+    assert.ok(data.subarray(count * 2).every(value => value === 0));
+    assertNoWorkingFiles(f); f.assertPreserved();
+  });
+}
+
+test("short Opus epochs inside a longer recording keep signal across real epoch/generation resets", async t => {
+  const counts = [1, 2, 3, 10, 16, 24, 32, 64];
+  const f = postStopFixture(t, false, undefined, counts);
+  const expected = counts.map((count, index) => ({ start: 60000 + index * 2000,
+    signal: shortOpusOracle(f.storage.getEpochFilePath(f.recording.id, "mic", index + 1), count) }));
+  const epochs = f.db.listMeetingRecordingEpochs(f.recording.id);
+  const prepared = await prepareMeetingAudio(f.storage, f.recording, randomUUID(), epochs, { layout: "mic", deps: nativeDeps() });
+  const data = wavSamples(prepared.path);
+  assert.equal(data.length, 96000 * 2);
+  for (const { start, signal } of expected) {
+    for (let i = 0; i < signal.length; i++) assert.ok(Math.abs(data.readInt16LE((start + i) * 2) - Math.round(signal[i] * 32768)) <= 2);
+    assert.ok(data.subarray((start + signal.length) * 2, (start + 1000) * 2).every(value => value === 0));
+  }
+  assertNoWorkingFiles(f); f.assertPreserved();
 });

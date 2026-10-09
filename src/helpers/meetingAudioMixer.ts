@@ -363,7 +363,8 @@ async function prepareMeetingAudioWithTimeline(
         (largest, epoch) =>
           Math.max(
             largest,
-            epoch.inputFrames * 4 + Buffer.byteLength(meetingResamplerMappingText(epoch.rows))
+            epoch.inputFrames * (manifest.decodedSampleRate / SAMPLE_RATE) * 4 +
+              Buffer.byteLength(meetingResamplerMappingText(epoch.rows))
           ),
         0
       ),
@@ -604,7 +605,7 @@ async function runMixer(
                   "-i",
                   input,
                   "-ar",
-                  String(SAMPLE_RATE),
+                  String(manifest.decodedSampleRate),
                   "-ac",
                   "1",
                   "-c:a",

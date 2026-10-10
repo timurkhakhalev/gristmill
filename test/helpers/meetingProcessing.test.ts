@@ -2115,6 +2115,7 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
   assert.deepEqual(namingInput, {
     generateTitle: false,
     meetingTitle: "Meeting",
+    manualNotes: "Manual note evidence.",
     transcriptSourceId: sourceRun.id,
     participants: [
       { name: "Calendar Alice", email: "alice@example.com" },
@@ -4441,10 +4442,13 @@ test("native-shaped Zoom intervals resume through production naming into the Not
   let namingCalls = 0;
 
   const worker = workerFor(db, storage, {
-    nameSpeakers: async () => {
+    nameSpeakers: async (input) => {
       namingCalls += 1;
       const run = db.getMeetingRecording(recording.id).currentRunId;
       assert.equal(db.getMeetingRunSpeakerCorrections(run)[0].source, "platform");
+      const parsed = meetingSpeakerNamingInputSchema.parse(input);
+      assert.deepEqual(parsed.callParticipants, ["Synthetic Guest"]);
+      assert.equal(parsed.manualNotes, "");
 
       return { speakers: [] };
     },

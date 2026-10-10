@@ -58,6 +58,7 @@ export function formatMeetingMaterial(material: {
   summary?: string | null;
   transcriptSourceId?: string;
   participants?: Array<{ name: string | null; email: string | null }>;
+  callParticipants?: string[];
 }): string {
   const ids = meetingPromptSpeakerIds(material.transcriptSegments);
 
@@ -91,6 +92,11 @@ export function formatMeetingMaterial(material: {
     ...(material.participants
       ? [
           `Calendar candidates (not proof of attendance or identity):\n${material.participants.map((p) => [p.name, p.email].filter(Boolean).join(" — ")).join("\n") || "None"}`,
+        ]
+      : []),
+    ...(material.callParticipants?.length
+      ? [
+          `Call participants seen in the meeting app (attended; not which speaker is whose):\n${material.callParticipants.join("\n")}`,
         ]
       : []),
     ...(material.manualNotes !== undefined ? [`Manual notes:\n${material.manualNotes}`] : []),

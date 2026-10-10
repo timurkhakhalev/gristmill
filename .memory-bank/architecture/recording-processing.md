@@ -130,7 +130,9 @@ A missing source without full intentional coverage stays an error.
 ### Speaker naming and run snapshots
 
 - Speaker naming uses the saved Summary provider and model configuration and the complete canonical segments.
-- Calendar people are only naming candidates. A user correction wins by revision check.
+- Calendar people are only naming candidates. They supply spellings, not attendance. A user correction wins by revision check.
+- Attendance evidence for naming: the remote names that the linked call app showed during the run (local tiles excluded), and a person whom the title or the manual notes name as a participant.
+- Attendance evidence does not show which label is whose. Naming uses it without conversation evidence only in a one-to-one case: one attended remote person without a known label and one unknown system-audio label with most of the remote speech.
 - Each processing run keeps its source run, recording IDs, manual-note revision, speaker-correction revision, a snapshot of the corrected segments and a prompt and model snapshot.
 - The Summary input uses the corrected segments, the title hint and the manual notes.
 - Old runs and artifacts stay.

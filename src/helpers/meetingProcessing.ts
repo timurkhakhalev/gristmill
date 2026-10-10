@@ -2059,8 +2059,10 @@ export class MeetingProcessingWorker {
         {
           generateTitle,
           meetingTitle: snapshot.meetingTitle,
+          manualNotes: snapshot.manualNotes,
           transcriptSourceId: snapshot.sourceRunId,
           participants: this.enrichedParticipants(participantsBeforeNaming),
+          ...this.callParticipants(run),
           segments: this.promptSegments(snapshot, transcript),
         },
         snapshot.promptModel,
@@ -2172,6 +2174,32 @@ export class MeetingProcessingWorker {
     } catch (error) {
       if (signal.aborted || this.isCapturing()) return;
       this.deps.database.setMeetingSpeakerNamingError(run.id, errorCodeOf(error));
+    }
+  }
+
+  /** Remote names that the call app showed during the run. They prove
+   * attendance, not which speaker label belongs to whom. */
+  private callParticipants(run: MeetingProcessingRunDto) {
+    try {
+      const observations = meetingRunAudioPartIds(run).flatMap((id) =>
+        this.deps.database.listMeetingPlatformObservations(id)
+      );
+
+      const local = new Set(
+        observations.filter((o) => o.self === "local").map((o) => o.displayName)
+      );
+
+      const names = [
+        ...new Set(
+          observations
+            .filter((o) => o.self !== "local" && o.displayName && !local.has(o.displayName))
+            .map((o) => o.displayName)
+        ),
+      ].slice(0, 100);
+
+      return names.length ? { callParticipants: names } : {};
+    } catch {
+      return {};
     }
   }
 

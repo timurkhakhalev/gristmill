@@ -193,5 +193,5 @@ Use `pnpm test --verbose <exact test paths>` for focused regressions, `pnpm run 
 | M2.1 — Preserve short decoded audio and resampler tails | done | ba8f509da, 0093abdcc |
 | M3 — Documentation, performance and final validation | done | 146ea2533, 0b9e3fdcb, b41e03086, 75e3dc278; technical completion per user override, human listening/signal unverified |
 | Reviewer | done | review-1.md: pass |
-| Code Reviewer | not started | code-review-1.md: two medium findings |
+| Code Reviewer | done | code-review-2.md: pass; both medium findings resolved |
 | Fix code-review-1 | done | f6795fd38, 2847e5cd8 |

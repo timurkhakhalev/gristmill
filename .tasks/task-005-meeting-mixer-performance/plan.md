@@ -191,6 +191,6 @@ Use `pnpm test --verbose <exact test paths>` for focused regressions, `pnpm run 
 | M1 — Native continuous audio preparation | done | e35644dbd, cfe0311db; corrective verification ba8f509da, 0093abdcc |
 | M2 — Shared consumer cutover and lifecycle | done | 23792c7a1, 57270f8ec; corrective verification ba8f509da, 0093abdcc |
 | M2.1 — Preserve short decoded audio and resampler tails | done | ba8f509da, 0093abdcc |
-| M3 — Documentation, performance and final validation | in progress | 146ea2533, 0b9e3fdcb; private replay blocker resolved by harness correction; human signal/listening verification and final reviews pending |
-| Reviewer | not started | |
-| Code Reviewer | not started | |
+| M3 — Documentation, performance and final validation | done | 146ea2533, 0b9e3fdcb, b41e03086, 75e3dc278; technical completion per user override, human listening/signal unverified |
+| Reviewer | done | review-1.md: pass |
+| Code Reviewer | done | code-review-1.md: two medium findings |

@@ -226,6 +226,28 @@ function verifyUnpackedBinaries(context: import("electron-builder").AfterPackCon
     );
   }
 
+  if (context.electronPlatformName === "darwin") {
+    const resources = resolveResourcesDir(context);
+
+    for (const name of ["meeting-resampler", "libswresample.6.dylib", "libavutil.60.dylib"]) {
+      if (!fs.existsSync(path.join(resources, "bin", name)))
+        throw new Error(`afterPack: missing required meeting resampler binary ${name}`);
+    }
+
+    for (const name of [
+      "COPYING.LGPLv2.1",
+      "NOTICE.txt",
+      "BUILDING.md",
+      "ffmpeg-8.1.1.tar.xz",
+      "meeting-resampler.c",
+      "build-meeting-resampler.cts",
+      "build.json",
+    ]) {
+      if (!fs.existsSync(path.join(resources, "licenses", "meeting-resampler", name)))
+        throw new Error(`afterPack: missing meeting resampler source/license material ${name}`);
+    }
+  }
+
   console.log("  afterPack: verified unpacked bundled binaries");
 }
 

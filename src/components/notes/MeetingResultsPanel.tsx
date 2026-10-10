@@ -2064,12 +2064,22 @@ export default function MeetingResultsPanel({
                 status="danger"
                 title={t(`meetingResults.failed.${stageKey}`)}
                 description={
-                  errorCode === "calendar-participants-invalid"
+                  errorCode === "audio-preparation-disk-full"
                     ? tr(
-                        "calendarParticipantsInvalid",
-                        "Stored calendar participant data is invalid. Correct it before retrying."
+                        "audioPreparationDiskFull",
+                        "Your audio is saved. Free disk space before retrying audio preparation."
                       )
-                    : t("meetingResults.failedReason")
+                    : errorCode === "audio-preparation-failed"
+                      ? tr(
+                          "audioPreparationFailed",
+                          "Your audio is saved. Check local storage and retry. If audio preparation still fails, reinstall Gristmill."
+                        )
+                      : errorCode === "calendar-participants-invalid"
+                        ? tr(
+                            "calendarParticipantsInvalid",
+                            "Stored calendar participant data is invalid. Correct it before retrying."
+                          )
+                        : t("meetingResults.failedReason")
                 }
                 actions={actions}
               />

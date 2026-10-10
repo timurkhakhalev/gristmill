@@ -1,0 +1,264 @@
+[
+  {
+    "log": "/tmp/gristmill-streaming-prototype-scale.log",
+    "kind": "RESAMPLER_ENVIRONMENT",
+    "platform": "darwin",
+    "arch": "arm64",
+    "runtime": "v24.12.0",
+    "libraries": "6.3.101\n60.26.101",
+    "decoder": "ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers"
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-scale.log",
+    "kind": "RESAMPLER_RESULT",
+    "seconds": 600,
+    "rangesPerSource": 150,
+    "wallMs": 2147.9519999999998,
+    "decodeMs": 1364.5755419999996,
+    "resampleMs": 655.0854589999999,
+    "joinMs": 120.49000000000069,
+    "frameCount": 14426280,
+    "alignment": [
+      {
+        "markers": 150,
+        "maxMarkerErrorFrames": 2,
+        "maxMarkerErrorMs": 0.08333333333333333
+      },
+      {
+        "markers": 150,
+        "maxMarkerErrorFrames": 7,
+        "maxMarkerErrorMs": 0.2916666666666667
+      }
+    ],
+    "resourceUsage": [
+      {
+        "ranges": 150,
+        "continuousRuns": 3,
+        "convertedFrames": 14400200,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 0.220078,
+        "maxRssBytes": 7143424
+      },
+      {
+        "ranges": 150,
+        "continuousRuns": 3,
+        "convertedFrames": 14399882,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 0.197522,
+        "maxRssBytes": 7585792
+      }
+    ]
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-scale.log",
+    "kind": "RESAMPLER_RESULT",
+    "seconds": 3600,
+    "rangesPerSource": 900,
+    "wallMs": 11999.755458,
+    "decodeMs": 8274.526416999997,
+    "resampleMs": 2679.3841669999965,
+    "joinMs": 983.1875409999993,
+    "frameCount": 86426389,
+    "alignment": [
+      {
+        "markers": 900,
+        "maxMarkerErrorFrames": 2,
+        "maxMarkerErrorMs": 0.08333333333333333
+      },
+      {
+        "markers": 900,
+        "maxMarkerErrorFrames": 8,
+        "maxMarkerErrorMs": 0.3333333333333333
+      }
+    ],
+    "resourceUsage": [
+      {
+        "ranges": 900,
+        "continuousRuns": 3,
+        "convertedFrames": 86400020,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 1.234442,
+        "maxRssBytes": 7176192
+      },
+      {
+        "ranges": 900,
+        "continuousRuns": 3,
+        "convertedFrames": 86399990,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 1.217205,
+        "maxRssBytes": 7159808
+      }
+    ]
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-scale.log",
+    "kind": "RESAMPLER_RESULT",
+    "seconds": 7200,
+    "rangesPerSource": 1800,
+    "wallMs": 23903.426666,
+    "decodeMs": 16225.011665999991,
+    "resampleMs": 5746.936250000013,
+    "joinMs": 1834.4193749999977,
+    "frameCount": 172826375,
+    "alignment": [
+      {
+        "markers": 1800,
+        "maxMarkerErrorFrames": 2,
+        "maxMarkerErrorMs": 0.08333333333333333
+      },
+      {
+        "markers": 1800,
+        "maxMarkerErrorFrames": 8,
+        "maxMarkerErrorMs": 0.3333333333333333
+      }
+    ],
+    "resourceUsage": [
+      {
+        "ranges": 1800,
+        "continuousRuns": 3,
+        "convertedFrames": 172800041,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 2.601548,
+        "maxRssBytes": 7225344
+      },
+      {
+        "ranges": 1800,
+        "continuousRuns": 3,
+        "convertedFrames": 172799977,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 2.548624,
+        "maxRssBytes": 7651328
+      }
+    ]
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-final-hour.log",
+    "kind": "RESAMPLER_ENVIRONMENT",
+    "platform": "darwin",
+    "arch": "arm64",
+    "runtime": "v24.12.0",
+    "libraries": "6.3.101\n60.26.101",
+    "decoder": "ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers"
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-final-hour.log",
+    "kind": "RESAMPLER_GUARDS",
+    "overlapRejected": true,
+    "sourceGapRejected": true,
+    "truncatedInputRejected": true,
+    "cancellationChildExited": true
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-final-hour.log",
+    "kind": "RESAMPLER_RESULT",
+    "seconds": 3600,
+    "rangesPerSource": 900,
+    "wallMs": 11930.527500000004,
+    "childCpuSeconds": 15.002372,
+    "maxChildRssBytes": 17924096,
+    "decodeMs": 8097.633290999998,
+    "resampleMs": 2806.4984989999975,
+    "joinMs": 980.9268750000047,
+    "frameCount": 86426389,
+    "alignment": [
+      {
+        "markers": 900,
+        "maxMarkerErrorFrames": 2,
+        "maxMarkerErrorMs": 0.08333333333333333,
+        "maxBoundaryStep": 0.00140380859375
+      },
+      {
+        "markers": 900,
+        "maxMarkerErrorFrames": 8,
+        "maxMarkerErrorMs": 0.3333333333333333,
+        "maxBoundaryStep": 0.003173828125
+      }
+    ],
+    "resourceUsage": [
+      {
+        "ranges": 900,
+        "continuousRuns": 3,
+        "convertedFrames": 86400020,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 1.257031,
+        "maxRssBytes": 7208960
+      },
+      {
+        "ranges": 900,
+        "continuousRuns": 3,
+        "convertedFrames": 86399990,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 1.345341,
+        "maxRssBytes": 7618560
+      }
+    ]
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-final-smoke.log",
+    "kind": "RESAMPLER_ENVIRONMENT",
+    "platform": "darwin",
+    "arch": "arm64",
+    "runtime": "v24.12.0",
+    "libraries": "6.3.101\n60.26.101",
+    "decoder": "ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers"
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-final-smoke.log",
+    "kind": "RESAMPLER_GUARDS",
+    "overlapRejected": true,
+    "sourceGapRejected": true,
+    "truncatedInputRejected": true,
+    "cancellationChildExited": true
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-final-smoke.log",
+    "kind": "RESAMPLER_RESULT",
+    "seconds": 60,
+    "rangesPerSource": 15,
+    "wallMs": 242.41324999999983,
+    "childCpuSeconds": 0.24969200000000003,
+    "maxChildRssBytes": 15712256,
+    "decodeMs": 158.8499579999998,
+    "resampleMs": 53.5132930000002,
+    "joinMs": 29.011541999999963,
+    "frameCount": 1466245,
+    "alignment": [
+      {
+        "markers": 15,
+        "maxMarkerErrorFrames": 1,
+        "maxMarkerErrorMs": 0.041666666666666664,
+        "maxBoundaryStep": 0.001373291015625
+      },
+      {
+        "markers": 15,
+        "maxMarkerErrorFrames": 7,
+        "maxMarkerErrorMs": 0.2916666666666667,
+        "maxBoundaryStep": 0.003143310546875
+      }
+    ],
+    "resourceUsage": [
+      {
+        "ranges": 15,
+        "continuousRuns": 3,
+        "convertedFrames": 1440259,
+        "maxEndpointRoundingFrames": 0,
+        "cpuSeconds": 0.024578,
+        "maxRssBytes": 7602176
+      },
+      {
+        "ranges": 15,
+        "continuousRuns": 3,
+        "convertedFrames": 1439848,
+        "maxEndpointRoundingFrames": 1,
+        "cpuSeconds": 0.025114,
+        "maxRssBytes": 7143424
+      }
+    ]
+  },
+  {
+    "log": "/tmp/gristmill-streaming-prototype-final-smoke.log",
+    "kind": "RESAMPLER_CLEANUP",
+    "ownedGroupsExited": true,
+    "temporaryDirectoryRemoved": true
+  }
+]

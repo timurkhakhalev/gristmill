@@ -2400,7 +2400,9 @@
     "calendarParticipantsInvalid": "I dati salvati dei partecipanti del calendario non sono validi. Correggili prima di riprovare.",
     "calendarParticipantsNamingSkipped": "L’assegnazione automatica dei nomi ai parlanti è stata saltata. La trascrizione e il riepilogo restano disponibili.",
     "transcribeAndSummary": "Trascrivi e riassumi",
-    "summary": "Riepilogo"
+    "summary": "Riepilogo",
+    "audioPreparationDiskFull": "Il tuo audio è salvato. Libera spazio sul disco prima di riprovare a preparare l’audio.",
+    "audioPreparationFailed": "Il tuo audio è salvato. Controlla lo spazio di archiviazione locale e riprova. Se la preparazione audio continua a non riuscire, reinstalla Gristmill."
   },
   "shortcutsDialog": {
     "title": "Scorciatoie da tastiera",

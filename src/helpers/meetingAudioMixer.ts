@@ -14,6 +14,13 @@ import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { createAbortError } from "./abortError.js";
 import { getFFmpegPath } from "./ffmpegUtils.js";
 
+import { resolveBundledBinary } from "./binaryResolver.js";
+import {
+  meetingResamplerManifest,
+  meetingResamplerMappingText,
+  type MeetingResamplerManifest,
+} from "./meetingResamplerMapping.js";
+
 import { alignedAudioRanges } from "./meetingAudioAlignment.js";
 
 const SAMPLE_RATE = 24_000;
@@ -29,8 +36,11 @@ export interface MeetingAudioMixerDeps {
   spawn?: (
     command: string,
     args: string[],
-    options: { stdio: ["ignore", "ignore", "pipe"] }
+    options: { stdio: ["ignore", "ignore", "pipe"]; detached: true }
   ) => ChildProcess;
+  resamplerPath?: () => string | null;
+  /** Verification records authoritative decisions before native work starts. */
+  onMapping?: (manifest: MeetingResamplerManifest) => void;
   availableBytes?: (path: string) => number;
   stat?: (path: string) => fs.Stats;
   inspectEpoch?: typeof inspectMeetingOpus;
@@ -45,16 +55,6 @@ export interface PreparedMeetingAudio {
   frameCount: number;
   durationSeconds: number;
   sizeBytes: number;
-}
-
-interface EpochInput {
-  path: string;
-  source: "mic" | "system";
-  startFrame: number;
-  frameCount: number;
-  fileStartFrame: number;
-  epochFrameCount: number;
-  rate: number;
 }
 
 export function meetingTimelineFrameCount(
@@ -268,6 +268,8 @@ async function prepareMeetingAudioWithTimeline(
     intentionalEmptySources?: MeetingSource[];
   }
 ): Promise<PreparedMeetingAudio> {
+  if (options.signal?.aborted) throw createAbortError();
+
   const deps = options.deps ?? {};
   const layout = options.layout ?? "mono";
   const channels = layout === "stereo" ? 2 : 1;
@@ -277,28 +279,17 @@ async function prepareMeetingAudioWithTimeline(
 
   if (frameCount <= 0) throw new Error("Meeting recording has no audio frames");
 
-  const inputs: EpochInput[] = epochs
-    .filter(
-      (epoch) =>
-        epoch.frameCount > 0 &&
-        ((layout !== "mic" && layout !== "system") || epoch.source === layout)
-    )
-    .flatMap((epoch) =>
-      alignedAudioRanges(epoch).map((range) => ({
-        source: epoch.source,
-        path: storage.getEpochFilePath(epoch.recordingId, epoch.source, epoch.epochIndex),
-        startFrame: range.timelineStartFrame,
-        frameCount: range.frameCount,
-        fileStartFrame: range.fileStartFrame,
-        epochFrameCount: epoch.frameCount,
-        rate: range.rate,
-      }))
-    );
+  const selectedEpochs = epochs.filter(
+    (epoch) =>
+      epoch.frameCount > 0 && ((layout !== "mic" && layout !== "system") || epoch.source === layout)
+  );
+
+  for (const epoch of selectedEpochs) alignedAudioRanges(epoch);
 
   const intentionalEmptySources = new Set(options.intentionalEmptySources ?? []);
 
   if (
-    !inputs.length &&
+    !selectedEpochs.length &&
     !(
       (layout === "mic" && intentionalEmptySources.has("mic")) ||
       (layout === "system" && intentionalEmptySources.has("system"))
@@ -313,13 +304,13 @@ async function prepareMeetingAudioWithTimeline(
 
   const inspectedPaths = new Set<string>();
 
-  for (const input of inputs) {
-    if (inspectedPaths.has(input.path)) continue;
-    inspectedPaths.add(input.path);
+  for (const epoch of selectedEpochs) {
+    const inputPath = storage.getEpochFilePath(epoch.recordingId, epoch.source, epoch.epochIndex);
 
-    if (
-      (deps.inspectEpoch ?? inspectMeetingOpus)(input.path).frameCount !== input.epochFrameCount
-    ) {
+    if (inspectedPaths.has(inputPath)) continue;
+    inspectedPaths.add(inputPath);
+
+    if ((deps.inspectEpoch ?? inspectMeetingOpus)(inputPath).frameCount !== epoch.frameCount) {
       throw new Error("Meeting recording audio epoch duration does not match its saved timeline");
     }
   }
@@ -329,6 +320,8 @@ async function prepareMeetingAudioWithTimeline(
   if ((deps.exists ?? fs.existsSync)(finalPath)) {
     const existing = inspectPcmWav(finalPath, frameCount, deps, channels);
 
+    if (options.signal?.aborted) throw createAbortError();
+
     return {
       path: finalPath,
       frameCount,
@@ -337,25 +330,104 @@ async function prepareMeetingAudioWithTimeline(
     };
   }
 
-  const tempPath = storage.getDerivedAudioTempPath(recording.id, runId, layout);
-  const estimatedBytes = frameCount * BYTES_PER_FRAME * channels + 4096;
-  const availableBytes = (deps.availableBytes ?? getAvailableBytes)(path.dirname(finalPath));
+  const sources: MeetingSource[] =
+    layout === "mic" || layout === "system"
+      ? [layout]
+      : ["mic", "system"].filter(
+          (source): source is MeetingSource =>
+            layout === "stereo" || selectedEpochs.some((epoch) => epoch.source === source)
+        );
 
-  if (availableBytes < estimatedBytes)
-    throw new Error("Insufficient disk space for meeting audio preparation");
+  const manifests = sources.map((source) => {
+    const own = selectedEpochs.filter((epoch) => epoch.source === source);
+
+    if (!own.length && !intentionalEmptySources.has(source))
+      throw new Error("Meeting recording is missing an audio source");
+
+    return meetingResamplerManifest(
+      source,
+      own,
+      () => "",
+      frameCount,
+      intentionalEmptySources.has(source)
+    );
+  });
+
+  // Each source retains one decoded epoch and mapping while its full timeline exists.
+  // Both timelines coexist with final WAV assembly after decoded epochs are removed.
+  const timelineBytes =
+    manifests.filter((manifest) => manifest.epochs.length).length * frameCount * 4;
+
+  const decodedPeak = manifests.reduce(
+    (total, manifest) =>
+      total +
+      manifest.epochs.reduce(
+        (largest, epoch) =>
+          Math.max(
+            largest,
+            epoch.inputFrames * (manifest.decodedSampleRate / SAMPLE_RATE) * 4 +
+              Buffer.byteLength(meetingResamplerMappingText(epoch.rows))
+          ),
+        0
+      ),
+    0
+  );
+
+  const estimatedBytes =
+    timelineBytes +
+    Math.max(decodedPeak, frameCount * BYTES_PER_FRAME * channels + WAV_HEADER_LIMIT);
+
+  const tempPath = storage.getDerivedAudioTempPath(recording.id, runId, layout);
 
   try {
-    await runMixer(
-      ffmpegPath,
-      inputs,
-      frameCount,
-      tempPath,
-      options.signal,
-      deps,
-      layout,
-      intentionalEmptySources
+    const availableBytes = (deps.availableBytes ?? getAvailableBytes)(path.dirname(finalPath));
+
+    if (availableBytes < estimatedBytes) throw preparationError(true);
+
+    if (options.signal?.aborted) throw createAbortError();
+
+    const resamplerPath = (
+      deps.resamplerPath ?? (() => resolveBundledBinary("meeting-resampler"))
+    )();
+
+    if (!resamplerPath)
+      throw preparationError(
+        false,
+        "Local audio preparation is unavailable. Reinstall or rebuild Gristmill."
+      );
+
+    const workingDirectory = storage.createDerivedAudioWorkingDirectory(
+      recording.id,
+      runId,
+      layout
     );
+
+    try {
+      for (const manifest of manifests) {
+        for (const [index, epoch] of manifest.epochs.entries())
+          epoch.inputPath = path.join(workingDirectory, `${manifest.source}-${index}.f32`);
+        deps.onMapping?.(manifest);
+      }
+
+      await runMixer(
+        storage,
+        ffmpegPath,
+        resamplerPath,
+        manifests,
+        frameCount,
+        tempPath,
+        workingDirectory,
+        options.signal,
+        deps,
+        layout
+      );
+    } finally {
+      storage.removeDerivedAudioWorkingDirectory(recording.id, runId, workingDirectory);
+    }
+
     const inspected = inspectPcmWav(tempPath, frameCount, deps, channels);
+
+    if (options.signal?.aborted) throw createAbortError();
     (deps.rename ?? fs.renameSync)(tempPath, finalPath);
 
     return {
@@ -371,145 +443,269 @@ async function prepareMeetingAudioWithTimeline(
       // A partial temporary file is never used as input.
     }
 
-    throw error;
+    if (options.signal?.aborted) throw createAbortError();
+    const code = z.object({ code: z.string() }).partial().nullish().catch(null).parse(error)?.code;
+
+    if (code === "ENOSPC") throw preparationError(true);
+
+    if (code === "audio-preparation-failed" || code === "audio-preparation-disk-full") throw error;
+    throw preparationError(
+      false,
+      "Could not prepare the saved audio. Check local storage and retry.",
+      error instanceof Error ? error : undefined
+    );
   }
 }
 
-function runMixer(
+function preparationError(
+  diskFull: boolean,
+  message = "Could not prepare the saved audio. Retry or reinstall Gristmill.",
+  cause?: Error
+): Error {
+  return Object.assign(
+    new Error(
+      diskFull
+        ? "Insufficient disk space for meeting audio preparation. Free disk space and retry."
+        : message,
+      { cause }
+    ),
+    {
+      code: diskFull ? "audio-preparation-disk-full" : "audio-preparation-failed",
+    }
+  );
+}
+
+async function runMixer(
+  storage: MeetingRecordingStorage,
   ffmpegPath: string,
-  inputs: EpochInput[],
+  resamplerPath: string,
+  manifests: MeetingResamplerManifest[],
   frameCount: number,
   outputPath: string,
+  workingDirectory: string,
   signal: AbortSignal | undefined,
   deps: MeetingAudioMixerDeps,
-  layout: MeetingAudioLayout,
-  intentionalEmptySources: Set<MeetingSource>
+  layout: MeetingAudioLayout
 ): Promise<void> {
-  if (signal?.aborted) return Promise.reject(createAbortError());
-  const paths = [...new Set(inputs.map((input) => input.path))];
-  const filters: string[] = [];
-  const labels = new Map<number, string>();
-  paths.forEach((file, fileIndex) => {
-    const indexes = inputs.flatMap((input, index) => (input.path === file ? [index] : []));
+  const children = new Set<ChildProcess>();
+  const stoppedChildren = new WeakSet<ChildProcess>();
+  let firstError: Error | undefined;
 
-    if (indexes.length === 1) labels.set(indexes[0], `${fileIndex}:a`);
-    else {
-      const names = indexes.map((index) => `src${index}`);
-      filters.push(
-        `[${fileIndex}:a]asplit=${names.length}${names.map((name) => `[${name}]`).join("")}`
-      );
-      indexes.forEach((index, i) => labels.set(index, names[i]));
+  const stop = (error: Error) => {
+    firstError ??= error;
+
+    for (const child of children) {
+      if (stoppedChildren.has(child)) continue;
+      stoppedChildren.add(child);
+
+      try {
+        if (child.pid) process.kill(-child.pid, "SIGKILL");
+        else child.kill("SIGKILL");
+      } catch {
+        // A child can have exited before its close event; settlement still waits below.
+      }
     }
-  });
-  inputs.forEach((input, index) => {
-    const outputFrames = Math.round(input.frameCount * input.rate);
-    filters.push(
-      `[${labels.get(index)}]aresample=${SAMPLE_RATE},atrim=start_sample=${input.fileStartFrame}:end_sample=${input.fileStartFrame + input.frameCount},asetpts=PTS-STARTPTS${input.rate === 1 ? "" : `,atempo=${1 / input.rate}`},apad=whole_len=${outputFrames},atrim=end_sample=${outputFrames},adelay=${input.startFrame}S:all=1${layout === "mono" ? ",volume=0.5" : ""}[a${index}]`
-    );
-  });
-
-  const mix = (indexes: number[], label: string) => {
-    if (!indexes.length) {
-      const source: MeetingSource | null =
-        label === "mic" || layout === "mic"
-          ? "mic"
-          : label === "system" || layout === "system"
-            ? "system"
-            : null;
-
-      if (!source || !intentionalEmptySources.has(source))
-        throw new Error("Meeting recording is missing an audio source");
-      filters.push(
-        `anullsrc=r=${SAMPLE_RATE}:cl=mono,atrim=end_sample=${frameCount},asetpts=PTS-STARTPTS[${label}]`
-      );
-
-      return;
-    }
-
-    filters.push(
-      `${indexes.map((i) => `[a${i}]`).join("")}amix=inputs=${indexes.length}:duration=longest:dropout_transition=0:normalize=0,apad=whole_len=${frameCount},atrim=end_sample=${frameCount}[${label}]`
-    );
   };
 
-  if (layout === "stereo") {
-    mix(
-      inputs.flatMap((input, i) => (input.source === "mic" ? [i] : [])),
-      "mic"
-    );
-    mix(
-      inputs.flatMap((input, i) => (input.source === "system" ? [i] : [])),
-      "system"
-    );
-    filters.push("[mic][system]join=inputs=2:channel_layout=stereo:map=0.0-FL|1.0-FR[out]");
-  } else {
-    mix(
-      inputs.map((_, i) => i),
-      "out"
-    );
-  }
+  const abort = () => stop(createAbortError());
+  signal?.addEventListener("abort", abort, { once: true });
 
-  const args: string[] = ["-hide_banner", "-loglevel", "error"];
+  if (signal?.aborted) abort();
 
-  for (const file of paths) {
-    args.push("-i", file);
-  }
+  const run = (
+    command: string,
+    args: string[],
+    phase: "decode" | "correct" | "assemble"
+  ): Promise<void> => {
+    if (firstError) return Promise.reject(firstError);
 
-  args.push(
-    "-filter_complex",
-    filters.join(";"),
-    "-map",
-    "[out]",
-    "-ar",
-    String(SAMPLE_RATE),
-    "-ac",
-    layout === "stereo" ? "2" : "1",
-    "-c:a",
-    "pcm_s16le",
-    "-y",
-    outputPath
-  );
+    return new Promise((resolve, reject) => {
+      let child: ChildProcess;
 
-  return new Promise((resolve, reject) => {
-    let process: ChildProcess;
+      try {
+        child = (deps.spawn ?? spawnChild)(command, args, {
+          stdio: ["ignore", "ignore", "pipe"],
+          detached: true,
+        });
+      } catch (error) {
+        stop(
+          preparationError(
+            false,
+            "Could not start local audio preparation. Reinstall or rebuild Gristmill.",
+            error instanceof Error ? error : undefined
+          )
+        );
+        reject(firstError);
 
-    try {
-      process = (deps.spawn ?? spawnChild)(ffmpegPath, args, {
-        stdio: ["ignore", "ignore", "pipe"],
+        return;
+      }
+
+      children.add(child);
+      let stderr = "";
+      child.stderr?.on("data", (chunk: Buffer) => {
+        stderr = (stderr + chunk.toString()).slice(-2000);
       });
-    } catch (error) {
-      reject(error);
+      child.on("error", (error: Error) =>
+        stop(
+          preparationError(
+            false,
+            "Could not run local audio preparation. Reinstall or rebuild Gristmill.",
+            error
+          )
+        )
+      );
+      child.on("close", (code) => {
+        children.delete(child);
 
-      return;
+        if (!firstError && code !== 0) {
+          const diskFull = /(?:errno=28\b|No space left on device)/i.test(stderr);
+
+          const message =
+            phase === "correct" && code === 3
+              ? "Decoded audio does not match the saved recording. Retry preparation."
+              : "Could not prepare the saved audio. Check local storage and retry.";
+
+          stop(preparationError(diskFull, message, stderr ? new Error(stderr.trim()) : undefined));
+        }
+
+        if (firstError) reject(firstError);
+        else resolve();
+      });
+
+      if (signal?.aborted) abort();
+    });
+  };
+
+  const timelines = new Map<MeetingSource, string>();
+
+  try {
+    const results = await Promise.allSettled(
+      manifests.map(async (manifest) => {
+        try {
+          if (!manifest.epochs.length) return;
+          const timeline = path.join(workingDirectory, `${manifest.source}-timeline.f32`);
+          timelines.set(manifest.source, timeline);
+
+          for (const [index, epoch] of manifest.epochs.entries()) {
+            if (firstError) throw firstError;
+            const decoded = epoch.inputPath;
+            const mapping = path.join(workingDirectory, `${manifest.source}-${index}.mapping`);
+
+            const input = storage.getEpochFilePath(
+              epoch.recordingId,
+              manifest.source,
+              epoch.epochIndex
+            );
+
+            try {
+              await run(
+                ffmpegPath,
+                [
+                  "-nostdin",
+                  "-hide_banner",
+                  "-loglevel",
+                  "error",
+                  "-i",
+                  input,
+                  "-ar",
+                  String(manifest.decodedSampleRate),
+                  "-ac",
+                  "1",
+                  "-c:a",
+                  "pcm_f32le",
+                  "-f",
+                  "f32le",
+                  "-y",
+                  decoded,
+                ],
+                "decode"
+              );
+              fs.writeFileSync(mapping, meetingResamplerMappingText(epoch.rows), {
+                flag: "wx",
+                mode: 0o600,
+              });
+              await run(
+                resamplerPath,
+                [
+                  decoded,
+                  mapping,
+                  timeline,
+                  String(frameCount),
+                  String(epoch.inputFrames),
+                  index ? "add" : "create",
+                ],
+                "correct"
+              );
+            } finally {
+              fs.rmSync(decoded, { force: true });
+              fs.rmSync(mapping, { force: true });
+            }
+          }
+        } catch (error) {
+          stop(error instanceof Error ? error : preparationError(false));
+          throw error;
+        }
+      })
+    );
+
+    const rejected = results.find((result) => result.status === "rejected");
+
+    if (rejected?.status === "rejected") throw firstError ?? rejected.reason;
+    const args = ["-nostdin", "-hide_banner", "-loglevel", "error"];
+    const filters: string[] = [];
+    const labels = new Map<MeetingSource, string>();
+
+    for (const manifest of manifests) {
+      const timeline = timelines.get(manifest.source);
+
+      if (timeline) {
+        const inputIndex = labels.size;
+        args.push("-f", "f32le", "-ar", String(SAMPLE_RATE), "-ac", "1", "-i", timeline);
+        labels.set(manifest.source, `${inputIndex}:a`);
+      }
     }
 
-    let stderr = "";
-    let settled = false;
+    const sourceLabel = (source: MeetingSource) => {
+      const label = labels.get(source);
 
-    const finish = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      signal?.removeEventListener("abort", abort);
+      if (label) return `[${label}]`;
+      filters.push(
+        `anullsrc=r=${SAMPLE_RATE}:cl=mono,atrim=end_sample=${frameCount},asetpts=PTS-STARTPTS[${source}]`
+      );
 
-      if (error) reject(error);
-      else resolve();
+      return `[${source}]`;
     };
 
-    const abort = () => {
-      process.kill("SIGKILL");
-    };
+    if (layout === "stereo") {
+      filters.push(
+        `${sourceLabel("mic")}${sourceLabel("system")}join=inputs=2:channel_layout=stereo:map=0.0-FL|1.0-FR[out]`
+      );
+    } else if (layout === "mic" || layout === "system") {
+      filters.push(`${sourceLabel(layout)}anull[out]`);
+    } else {
+      filters.push(
+        `${[...labels.values()].map((label) => `[${label}]`).join("")}amix=inputs=${labels.size}:duration=longest:dropout_transition=0:normalize=0,volume=0.5[out]`
+      );
+    }
 
-    signal?.addEventListener("abort", abort, { once: true });
-    process.stderr?.on("data", (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-2000);
-    });
-    process.on("error", (error) => finish(error));
-    process.on("close", (code) => {
-      if (signal?.aborted) finish(createAbortError());
-      else if (code !== 0)
-        finish(new Error(`Meeting audio mixer failed${stderr ? `: ${stderr.trim()}` : ""}`));
-      else finish();
-    });
-  });
+    args.push(
+      "-filter_complex",
+      filters.join(";"),
+      "-map",
+      "[out]",
+      "-ar",
+      String(SAMPLE_RATE),
+      "-ac",
+      layout === "stereo" ? "2" : "1",
+      "-c:a",
+      "pcm_s16le",
+      "-y",
+      outputPath
+    );
+    await run(ffmpegPath, args, "assemble");
+  } finally {
+    signal?.removeEventListener("abort", abort);
+  }
 }
 
 interface PcmWavInspection {

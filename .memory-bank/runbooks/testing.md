@@ -119,3 +119,92 @@ node test/benchmarks/meeting-companion.mts
 The optional Git ref selects the component and synchronization hook from that revision. Both runs use the current dependencies, CSS and benchmark shell. Each run uses the same synthetic audio-level function, a temporary profile, a warm-up, and separate visible and hidden samples. The command prints the path to CPU and wakeup measurements. The same directory contains `visible.png` for visual inspection. The current-code run fails if the hidden window still sends level updates.
 
 Run A/B measurements sequentially with other builds and tests stopped. Repeat them if host load changes. These samples compare the measured component; they do not measure whole-Mac battery savings or prove physical audio capture. Native device changes, permissions and real audio still require the related hardware smoke test.
+
+### Post-Stop mixer performance
+
+The short smoke seeds a private database and calls production preparation for all
+four layouts. It covers calibration, epoch/generation resets, gaps and overlapping
+contributions. Native tests currently run locally on macOS; Linux CI does not prove
+native delivery or hardware capture.
+
+```sh
+pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
+pnpm test --verbose test/cases/recording/integration/meetingPrivateFixtureReplay.test.ts
+node test/benchmarks/meeting-resampler.mts 600 3600 7200
+node test/benchmarks/meeting-resampler.mts 3600 7200
+node test/benchmarks/meeting-resampler.mts 3600 7200
+```
+
+Build native resources first with `pnpm run compile:native`. Prepare the canonical
+Electron SQLite ABI with the focused test command. The benchmark always launches
+Electron Node mode and never rebuilds bindings. Stop competing tests, builds and
+benchmarks before large measurements. Run the three commands sequentially.
+
+Synthetic sources contain separate tones and pulse markers, calibration every
+four seconds, opposite 200 ppm drift, explicit gaps, three epochs and an overlap.
+An independent analytical signal checks output windows at calibration, generation,
+gap and overlap boundaries. The fractional-delay oracle retains a 0.8 threshold,
+the full allowed lag search, an analytical half-sample shift control and a damaged
+window negative control. Source hashes must remain unchanged.
+
+Timing includes production decoding, native preparation, intermediate I/O and
+final WAV assembly. Fixture generation, waveform checks and excerpts are outside
+timing. `/usr/bin/time -l` measures summed child CPU and maximum individual child
+RSS; these exclude the Electron coordinator. The stand samples allocated bytes
+under managed derived storage every 25 ms and at child close. This is a measured
+peak, not a disk reservation or a whole-machine battery measurement. Every hour
+run must take at most 30 seconds and every two-hour run at most 60 seconds on the
+measured Mac. Preserve hardware, revision and native build manifest with results.
+Do not infer an exact speedup from a historical stall on a different fixture.
+
+Production mapping decisions provide candidate/accepted/rejected counts,
+exclusive rejection reasons (uncertainty before effective rate), absolute anchor
+corrections and separate boundary resets. Accepted share is unavailable when
+there are no candidates. There is no minimum accepted-share target.
+
+### Private copied recordings
+
+The user must select a specific recording. The copy and detailed evidence must
+stay outside the checkout and CI, with directory mode 0700 and file mode 0600.
+
+```sh
+python3 test/benchmarks/copy-meeting-for-prototype.py PROFILE NOTE_ID NEW_DIRECTORY
+node test/benchmarks/meeting-resampler.mts --copied-fixture NEW_DIRECTORY
+```
+
+The exporter reads selected raw rows in one read-only WAL transaction. It keeps
+JSON text and decimal nanoseconds unchanged and copies only selected audio, with
+hashes before and after copying. Readable WAL sidecars are required. Changed or
+deleted audio fails explicitly. It does not migrate, copy a raw database, write
+the source profile or use immutable mode.
+
+Replay inserts raw rows and minimal note context into `createDb`, then reads
+recordings, epochs and intentional intervals through production DTO validation.
+Each part is preflighted through the production timeline. Only
+`audio-alignment-unavailable` is recorded as an ineligible part; other failures
+stop verification. Eligible parts use all layouts through production preparation.
+A run with no verified part fails. Rejected parts remain preserved and are not
+certified by a pass for eligible parts; this does not change production policy.
+The private report contains actual mapper
+decisions, source hashes and fractional waveform comparisons against independent
+48 kHz decoded contributions, including summed overlap windows. Five-second
+excerpts and their category index stay in the external evidence directory.
+Absent real boundary categories remain covered by synthetic checks.
+
+Audible central windows must exceed the unchanged 0.8 fractional correlation
+threshold. Below one PCM16 step RMS, correlation is not a useful quality measure:
+the oracle checks every central sample at zero lag, with error RMS at most one
+step and peak error at most two steps. Exact silence is checked rather than skipped.
+The regression file includes damaged speech, added noise, missing audible signal
+and a quiet-window spike:
+
+```sh
+pnpm test --verbose test/cases/recording/unit/meetingWaveformOracle.test.ts
+```
+
+Do not publish identities, times, durations, exact counts, hashes, excerpts,
+transcripts or window measurements. Only reviewed aggregate pass/fail and a
+rounded acceptance share may leave the private directory. Human listening must
+be recorded separately; an automated pass cannot claim listening or hardware
+permission approval. See [local builds](local-builds.md) for isolated package
+capture, playback, export and cancellation checks.

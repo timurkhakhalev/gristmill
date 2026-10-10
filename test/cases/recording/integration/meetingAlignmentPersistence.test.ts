@@ -95,7 +95,7 @@ for (const resolved of [false, true]) {
       assert.equal(epoch.timelineStartFrame, null, "source zero is not a fabricated common origin");
 
       if (resolved)
-        assert.deepEqual(alignedAudioRanges(epoch), [
+        assert.deepEqual(alignedAudioRanges(epoch).map(({ provenance, ...numeric }) => numeric), [
           { fileStartFrame: 0, frameCount: 7_200, timelineStartFrame: 2, rate: 1 },
         ]);
       else assert.throws(() => alignedAudioRanges(epoch), { code: "audio-alignment-unavailable" });
@@ -172,7 +172,7 @@ test("clock schema migration preserves historical offsets and permits unresolved
   try {
     const epoch = reopened.listMeetingRecordingEpochs(recording.id)[0];
     assert.equal(epoch.sourceGeneration, null);
-    assert.deepEqual(alignedAudioRanges(epoch), [
+    assert.deepEqual(alignedAudioRanges(epoch).map(({ provenance, ...numeric }) => numeric), [
       { fileStartFrame: 0, frameCount: 2400, timelineStartFrame: 12000, rate: 1 },
     ]);
     assert.equal(reopened.listMeetingIntentionalIntervals(recording.id)[0].timelineEndFrame, 14400);

@@ -2400,7 +2400,9 @@
     "calendarParticipantsInvalid": "保存されたカレンダー参加者データが無効です。再試行する前に修正してください。",
     "calendarParticipantsNamingSkipped": "話者名の自動設定をスキップしました。文字起こしと要約は引き続き利用できます。",
     "transcribeAndSummary": "文字起こしと要約",
-    "summary": "要約"
+    "summary": "要約",
+    "audioPreparationDiskFull": "音声は保存されています。音声の準備を再試行する前に、ディスクの空き容量を増やしてください。",
+    "audioPreparationFailed": "音声は保存されています。ローカルストレージを確認して再試行してください。音声の準備が引き続き失敗する場合は、Gristmill を再インストールしてください。"
   },
   "shortcutsDialog": {
     "title": "キーボードショートカット",

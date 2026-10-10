@@ -3339,25 +3339,7 @@ test("recovery marks an in-flight ASR outcome unknown and counts its possible re
   assert.equal(recovered.retryCount, 1);
 });
 
-function writePcmWav(filePath: string, frames: number) {
-  const dataBytes = frames * 2;
-  const wav = Buffer.alloc(44 + dataBytes);
-  wav.write("RIFF", 0);
-  wav.writeUInt32LE(36 + dataBytes, 4);
-  wav.write("WAVEfmt ", 8);
-  wav.writeUInt32LE(16, 16);
-  wav.writeUInt16LE(1, 20);
-  wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(24_000, 24);
-  wav.writeUInt32LE(48_000, 28);
-  wav.writeUInt16LE(2, 32);
-  wav.writeUInt16LE(16, 34);
-  wav.write("data", 36);
-  wav.writeUInt32LE(dataBytes, 40);
-  fs.writeFileSync(filePath, wav);
-}
-
-test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration", async (t: import("node:test").TestContext) => {
+test("mixer decodes epochs once and uses fixed-track assembly with exact duration", async (t: import("node:test").TestContext) => {
   const db = createDb(t);
 
   if (!db) return;
@@ -3373,9 +3355,9 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
 
   const epochs: Array<{ source: "mic" | "system"; index: number; offset: number; bytes: Buffer }> =
     [
-      { source: "mic", index: 0, offset: 0, bytes: Buffer.from([1, 0, 2, 0]) },
-      { source: "system", index: 0, offset: 3, bytes: Buffer.from([3, 0, 4, 0]) },
-      { source: "mic", index: 1, offset: 6, bytes: Buffer.from([5, 0, 6, 0]) },
+      { source: "mic", index: 0, offset: 0, bytes: Buffer.alloc(1920, 1) },
+      { source: "system", index: 0, offset: 1440, bytes: Buffer.alloc(1920, 3) },
+      { source: "mic", index: 1, offset: 2880, bytes: Buffer.alloc(1920, 5) },
     ];
 
   for (const epoch of epochs) {
@@ -3398,17 +3380,15 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
 
   const finalized = db.finalizeMeetingRecording(recording.id, {
     captureState: "incomplete",
-    endedAt: new Date(startedAt.getTime() + 1).toISOString(),
+    endedAt: new Date(startedAt.getTime() + 200).toISOString(),
   }).recording;
 
   const originalRaw = epochs.map((epoch) =>
     fs.readFileSync(storage.getEpochFilePath(recording.id, epoch.source, epoch.index))
   );
 
-  let argsSeen: string[] = [];
-  const outputChild = new EventEmitter();
-  outputChild.stderr = new EventEmitter();
-  outputChild.kill = () => {};
+  const commands: Array<{ command: string; args: string[] }> = [];
+  const { spawn } = require("node:child_process");
 
   const result = await prepareMeetingAudio(
     storage,
@@ -3417,43 +3397,40 @@ test("mixer keeps epoch offsets, a timeline gap, safe gain, and exact duration",
     db.listMeetingRecordingEpochs(recording.id),
     {
       deps: {
-        ffmpegPath: () => "/test/ffmpeg",
+        ffmpegPath: () => getFFmpegPath(),
         availableBytes: (directory: string) => {
           assert.equal(fs.statSync(directory).isDirectory(), true);
 
           return 1_000_000;
         },
-        spawn: (_command: unknown, args: string[]) => {
-          argsSeen = args;
-          queueMicrotask(() => {
-            const outputPath = args.at(-1);
-            assert.ok(outputPath);
-            writePcmWav(outputPath, 24);
-            outputChild.emit("close", 0);
-          });
-
-          return outputChild;
+        spawn: (command: string, args: string[], options: import("node:child_process").SpawnOptions) => {
+          commands.push({ command, args });
+          return spawn(command, args, options);
         },
       },
     }
   );
 
-  const graph = argsSeen[argsSeen.indexOf("-filter_complex") + 1];
-  assert.match(graph, /adelay=0S:all=1,volume=0\.5/);
-  assert.match(graph, /adelay=3S:all=1,volume=0\.5/);
-  assert.match(graph, /adelay=6S:all=1,volume=0\.5/);
-  assert.match(graph, /amix=inputs=3:duration=longest:dropout_transition=0:normalize=0/);
-  assert.match(graph, /apad=whole_len=24,atrim=end_sample=24/);
-  assert.equal(result.frameCount, 24);
-  assert.equal(result.durationSeconds, 24 / 24_000);
-  assert.equal(result.sizeBytes, 92);
+  const decodes = commands.filter(({ args }) => args.includes("pcm_f32le"));
+  assert.equal(decodes.length, 3);
+  assert.deepEqual(decodes.map(({ args }) => args[args.indexOf("-i") + 1]).sort(),
+    epochs.map(epoch => storage.getEpochFilePath(recording.id, epoch.source, epoch.index)).sort());
+  assert.equal(commands.filter(({ command }) => command.endsWith("meeting-resampler")).length, 3);
+  const assembly = commands.find(({ args }) => args.includes("-filter_complex"))!;
+  const graph = assembly.args[assembly.args.indexOf("-filter_complex") + 1];
+  assert.match(graph, /amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,volume=0\.5/);
+  assert.doesNotMatch(graph, /asplit|atempo|adelay|atrim/);
+  assert.equal(result.frameCount, 4800);
+  assert.equal(result.durationSeconds, 4800 / 24_000);
+  assert.equal(result.sizeBytes, fs.statSync(result.path).size);
   assert.deepEqual(
     epochs.map((epoch) =>
       fs.readFileSync(storage.getEpochFilePath(recording.id, epoch.source, epoch.index))
     ),
     originalRaw
   );
-  assert.equal(fs.statSync(result.path).size, 92);
+  const wav = fs.readFileSync(result.path);
+  assert.equal(wav.readUInt32LE(wav.indexOf(Buffer.from("data")) + 4), 4800 * 2);
 });
 
 test("ffmpeg output preserves audible source offsets, a silent gap, and full timeline end", async (t: import("node:test").TestContext) => {
@@ -5590,5 +5567,41 @@ for (const scenario of ["cancelled", "provider-error", "cached-response"] as con
     await worker.waitForIdle();
     assert.equal(requests, 0);
     assert.equal(db.getMeetingProcessingRun(run.id)!.status, status);
+  });
+}
+
+for (const barrier of ["quit", "audio", "note"] as const) {
+  test(`${barrier} barrier awaits preparation child close before releasing recording ownership`, async t => {
+    const db = createDb(t); if (!db) return;
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const config = { ...validConfig, transcription: { ...validConfig.transcription, provider: "deepgram", model: "nova-3", credentialRef: "DEEPGRAM_API_KEY" } };
+    const { note, recording, run } = createFinishedRecording(db, storage, config, "Preserved manual note");
+    const children: Array<{ child: import("node:events").EventEmitter; killed: boolean; close(): void }> = [];
+    let started!: () => void; const ready = new Promise<void>(resolve => { started = resolve; });
+    let providerCalls = 0;
+    const worker = workerFor(db, storage, {
+      mixAudio: undefined,
+      mixerDeps: { ffmpegPath: () => getFFmpegPath(), resamplerPath: () => require("node:path").resolve("resources/bin/meeting-resampler"), spawn: (_command, args) => {
+        const child = new EventEmitter(); child.stderr = new EventEmitter();
+        let closed = false;
+        const entry = { child, killed: false, close() { if (!closed) { closed = true; child.emit("close", null); } } };
+        child.kill = () => { entry.killed = true; return true; };
+        fs.writeFileSync(args.at(-1)!, "private partial decoded data"); children.push(entry);
+        if (children.length === 2) started(); return child;
+      } },
+      transcribeRemote: async () => { providerCalls++; throw new Error("preparation must not reach a provider"); },
+    }, false);
+    t.after(async () => { children.forEach(entry => entry.close()); await worker.stop(); });
+    worker.onRetentionReady(); await ready;
+    let settled = false;
+    const closing = (barrier === "quit" ? worker.stop() : barrier === "audio" ? worker.cancelRecordingForDeletion(recording.id) : worker.cancelNoteForDeletion(note.id)).then(() => { settled = true; });
+    await new Promise(setImmediate); assert.equal(settled, false); assert.ok(children.every(entry => entry.killed));
+    assert.equal(db.getNote(note.id)!.content, "Preserved manual note"); assert.equal(providerCalls, 0);
+    children[0].close(); await new Promise(setImmediate); assert.equal(settled, false);
+    children[1].close(); await closing;
+    assert.equal(providerCalls, 0); assert.equal(db.getMeetingProcessingRun(run.id)!.status, barrier === "quit" ? "pending" : "cancelled");
+    assert.deepEqual(fs.readdirSync(require("node:path").join(storage.recordingsRoot, recording.id, "derived")), []);
+    assert.ok(fs.existsSync(storage.getEpochFilePath(recording.id, "mic", 0)));
+    assert.ok(fs.existsSync(storage.getEpochFilePath(recording.id, "system", 0)));
   });
 }

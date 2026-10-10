@@ -1,0 +1,7 @@
+Gristmill meeting resampler uses libswresample and libavutil from FFmpeg 8.1.1.
+FFmpeg: https://ffmpeg.org/
+Copyright (c) the FFmpeg contributors. Individual source files list their authors
+and copyright years. The exact unmodified source archive is included here.
+These shared libraries are licensed under LGPL-2.1-or-later. See COPYING.LGPLv2.1.
+GPL, nonfree and version3 components are disabled. No external codecs, network
+protocols or OpenSSL are enabled. The separate bundled decoder is unchanged.

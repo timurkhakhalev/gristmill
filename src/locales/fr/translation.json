@@ -2400,7 +2400,9 @@
     "calendarParticipantsInvalid": "Les données enregistrées des participants du calendrier sont invalides. Corrigez-les avant de réessayer.",
     "calendarParticipantsNamingSkipped": "L’attribution automatique des noms aux intervenants a été ignorée. La transcription et le résumé restent disponibles.",
     "transcribeAndSummary": "Transcrire et résumer",
-    "summary": "Résumé"
+    "summary": "Résumé",
+    "audioPreparationDiskFull": "Votre audio est enregistré. Libérez de l’espace disque avant de relancer la préparation audio.",
+    "audioPreparationFailed": "Votre audio est enregistré. Vérifiez le stockage local et réessayez. Si la préparation audio échoue encore, réinstallez Gristmill."
   },
   "shortcutsDialog": {
     "title": "Raccourcis clavier",

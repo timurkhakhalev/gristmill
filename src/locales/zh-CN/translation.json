@@ -2400,7 +2400,9 @@
     "calendarParticipantsInvalid": "保存的日历参与者数据无效。请先更正后再重试。",
     "calendarParticipantsNamingSkipped": "已跳过自动识别说话者姓名。转录文本和摘要仍可用。",
     "transcribeAndSummary": "转录并总结",
-    "summary": "总结"
+    "summary": "总结",
+    "audioPreparationDiskFull": "音频已保存。请先释放磁盘空间，再重试音频准备。",
+    "audioPreparationFailed": "音频已保存。请检查本地存储并重试。如果音频准备仍然失败，请重新安装 Gristmill。"
   },
   "shortcutsDialog": {
     "title": "键盘快捷键",

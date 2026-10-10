@@ -5,6 +5,17 @@ export interface AlignedAudioRange {
   frameCount: number;
   timelineStartFrame: number;
   rate: number;
+  provenance:
+    | { kind: "historical-anchored" }
+    | {
+        kind: "calibrated";
+        segmentIndex: number;
+        sourceGeneration: number;
+        helperGeneration: string;
+        sourceStartFrame: number;
+        sourceEndFrame: number;
+        uncertaintyFrames: number;
+      };
 }
 
 /** Only proven coverage may enter a derived mix; source-local zero is never a timeline offset. */
@@ -21,6 +32,7 @@ export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudi
         frameCount: epoch.frameCount,
         timelineStartFrame: epoch.timelineStartFrame,
         rate: 1,
+        provenance: { kind: "historical-anchored" },
       },
     ];
   }
@@ -30,21 +42,23 @@ export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudi
       code: "audio-alignment-unavailable",
     });
 
-  const segments = epoch.alignmentSegments.filter(
-    (segment) =>
-      segment.sourceGeneration === epoch.sourceGeneration &&
-      segment.uncertaintyStartFrames <= 600 &&
-      segment.uncertaintyEndFrames <= 600 &&
-      BigInt(segment.freshnessSourceNs) >= BigInt(segment.sampledSourceEndNs) &&
-      BigInt(segment.freshnessSourceNs) - BigInt(segment.sampledSourceEndNs) <= 5_000_000_000n &&
-      BigInt(segment.sourceStartNs) >= BigInt(segment.sampledSourceStartNs) - 5_000_000_000n &&
-      BigInt(segment.sourceEndNs) <= BigInt(segment.sampledSourceEndNs) + 5_000_000_000n
-  );
+  const segments = epoch.alignmentSegments
+    .map((segment, order) => ({ segment, order }))
+    .filter(
+      ({ segment }) =>
+        segment.sourceGeneration === epoch.sourceGeneration &&
+        segment.uncertaintyStartFrames <= 600 &&
+        segment.uncertaintyEndFrames <= 600 &&
+        BigInt(segment.freshnessSourceNs) >= BigInt(segment.sampledSourceEndNs) &&
+        BigInt(segment.freshnessSourceNs) - BigInt(segment.sampledSourceEndNs) <= 5_000_000_000n &&
+        BigInt(segment.sourceStartNs) >= BigInt(segment.sampledSourceStartNs) - 5_000_000_000n &&
+        BigInt(segment.sourceEndNs) <= BigInt(segment.sampledSourceEndNs) + 5_000_000_000n
+    );
 
   // Keep input order for equal endpoints, as the previous selection did.
-  const ordered = segments
-    .map((segment, order) => ({ segment, order }))
-    .sort((a, b) => a.segment.sourceStartFrame - b.segment.sourceStartFrame || a.order - b.order);
+  const ordered = segments.sort(
+    (a, b) => a.segment.sourceStartFrame - b.segment.sourceStartFrame || a.order - b.order
+  );
 
   let nextSegment = 0;
   const result: AlignedAudioRange[] = [];
@@ -74,12 +88,12 @@ export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudi
         best = candidate;
     }
 
-    const segment = best?.segment;
-
-    if (!segment)
+    if (!best)
       throw Object.assign(new Error("audio-alignment-unavailable"), {
         code: "audio-alignment-unavailable",
       });
+    const segment = best.segment;
+
     helperGeneration = segment.helperGeneration;
     const next = Math.min(end, segment.sourceEndFrame);
     result.push({
@@ -88,6 +102,16 @@ export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudi
       timelineStartFrame:
         segment.timelineStartFrame + Math.round((cursor - segment.sourceStartFrame) * segment.rate),
       rate: segment.rate,
+      provenance: {
+        kind: "calibrated",
+        segmentIndex: best.order,
+        sourceGeneration: segment.sourceGeneration,
+        helperGeneration: segment.helperGeneration,
+        sourceStartFrame: segment.sourceStartFrame,
+        sourceEndFrame: segment.sourceEndFrame,
+        uncertaintyFrames:
+          Math.max(segment.uncertaintyStartFrames, segment.uncertaintyEndFrames) + 1,
+      },
     });
     cursor = next;
   }

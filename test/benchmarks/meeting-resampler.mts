@@ -70,7 +70,7 @@ for (const [index, seconds] of durations.entries())
         path.join(root, String(index)),
         copied ? args[1] : undefined
       );
-      if (copied) console.log("Private replay completed. Detailed evidence and excerpts:", root);
+      if (copied) console.log("Eligible private parts verified; rejected parts are reported separately. Evidence:", root);
       else {
         console.log("SYNTHETIC_RESULT", JSON.stringify({ seconds, results, evidence: root }));
         for (const result of results)

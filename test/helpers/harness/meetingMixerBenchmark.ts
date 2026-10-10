@@ -10,6 +10,7 @@ import { MeetingRecordingStorage } from "../../../src/helpers/meetingRecordingSt
 import {
   prepareMeetingAudio,
   meetingSourceIntentionallyEmpty,
+  meetingTimelineFrameCount,
 } from "../../../src/helpers/meetingAudioMixer.ts";
 import { convertMeetingPcm } from "../../../src/helpers/meetingOpus.ts";
 import {
@@ -20,7 +21,7 @@ import type {
   MeetingFrameAlignmentSegment,
   MeetingSource,
 } from "../../../src/contracts/meetingRecording.ts";
-import { compareWaveforms } from "../../benchmarks/meeting-waveform-oracle.mts";
+import { compareWaveforms, waveformVerdict } from "../../benchmarks/meeting-waveform-oracle.mts";
 import { replayMeetingFixture, meetingAudioFileHash } from "./meetingPrivateFixture.ts";
 
 type SignalEpoch = { source: MeetingSource; start: number; frames: number; rate: number };
@@ -72,8 +73,8 @@ export async function productionBenchmark(
   const db = createDb(t);
   assert.ok(db);
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
-  const analytical: SignalEpoch[] = [],
-    boundaries: Array<{ category: string; frame: number }> = [];
+  const analytical: SignalEpoch[] = [];
+  const boundaries: Array<{ category: string; frame: number }> = [];
   let inputs: ReturnType<typeof replayMeetingFixture>;
   if (copiedFixture) inputs = replayMeetingFixture(copiedFixture, db, storage);
   else {
@@ -152,7 +153,19 @@ export async function productionBenchmark(
   }
   fs.mkdirSync(reportDirectory, { recursive: true, mode: 0o700 });
   const reports = [];
+  const rejected: Array<{ inputIndex: number; code: string }> = [];
   for (const [inputIndex, input] of inputs.entries()) {
+    if (copiedFixture) {
+      boundaries.length = 0;
+      try {
+        meetingTimelineFrameCount(input.recording, input.epochs);
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "audio-alignment-unavailable") throw error;
+        rejected.push({ inputIndex, code: error.message });
+        fs.writeFileSync(path.join(reportDirectory, "rejected-parts.json"), JSON.stringify(rejected), { mode: 0o600 });
+        continue;
+      }
+    }
     const originals = input.epochs
       .filter((epoch) => epoch.frameCount)
       .map((epoch) => storage.getEpochFilePath(epoch.recordingId, epoch.source, epoch.epochIndex));
@@ -307,7 +320,7 @@ export async function productionBenchmark(
             comparison.fractional > 0.8,
             `${boundary.category} waveform: ${comparison.fractional}`
           );
-          windows.push({ ...boundary, source, ...comparison });
+          windows.push({ ...boundary, source, ...comparison, ...waveformVerdict(expected, actual, comparison.fractional) });
         }
       // A narrow pulse envelope has an independent known timeline coordinate.
       for (const epoch of analytical) {
@@ -428,21 +441,20 @@ export async function productionBenchmark(
             }
             return Math.max(-1, Math.min(32767 / 32768, sum));
           });
-          if (expected.reduce((sum, value) => sum + value * value, 0) < 1e-5) continue;
           const actual = Float32Array.from({ length: 2048 }, (_, i) =>
             sample(boundary.frame + i - 1024, channel)
           );
           const comparison = compareWaveforms(expected, actual, 1);
-          windows.push({ ...boundary, source, ...comparison });
+          windows.push({ ...boundary, source, ...comparison, ...waveformVerdict(expected, actual, comparison.fractional) });
         }
-      assert.ok(windows.length > 0, "private speech fixture must have audible comparison windows");
+      assert.ok(windows.some((window) => !window.quiet), "private speech fixture must have audible comparison windows");
       fs.writeFileSync(
-        path.join(reportDirectory, "waveform-windows.json"),
+        path.join(reportDirectory, `waveform-windows-${inputIndex}.json`),
         JSON.stringify(windows),
         { mode: 0o600 }
       );
       assert.ok(
-        windows.every((window) => window.fractional > 0.8),
+        windows.every((window) => window.passed),
         "private waveform comparison failed; detailed evidence remains private"
       );
     }
@@ -477,7 +489,7 @@ export async function productionBenchmark(
         ? 0
         : boundary.category === "end"
           ? Math.max(0, stereo.frameCount - sr * 5)
-          : Math.max(0, boundary.frame - sr * 2.5)
+          : Math.min(Math.max(0, boundary.frame - sr * 2.5), Math.max(0, stereo.frameCount - sr * 5))
     );
     fs.writeFileSync(
       path.join(reportDirectory, `excerpt-index-${inputIndex}.json`),
@@ -504,6 +516,7 @@ export async function productionBenchmark(
   fs.writeFileSync(path.join(reportDirectory, "report.json"), JSON.stringify(reports, null, 2), {
     mode: 0o600,
   });
+  assert.ok(reports.length > 0, "no eligible audio parts were verified");
   return reports.map(
     ({ wallSeconds, cpuSeconds, maxChildRssBytes, peakTemporaryBytes, windows, decisions }) => ({
       wallSeconds,

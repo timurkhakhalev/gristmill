@@ -69,3 +69,21 @@ export function compareWaveforms(x: Float32Array, y: Float32Array, ratio: number
   }
   return { integer, integerLag, fractional, lag };
 }
+
+/** PCM16 cannot preserve waveform correlation below one quantization step.
+ * Inspect every central sample, at zero lag, before allowing absolute-error validation.
+ */
+export function waveformVerdict(x: Float32Array, y: Float32Array, fractional: number) {
+  const step = 1 / 32768;
+  let energy = 0, error = 0, peakError = 0;
+  for (let j = 256; j < 768; j++) {
+    const difference = x[j] - y[j + 512];
+    energy += x[j] * x[j];
+    error += difference * difference;
+    peakError = Math.max(peakError, Math.abs(difference));
+  }
+  const rms = Math.sqrt(energy / 512), errorRms = Math.sqrt(error / 512);
+  const quiet = rms <= step;
+  return { quiet, rms, errorRms, peakError,
+    passed: quiet ? errorRms <= step && peakError <= 2 * step : fractional > 0.8 };
+}

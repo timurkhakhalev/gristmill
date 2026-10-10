@@ -180,11 +180,27 @@ the source profile or use immutable mode.
 
 Replay inserts raw rows and minimal note context into `createDb`, then reads
 recordings, epochs and intentional intervals through production DTO validation.
-All layouts use production preparation. The private report contains actual mapper
+Each part is preflighted through the production timeline. Only
+`audio-alignment-unavailable` is recorded as an ineligible part; other failures
+stop verification. Eligible parts use all layouts through production preparation.
+A run with no verified part fails. Rejected parts remain preserved and are not
+certified by a pass for eligible parts; this does not change production policy.
+The private report contains actual mapper
 decisions, source hashes and fractional waveform comparisons against independent
 48 kHz decoded contributions, including summed overlap windows. Five-second
 excerpts and their category index stay in the external evidence directory.
 Absent real boundary categories remain covered by synthetic checks.
+
+Audible central windows must exceed the unchanged 0.8 fractional correlation
+threshold. Below one PCM16 step RMS, correlation is not a useful quality measure:
+the oracle checks every central sample at zero lag, with error RMS at most one
+step and peak error at most two steps. Exact silence is checked rather than skipped.
+The regression file includes damaged speech, added noise, missing audible signal
+and a quiet-window spike:
+
+```sh
+pnpm test --verbose test/cases/recording/unit/meetingWaveformOracle.test.ts
+```
 
 Do not publish identities, times, durations, exact counts, hashes, excerpts,
 transcripts or window measurements. Only reviewed aggregate pass/fail and a

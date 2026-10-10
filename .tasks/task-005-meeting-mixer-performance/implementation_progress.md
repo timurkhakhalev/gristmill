@@ -386,3 +386,25 @@ Remaining blockers / user-owned checks:
 Implementation commit: `146ea25333bd2d1c10aca378693c4a1475de1f38`.
 This evidence log is committed separately. Plan/orchestration statuses remain owned
 by the orchestrator; M3 is not marked done.
+
+## M3 follow-up — Private replay validation correction
+
+The earlier strict-alignment blocker was overstated: the replay stopped at one
+ineligible part and did not finish verification of eligible parts. The harness now
+records alignment rejections privately and continues through eligible parts. It
+still fails on unexpected errors or when no part can be verified. This does not
+change production alignment or recovery policy and does not certify rejected audio.
+Boundary lists and waveform reports are now isolated per part.
+
+The waveform oracle uses correlation for audible central windows. Below one PCM16
+quantization step RMS, it instead requires zero-lag absolute error RMS at most one
+step and peak error at most two steps, checking every central sample. Silent windows
+are checked rather than skipped. Synthetic controls retain the damaged-speech case
+and reject added noise, missing audible signal and a localized quiet-window spike.
+
+Verification: the focused oracle file (three tests), synthetic production replay,
+lint, and test typecheck passed. Replay of the complete authorized private fixture
+passed for eligible parts and explicitly recorded rejected parts outside the repo.
+Original private files were preserved. No private identifiers, timings, window
+positions or reports are published here. This resolves the earlier replay blocker;
+human listening and remaining final reviews are not claimed complete.

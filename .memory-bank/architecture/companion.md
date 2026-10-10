@@ -103,8 +103,10 @@ These desktop operations do not change the browser/native wire protocol.
 
 ### Binding
 
-- At an independent Start, exactly one new recognized call can bind automatically.
-- If a call appears later, or if there are several calls, the user selects **Link** in the recording Note.
+- After an independent Start, the recording binds automatically when exactly one recognized in-call candidate is fresh. This is at Start or later, for example when the user joins from the lobby after Start. A lobby or an unrecognized page is not a candidate.
+- If there are several calls, the user selects **Link** in the recording Note.
+- A late binding has the same effects as a binding at Start: Meet mute controls the microphone gate, and a positive Leave stops the recording. A user who records a room meeting and is muted in an unrelated call at the same time is not supported.
+- Restart never binds a later call. It binds only its former call.
 - The selection is examined again against the current recording, connection, tab, document and call.
 - Browser profiles and Google Meet Companion-mode tabs are different candidates.
 - A replacement document in the same selected tab and call starts a new evidence generation. Retired documents cannot send Leave or mute.

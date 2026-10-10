@@ -138,11 +138,15 @@ These desktop operations do not change the browser/native wire protocol.
 - Sanitized Russian and English DOM fixtures are in `test/fixtures/meet/v1`. An isolated Electron renderer tests the actual DOM API against them.
 - These fixtures are adapter contract fixtures. They do not prove that the current production Google UI still has each selector.
 - The adapter reads participant IDs (`data-participant-id`) and names from tiles and `span.notranslate`. Controls, tooltips and icon text are excluded.
-- Colored borders, outlines and narrow activity bars give activity hints.
+- Activity comes from the rate of `class` changes inside a tile. Meet animates the voice indicator of a heard participant with generated class tokens, and these tokens change between Meet builds. Thus the adapter counts the changes and does not read the class values.
+- `extension/src/meetSpeakingActivity.ts` marks a tile as active after 4 changes in 1 second and keeps it active for 1 second after the last change of that burst.
+- Changes on the tile element and inside its buttons, menus and tooltips (hover controls) are not activity.
+- The thresholds come from a live call: a heard tile changed 5–23 times each second, a silent tile about one time each second, and a muted tile did not change. `test/fixtures/meet/v1/activity-timeline.json` keeps that recorded timeline.
+- The indicator shows that Meet hears sound from that participant, not that the sound is speech. In a hidden tab, Meet does not animate the indicator.
 - Local effects and reframe tools and mirrored video identify local tiles. An English "(you)" match is not necessary.
-- Ambiguous names, hidden indicators, focused outlines and control-button decorations cannot make an accepted activity observation.
+- Ambiguous names and local tiles cannot make an accepted activity observation.
 - All simultaneous active IDs are kept.
-- These visual hints need a measured indicator delay and multi-speaker verification. They do not prove voice identity.
+- The activity hint needs a measured indicator delay. It does not prove voice identity.
 
 ### Controls
 

@@ -271,3 +271,118 @@ production performance checks were not started by this implementer.
 Commits: `ba8f509da77b23e38ff515f02a2e6050ff90a873` — M2.1 corrective implementation,
 independent content oracles and regressions. This evidence log is committed separately.
 All earlier commits, including `23792c7a1`, remain intact.
+
+## M3 — Production evidence and package validation
+
+Status: blocked.
+
+Independent implementation, synthetic performance, documentation and local package
+validation are complete. The benchmark now seeds isolated persisted metadata and
+calls production preparation in canonical Electron Node mode. It retains actual
+mapping decisions, bounded source hashes, child CPU/RSS, sampled allocated derived
+disk bytes, analytical waveform/marker checks and five-second category excerpts.
+The three obsolete native/join prototypes and graph variants are removed.
+
+The private raw-row exporter uses one read-only WAL transaction, requires readable
+sidecars, preserves JSON text and decimal nanoseconds, hashes copied source files
+before/after and publishes owner-only external copies. Replay uses `createDb`,
+minimal note context and all three production DTO readers. Synthetic transport
+checks cover nested alignment JSON, nulls, intentional empty mic, nanoseconds above
+Number.MAX_SAFE_INTEGER, unchanged database/WAL bytes and missing-sidecar rejection.
+The only application change is a verification hook on the existing injected
+dependencies, before native work. No prepared-result, IPC, schema, capture, provider,
+scheduling, recovery or UI contract changed. Original bytes, strict alignment,
+fixed anchors, bounds, native short-input preservation, disk accounting and all
+existing operation/lease/quit/deletion lifetimes remain in force. No fallback,
+historical retry, completed-artifact mutation, Ponytail or worktree was introduced.
+
+Required performance commands ran sequentially without competing builds/tests:
+
+```sh
+node test/benchmarks/meeting-resampler.mts 600 3600 7200
+node test/benchmarks/meeting-resampler.mts 3600 7200
+node test/benchmarks/meeting-resampler.mts 3600 7200
+```
+
+All seven measured cases passed. The Mac is Apple M4 Pro, 12 cores, 24 GiB RAM,
+arm64; Electron 41.10.5 / Node v24.18.0. Decoder FFmpeg is 6.0. The pinned
+FFmpeg 8.1.1 native build supplies libswresample 6.3.101 and libavutil 60.26.101,
+arm64 macOS 12.0, shared LGPL-only flags and the verified build manifest.
+The measured base revision was `19271593df73f0f21a64d3c8706d7ff00464e7ea` plus the
+M3 working diff now committed below. The helper and libraries were unchanged.
+
+Representative first-run synthetic evidence (fixture creation/oracles excluded):
+
+| Duration | Wall seconds | Child CPU seconds | Max individual child RSS bytes | Sampled peak temporary bytes | Boundary windows |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10 min | 1.286465 | 2.72 | 16056320 | 180580352 | 45 |
+| 60 min | 7.683796 | 16.62 | 17661952 | 1126719488 | 46 |
+| 120 min | 15.760203 | 33.61 | 17760256 | 2184327168 | 46 |
+
+Both repeat sequences passed; hour runs ranged 7.549702–7.683796 seconds and
+two-hour runs 15.241932–15.760203 seconds. All complete run reports remain external.
+Every hour was <=30 seconds and every two-hour case <=60 seconds. Known synthetic
+candidate totals were 294/1794/3594 respectively, all accepted; absolute corrections
+were 0 or 1 frame, and four epoch/generation resets were outside each denominator.
+The stand asserts these totals against actual production callbacks. The unchanged
+fractional oracle, half-sample positive/damaged negative controls, all boundary
+categories, summed overlap contributions, silent gaps, markers and original hashes
+passed. These measurements do not establish an exact A/B speedup from a different
+historical stalled fixture, battery savings or provider latency.
+
+Verification:
+
+- The required focused replay command passed. Final combined canonical replay and
+  performance smoke: 2 passed, 0 failed, 0 skipped; 1.436 seconds test duration.
+- `pnpm test`: all 462 selected files / three phases exited 0; 130.839 seconds total.
+  The default quiet runner removes successful detailed output, so per-test assertion
+  and skip totals are unavailable; no invented totals are reported.
+- `pnpm run lint`, full `pnpm run typecheck`, `pnpm run format:check`: passed sequentially.
+  The affected tests typecheck and focused pair passed again after test-harness-only
+  consolidation and explicit packaged-binary verification wiring.
+- The three named Memory Bank documents match delivery, algorithm, storage ownership,
+  privacy/oracles and signing. Their local Markdown targets and referenced package/
+  native/test commands were checked. `git diff --check` passed.
+- `pnpm run build:mac:arm64:local`: passed, including renderer, native cache reuse,
+  packaged SQLite verification, local signing, ZIP and DMG. Exact bundle:
+  `dist/mac-arm64/Gristmill.app`; production installation was not replaced.
+- `codesign --verify --deep --strict` passed for that bundle; all 28 discovered
+  Mach-O files passed individual strict signature verification. All 13 resource
+  Mach-O signing inputs were registered. Native transitive `otool -L` dependencies
+  are bundled/system only, with no Homebrew/build-cache paths.
+- All seven named license/source/build files exist. Pinned archive checksum,
+  helper/recipe source equality, LGPL-only shared flags, target/architecture and
+  effective helper/dylib/audio-tap entitlements were checked. Existing inherited
+  disable-library-validation was not weakened.
+- The signed helper loads its sibling libraries with Homebrew removed from PATH
+  and preserves a two-frame nonzero signal. A signed packaged-runtime production
+  smoke prepared all four layouts and passed boundary/original checks: 1 passed,
+  0 failed, 0 skipped; 1.484 seconds test duration.
+- Exact-bundle GUI launch used an owned external `--user-data-dir`, without copied
+  production data/providers. Existing mic/system permissions showed Enabled. A local
+  sample captured both sources and reached ready after Stop. Playback/Pause and mixed
+  MP3 export passed; the exported file decoded cleanly. Delayed processing was
+  cancelled before any provider request. Leaving the note released paused playback
+  audio; no working directory/preparation child remained. The owned package quit
+  and its process group exited; saved source audio and the test profile remain.
+
+Remaining blockers / user-owned checks:
+
+- The explicitly authorized real copied fixture fails existing strict preparation
+  with `audio-alignment-unavailable`. Reproduction uses isolated production DTOs;
+  the source profile was read-only and untouched. Detailed diagnoses, source metadata,
+  hashes and timings remain owner-only outside Git/PR/CI. No real reconciliation,
+  waveform, speech synchronization or listening pass is claimed, and unavailable
+  metrics were not guessed. This requires the orchestrator's Act stopping decision;
+  no alignment policy, capture metadata or fallback was changed here.
+- Human listening and purposeful mic/system signal participation were not supplied.
+  Basic package mechanics do not establish speech quality. Real boundary excerpts
+  cannot be qualified while strict preparation rejects the selected fixture; valid
+  synthetic category excerpts and the private package sample are prepared externally.
+- Developer ID signing credentials are unavailable. Public-release signing and
+  notarization were not exercised; the locally signed notarize=false package is not
+  release-qualified.
+
+Implementation commit: `146ea25333bd2d1c10aca378693c4a1475de1f38`.
+This evidence log is committed separately. Plan/orchestration statuses remain owned
+by the orchestrator; M3 is not marked done.

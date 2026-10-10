@@ -39,6 +39,8 @@ export interface MeetingAudioMixerDeps {
     options: { stdio: ["ignore", "ignore", "pipe"]; detached: true }
   ) => ChildProcess;
   resamplerPath?: () => string | null;
+  /** Verification records authoritative decisions before native work starts. */
+  onMapping?: (manifest: MeetingResamplerManifest) => void;
   availableBytes?: (path: string) => number;
   stat?: (path: string) => fs.Stats;
   inspectEpoch?: typeof inspectMeetingOpus;
@@ -404,6 +406,7 @@ async function prepareMeetingAudioWithTimeline(
       for (const manifest of manifests) {
         for (const [index, epoch] of manifest.epochs.entries())
           epoch.inputPath = path.join(workingDirectory, `${manifest.source}-${index}.f32`);
+        deps.onMapping?.(manifest);
       }
 
       await runMixer(

@@ -79,3 +79,41 @@ The production app writes meeting capture errors to `userData/logs/capture-error
 It keeps this file and one rotated file, `capture-errors.1.log`. Each file is 1 MiB or less.
 To open the logs folder, use Settings → Developer.
 Debug mode writes its own detailed log.
+
+## Meeting resampler delivery
+
+`pnpm run compile:native` builds the private meeting helper for arm64 macOS 12 or
+later. Xcode command-line tools, clang, make, curl and tar are build prerequisites.
+Runtime preparation uses bundled libraries and does not require Homebrew.
+
+The build pins FFmpeg 8.1.1 source, SHA-256
+`b6863adde98898f42602017462871b5f6333e65aec803fdd7a6308639c52edf3`.
+It builds shared libswresample/libavutil under LGPL-2.1-or-later, with GPL,
+nonfree, version3, network and OpenSSL disabled. The separately bundled decoder
+remains ffmpeg-static; its version need not equal the helper library version.
+
+The verified cache key covers source checksum, configure options, compiler,
+architecture, minimum OS, helper source/flags and build recipe. Verified cached
+outputs work offline; a missing or invalid cache requires the pinned archive.
+The cache is build-only and must not appear in runtime load paths.
+
+Packages include `resources/licenses/meeting-resampler`: `COPYING.LGPLv2.1`,
+`NOTICE.txt`, the exact source archive, `meeting-resampler.c`,
+`build-meeting-resampler.cts`, `build.json` and `BUILDING.md`. These supply the
+license, corresponding source and reproducible build/relink instructions.
+`@loader_path` links load the sibling dylibs from `resources/bin`. Inspect every
+helper/dylib with `otool -L`, including transitive dependencies; reject absolute
+Homebrew and build-cache paths.
+
+Build with `pnpm run build:mac:arm64:local`, then discover the exact `.app` under
+`dist/` and run `codesign --verify --deep --strict APP_PATH`. Inspect effective
+helper entitlements with `codesign -d --entitlements :- HELPER_PATH`. Do not weaken
+hardened runtime to make loading succeed. Launch that exact bundle with an owned
+`--user-data-dir` outside the checkout. Do not install over the production app.
+
+With user-approved macOS permissions, record a short mic/system sample, Stop,
+prepare locally, play, export and cancel without a paid provider request. Record
+listening and hardware results separately from synthetic timing. A local
+self-signed package with notarization disabled does not qualify a public release.
+Exercise Developer ID signing/notarization when credentials are available;
+otherwise record that public-release verification is unavailable.

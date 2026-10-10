@@ -122,82 +122,73 @@ Run A/B measurements sequentially with other builds and tests stopped. Repeat th
 
 ### Post-Stop mixer performance
 
-The mixer stand uses a temporary database, synthetic tones, real saved Opus files,
-the application's alignment selector and `prepareMeetingAudio`, and bundled FFmpeg.
-It does not read production recordings, use a microphone, or call a provider.
+The short smoke seeds a private database and calls production preparation for all
+four layouts. It covers calibration, epoch/generation resets, gaps and overlapping
+contributions. Native tests currently run locally on macOS; Linux CI does not prove
+native delivery or hardware capture.
 
 ```sh
 pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
-GRISTMILL_MIXER_SECONDS=120 GRISTMILL_MIXER_RANGES=30 pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
-GRISTMILL_MIXER_SECONDS=120 GRISTMILL_MIXER_RANGES=900 GRISTMILL_MIXER_TIMEOUT=20 pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
-GRISTMILL_MIXER_SECONDS=3600 GRISTMILL_MIXER_RANGES=900 GRISTMILL_MIXER_TIMEOUT=20 pnpm test --verbose test/cases/recording/integration/meetingMixerPerformance.test.ts
+pnpm test --verbose test/cases/recording/integration/meetingPrivateFixtureReplay.test.ts
+node test/benchmarks/meeting-resampler.mts 600 3600 7200
+node test/benchmarks/meeting-resampler.mts 3600 7200
+node test/benchmarks/meeting-resampler.mts 3600 7200
 ```
 
-The default is eight seconds and eight microphone alignment ranges. Increase duration
-and range count independently to distinguish their costs. The system source has one
-range. The microphone has an initial offset, alternating clock rates, and gaps after
-each seven ranges. `GRISTMILL_MIXER_DRIFT_PPM=0` disables clock drift; the default is
-200 ppm. This fixture does not model overlapping output ranges or multiple parts.
+Build native resources first with `pnpm run compile:native`. Prepare the canonical
+Electron SQLite ABI with the focused test command. The benchmark always launches
+Electron Node mode and never rebuilds bindings. Stop competing tests, builds and
+benchmarks before large measurements. Run the three commands sequentially.
 
-Five variants run sequentially: the current mixer, one resampler before the split,
-`asegment` instead of full-stream fan-out, sequential concatenation, and
-`asegment` plus concatenation. Only the dependency-injected
-spawn hook changes the experimental graphs; application code stays unchanged.
-The stand checks exact output length, original-file hashes, and owned-child exit.
-Shared resampling and segmentation must produce the same PCM hash as the completed baseline.
-Concatenation reports PCM equality separately; a passing stand does **not** qualify
-this prototype for production. It rejects overlapping ranges instead of guessing
-how to join them.
+Synthetic sources contain separate tones and pulse markers, calibration every
+four seconds, opposite 200 ppm drift, explicit gaps, three epochs and an overlap.
+An independent analytical signal checks output windows at calibration, generation,
+gap and overlap boundaries. The fractional-delay oracle retains a 0.8 threshold,
+the full allowed lag search, an analytical half-sample shift control and a damaged
+window negative control. Source hashes must remain unchanged.
 
-JSON lines report wall time, sampled child RSS, filter-chain count, and PCM hashes. RSS is
-sampled every 250 ms and is null when the process finishes before a sample. It is
-not an exact peak. Environment output records runtime, FFmpeg version and Git HEAD;
-also preserve the working diff when comparing an uncommitted experiment.
-The timeout applies to each mixer process, not fixture generation. A timeout kills
-only that owned FFmpeg process, reports its last observed output size, then runs
-the remaining variants. Any timeout makes the command fail. A prototype without a
-completed baseline reports unknown PCM equality. Temporary files are removed after
-the test. Run large scenarios explicitly and sequentially; do not add them to CI.
+Timing includes production decoding, native preparation, intermediate I/O and
+final WAV assembly. Fixture generation, waveform checks and excerpts are outside
+timing. `/usr/bin/time -l` measures summed child CPU and maximum individual child
+RSS; these exclude the Electron coordinator. The stand samples allocated bytes
+under managed derived storage every 25 ms and at child close. This is a measured
+peak, not a disk reservation or a whole-machine battery measurement. Every hour
+run must take at most 30 seconds and every two-hour run at most 60 seconds on the
+measured Mac. Preserve hardware, revision and native build manifest with results.
+Do not infer an exact speedup from a historical stall on a different fixture.
 
-### Continuous-resampler prototype
+Production mapping decisions provide candidate/accepted/rejected counts,
+exclusive rejection reasons (uncertainty before effective rate), absolute anchor
+corrections and separate boundary resets. Accepted share is unavailable when
+there are no candidates. There is no minimum accepted-share target.
+
+### Private copied recordings
+
+The user must select a specific recording. The copy and detailed evidence must
+stay outside the checkout and CI, with directory mode 0700 and file mode 0600.
 
 ```sh
-node test/benchmarks/meeting-resampler.mts 60
-node test/benchmarks/meeting-resampler.mts 600 3600 7200
+python3 test/benchmarks/copy-meeting-for-prototype.py PROFILE NOTE_ID NEW_DIRECTORY
+node test/benchmarks/meeting-resampler.mts --copied-fixture NEW_DIRECTORY
 ```
 
-This macOS-only experiment compiles `meeting-resampler.c` into a temporary
-directory with the installed `clang`, `pkg-config`, `libswresample` and `libavutil`
-development files. It does not install dependencies or modify the app. Missing
-development tools are an error. The report records library and decoder versions;
-the development libraries are not assumed to match bundled FFmpeg.
+The exporter reads selected raw rows in one read-only WAL transaction. It keeps
+JSON text and decimal nanoseconds unchanged and copies only selected audio, with
+hashes before and after copying. Readable WAL sidecars are required. Changed or
+deleted audio fails explicitly. It does not migrate, copy a raw database, write
+the source profile or use immutable mode.
 
-Two synthetic sources have different tones, known-time pulse markers, changing
-clock drift, and explicit gaps. Each source has one calibration range per four
-seconds. The stand encodes real Opus, then measures sequential decoding to float
-PCM, continuous resampling and stereo WAV assembly. Fixture creation and oracle
-verification are outside the processing time. Every process has a timeout and an
-owned process group; interruption kills only owned groups. Temporary files and
-the compiled binary are removed on exit.
+Replay inserts raw rows and minimal note context into `createDb`, then reads
+recordings, epochs and intentional intervals through production DTO validation.
+All layouts use production preparation. The private report contains actual mapper
+decisions, source hashes and fractional waveform comparisons against independent
+48 kHz decoded contributions, including summed overlap windows. Five-second
+excerpts and their category index stay in the external evidence directory.
+Absent real boundary categories remain covered by synthetic checks.
 
-The resampler updates soft compensation without resetting at calibration points.
-It flushes and resets at explicit gaps. Its source coverage must be consecutive
-and output ranges must not overlap. These restrictions are prototype limits, not
-new application policies. Endpoint rounding is bounded to two samples; a larger
-error fails the run. Exact file duration, channel identity, marker timing within
-four milliseconds, silence inside gaps, tone continuity at calibration boundaries,
-and unchanged original hashes are assertions. The stand also rejects malformed
-coverage and truncated input, and exercises owned-process timeout cleanup.
-
-`RESAMPLER_RESULT` reports total and per-stage wall time, child CPU time, the
-largest individual child RSS, and alignment results. CPU/RSS use macOS
-`/usr/bin/time` for FFmpeg and `getrusage` for the native prototype. They exclude
-the Node orchestrator and are not a whole-machine battery measurement. Processes
-run sequentially. The first prototype used native-only RSS; preserve report
-fields when comparing different versions of the stand.
-
-The prototype uses intermediate float PCM files, roughly one GiB per hour at
-the peak, plus original Opus. It does not exercise the application database,
-alignment-validity checks, multiple saved epochs, overlapping mappings, device
-generation changes without gaps, other provider layouts, or packaged delivery.
-Passing it validates the experiment, not production readiness or speech quality.
+Do not publish identities, times, durations, exact counts, hashes, excerpts,
+transcripts or window measurements. Only reviewed aggregate pass/fail and a
+rounded acceptance share may leave the private directory. Human listening must
+be recorded separately; an automated pass cannot claim listening or hardware
+permission approval. See [local builds](local-builds.md) for isolated package
+capture, playback, export and cancellation checks.

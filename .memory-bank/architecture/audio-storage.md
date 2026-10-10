@@ -37,7 +37,12 @@ Live microphone and system capture and power-loss tail limits need an isolated h
 ## Derived files
 
 - ASR provider payload formats do not change: stereo WAV for Deepgram, separate microphone and system WAV for the other cloud providers, mono WAV for Local.
-- FFmpeg decodes Opus before resampling, offsetting and mixing. Thus the encoder pre-skip does not move the timeline.
+- Bundled FFmpeg decodes each epoch once to mono 48 kHz float PCM. The native helper uses bundled LGPL libswresample to produce each source's 24 kHz float timeline. Final FFmpeg assembly writes PCM16 WAV: mic left/system right for stereo, half gain per source for mono, unity gain for a single source. Encoder pre-skip does not move the saved timeline.
+- The authoritative alignment selector proves complete source coverage. Calibration joins keep their fixed next anchor only when the preceding conservative uncertainty and the 0.999–1.001 effective-rate bound both permit it. Historical anchors have no invented confidence. Rejected joins retain their gap or summed overlap. Epoch and clock-generation boundaries reset filter state even without a gap.
+- The helper validates the complete decoded input, bounds filter buffers and permits at most two samples of run-end rounding. Real endpoint reflection supplies filter context for short input; it does not replace missing decoded samples or fill silence.
+- At most two source decoders run together. Each source processes epochs in order. Failure or abort stops owned process groups and waits for settlement before cleanup.
+- Managed per-operation work directories contain decoded epochs, mappings and corrected timelines. The disk estimate includes both source timelines plus the larger of concurrent decoded epochs/mappings or final WAV assembly. Decoded float input uses eight bytes per original 24 kHz frame. The estimate is admission accounting, not a reservation; ENOSPC after admission remains an actionable local failure.
+- Epoch scratch files are removed after use. Work directories are removed before validating and publishing the closed WAV. Cleanup also runs on failure and cancellation. Existing playback leases, export ownership, quit barriers and note-deletion barriers remain in force.
 - Preparation and ASR can use derived audio again. If it is missing when processing continues, it is built again.
 - Derived audio is removed after the normalization and speaker consumers finish, or after a failed stage.
 - JSON provider responses, transcripts and summaries stay durable.

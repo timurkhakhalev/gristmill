@@ -408,3 +408,50 @@ passed for eligible parts and explicitly recorded rejected parts outside the rep
 Original private files were preserved. No private identifiers, timings, window
 positions or reports are published here. This resolves the earlier replay blocker;
 human listening and remaining final reviews are not claimed complete.
+
+## M3 technical completion — User-directed handoff
+
+Status: done for independent technical M3 work. Human listening remains unverified;
+the explicit user decision permits final reviews to proceed without that result.
+This does not convert the human check into a pass or claim release qualification.
+
+Reviewed and preserved the handed-off task diff, including the orchestrator's
+existing plan-row edit without changing statuses. The private runner preflights
+every part through production timeline authority, reports only alignment-unavailable
+parts as rejected, propagates other failures, and fails when no part was verified.
+It verifies eligible parts in all layouts and isolates boundary/window reports per
+part. The earlier broad meeting rejection was incorrect. Rejected captures remain
+preserved and uncertified; the older failed attempt's packet-disorder root cause is
+unknown and is not claimed fixed.
+
+Quiet-window checks inspect every central sample at zero lag within the approved
+PCM16 absolute-error bounds. Audible correlation remains >0.8 with the full lag
+search. The spike regression now uses a sample between the correlation stride.
+Excerpt trimming clamps each category window to its own published WAV extent,
+without adding silence. Verified category clips and a pending-results template are
+retained in an owner-only external handoff; no call metadata is published here.
+
+Final verification:
+
+- Canonical affected oracle, production smoke and raw replay files: 5 passed,
+  0 failed, 0 skipped; 1.341 seconds test duration. The final strengthened oracle
+  file separately passed 3/3, with 0 failures/skips.
+- The initial managed-sandbox smoke failed because `/usr/bin/time -l` could not
+  read `kern.clockrate`; approved read-only counter access resolved this environment
+  restriction. No measurement/error check was weakened.
+- Fresh complete authorized copied-fixture replay passed for eligible parts, with
+  separate rejection evidence retained privately. All layouts, actual production
+  decisions, audible/quiet boundary checks and original hashes passed for those
+  parts. No rejected part or unknown failure cause was certified or repaired.
+- Lint, tests typecheck, formatting, local runbook links and `git diff --check`
+  passed. The runbook now describes eligibility/rejection and quiet-window checks.
+- Earlier full-suite, repeated synthetic performance and signed-package evidence
+  above remains valid. These follow-up changes affect verification tooling/docs,
+  not application/native preparation, so those broad checks were not repeated.
+- Purposeful hardware signal participation and human listening remain unverified.
+  The existing basic isolated capture/Stop/playback/export/cancel/quit checks passed.
+  Developer ID signing/notarization remains unavailable; the local package is not
+  release-qualified. Final reviews are still owned by the orchestrator.
+
+Follow-up implementation/task-doc commit:
+`b41e03086d8a93006bbfc3417b666d5bf0df45a8`. This final evidence is committed separately.

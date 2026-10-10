@@ -350,6 +350,7 @@ export async function productionBenchmark(
         epoch: MeetingResamplerManifest["epochs"][number];
         fd: number;
       }> = [];
+      const precedingEpochEnd = new Map<MeetingSource, number>();
       for (const manifest of selected)
         for (const epoch of manifest.epochs) {
           const original = storage.getEpochFilePath(
@@ -379,8 +380,15 @@ export async function productionBenchmark(
           t.after(() => fs.closeSync(fd));
           references.push({ manifest, epoch, fd });
           for (const [index, row] of epoch.rows.entries()) {
-            if (index === 0) boundaries.push({ category: "generation", frame: row.timelineStart });
-            else {
+            if (index === 0) {
+              boundaries.push({ category: "generation", frame: row.timelineStart });
+              const preceding = precedingEpochEnd.get(manifest.source);
+              if (preceding !== undefined && row.timelineStart !== preceding)
+                boundaries.push({
+                  category: row.timelineStart > preceding ? "gap" : "overlap",
+                  frame: row.timelineStart,
+                });
+            } else {
               const previous = epoch.rows[index - 1]!;
               const delta = row.timelineStart - previous.timelineEnd;
               const hasDecision = manifest.decisions.some(
@@ -401,6 +409,8 @@ export async function productionBenchmark(
               });
             }
           }
+          const finalRow = epoch.rows.at(-1);
+          if (finalRow) precedingEpochEnd.set(manifest.source, finalRow.timelineEnd);
         }
       boundaries.push(
         { category: "start", frame: 1200 },

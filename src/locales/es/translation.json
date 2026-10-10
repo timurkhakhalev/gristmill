@@ -2400,7 +2400,9 @@
     "calendarParticipantsInvalid": "Los datos guardados de participantes del calendario no son válidos. Corrígelos antes de volver a intentarlo.",
     "calendarParticipantsNamingSkipped": "Se omitió la asignación automática de nombres a los hablantes. La transcripción y el resumen siguen disponibles.",
     "transcribeAndSummary": "Transcribir y resumir",
-    "summary": "Resumen"
+    "summary": "Resumen",
+    "audioPreparationDiskFull": "Tu audio está guardado. Libera espacio en disco antes de volver a preparar el audio.",
+    "audioPreparationFailed": "Tu audio está guardado. Revisa el almacenamiento local e inténtalo de nuevo. Si la preparación de audio sigue fallando, reinstala Gristmill."
   },
   "shortcutsDialog": {
     "title": "Atajos de teclado",

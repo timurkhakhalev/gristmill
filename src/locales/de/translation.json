@@ -2400,7 +2400,9 @@
     "calendarParticipantsInvalid": "Die gespeicherten Kalenderteilnehmerdaten sind ungültig. Korrigiere sie vor dem erneuten Versuch.",
     "calendarParticipantsNamingSkipped": "Die automatische Benennung der Sprecher wurde übersprungen. Transkript und Zusammenfassung bleiben verfügbar.",
     "transcribeAndSummary": "Transkribieren & Zusammenfassen",
-    "summary": "Zusammenfassung"
+    "summary": "Zusammenfassung",
+    "audioPreparationDiskFull": "Deine Audioaufnahme ist gespeichert. Gib Speicherplatz frei, bevor du die Audiovorbereitung erneut startest.",
+    "audioPreparationFailed": "Deine Audioaufnahme ist gespeichert. Prüfe den lokalen Speicher und versuche es erneut. Falls die Audiovorbereitung weiterhin fehlschlägt, installiere Gristmill neu."
   },
   "shortcutsDialog": {
     "title": "Tastenkürzel",

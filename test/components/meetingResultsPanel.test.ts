@@ -1551,6 +1551,49 @@ test("calendar participant failure shows one toast without restarting the reques
   assert.equal(ui.notifications.length, 1);
 });
 
+for (const [code, description] of [
+  ["audio-preparation-disk-full", "Your audio is saved. Free disk space before retrying audio preparation."],
+  ["audio-preparation-failed", "Your audio is saved. Check local storage and retry. If audio preparation still fails, reinstall Gristmill."],
+] as const) {
+  test(`persisted ${code} reaches the existing processing notice`, async (t: TestContext) => {
+    const { createDb } = require("../helpers/harness/db.ts") as typeof import("../helpers/harness/db.ts");
+    const { getUserDataDir } = require("../helpers/harness/electronStub.ts") as typeof import("../helpers/harness/electronStub.ts");
+    const { MeetingRecordingStorage } = require("../../src/helpers/meetingRecordingStorage.ts") as typeof import("../../src/helpers/meetingRecordingStorage.ts");
+    const { MeetingProcessingWorker } = require("../../src/helpers/meetingProcessing.ts") as typeof import("../../src/helpers/meetingProcessing.ts");
+    const { savePcmEpoch } = require("../lib/meetingAudioFixture.ts") as typeof import("../lib/meetingAudioFixture.ts");
+    const db = createDb(t); assert.ok(db);
+    const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+    const note = db.saveNote("Synthetic preparation failure", "", "meeting").note!;
+    const capture = db.createMeetingRecording(note.id, { config: CONFIG });
+    for (const source of ["mic", "system"] as const) {
+      db.createMeetingRecordingEpoch(capture.id, source, 0, 1, 0, 0);
+      savePcmEpoch(storage, capture.id, source, 0, Buffer.alloc(4800));
+      db.updateMeetingRecordingEpochRecovery(capture.id, source, 0, storage.recoverEpoch(capture.id, source, 0));
+    }
+    db.markMeetingRecordingFinalizing(capture.id);
+    const { initialRun } = db.finalizeMeetingRecording(capture.id, { captureState: "ready", endedAt: new Date(Date.parse(capture.startedAt) + 1000).toISOString() });
+    db.setMeetingProcessingRunState(initialRun.id, { stage: "prepare", status: "pending", retryAt: null });
+    const worker = new MeetingProcessingWorker({ database: db, storage, isCaptureActive: () => false,
+      getCredential: () => "synthetic-key", summarize: async () => "unused",
+      transcribeRemote: async () => { throw new Error("provider must not be called"); },
+      transcribeLocal: async () => { throw new Error("local transcription must not be called"); },
+      diarizeLocal: async () => [],
+      mixAudio: async () => { throw Object.assign(new Error("Local preparation failed"), { code }); },
+    });
+    t.after(() => worker.stop());
+    worker.onRetentionReady(); await worker.waitForIdle();
+    const saved = db.getMeetingProcessingRun(initialRun.id)!;
+    assert.equal(saved.status, "failed"); assert.equal(saved.errorCode, code); assert.equal(saved.retryAt, null);
+    const failed = completeRun();
+    Object.assign(failed.run, { stage: saved.stage, status: saved.status, errorCode: saved.errorCode, hasRawProviderResponse: false, hasTranscript: false, hasSummary: false });
+    failed.transcript = undefined; failed.summary = undefined;
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", failed)]);
+    assert.ok(ui.text().includes(description));
+    assert.ok(ui.button("meetingResults.retry"));
+    assert.deepEqual(ui.calls.retry, []);
+  });
+}
+
 test("an unrecoverable recording explains that audio is saved without manual repair controls", async (t: TestContext) => {
   const failed = completeRun();
   failed.run.status = "failed";

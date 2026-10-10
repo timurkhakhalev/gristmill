@@ -2423,7 +2423,9 @@
     "calendarParticipantsInvalid": "بيانات المشاركين المحفوظة في التقويم غير صالحة. صححها قبل إعادة المحاولة.",
     "calendarParticipantsNamingSkipped": "تم تخطي تعيين أسماء المتحدثين تلقائيًا. يظل النص المكتوب والملخص متاحين.",
     "transcribeAndSummary": "تفريغ وتلخيص",
-    "summary": "ملخص"
+    "summary": "ملخص",
+    "audioPreparationDiskFull": "تم حفظ الصوت. حرّر مساحة على القرص قبل إعادة محاولة تجهيز الصوت.",
+    "audioPreparationFailed": "تم حفظ الصوت. تحقّق من التخزين المحلي وحاول مجددًا. إذا استمر فشل تجهيز الصوت، فأعد تثبيت Gristmill."
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

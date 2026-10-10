@@ -2391,7 +2391,9 @@
     "calendarParticipantsInvalid": "Stored calendar participant data is invalid. Correct it before retrying.",
     "calendarParticipantsNamingSkipped": "Automatic speaker naming was skipped. The transcript and Summary remain available.",
     "transcribeAndSummary": "Transcribe & Summary",
-    "summary": "Summary"
+    "summary": "Summary",
+    "audioPreparationDiskFull": "Your audio is saved. Free disk space before retrying audio preparation.",
+    "audioPreparationFailed": "Your audio is saved. Check local storage and retry. If audio preparation still fails, reinstall Gristmill."
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

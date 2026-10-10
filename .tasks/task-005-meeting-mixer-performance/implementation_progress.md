@@ -455,3 +455,46 @@ Final verification:
 
 Follow-up implementation/task-doc commit:
 `b41e03086d8a93006bbfc3417b666d5bf0df45a8`. This final evidence is committed separately.
+
+## Code review 1 corrections
+
+Status: done for both medium findings in `code-review-1.md`.
+
+The existing failed-processing notice now consumes the persisted local preparation
+codes: disk-full advises freeing space before retry; other preparation failures
+advise checking local storage, retrying and reinstalling if the failure persists.
+Both descriptions are localized in all eleven application languages. Provider
+error mappings, failure persistence, retry policy and notice actions are unchanged.
+Regression tests run the actual processing worker, inspect its saved failure code,
+then render that code in the existing panel and assert the visible remediation.
+
+Copied-fixture reporting retains each epoch's generation boundary and also compares
+its first anchor with the preceding mapped end for the same source. It emits the
+gap/overlap category as well when applicable. A synthetic raw-row export/replay
+with separate epochs asserts both the window categories and published excerpt
+index, including generation at the same gap/overlap coordinates. No mixer,
+alignment authority, capture, schema, source bytes or provider policy changed.
+
+Verification:
+
+- Final canonical affected panel, copied-boundary, production smoke and waveform
+  oracle files: 66 passed, 0 failed, 0 skipped; 4.051 seconds test duration.
+- Lint, renderer typecheck, tests typecheck, formatting, i18n key/placeholder checks
+  and `git diff --check`: passed. An initial tests typecheck identified missing
+  required local callbacks in the new worker fixture; guarded unused callbacks
+  resolved it without changing production types.
+- The authorized private copied fixture passed again for eligible parts. Category
+  windows/indexes and representative clips were recreated in a new owner-only
+  external handoff. Earlier reports, source audio and listening handoffs remain
+  preserved. No real coordinates, counts, timings or hashes are published here.
+- Earlier broad/full-suite/native/package evidence is retained; these scoped
+  corrections did not require repeating the full suite or packaging build.
+
+Human listening and purposeful signal participation remain unverified under the
+accepted user override. Rejected parts remain uncertified, the old packet-disorder
+cause remains unknown, and Developer ID/notarization verification is unavailable.
+No Ponytail, worktree, merge or installation was used. The orchestrator's existing
+dirty plan table was left untouched and unstaged.
+
+Correction commit: `f6795fd38cf515c5769775a68d30892265252fe0`.
+This evidence log is committed separately.

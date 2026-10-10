@@ -1,3 +1,4 @@
+import { MEETING_SOLE_REMOTE_PARTICIPANT_REASON } from "../contracts/meetingRecording.js";
 import type {
   MeetingAudioClockAnchor,
   MeetingRecordingEpochDto,
@@ -187,6 +188,66 @@ function mapInterval(
         ids,
         binding: `${observation.recordingId}/${previous.epochIndex}/${previous.clock.generation}`,
       };
+}
+
+const SOLE_REMOTE_MINIMUM_SHARE = 0.9;
+
+const SOLE_REMOTE_MINIMUM_SECONDS = 10;
+
+/** One-to-one browser calls: every non-local tile in the note has the same
+ * name and one system voice holds almost all system speech. Small clusters
+ * stay unnamed; a second named participant or a balanced voice split abstains. */
+function soleRemoteDecision(
+  all: MeetingPlatformObservation[],
+  system: NonNullable<MeetingTranscriptArtifact["segments"]>
+): MeetingPlatformDecision | null {
+  // "unavailable" marks a collector without a readable call, not a participant.
+  const observations = all.filter((o) => o.activity !== "unavailable");
+  const platforms = new Set(observations.map((o) => o.platform));
+  const [platform] = platforms;
+
+  if (platforms.size !== 1 || !platform || platform === "zoom") return null;
+
+  const localNames = new Set(
+    observations.filter((o) => o.self === "local" && o.displayName).map((o) => o.displayName)
+  );
+
+  const remote = observations.filter((o) => o.self !== "local" && !localNames.has(o.displayName));
+  const names = new Set(remote.map((o) => o.displayName));
+  const [displayName] = names;
+
+  if (!remote.length || names.size !== 1 || !displayName) return null;
+  const seconds = new Map<string, number>();
+
+  for (const segment of system)
+    if (segment.speaker)
+      seconds.set(
+        segment.speaker,
+        (seconds.get(segment.speaker) ?? 0) + segment.end - segment.start
+      );
+
+  const total = [...seconds.values()].reduce((sum, value) => sum + value, 0);
+  const [speakerId, speech] = [...seconds].sort((a, b) => b[1] - a[1])[0] ?? [];
+
+  if (
+    !speakerId ||
+    speech === undefined ||
+    speech < SOLE_REMOTE_MINIMUM_SECONDS ||
+    speech < total * SOLE_REMOTE_MINIMUM_SHARE
+  )
+    return null;
+
+  return {
+    platform,
+    speakerId,
+    displayName,
+    status: "accepted",
+    reason: MEETING_SOLE_REMOTE_PARTICIPANT_REASON,
+    observationIds: remote.map((o) => o.id),
+    clockAnchorIds: [],
+    intervals: [],
+    timingPolicy: { ...policyFor(platform) },
+  };
 }
 
 /** Run-local agreement names clusters; tile/name strings never become voice IDs. */
@@ -413,6 +474,12 @@ export function matchMeetingPlatformSpeakers(
   }
 
   for (const d of decisions) if (d.reason !== "repeated-activity-agreement") d.status = "rejected";
+
+  if (!decisions.some((d) => d.status === "accepted")) {
+    const sole = soleRemoteDecision(input.observations, system);
+
+    if (sole) decisions.push(sole);
+  }
 
   return decisions;
 }

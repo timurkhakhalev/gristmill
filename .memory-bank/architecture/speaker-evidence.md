@@ -71,6 +71,14 @@ User paths: [Correct speakers](../product/user-journeys/speakers.md).
 - The initial 500 ms indicator lag is a hypothesis from static client inspection, not a Gristmill measurement.
 - A 500 ms boundary guard, one second of stable speech for each episode and strict clock continuity and rate checks are conservative product rules, not measured accuracy.
 
+#### One-to-one browser calls
+
+- When no activity decision is accepted, the matcher can name a Google Meet or Telemost call without clock-mapped activity (`sole-remote-participant`).
+- Conditions: all observations of the run come from one browser platform, all non-local tiles have the same non-empty name, and that name is not a local name. Collector markers with `unavailable` activity are not participants.
+- Only the system ASR cluster with at least 90% of the system speech and at least 10 seconds gets the name. Smaller clusters stay unnamed. Diarization often splits one remote voice into small extra clusters.
+- The rule applies to the full run, also to parts without browser evidence, for example when the call was not linked yet.
+- Risks: a participant who was in the call only during a part without evidence, or a speaker view that shows only one remote tile. The 90% voice share abstains when several remote voices speak. The name is an editable platform suggestion.
+
 ### Rejection rules
 
 - Known self labels and overlapping microphone speech are excluded.

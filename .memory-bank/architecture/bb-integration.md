@@ -38,7 +38,7 @@ Transcription and recording stay on their existing routes.
   3. If `config.json` has only `serverUrl`, the CLI gets this URL directly.
   4. If there is no `config.json`, the CLI uses the local BB server.
 - Gristmill reads `config.json` again for each call. When the server URL or the headers change, Gristmill replaces the proxy. Thus a later server move does not need an app restart.
-- The proxy listens only on `127.0.0.1`. It rejects requests that have an `Origin` or `Sec-Fetch-Site` header, or a `Host` that is not loopback. Thus a browser page cannot use the credential. The proxy does not log the headers.
+- The proxy listens only on `127.0.0.1`. It rejects requests that have an `Origin` or `Sec-Fetch-Site` header, or a `Host` that is not loopback. Thus a browser page cannot use the credential. The proxy sends a request only when its target is a path (`/…`) on the configured server. It rejects an absolute, scheme-relative or other target that can change the destination host. The proxy does not log the headers.
 - A moved server reports its own loopback URL in `bb settings show`. This URL is not reachable from this Mac. Thus logos use the same server URL as the CLI.
 - The test runner sets an empty `BB_DATA_DIR` and removes `BB_SERVER_URL`. Tests do not reach the BB server or the credential of the developer.
 

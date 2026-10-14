@@ -253,3 +253,44 @@ process.stdout.write(JSON.stringify(settings
     [["/api/v1/system/providers/codex/logo", CREDENTIAL]]
   );
 });
+
+/** Sends one raw request so the test controls the exact request target. */
+async function rawStatus(proxy: URL, target: string, upgrade: boolean): Promise<string> {
+  const socket = net.connect(Number(proxy.port), proxy.hostname);
+  const upgradeHeaders = upgrade ? "Upgrade: websocket\r\nConnection: Upgrade\r\n" : "Connection: close\r\n";
+  socket.write(`GET ${target} HTTP/1.1\r\nHost: ${proxy.host}\r\n${upgradeHeaders}\r\n`);
+
+  return new Promise((resolve, reject) => {
+    let received = "";
+    socket.on("data", (chunk) => {
+      received += chunk.toString();
+      if (received.includes("\r\n")) {
+        socket.destroy();
+        resolve(received.slice(0, received.indexOf("\r\n")));
+      }
+    });
+    socket.on("error", reject);
+  });
+}
+
+test("bb connection proxy never sends the credential to a server that is not configured", async (t: import("node:test").TestContext) => {
+  const directory = useBbDataDir(t);
+  const configured = await startUpstream(t);
+  const other = await startUpstream(t);
+  const otherHost = new URL(other.url).host;
+  writeConfig(directory, {
+    serverUrl: configured.url,
+    serverHeaders: { "x-bb-connect-machine": CREDENTIAL },
+  });
+  const proxy = new URL((await resolveBbCliEnvironment()).BB_SERVER_URL ?? "");
+
+  for (const upgrade of [false, true]) {
+    for (const target of [`${other.url}/capture`, `//${otherHost}/capture`, `/\\${otherHost}/capture`, "*"]) {
+      assert.match(await rawStatus(proxy, target, upgrade), /^HTTP\/1\.1 400/, `${target} upgrade=${upgrade}`);
+    }
+  }
+
+  assert.deepEqual(other.seen, []);
+  assert.deepEqual(configured.seen, []);
+  assert.equal(await get(`${proxy.origin}/api/v1/projects`), 200, "proxy still serves valid requests");
+});

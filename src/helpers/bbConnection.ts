@@ -103,6 +103,23 @@ function isLocalCliRequest(request: http.IncomingMessage, port: number): boolean
   return [`${LOOPBACK}:${port}`, `localhost:${port}`].includes(request.headers.host ?? "");
 }
 
+/**
+ * The upstream URL for a request target, or null when the target could leave the
+ * configured server: an absolute or scheme-relative URL would carry the credential
+ * to a different host.
+ */
+function upstreamUrl(requestTarget: string | undefined, target: URL): URL | null {
+  if (!requestTarget?.startsWith("/") || requestTarget.startsWith("//")) return null;
+
+  try {
+    const url = new URL(requestTarget, target.origin);
+
+    return url.origin === target.origin ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 function rejectSocket(socket: Socket, status: number, reason: string): void {
   socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
@@ -117,8 +134,6 @@ async function startBbProxy(
   const sockets = new Set<Socket>();
   let port = 0;
 
-  const upstreamUrl = (request: http.IncomingMessage) => new URL(request.url ?? "/", target);
-
   const server = http.createServer((request, response) => {
     if (!isLocalCliRequest(request, port)) {
       response.writeHead(403).end();
@@ -126,7 +141,15 @@ async function startBbProxy(
       return;
     }
 
-    const upstream = transport.request(upstreamUrl(request), {
+    const url = upstreamUrl(request.url, target);
+
+    if (!url) {
+      response.writeHead(400).end();
+
+      return;
+    }
+
+    const upstream = transport.request(url, {
       method: request.method,
       headers: upstreamHeaders(request.headers, target, serverHeaders, false),
     });
@@ -149,7 +172,15 @@ async function startBbProxy(
       return;
     }
 
-    const upstream = transport.request(upstreamUrl(request), {
+    const url = upstreamUrl(request.url, target);
+
+    if (!url) {
+      rejectSocket(client, 400, "Bad Request");
+
+      return;
+    }
+
+    const upstream = transport.request(url, {
       method: request.method,
       headers: upstreamHeaders(request.headers, target, serverHeaders, true),
     });

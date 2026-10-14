@@ -14,7 +14,7 @@ Transcription and recording stay on their existing routes.
 - The **API** tab of the picker sets the chat back to the configured Cloud, Local or Self-Hosted route.
 - Chat and meeting summaries use the default harness and its default model, unless their task picker pins a different selection (Settings → Models → Tasks, **bb** tab).
 - A disabled harness gives no selection, and Gristmill reports it. A different harness never replaces it.
-- Main gets logos only from the bb loopback route `/api/v1/system/providers/*/logo`. It accepts only bounded SVG and sends it to the renderer as an image data URL.
+- Main gets logos only from the bb loopback route `/api/v1/system/providers/*/logo`. It accepts only bounded SVG and sends it to the renderer as an image data URL. A provider can have no logo (`logoUrl` is `null`). Then the renderer shows a generic icon.
 
 ## Runtime contract
 
@@ -27,6 +27,20 @@ Transcription and recording stay on their existing routes.
   3. The BB app bundle: `/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/bb`
 - Thus the discovery does not depend on the terminal `PATH` when the app starts from Finder.
 - Main calls the required command directly. CLI failures and invalid responses are errors.
+
+### Server connection
+
+- The BB CLI gets its server only from `BB_SERVER_URL`. If this variable is not set, the CLI uses the local BB server.
+- BB can move its server to a different machine. Then this Mac is only a connected host. The BB data directory (`BB_DATA_DIR`, default `~/.bb`) keeps the remote `serverUrl` and the machine credential (`serverHeaders`) in `config.json`.
+- BB gives a credential proxy only to its own threads. The proxy port is random and BB does not publish it. Thus Gristmill resolves the connection before each CLI call:
+  1. A `BB_SERVER_URL` in the app environment (a BB thread or a development shell) has priority. Gristmill does not change it.
+  2. If `config.json` has `serverHeaders`, Gristmill starts its own loopback proxy. The proxy adds the headers to HTTP and WebSocket requests and sends them to `serverUrl`.
+  3. If `config.json` has only `serverUrl`, the CLI gets this URL directly.
+  4. If there is no `config.json`, the CLI uses the local BB server.
+- Gristmill reads `config.json` again for each call. When the server URL or the headers change, Gristmill replaces the proxy. Thus a later server move does not need an app restart.
+- The proxy listens only on `127.0.0.1`. It rejects requests that have an `Origin` or `Sec-Fetch-Site` header, or a `Host` that is not loopback. Thus a browser page cannot use the credential. The proxy does not log the headers.
+- A moved server reports its own loopback URL in `bb settings show`. This URL is not reachable from this Mac. Thus logos use the same server URL as the CLI.
+- The test runner sets an empty `BB_DATA_DIR` and removes `BB_SERVER_URL`. Tests do not reach the BB server or the credential of the developer.
 
 ### Projects and output
 

@@ -5,7 +5,7 @@ export const bbProviderSchema = z.object({
   displayName: z.string(),
   available: z.boolean(),
   reasoningLevels: z.array(z.object({ id: z.string(), label: z.string() })).optional(),
-  logoUrl: z.string().optional(),
+  logoUrl: z.string().nullish(),
 });
 
 /** A validated SVG logo; `monochrome` logos draw with the current text colour. */

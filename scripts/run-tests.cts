@@ -284,6 +284,10 @@ async function runTests(
     if (interrupted) return interrupted;
     const env: NodeJS.ProcessEnv = { ...process.env, REQUIRE_DB_TESTS: "1" };
     delete env.ELECTRON_RUN_AS_NODE;
+    // Tests must not reach the bb server, config or machine credential of the developer.
+    env.BB_DATA_DIR = path.join(os.tmpdir(), "gristmill-test-no-bb");
+    delete env.BB_SERVER_URL;
+    delete env.BB_HOST_DAEMON_PORT;
 
     if (platform === "darwin" && plan.tests.some((test) => test.kind === "native")) {
       const code = await run("pnpm", ["run", "compile:native"], env, plan.options.verbose);

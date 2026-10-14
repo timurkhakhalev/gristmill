@@ -50,6 +50,7 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
     this._epochIndex = options.processorOptions?.epochIndex ?? 0;
     this._sourceGeneration = options.processorOptions?.sourceGeneration ?? 1;
     this._inputSeen = false;
+    this._startup = !this._gateClosed;
     this._nextRenderFrame = null;
     this._pendingFrames = 0;
     this._unacked = new Map();
@@ -74,6 +75,7 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
         this.port.postMessage({ type: "flush-complete", lastSequence: this._sequence - 1, boundaryRenderFrame: currentFrame });
       } else if (message?.type === "set-gate") {
         if (this._stopped) return;
+        this._startup = false;
         if (message.effectiveMuted && !this._gateClosed && this._offset > 0) {
           const partial = this._buffer.slice(0, this._offset);
           this._offset = 0;
@@ -112,6 +114,7 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
       this._fail("capture-queue-overflow");
       return false;
     }
+    this._startup = false;
     const sequence = this._sequence++;
     const frames = buffer.length;
     const renderStartFrame = this._bufferStartFrame;
@@ -151,18 +154,26 @@ class MeetingPCMProcessor extends AudioWorkletProcessor {
         this._fail("capture-render-clock-reset");
         return false;
       }
-      // A render-clock gap is a new epoch, never contiguous PCM with a false anchor.
-      if (this._offset > 0) {
-        const partial = this._buffer.slice(0, this._offset);
+      // A fresh graph can settle its render clock after the first quanta. Those
+      // unsent frames are shorter than one calibration span and can never be
+      // aligned, so the first epoch starts again after the gap.
+      if (this._startup && this._sequence === 0) {
         this._offset = 0;
-        if (!this._send(partial)) return false;
+        this._bufferStartFrame = null;
+      } else {
+        // A render-clock gap is a new epoch, never contiguous PCM with a false anchor.
+        if (this._offset > 0) {
+          const partial = this._buffer.slice(0, this._offset);
+          this._offset = 0;
+          if (!this._send(partial)) return false;
+        }
+        this._epochIndex++;
+        this._sequence = 0;
+        this._sampleOffset = 0;
+        this._buffer = new Int16Array(BUFFER_SIZE);
+        this._bufferStartFrame = null;
+        this.port.postMessage({ type: "source-gap", epochIndex: this._epochIndex });
       }
-      this._epochIndex++;
-      this._sequence = 0;
-      this._sampleOffset = 0;
-      this._buffer = new Int16Array(BUFFER_SIZE);
-      this._bufferStartFrame = null;
-      this.port.postMessage({ type: "source-gap", epochIndex: this._epochIndex });
     }
     this._nextRenderFrame = currentFrame + input.length;
     if (this._pendingFrames + this._offset + input.length > MAX_PENDING_FRAMES) {

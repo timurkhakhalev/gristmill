@@ -18,9 +18,26 @@ export interface AlignedAudioRange {
       };
 }
 
+/** The clock solver needs a probe span of 250 ms at 24 kHz. */
+const MIN_CALIBRATION_FRAMES = 6_000;
+
+/**
+ * A new-capture epoch shorter than one calibration span, with no segment and no
+ * anchor, can never get proven alignment (ADR-0010). It is left out of every mix.
+ */
+export function isUncalibratableEpochFragment(epoch: MeetingRecordingEpochDto): boolean {
+  return (
+    epoch.frameCount > 0 &&
+    epoch.frameCount < MIN_CALIBRATION_FRAMES &&
+    epoch.timelineStartFrame === null &&
+    epoch.sourceGeneration !== null &&
+    epoch.alignmentSegments.length === 0
+  );
+}
+
 /** Only proven coverage may enter a derived mix; source-local zero is never a timeline offset. */
 export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudioRange[] {
-  if (!epoch.frameCount) return [];
+  if (!epoch.frameCount || isUncalibratableEpochFragment(epoch)) return [];
 
   if (
     epoch.timelineStartFrame !== null &&

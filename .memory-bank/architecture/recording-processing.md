@@ -99,6 +99,8 @@ For recovery limits and legacy PCM profiles, see [audio storage](audio-storage.m
 - Source-generation coordinates and nullable timeline coordinates are stored separately.
 - A late valid calibration can cover earlier frames in the same continuous generation. It does not change the source audio.
 - Unknown alignment never stops healthy capture. Preparation uses only parts with proven alignment and available required sources. Unusable parts are omitted automatically, with their originals and IDs kept. No new alignment is guessed. If no usable part remains, processing stops before any provider request.
+- An epoch fragment shorter than one calibration span (250 ms), with no segment and no anchor, can never get alignment. Preparation leaves it out and keeps the part. A source with audio only in fragments makes the part unusable ([ADR-0010](../adr/0010-uncalibratable-epoch-fragments.md)).
+- Before the first packet, a forward render-clock gap drops the unsent frames and the first epoch starts again after the gap. Later gaps start a new epoch.
 - Solver limits: a maximum of eight probes, a span of 250 ms or more, rate bounds of 0.999–1.001, and freshness or continuation of five seconds or less.
 - Prepare accepts an endpoint uncertainty of 25 ms or less.
 - Saved capture-time bounds do not expire at processing time.

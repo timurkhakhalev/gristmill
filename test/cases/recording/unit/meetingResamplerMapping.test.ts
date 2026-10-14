@@ -76,3 +76,11 @@ test("unproven empty source fails; explicit intentional silence is manifest inpu
   const manifest = meetingResamplerManifest("mic", [], () => "absent", 48000, true);
   assert.equal(manifest.intentionalSilence, true); assert.deepEqual(manifest.epochs, []);
 });
+test("an uncalibratable startup fragment supplies no input and does not block the proven epochs", () => {
+  const fragment = { ...calibratedEpoch([]), frameCount: 128, alignmentErrorCode: "clock-unavailable" };
+  const proven = calibratedEpoch([{ frames: 96000, start: 384 }], 1);
+  const manifest = meetingResamplerManifest("mic", [fragment, proven], () => "private.f32", 100000);
+  assert.deepEqual(manifest.epochs.map(value => value.epochIndex), [1]);
+  assert.equal(manifest.boundaryResets, 0);
+  assert.throws(() => meetingResamplerManifest("mic", [fragment], () => "private.f32", 100000), { code: "audio-alignment-unavailable" });
+});

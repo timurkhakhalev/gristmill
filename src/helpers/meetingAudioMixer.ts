@@ -21,7 +21,7 @@ import {
   type MeetingResamplerManifest,
 } from "./meetingResamplerMapping.js";
 
-import { alignedAudioRanges } from "./meetingAudioAlignment.js";
+import { alignedAudioRanges, isUncalibratableEpochFragment } from "./meetingAudioAlignment.js";
 
 const SAMPLE_RATE = 24_000;
 
@@ -74,6 +74,18 @@ export function meetingTimelineFrameCount(
         }
       })
     : epochs.flatMap(alignedAudioRanges);
+
+  // A source with audio needs proven coverage. Fragments alone do not give it (ADR-0010).
+  if (!lenient) {
+    for (const source of ["mic", "system"] as const) {
+      const own = epochs.filter((epoch) => epoch.source === source && epoch.frameCount > 0);
+
+      if (own.length && own.every(isUncalibratableEpochFragment))
+        throw Object.assign(new Error("audio-alignment-unavailable"), {
+          code: "audio-alignment-unavailable",
+        });
+    }
+  }
 
   const latestEpochEnd = ranges.reduce(
     (latest, range) =>

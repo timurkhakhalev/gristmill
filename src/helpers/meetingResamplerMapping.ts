@@ -61,12 +61,21 @@ export function meetingResamplerManifest(
     boundaryResets: 0,
   };
 
+  let skippedFragment = false;
+
   for (const epoch of epochs) {
     if (epoch.source !== source) throw new Error("Meeting audio preparation source mismatch");
 
     if (!epoch.frameCount) continue;
     integer(epoch.frameCount);
     const ranges = alignedAudioRanges(epoch);
+
+    // An uncalibratable fragment has no proven position; it supplies no input.
+    if (!ranges.length) {
+      skippedFragment = true;
+      continue;
+    }
+
     const rows: MeetingResamplerRow[] = [];
 
     for (const [index, range] of ranges.entries()) {
@@ -154,8 +163,13 @@ export function meetingResamplerManifest(
     });
   }
 
-  if (!manifest.epochs.length && !intentionalSilence)
+  if (!manifest.epochs.length && !intentionalSilence) {
+    if (skippedFragment)
+      throw Object.assign(new Error("audio-alignment-unavailable"), {
+        code: "audio-alignment-unavailable",
+      });
     throw new Error("Meeting audio preparation has no proven input");
+  }
 
   return manifest;
 }

@@ -57,7 +57,7 @@ As a Gristmill user, I want to ask questions about my notes and meetings and wor
 ### Work with a bb agent
 
 1. Select a bb harness in the composer picker.
-2. Ask about the current meeting or about other meetings. The agent gets the ID of the current note and reads other notes with the [Gristmill CLI](gristmill-cli.md).
+2. Ask about the current meeting or about other meetings. The agent gets the ID of the open note and reads notes with the [Gristmill CLI](gristmill-cli.md). The agent applies a question to the open note, unless you name a different note. It reads the summary and the transcript of the open note before it answers. It uses other notes only when you ask about them or the open note does not have the answer. Then it tells you which note it used.
 3. Ask the agent to create or edit a note, to create a folder, or to update the Dictionary or Snippets.
 4. The agent cannot delete notes, delete audio or start a transcription.
 5. To use a different harness, start a new chat. You can change the model and the reasoning level in the same chat.

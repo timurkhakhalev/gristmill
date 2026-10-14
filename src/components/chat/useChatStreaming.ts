@@ -238,15 +238,17 @@ export function useChatStreaming({
 
       if (cancelled() || !mountedRef.current) return;
 
-      const combinedContext =
-        isBbAgent && noteId ? `Current Note ID: ${noteId}.` : noteContextRef.current;
+      // With an open note, the bb agent reads it itself through the gristmill CLI.
+      const currentBbNoteId = isBbAgent && noteId ? noteId : undefined;
+      const combinedContext = currentBbNoteId ? undefined : noteContextRef.current;
 
       const systemPrompt =
         sendOptions?.systemPrompt ??
         getAgentSystemPrompt(
           registry?.getAll().map((t) => t.name),
           combinedContext || undefined,
-          isBbAgent
+          isBbAgent,
+          currentBbNoteId
         );
 
       const messagesForTurn =

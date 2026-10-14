@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { z } from "zod";
+import { resolveBbCliEnvironment, type BbCliEnvironment } from "./bbConnection.js";
 import {
   bbProviderSchema,
   bbModelSchema,
@@ -72,6 +73,19 @@ function binaryPath(): string {
 async function execute(args: string[], input?: string, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
 
+  let connection: BbCliEnvironment;
+
+  try {
+    connection = await resolveBbCliEnvironment();
+  } catch (error) {
+    throw new BbCliError(
+      "bb-connection-error",
+      error instanceof Error ? error.message : "bb connection failed"
+    );
+  }
+
+  signal?.throwIfAborted();
+
   return new Promise((resolve, reject) => {
     let failure: Error | undefined;
     let stdout = "";
@@ -81,7 +95,7 @@ async function execute(args: string[], input?: string, signal?: AbortSignal): Pr
       stdio: ["pipe", "pipe", "pipe"],
       signal,
       timeout: 30_000,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      env: { ...process.env, ...connection, ELECTRON_RUN_AS_NODE: "1" },
     });
 
     const failAndKill = (error: Error) => {
@@ -245,16 +259,23 @@ async function fetchBbLogo(serverUrl: string, logoUrl: string): Promise<BbLogo |
   return logo;
 }
 
+// A moved bb server reports its own loopback URL; logos use the URL that the CLI uses.
+async function logoServerUrl(): Promise<string | null> {
+  try {
+    const cliServerUrl =
+      (await resolveBbCliEnvironment()).BB_SERVER_URL ?? process.env.BB_SERVER_URL?.trim();
+
+    return cliServerUrl || (await readBbSettings()).serverUrl;
+  } catch {
+    return null;
+  }
+}
+
 /** Providers with their logos; a missing logo falls back to a generic icon in the renderer. */
 export async function listBbHarnesses(): Promise<BbHarness[]> {
   const providers = await listBbProviders();
 
-  const serverUrl = providers.some((provider) => provider.logoUrl)
-    ? await readBbSettings().then(
-        (settings) => settings.serverUrl,
-        () => null
-      )
-    : null;
+  const serverUrl = providers.some((provider) => provider.logoUrl) ? await logoServerUrl() : null;
 
   return Promise.all(
     providers.map(async ({ logoUrl, ...provider }) => ({

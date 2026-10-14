@@ -17,6 +17,7 @@ import { wasLaunchedAtLoginHidden } from "./src/helpers/autoStart.js";
 import { IPCHandlers } from "./src/helpers/ipcHandlers.js";
 import { CliBridge } from "./src/helpers/cliBridge.js";
 import { writeBbConnection, removeBbConnection } from "./src/helpers/bbWorkspace.js";
+import { closeBbConnection } from "./src/helpers/bbConnection.js";
 import { installAgentCli } from "./src/helpers/installAgentCli.js";
 import { NoteReadService } from "./src/helpers/noteReadService.js";
 import { GlobeKeyManager } from "./src/helpers/globeKeyManager.js";
@@ -856,6 +857,7 @@ if (gotSingleInstanceLock) {
 
 function performSyncTeardown(): void {
   removeBbConnection(app.getPath("userData"));
+  closeBbConnection();
 
   if (wakeRewarmTimer) {
     clearTimeout(wakeRewarmTimer);

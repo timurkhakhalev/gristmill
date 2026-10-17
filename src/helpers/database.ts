@@ -270,6 +270,7 @@ interface MeetingProcessingRunDbRow {
   transcript_path: string | null;
   summary_path: string | null;
   retry_count: number;
+  attempt_started_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -655,6 +656,7 @@ function toMeetingRunDto(row: MeetingProcessingRunDbRow): MeetingProcessingRunDt
     speakerNamingErrorCode: row.speaker_naming_error_code,
     retryAt: row.retry_at,
     retryCount: row.retry_count,
+    attemptStartedAt: row.attempt_started_at,
     hasRawProviderResponse: row.raw_response_path !== null,
     hasTranscript: row.transcript_path !== null,
     hasSummary: row.summary_path !== null,
@@ -1022,6 +1024,7 @@ export class DatabaseManager {
           llm_source_snapshot_json TEXT,
           speaker_naming_error_code TEXT,
           retry_count INTEGER NOT NULL DEFAULT 0 CHECK(retry_count >= 0),
+          attempt_started_at TEXT,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE (recording_id, id)
@@ -1365,6 +1368,10 @@ export class DatabaseManager {
 
       if (!runColumns.some((column) => column.name === "bb_thread_id")) {
         this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN bb_thread_id TEXT");
+      }
+
+      if (!runColumns.some((column) => column.name === "attempt_started_at")) {
+        this.sql.exec("ALTER TABLE meeting_processing_runs ADD COLUMN attempt_started_at TEXT");
       }
 
       if (!runColumns.some((column) => column.name === "source_recording_ids_json")) {
@@ -2527,9 +2534,9 @@ export class DatabaseManager {
 
     const result = this.sql
       .prepare(
-        "UPDATE meeting_processing_runs SET status = 'running', error_code = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND (retry_at IS NULL OR retry_at <= ?) AND NOT EXISTS (SELECT 1 FROM meeting_processing_runs active WHERE active.status = 'running' AND active.id != meeting_processing_runs.id) AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL AND (r.audio_state = 'available' OR meeting_processing_runs.stage IN ('normalize', 'summary')))"
+        "UPDATE meeting_processing_runs SET status = 'running', error_code = NULL, attempt_started_at = COALESCE(attempt_started_at, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND (retry_at IS NULL OR retry_at <= ?) AND NOT EXISTS (SELECT 1 FROM meeting_processing_runs active WHERE active.status = 'running' AND active.id != meeting_processing_runs.id) AND EXISTS (SELECT 1 FROM meeting_recordings r LEFT JOIN meeting_deletion_intents d ON d.note_id = r.note_id AND d.kind = 'note' WHERE r.id = meeting_processing_runs.recording_id AND d.id IS NULL AND (r.audio_state = 'available' OR meeting_processing_runs.stage IN ('normalize', 'summary')))"
       )
-      .run(id, now);
+      .run(now, id, now);
 
     return result.changes > 0;
   }
@@ -2567,7 +2574,7 @@ export class DatabaseManager {
 
     this.sql
       .prepare(
-        "UPDATE meeting_processing_runs SET stage = ?, status = 'pending', error_code = NULL, retry_at = ?, retry_count = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('blocked', 'failed', 'cancelled')"
+        "UPDATE meeting_processing_runs SET stage = ?, status = 'pending', error_code = NULL, retry_at = ?, retry_count = 0, attempt_started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('blocked', 'failed', 'cancelled')"
       )
       .run(stage, retryAt, id);
 
@@ -2747,7 +2754,7 @@ export class DatabaseManager {
 
       const updated = this.sql
         .prepare(
-          "UPDATE meeting_processing_runs SET config_json = ?, config_error_code = NULL, config_error_message_key = NULL, status = 'pending', error_code = NULL, retry_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'blocked' AND stage = 'summary' AND error_code = 'missing-summary-config' AND transcript_path IS NOT NULL AND summary_path IS NULL"
+          "UPDATE meeting_processing_runs SET config_json = ?, config_error_code = NULL, config_error_message_key = NULL, status = 'pending', error_code = NULL, retry_at = NULL, attempt_started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'blocked' AND stage = 'summary' AND error_code = 'missing-summary-config' AND transcript_path IS NOT NULL AND summary_path IS NULL"
         )
         .run(configJson(config), id);
 
@@ -2770,7 +2777,7 @@ export class DatabaseManager {
 
     this.sql
       .prepare(
-        "UPDATE meeting_processing_runs SET provider = ?, model = ?, config_json = ?, config_error_code = ?, config_error_message_key = ?, status = ?, error_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'blocked'"
+        "UPDATE meeting_processing_runs SET provider = ?, model = ?, config_json = ?, config_error_code = ?, config_error_message_key = ?, status = ?, error_code = ?, attempt_started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'blocked'"
       )
       .run(
         provider,

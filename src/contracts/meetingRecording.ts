@@ -397,6 +397,7 @@ export const meetingProcessingRunDtoSchema = z.object({
   speakerNamingErrorCode: z.string().nullable(),
   retryAt: z.string().nullable(),
   retryCount: z.number().int().nonnegative(),
+  attemptStartedAt: z.string().nullable(),
   hasRawProviderResponse: z.boolean(),
   hasTranscript: z.boolean(),
   hasSummary: z.boolean(),

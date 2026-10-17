@@ -298,6 +298,61 @@ test("failed file deletion keeps a durable intent and retries successfully after
   }
 });
 
+test("attempt timing starts on claim, survives stage changes and reopen, and resets on explicit retry", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const note = saveMeetingNote(db);
+  const { initialRun } = createFinishedRecording(db, storage, note);
+  assert.equal(initialRun.attemptStartedAt, null);
+  assert.equal(db.claimMeetingProcessingRun(initialRun.id, new Date().toISOString()), false);
+  assert.equal(db.getMeetingProcessingRun(initialRun.id).attemptStartedAt, null);
+  db.db.prepare("UPDATE meeting_processing_runs SET created_at = ?, retry_at = NULL WHERE id = ?")
+    .run("2026-01-01 00:00:00", initialRun.id);
+  const firstStart = new Date().toISOString();
+  assert.equal(db.claimMeetingProcessingRun(initialRun.id, firstStart), true);
+  assert.equal(db.claimMeetingProcessingRun(initialRun.id, new Date(Date.now() + 1000).toISOString()), false);
+  for (const stage of ["asr", "normalize", "summary"]) {
+    db.setMeetingProcessingRunState(initialRun.id, { stage, status: "running" });
+    assert.equal(db.getMeetingProcessingRun(initialRun.id).attemptStartedAt, firstStart);
+  }
+  db.close();
+  const reopened = new DatabaseManager();
+  try {
+    assert.equal(reopened.getMeetingProcessingRun(initialRun.id).attemptStartedAt, firstStart);
+    reopened.recoverRunningMeetingProcessingRuns();
+    assert.equal(reopened.claimMeetingProcessingRun(initialRun.id, new Date(Date.now() + 2000).toISOString()), true);
+    assert.equal(reopened.getMeetingProcessingRun(initialRun.id).attemptStartedAt, firstStart);
+    reopened.setMeetingProcessingRunState(initialRun.id, { stage: "prepare", status: "failed", errorCode: "audio-alignment-unavailable" });
+    assert.equal(reopened.retryMeetingProcessingRun(initialRun.id).attemptStartedAt, null);
+    const secondStart = new Date(Date.now() + 3000).toISOString();
+    assert.equal(reopened.claimMeetingProcessingRun(initialRun.id, secondStart), true);
+    assert.equal(reopened.getMeetingProcessingRun(initialRun.id).attemptStartedAt, secondStart);
+    assert.equal(reopened.getMeetingProcessingRun(initialRun.id).createdAt, "2026-01-01 00:00:00");
+    reopened.setMeetingProcessingRunState(initialRun.id, { stage: "prepare", status: "blocked", errorCode: "missing-transcription-config" });
+    assert.equal(reopened.updateBlockedMeetingRunConfig(initialRun.id, validConfig).attemptStartedAt, null);
+    const configuredStart = new Date(Date.now() + 4000).toISOString();
+    assert.equal(reopened.claimMeetingProcessingRun(initialRun.id, configuredStart), true);
+    assert.equal(reopened.getMeetingProcessingRun(initialRun.id).attemptStartedAt, configuredStart);
+  } finally { reopened.close(); }
+});
+
+test("attempt timing migration does not invent a start for historical runs", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { initialRun } = createFinishedRecording(db, storage, saveMeetingNote(db));
+  db.db.exec("ALTER TABLE meeting_processing_runs DROP COLUMN attempt_started_at");
+  db.close();
+  const reopened = new DatabaseManager();
+  try {
+    const migrated = reopened.getMeetingProcessingRun(initialRun.id);
+    assert.equal(migrated.attemptStartedAt, null);
+    assert.equal(migrated.createdAt, initialRun.createdAt);
+    assert.equal(migrated.status, initialRun.status);
+  } finally { reopened.close(); }
+});
+
 test("omission metadata migrates existing runs without changing their audio selection", (t: import("node:test").TestContext) => {
   const db = createDb(t);
   if (!db) return;

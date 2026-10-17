@@ -122,7 +122,7 @@
     "@heroui/styles": "3.2.6",
     "@oxlint/plugins": "1.86.0",
     "@radix-ui/react-direction": "1.1.2",
-    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-label": "^2.1.16",
     "@radix-ui/react-slot": "^1.2.3",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-virtual": "^3.13.2",

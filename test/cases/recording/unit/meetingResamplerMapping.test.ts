@@ -84,3 +84,108 @@ test("an uncalibratable startup fragment supplies no input and does not block th
   assert.equal(manifest.boundaryResets, 0);
   assert.throws(() => meetingResamplerManifest("mic", [fragment], () => "private.f32", 100000), { code: "audio-alignment-unavailable" });
 });
+
+// M0/M1 mutation survivor follow-ups (#382): threshold edge, validation messages, rate bounds, reset accounting.
+test("resampler mapping: provenance continuity accepts at the exact uncertainty edge and resets beyond it", () => {
+  const manifestAt = (anchor: number) =>
+    meetingResamplerManifest(
+      "mic",
+      [calibratedEpoch([{ frames: 96000, start: 0, uncertainty: 10 }, { frames: 96000, start: anchor }])],
+      () => "private.f32",
+      200_000
+    );
+
+  const atEdge = manifestAt(96_011);
+  assert.deepEqual(atEdge.decisions, [
+    { epochPosition: 0, rangeIndex: 1, precedingEnd: 96_000, anchor: 96_011, correction: 11, reason: "accepted" },
+  ]);
+  assert.equal(atEdge.epochs[0].rows[0].timelineEnd, 96_011);
+  assert.equal(atEdge.epochs[0].rows[1].reset, false);
+  assert.equal(atEdge.boundaryResets, 0);
+
+  const beyond = manifestAt(96_012);
+  assert.equal(beyond.decisions[0]?.reason, "uncertainty");
+  assert.equal(beyond.epochs[0].rows[0].timelineEnd, 96_000);
+  assert.equal(beyond.epochs[0].rows[1].reset, true);
+});
+
+test("resampler mapping: validation guards keep distinct messages and strict extent semantics", () => {
+  const epoch = () => calibratedEpoch([{ frames: 96000, start: 0 }]);
+  const prepare = (extent: number, source: "mic" | "system" = "mic") =>
+    meetingResamplerManifest(source, [epoch()], () => "private.f32", extent);
+
+  assert.throws(() => prepare(Number.NaN), {
+    name: "Error",
+    message: "Meeting audio preparation has invalid integer coordinates",
+  });
+  assert.throws(() => prepare(1_000.5), {
+    name: "Error",
+    message: "Meeting audio preparation has invalid integer coordinates",
+  });
+  assert.throws(() => prepare(0), {
+    name: "Error",
+    message: "Meeting audio preparation has no extent",
+  });
+  assert.throws(() => prepare(96_000, "system" as "mic"), {
+    name: "Error",
+    message: "Meeting audio preparation source mismatch",
+  });
+  assert.throws(() => prepare(95_999), {
+    name: "Error",
+    message: "Meeting audio preparation has inconsistent coverage",
+  });
+  assert.throws(
+    () => meetingResamplerManifest("mic", [calibratedEpoch([{ frames: 96000, start: 0, rate: 1.002 }])], () => "private.f32", 200_000),
+    { name: "Error", message: "Meeting audio preparation has unsupported alignment" }
+  );
+
+  // The inclusive alignment-rate bounds accept exactly 0.999 and 1.001; just outside throws.
+  for (const rate of [0.999, 1.001]) {
+    const manifest = meetingResamplerManifest(
+      "mic",
+      [calibratedEpoch([{ frames: 96000, start: 0, rate, uncertainty: 100 }, { frames: 96000, start: 96_000 }])],
+      () => "private.f32",
+      200_000
+    );
+
+    assert.ok(manifest.epochs[0].rows.length >= 1);
+  }
+
+  assert.throws(
+    () => meetingResamplerManifest("mic", [calibratedEpoch([{ frames: 96000, start: 0, rate: 0.9989 }])], () => "private.f32", 200_000),
+    /unsupported alignment/
+  );
+  assert.throws(
+    () => meetingResamplerManifest("mic", [calibratedEpoch([{ frames: 96000, start: 0, rate: 1.0011 }])], () => "private.f32", 200_000),
+    /unsupported alignment/
+  );
+});
+
+test("resampler mapping: an accepted continuation followed by an epoch boundary keeps reset accounting exact", () => {
+  const first = calibratedEpoch([{ frames: 96000, start: 0 }, { frames: 96000, start: 96_010 }], 0, 1);
+  const second = calibratedEpoch([{ frames: 96000, start: 192_010 }], 1, 1);
+  const manifest = meetingResamplerManifest("mic", [first, second], () => "private.f32", 300_000);
+
+  assert.deepEqual(
+    manifest.epochs.map((epoch: any) => epoch.rows.map((row: any) => row.reset)),
+    [
+      [true, false],
+      [true],
+    ]
+  );
+  assert.equal(manifest.boundaryResets, 1);
+  assert.deepEqual(
+    manifest.decisions.map((decision: any) => decision.reason),
+    ["accepted"]
+  );
+  assert.deepEqual(meetingResamplerDecisionSummary(manifest), {
+    candidates: 1,
+    accepted: 1,
+    rejected: 0,
+    uncertainty: 0,
+    effectiveRate: 0,
+    acceptedShare: 1,
+    corrections: [10],
+    boundaryResets: 1,
+  });
+});

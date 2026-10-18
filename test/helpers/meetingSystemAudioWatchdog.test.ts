@@ -583,3 +583,54 @@ test("replacement ACK without chunks has its own bounded delivery window", async
   await h.advance(STALL_MS + TICK_MS);
   assert.equal(h.restarts(), MAX_RESTARTS);
 });
+
+// M0/M1 mutation survivor follow-ups (#382): deferred invalidation and restart-cap observation.
+test("watchdog: a device invalidation during an in-flight restart is deferred, not dropped", async () => {
+  const restartGate = createDeferredGate();
+  let startedCount = 0;
+  const h = createHarness({
+    startImpl: () => {
+      startedCount += 1;
+
+      return restartGate.promise;
+    },
+  });
+  startNative(h);
+
+  // Stall past the window: the first restart begins and stays in flight.
+  await h.advance(STALL_MS + TICK_MS);
+  assert.equal(startedCount, 1);
+  assert.deepEqual(h.calls.slice(0, 1), ["stop"]);
+
+  // A device invalidation arrives while the replacement has not started:
+  // it must be retained and consumed after the in-flight restart settles.
+  h.watchdog.reportDeviceInvalidated();
+  await flush();
+  assert.equal(startedCount, 1, "no second start while the first restart is in flight");
+
+  restartGate.release();
+  await flush();
+  assert.equal(startedCount, 2, "the deferred invalidation triggers exactly one follow-up restart");
+  assert.equal(h.restarts(), 2);
+});
+
+test("watchdog: restart attempts stop at the cap even when ticks keep finding stalls", async () => {
+  const h = createHarness();
+  startNative(h);
+
+  await h.advance((STALL_MS + TICK_MS) * (MAX_RESTARTS + 2));
+
+  assert.equal(h.restarts(), MAX_RESTARTS);
+  const gaveUp = h.interruptions.filter((entry) => entry.recovering === false);
+  assert.equal(gaveUp.length, 1);
+  assert.equal(gaveUp[0].reason, "no_audio_delivered");
+});
+
+function createDeferredGate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  return { promise, release: () => release() };
+}

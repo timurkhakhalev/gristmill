@@ -614,6 +614,24 @@ test("watchdog: a device invalidation during an in-flight restart is deferred, n
   assert.equal(h.restarts(), 2);
 });
 
+test("a capture failure during replacement startup does not queue a device invalidation", async () => {
+  const restartGate = createDeferredGate();
+  const h = createHarness({ startImpl: () => restartGate.promise });
+  startNative(h);
+
+  await h.advance(STALL_MS + TICK_MS);
+  assert.equal(h.restarts(), 1, "the replacement is starting");
+
+  h.watchdog.reportCaptureFailed();
+  await flush();
+  assert.equal(h.restarts(), 1, "the in-flight restart remains the only attempt");
+
+  restartGate.release();
+  await flush();
+  assert.equal(h.restarts(), 1, "capture failure must not queue a device-invalidated restart");
+  assert.deepEqual(h.interruptions.map((event) => event.reason), ["no_audio_delivered"]);
+});
+
 
 function createDeferredGate() {
   let release!: () => void;

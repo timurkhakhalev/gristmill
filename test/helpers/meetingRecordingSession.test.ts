@@ -785,3 +785,33 @@ test("a committed start rejects a foreign-session cancellation instead of cancel
   await startPromise;
   assert.deepEqual(events, ["capture:meeting-1"]);
 });
+
+test("a fresh start operation reports current and never stops an unattempted main start", async () => {
+  const { createMeetingRecordingStartCoordinator } = await load();
+  const coordinator = createMeetingRecordingStartCoordinator();
+  const events: unknown[] = [];
+  let sawCurrent = false;
+  let release = createDeferred();
+  let scopedStopCount = 0;
+
+  const startPromise = coordinator.runStart("meeting-1", async (operation) => {
+    sawCurrent = operation.isCurrent();
+    events.push(sawCurrent ? "current" : "not-current");
+
+    // A start that never attempted the main start must not stop anything.
+    await operation.stopMainOnce(async () => {
+      scopedStopCount += 1;
+      events.push("main-stop");
+    });
+
+    release.resolve();
+    await release.promise;
+  });
+
+  await release.promise;
+  await startPromise;
+
+  assert.equal(sawCurrent, true, "an admitted start is current until canceled or replaced");
+  assert.equal(scopedStopCount, 0, "stopping without a main start attempt must be a no-op");
+  assert.deepEqual(events, ["current"]);
+});

@@ -83,3 +83,18 @@ test("audio timeline: rejects empty, odd and misaligned writes before any output
   timeline.write(Buffer.alloc(4), 2, () => undefined);
   assert.equal(timeline.lastFrame, 4);
 });
+
+test("audio timeline: restart and origin errors keep their exact messages and a no-op restart keeps the anchor", () => {
+  const timeline = createMeetingAudioTimeline();
+  assert.throws(() => timeline.markRestart(-1), {
+    name: "RangeError",
+    message: "Invalid meeting audio restart frame",
+  });
+  // A restart at the current anchor is a legal no-op: it returns the anchor unchanged.
+  assert.equal(timeline.markRestart(0), 0);
+  assert.equal(timeline.lastFrame, 0);
+  assert.throws(() => createMeetingAudioTimeline({ originFrame: -1 }), {
+    name: "RangeError",
+    message: "Invalid meeting audio origin frame",
+  });
+});

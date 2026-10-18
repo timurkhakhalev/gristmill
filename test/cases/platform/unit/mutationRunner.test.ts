@@ -34,6 +34,7 @@ test("each registered target resolves independently with its own scope and the s
   assert.deepEqual(targets["recording:session-lifecycle"]?.mutate, ["src/helpers/meetingRecordingSession.ts"]);
   assert.deepEqual(targets["recording:main-session-lifecycle"]?.mutate, ["src/helpers/meetingTranscriptionLifecycle.ts"]);
   assert.deepEqual(targets["recording:speaker-assignment"]?.mutate, ["src/helpers/speakerAssignmentPolicy.ts"]);
+  assert.deepEqual(targets["recording:platform-speaker-matching"]?.testFiles, ["test/cases/recording/unit/zoomSpeakerMatcher.test.ts", "test/cases/recording/unit/soleRemoteSpeaker.test.ts"]);
   assert.throws(() => resolveTarget("recording:no-such-target"), /Unknown mutation target/);
   assert.throws(() => resolveTarget("../../secrets"), /Unknown mutation target/);
 });

@@ -14,6 +14,12 @@ const {
   matchMeetingPlatformSpeakers,
 }: typeof import("../../../../src/helpers/meetingPlatformMatcher.ts") = require("../../../../src/helpers/meetingPlatformMatcher.ts");
 
+// The provider-parser chain loads debugLogger, which imports electron at load
+// time; under plain node and the mutation image the loader hands it the stub.
+const { installElectronStub }: typeof import("../../../helpers/harness/electronStub.js") = require("../../../helpers/harness/electronStub.ts");
+
+installElectronStub();
+
 const recordingId = randomUUID();
 
 const sessionId = randomUUID();

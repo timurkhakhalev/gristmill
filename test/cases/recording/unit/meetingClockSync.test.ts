@@ -367,3 +367,39 @@ test("clock sync: a later overlapping sample never becomes the freshest anchor",
   assert.equal(continuation.sampledAtSourceNs, "1402000000");
   assert.equal(continuation.helperEstimateNs, "6001000000");
 });
+
+test("clock sync: frame mapping rejects invalid mappings, origins and rates before converting", () => {
+  const sync = new MeetingClockSync();
+  sync.reset("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+
+  const sendProbe = (t: bigint, index: number) => {
+    const probe = sync.createProbe(t.toString(), `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`);
+
+    return sync.accept(
+      {
+        type: "probe" as const,
+        nonce: probe.nonce,
+        helperReceiveNs: (t + 1_002_000n).toString(),
+        helperSendNs: (t + 4_000_000n + 1_000_000n).toString(),
+        helperGeneration: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        helperFrame: 0,
+      },
+      (t + 4_000_000n).toString()
+    );
+  };
+
+  sendProbe(1_000_000_000n, 1);
+  assert.ok(sendProbe(1_400_000_000n, 2), "two probes establish the calibrated mapping");
+
+  // No mapping: a request beyond the bounded continuation window returns null end to end.
+  assert.equal(sync.frameAt("9000000000", "1001000000", 24_000, 0, "9000000000"), null);
+  // Unparseable origin: the conversion cannot place the frame.
+  assert.equal(sync.frameAt("1200000000", "not-nanoseconds", 24_000, 0, "1404000000"), null);
+  // Fractional sample rate: not a safe integer.
+  assert.equal(sync.frameAt("1200000000", "1001000000", 1.5, 0, "1404000000"), null);
+  // Zero sample rate: non-positive.
+  assert.equal(sync.frameAt("1200000000", "1001000000", 0, 0, "1404000000"), null);
+
+  // The valid call still converts on the calibrated mapping.
+  assert.ok(sync.frameAt("1200000000", "1001000000", 24_000, 0, "1404000000") !== null);
+});

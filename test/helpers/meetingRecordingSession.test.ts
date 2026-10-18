@@ -763,3 +763,25 @@ function autoEndContext() {
     args: { noteId: 7, noteTitle: "Standup", folderId: 3, seedSegments: [], autoEndEligible: true },
   };
 }
+
+test("a committed start rejects a foreign-session cancellation instead of canceling silently", async () => {
+  const { createMeetingRecordingStartCoordinator } = await load();
+  const committed = createDeferred();
+  const finish = createDeferred();
+  const coordinator = createMeetingRecordingStartCoordinator();
+  const events: unknown[] = [];
+
+  const startPromise = coordinator.runStart("meeting-1", async () => {
+    events.push("capture:meeting-1");
+    committed.resolve();
+    await finish.promise;
+  });
+
+  await committed.promise;
+  // Foreign id on a committed start: still refused.
+  assert.equal(await coordinator.cancelActiveStart("meeting-2"), null);
+
+  finish.resolve();
+  await startPromise;
+  assert.deepEqual(events, ["capture:meeting-1"]);
+});

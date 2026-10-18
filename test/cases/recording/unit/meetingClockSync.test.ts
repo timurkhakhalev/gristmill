@@ -330,3 +330,40 @@ test("clock sync: the eight-sample window keeps the latest midpoints, not the fi
   assert.equal(continuation.helperEstimateNs, "2401025961");
   assert.equal(continuation.uncertaintyNs, 86);
 });
+
+test("clock sync: a later overlapping sample never becomes the freshest anchor", () => {
+  const sync = new MeetingClockSync();
+  sync.reset("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+
+  const sendProbe = (t: bigint, index: number) => {
+    const probe = sync.createProbe(t.toString(), `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`);
+
+    return sync.accept(
+      {
+        type: "probe" as const,
+        nonce: probe.nonce,
+        helperReceiveNs: (t + 1_000_000n).toString(),
+        helperSendNs: (t + 4_000_000n + 1_000_000n).toString(),
+        helperGeneration: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        helperFrame: 0,
+      },
+      (t + 4_000_000n).toString()
+    );
+  };
+
+  // Probe times 400 ms apart keep the model span satisfied.
+  sendProbe(1_000_000_000n, 1);
+  sendProbe(1_400_000_000n, 2);
+
+  // An overlapping probe accepted last with an EARLIER source end cannot produce a fresh
+  // mapping itself (its end predates the model's latest source end), but it is retained.
+  assert.equal(sendProbe(1_250_000_000n, 3), null, "an earlier-ended sample cannot produce a fresh mapping itself");
+
+  // The freshest anchor stays the 1.4 s sample even with the out-of-order sample stored:
+  // the last-sample selection sorts by source end, not acceptance order.
+  const continuation = sync.mappingAt("6000000000", "6000000000");
+  assert.ok(continuation);
+  assert.equal(continuation.sampleCount, 3, "the overlapping sample is retained in the window");
+  assert.equal(continuation.sampledAtSourceNs, "1402000000");
+  assert.equal(continuation.helperEstimateNs, "6001000000");
+});

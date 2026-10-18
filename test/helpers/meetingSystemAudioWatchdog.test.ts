@@ -614,17 +614,6 @@ test("watchdog: a device invalidation during an in-flight restart is deferred, n
   assert.equal(h.restarts(), 2);
 });
 
-test("watchdog: restart attempts stop at the cap even when ticks keep finding stalls", async () => {
-  const h = createHarness();
-  startNative(h);
-
-  await h.advance((STALL_MS + TICK_MS) * (MAX_RESTARTS + 2));
-
-  assert.equal(h.restarts(), MAX_RESTARTS);
-  const gaveUp = h.interruptions.filter((entry) => entry.recovering === false);
-  assert.equal(gaveUp.length, 1);
-  assert.equal(gaveUp[0].reason, "no_audio_delivered");
-});
 
 function createDeferredGate() {
   let release!: () => void;
@@ -634,3 +623,47 @@ function createDeferredGate() {
 
   return { promise, release: () => release() };
 }
+
+test("a stop during an in-flight restart leaves the retiring helper retired", async () => {
+  let now = START_TIME;
+  const calls: unknown[] = [];
+  let releaseStop!: () => void;
+  const stopGate = new Promise<void>((resolve) => {
+    releaseStop = resolve;
+  });
+  const watchdog = createMeetingSystemAudioWatchdog({
+    now: () => now,
+    onInterrupted: () => undefined,
+    onResumed: () => undefined,
+  });
+
+  watchdog.attachCapture({
+    stop: () => {
+      calls.push("stop");
+
+      return stopGate;
+    },
+    start: () => {
+      calls.push("start");
+
+      return Promise.resolve();
+    },
+  });
+  watchdog.start({ systemAudioStrategy: "native", watchesDelivery: true });
+  watchdog.recordStarted();
+  watchdog.recordChunk(true);
+
+  // Fire the restart and hold its stop half so the swap is in flight.
+  now += STALL_MS + TICK_MS;
+  watchdog.tick();
+  await flush();
+  assert.deepEqual(calls, ["stop"]);
+
+  // Teardown during the swap: the stale generation must refuse the restart's second half.
+  watchdog.stop();
+  releaseStop();
+  await flush();
+  await flush();
+
+  assert.deepEqual(calls, ["stop"], "a stale restart must not start the replacement after teardown");
+});

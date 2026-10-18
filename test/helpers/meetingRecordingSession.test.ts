@@ -815,3 +815,24 @@ test("a fresh start operation reports current and never stops an unattempted mai
   assert.equal(scopedStopCount, 0, "stopping without a main start attempt must be a no-op");
   assert.deepEqual(events, ["current"]);
 });
+
+test("a stop without a session id cancels the admitted start", async () => {
+  const { createMeetingRecordingStartCoordinator } = await load();
+  const coordinator = createMeetingRecordingStartCoordinator();
+  const events: unknown[] = [];
+  const release = createDeferredGate();
+
+  const activeStart = coordinator.runStart("meeting-1", async (operation) => {
+    events.push(operation.isCurrent() ? "capture:current" : "capture:canceled");
+    await release.promise;
+  });
+
+  // Production stop paths call this without a session id: the plain stop must win.
+  const canceled = coordinator.cancelActiveStart();
+  assert.notEqual(canceled, null, "a no-argument stop cancels the admitted start");
+
+  release.release();
+  const [, cancelOutcome] = await Promise.all([activeStart, canceled]);
+  assert.notEqual(cancelOutcome, null, "the cancellation settles with the start");
+  assert.deepEqual(events, ["capture:canceled"], "the start observed its own cancellation");
+});

@@ -195,6 +195,15 @@ export const targets = {
     directDependencies: ["src/contracts/meetingRecording.ts", "src/contracts/noteRead.ts", "src/helpers/meetingAudioMixer.ts"],
     artifactDirectory: "reports/mutation/notes/transcript-reader",
   },
+  "recording:storage": {
+    mutate: ["src/helpers/meetingRecordingStorage.ts"],
+    testFiles: [
+      "test/helpers/meetingRecordingStorage.test.ts",
+      "test/helpers/meetingCaptureRecovery.test.ts",
+    ],
+    directDependencies: ["src/contracts/meetingRecording.ts", "src/helpers/meetingAudioMixer.ts", "src/helpers/meetingOpus.ts"],
+    artifactDirectory: "reports/mutation/recording/storage",
+  },
   "recording:platform-speaker-matching": {
     mutate: ["src/helpers/meetingPlatformMatcher.ts"],
     testFiles: [

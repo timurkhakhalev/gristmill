@@ -78,3 +78,25 @@ Clean-profile runtime results:
 Not run: a production app build/install, real-profile migration/rollback, real Telegram account lookup/message, real calendar/provider operations, or a deliberate microphone/hardware test. Pending/failure/stale-request interactions are covered by mounted renderer tests; runtime covers the successful/error/restart journey.
 
 Commits: `47f100885` — M2 implementation, tests and permanent docs. This evidence record is committed separately.
+
+## Review fix round 1 — R1 and CR1
+
+Status: done
+
+Contract sync: the review findings require imported-Summary context preservation and startup support for historical email-keyed profiles whose speaker tables did not yet exist. Existing stable IDs, voice-history foreign keys, rollback, saved text and processing snapshots remain binding. Historical Granola content cannot identify Summary versus user notes: the old importer combined both cells. The user resolved that ambiguity by authorizing migration to freeze **all** historical `granola:` imports; new imports freeze only when the actual Summary cell is nonempty. This decision supersedes the narrower import statement in the earlier M1 evidence above.
+
+R1: the parser now carries an explicit `hasSummary` flag through the existing main-owned pending import rows. Insertion atomically captures that flag as `participant_context_frozen` alongside the materialized roster. Notes-only imports remain provisional. Migration marks every old Granola source frozen without rewriting stored content or snapshot fields. Updated the permanent note-write contract. No attempt was made to infer provenance from content text or to recover discarded data.
+
+CR1: migration checks the actual speaker/correction/note columns before adding identity/freeze fields, and only migrates/drops speaker email when that old column exists. This handles startup's mixture of old contacts and newly created final-schema tables. The speaker table stays in place; existing voice IDs/references and transactional FK checks remain intact.
+
+Verification (synthetic temporary databases/recording fixtures only):
+
+- `pnpm test --verbose test/cases/notes/integration/contactIdentityMigration.test.ts test/cases/notes/integration/contactPersistence.test.ts test/helpers/meetingProcessing.test.ts test/helpers/granolaImport.test.ts test/helpers/granolaImportIpc.test.ts` — **175 passed, 0 failed, 0 skipped**, 11.723 seconds (`/tmp/gristmill-337-fix1-final-tests.log`). Covers actual Summary/notes-only parser flags, import insertion/reopen, processing source snapshots after later contact edits, historical freeze flags, existing rollback/integrity/voice history, import IPC and existing first-processing failure/cancellation/retry consumers.
+- After strengthening historical reopen assertions, `pnpm test --verbose test/cases/notes/integration/contactIdentityMigration.test.ts` — **6 passed, 0 failed, 0 skipped**, 0.418 seconds (`/tmp/gristmill-337-fix1-migration-final.log`). Actual DatabaseManager startup is exercised with both speaker tables absent, only profiles absent, and only corrections absent; reopen preserves IDs/FKs, and historical Granola context remains frozen after a contact edit. The remaining fixture covers a provisional non-Granola note.
+- `pnpm run lint` — final pass (`/tmp/gristmill-337-fix1-lint-final.log`). Earlier attempts identified spacing-policy violations; these were corrected without behavior changes.
+- `pnpm run typecheck:main` and `pnpm run typecheck:tests` — passed (`/tmp/gristmill-337-fix1-main-types.log`, `/tmp/gristmill-337-fix1-test-types.log`).
+- Relevant `pnpm exec oxfmt --check ...`, `git diff --check` and staged whitespace check — passed.
+
+Not rerun: full canonical suite, renderer build, GUI/capture or provider operations. These bounded changes affect main import/migration/processing paths; the focused checks cover those consumers. Prior GUI deviations remain disclosed above. No real profiles were accessed. Plan/table and prior review reports were not edited by the implementer.
+
+Commits: `ae0608ab7` — both review fixes, regressions and permanent documentation; this progress update is committed separately.

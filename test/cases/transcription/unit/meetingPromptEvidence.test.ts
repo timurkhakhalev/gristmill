@@ -198,6 +198,28 @@ test("naming retains separate same-speaker turns, both times and correction orig
   assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /addressed thanks/);
   assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /Nora could not attend/);
   assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /conflicting addresses/);
+  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /only in a one-to-one case/);
+  assert.match(MEETING_SPEAKER_NAMING_INSTRUCTION, /"name":"Anna Lee"/);
+
+  let oneToOnePrompt = "";
+  await suggestMeetingSpeakerNames(
+    {
+      meetingTitle: "Coffee with Anna Lee",
+      manualNotes: "Random coffee with a conference speaker",
+      participants: [],
+      callParticipants: ["Anna Lee"],
+      segments: [{ ...segments[1], speakerId: "system:a", speakerName: null, speakerNameSource: null }],
+    },
+    {
+      send: async (text) => {
+        oneToOnePrompt = text;
+
+        return { text: '{"speakers":[]}', refusal: false };
+      },
+    }
+  );
+  assert.match(oneToOnePrompt, /Call participants seen in the meeting app[^\n]*\nAnna Lee/);
+  assert.match(oneToOnePrompt, /Manual notes:\nRandom coffee with a conference speaker/);
 
   const empty = formatMeetingMaterial({
     meetingTitle: null,

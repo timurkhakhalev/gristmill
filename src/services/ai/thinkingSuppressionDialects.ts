@@ -1,5 +1,5 @@
 import { getModelFamilyConstraints } from "./modelFamilyConstraints";
-import { matchesHost } from "../../utils/urlUtils";
+import { matchesHost } from "../../utils/providerHostMatching";
 
 /**
  * Per-provider dialects for turning a model's thinking off. Model-family

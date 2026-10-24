@@ -1,5 +1,5 @@
 import { normalizeBaseUrl, getModelListBaseCandidates } from "../config/constants.mts";
-import { isSecureHttpEndpoint } from "../utils/urlUtils.ts";
+import { isSecureHttpEndpoint } from "../utils/endpointPolicy.ts";
 
 export interface ProviderConnectionConfig {
   provider?: string;

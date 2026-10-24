@@ -668,3 +668,171 @@ test("a restart without a note keeps the segments captured at the stop", async (
   assert.deepEqual(outcome, { status: "started" });
   assert.deepEqual(started[0].seedSegments, live);
 });
+
+// M0/M1 mutation survivor follow-ups (#382): session-scoped cancellation and both already-recording guards.
+test("session lifecycle: a cancellation scoped to another session cannot cancel the active start", async () => {
+  const { createMeetingRecordingStartCoordinator } = await load();
+  const coordinator = createMeetingRecordingStartCoordinator();
+  const events: unknown[] = [];
+  const release = createDeferredGate();
+
+  const activeStart = coordinator.runStart("meeting-1", async () => {
+    events.push("capture:meeting-1");
+    await release.promise;
+  });
+
+  assert.equal(await coordinator.cancelActiveStart("meeting-2"), null, "a foreign session id must not cancel the active start");
+
+  release.release();
+  await activeStart;
+  assert.deepEqual(events, ["capture:meeting-1"], "the start ran to completion");
+});
+
+test("session lifecycle: auto-end restart aborts when a recording is live, before and after the note read", async () => {
+  const { runMeetingAutoEndRestart } = await load();
+  // Early guard: the note is never read when a recording is already live.
+  let noteReads = 0;
+  const earlyStarted: unknown[] = [];
+  const earlyOutcome = await runMeetingAutoEndRestart(
+    { sessionId: "meeting-1" },
+    autoEndContext(),
+    {
+      getActiveSessionId: () => "meeting-live",
+      getLatestSegments: () => [],
+      getNote: async () => {
+        noteReads += 1;
+
+        return { transcript: "[]" };
+      },
+      parseSegments: (raw: string) => JSON.parse(raw) as never,
+      startRecording: async () => {
+        earlyStarted.push(1);
+
+        return true;
+      },
+    } as never
+  );
+
+  assert.deepEqual(earlyOutcome, { status: "aborted", reason: "already-recording" });
+  assert.equal(earlyStarted.length, 0);
+  assert.equal(noteReads, 0, "the early guard must fire before the note read");
+
+  // Late guard: a recording wins the race across the awaited note read.
+  let active: string | null = null;
+  const lateStarted: unknown[] = [];
+  const noteRead = createDeferredGate();
+  const lateOutcomePromise = runMeetingAutoEndRestart(
+    { sessionId: "meeting-1" },
+    autoEndContext(),
+    {
+      getActiveSessionId: () => active,
+      getLatestSegments: () => [],
+      getNote: async () => {
+        await noteRead.promise;
+
+        return { transcript: "[]" };
+      },
+      parseSegments: (raw: string) => JSON.parse(raw) as never,
+      startRecording: async () => {
+        lateStarted.push(1);
+
+        return true;
+      },
+    } as never
+  );
+
+  active = "meeting-live";
+  noteRead.release();
+
+  assert.deepEqual(await lateOutcomePromise, { status: "aborted", reason: "already-recording" });
+  assert.equal(lateStarted.length, 0);
+});
+
+function createDeferredGate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  return { promise, release: () => release() };
+}
+
+function autoEndContext() {
+  return {
+    sessionId: "meeting-1",
+    args: { noteId: 7, noteTitle: "Standup", folderId: 3, seedSegments: [], autoEndEligible: true },
+  };
+}
+
+test("a committed start rejects a foreign-session cancellation instead of canceling silently", async () => {
+  const { createMeetingRecordingStartCoordinator } = await load();
+  const committed = createDeferred();
+  const finish = createDeferred();
+  const coordinator = createMeetingRecordingStartCoordinator();
+  const events: unknown[] = [];
+
+  const startPromise = coordinator.runStart("meeting-1", async () => {
+    events.push("capture:meeting-1");
+    committed.resolve();
+    await finish.promise;
+  });
+
+  await committed.promise;
+  // Foreign id on a committed start: still refused.
+  assert.equal(await coordinator.cancelActiveStart("meeting-2"), null);
+
+  finish.resolve();
+  await startPromise;
+  assert.deepEqual(events, ["capture:meeting-1"]);
+});
+
+test("a fresh start operation reports current and never stops an unattempted main start", async () => {
+  const { createMeetingRecordingStartCoordinator } = await load();
+  const coordinator = createMeetingRecordingStartCoordinator();
+  const events: unknown[] = [];
+  let sawCurrent = false;
+  let release = createDeferred();
+  let scopedStopCount = 0;
+
+  const startPromise = coordinator.runStart("meeting-1", async (operation) => {
+    sawCurrent = operation.isCurrent();
+    events.push(sawCurrent ? "current" : "not-current");
+
+    // A start that never attempted the main start must not stop anything.
+    await operation.stopMainOnce(async () => {
+      scopedStopCount += 1;
+      events.push("main-stop");
+    });
+
+    release.resolve();
+    await release.promise;
+  });
+
+  await release.promise;
+  await startPromise;
+
+  assert.equal(sawCurrent, true, "an admitted start is current until canceled or replaced");
+  assert.equal(scopedStopCount, 0, "stopping without a main start attempt must be a no-op");
+  assert.deepEqual(events, ["current"]);
+});
+
+test("a stop without a session id cancels the admitted start", async () => {
+  const { createMeetingRecordingStartCoordinator } = await load();
+  const coordinator = createMeetingRecordingStartCoordinator();
+  const events: unknown[] = [];
+  const release = createDeferredGate();
+
+  const activeStart = coordinator.runStart("meeting-1", async (operation) => {
+    events.push(operation.isCurrent() ? "capture:current" : "capture:canceled");
+    await release.promise;
+  });
+
+  // Production stop paths call this without a session id: the plain stop must win.
+  const canceled = coordinator.cancelActiveStart();
+  assert.notEqual(canceled, null, "a no-argument stop cancels the admitted start");
+
+  release.release();
+  const [, cancelOutcome] = await Promise.all([activeStart, canceled]);
+  assert.notEqual(cancelOutcome, null, "the cancellation settles with the start");
+  assert.deepEqual(events, ["capture:canceled"], "the start observed its own cancellation");
+});

@@ -38,6 +38,7 @@ import {
   meetingProcessingConfigSchema,
   meetingProcessingConfigErrorSchema,
   MEETING_ASR_GATE_MS,
+  MEETING_SOLE_REMOTE_PARTICIPANT_REASON,
   meetingRecordingIdSchema,
   meetingRunAudioPartIds,
   meetingRecordingConfigInputSchema,
@@ -3182,7 +3183,8 @@ export class DatabaseManager {
           !decision.speakerId.startsWith("system:") ||
           !decision.timingPolicy ||
           !decision.observationIds.length ||
-          !decision.clockAnchorIds.length
+          (!decision.clockAnchorIds.length &&
+            decision.reason !== MEETING_SOLE_REMOTE_PARTICIPANT_REASON)
         )
           return false;
 

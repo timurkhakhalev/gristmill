@@ -20,6 +20,7 @@ test("Note/run output ignores late identities, superseded refreshes and unmounte
   const pending: Array<{
     request: { noteId: number; scope: string; runId?: string };
     resolve: (value: unknown) => void;
+    reject: (error: Error) => void;
   }> = [];
 
   let updated!: (note: { id: number }) => void;
@@ -28,7 +29,7 @@ test("Note/run output ignores late identities, superseded refreshes and unmounte
     window: {
       electronAPI: {
         getNoteOutput: (request: { noteId: number; scope: string; runId?: string }) =>
-          new Promise((resolve) => pending.push({ request, resolve })),
+          new Promise((resolve, reject) => pending.push({ request, resolve, reject })),
         onMeetingProcessingUpdated: () => () => {
           unsubscriptions++;
         },
@@ -82,19 +83,31 @@ test("Note/run output ignores late identities, superseded refreshes and unmounte
   await settle(0, "old note");
   assert.deepEqual(readState().run?.diagnostics, ["new note"]);
   await act(async () => updated({ id: 2 }));
+  assert.deepEqual(readState().run?.diagnostics, ["new note"]);
+  assert.deepEqual(readState().note?.diagnostics, ["new note"]);
+  assert.equal(readState().loading, false);
   await act(async () => updated({ id: 2 }));
   await settle(6, "newest refresh");
   await settle(4, "older refresh");
   assert.deepEqual(readState().run?.diagnostics, ["newest refresh"]);
+  await act(async () => updated({ id: 2 }));
+  await act(async () => {
+    pending[8].reject(new Error("Refresh unavailable"));
+    pending[9].resolve({ ...pending[9].request, diagnostics: ["failed refresh"] });
+  });
+  assert.deepEqual(readState().run?.diagnostics, ["newest refresh"]);
+  assert.deepEqual(readState().note?.diagnostics, ["newest refresh"]);
+  assert.equal(readState().loading, false);
+  assert.match(readState().error ?? "", /Refresh unavailable/);
   await act(async () => updated({ id: 1 }));
-  assert.equal(pending.length, 8);
+  assert.equal(pending.length, 10);
   props = { noteId: 2, runId: RUN_A, enabled: true };
   await render();
   assert.equal(readState().run, null);
   assert.equal(readState().loading, true);
   await act(async () => {
-    pending[8].resolve({ scope: "note", noteId: 2 });
-    pending[9].resolve({ scope: "run", noteId: 2, runId: RUN_B });
+    pending[10].resolve({ scope: "note", noteId: 2 });
+    pending[11].resolve({ scope: "run", noteId: 2, runId: RUN_B });
   });
   assert.match(readState().error ?? "", /identity/);
   props = { noteId: 2, runId: RUN_A, enabled: false };
@@ -107,7 +120,7 @@ test("Note/run output ignores late identities, superseded refreshes and unmounte
   await act(async () => root!.unmount());
   root = null;
   const before = state;
-  await settle(10, "after unmount");
+  await settle(12, "after unmount");
   assert.equal(state, before);
   assert.equal(unsubscriptions, 8);
 });

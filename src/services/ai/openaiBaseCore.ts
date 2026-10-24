@@ -1,5 +1,5 @@
 import { ensureV1Suffix } from "../../config/constants.mts";
-import { isSecureHttpEndpoint } from "../../utils/urlUtils.js";
+import { isSecureHttpEndpoint } from "../../utils/endpointPolicy.js";
 
 export function resolveSelfHostedOpenAIBase(configuredBaseUrl: string): string {
   const normalized = ensureV1Suffix(configuredBaseUrl.trim());

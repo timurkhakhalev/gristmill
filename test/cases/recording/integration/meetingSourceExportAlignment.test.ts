@@ -58,8 +58,14 @@ function fixture(t: TestContext, selected: MeetingSource = "system", restart = f
       storage.recoverEpoch(recording.id, source, 0)
     );
 
-    if (source === selected)
-      db.addMeetingRecordingEpochAlignment(recording.id, source, 0, alignment(2400));
+    // The unknown peer has an unusable segment. Without any segment, a 100 ms epoch is an
+    // uncalibratable fragment that preparation leaves out (ADR-0010).
+    db.addMeetingRecordingEpochAlignment(
+      recording.id,
+      source,
+      0,
+      source === selected ? alignment(2400) : { ...alignment(2400), uncertaintyEndFrames: 601 }
+    );
   }
 
   if (restart) {

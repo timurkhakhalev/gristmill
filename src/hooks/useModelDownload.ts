@@ -7,6 +7,7 @@ import type { LocalModelDownloadStatus, WhisperDownloadProgressData } from "../t
 import type { LlmDownloadProgressEvent } from "../contracts/localLlmModels";
 import { clearMissingLocalModelSelections } from "../stores/settingsStore";
 import "../types/electron";
+import logger from "../utils/logger";
 
 const PROGRESS_THROTTLE_MS = 100;
 
@@ -319,7 +320,9 @@ export function useModelDownload({
       .then((activeDownloads) => {
         if (!disposed) activeDownloads.forEach(updateDownload);
       })
-      .catch(() => {});
+      .catch((cause: unknown) =>
+        logger.error("Failed to restore local model downloads", { error: cause }, "models")
+      );
 
     return () => {
       disposed = true;

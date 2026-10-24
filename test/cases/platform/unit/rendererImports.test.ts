@@ -306,7 +306,7 @@ async function sharedGraphErrors(patch?: { file: string; source: string }) {
     files.includes("src/helpers/selfHostedTranscription.ts"),
     "transitive helper must be covered"
   );
-  assert.ok(files.includes("src/utils/urlUtils.ts"), "transitive URL utility must be covered");
+  assert.ok(files.includes("src/utils/endpointPolicy.ts"), "transitive URL utility must be covered");
 
   // Write patched inputs next to their real location so the boundary override
   // globs match exactly; unpatched graph files are linted in place.

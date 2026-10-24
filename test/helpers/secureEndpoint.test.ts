@@ -5,7 +5,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 // Requires Node's native TypeScript type-stripping (Node >= 22.6 with
 // --experimental-strip-types, on by default in Node 23.6+/24). CI runs Node 24.
 
-const load = () => import("../../src/utils/urlUtils.ts");
+const load = () => import("../../src/utils/endpointPolicy.ts");
 
 test("https endpoints are secure; plain http to a public host is not", async () => {
   const { isSecureHttpEndpoint } = await load();

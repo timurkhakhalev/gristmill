@@ -32,6 +32,7 @@ As a Gristmill user, I want to write notes, keep them in folders and find them a
 1. Open the menu of a note or a folder in the Notes tree.
 2. Click **Rename**, or **Change icon**.
 3. For a note, click **Move to folder…** and search the folder. In the note editor, you can also select the folder or **No folder**.
+   Changing folders keeps the open note and its Summary visible while saved data refreshes. A clicked folder keeps its color.
 4. Click **Show in Finder** to open the Markdown copy, if note files are on. See [Note files](note-files.md).
 
 ### Delete a note or a folder

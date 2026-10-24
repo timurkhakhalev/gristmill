@@ -79,7 +79,8 @@ function getLocalCalendarContext(): string {
 export function getAgentSystemPrompt(
   availableTools?: string[],
   noteContext?: string,
-  useGristmillCli = false
+  useGristmillCli = false,
+  currentNoteId?: number
 ): string {
   let prompt = resolvePrompt("chatAgent", { agentName: null });
 
@@ -87,6 +88,15 @@ export function getAgentSystemPrompt(
     prompt +=
       "\n\nUse gristmill, a helper client, to retrieve additional information about meetings when needed. " +
       "Run gristmill --help for usage and options.";
+
+    // Without this, an agent can decide from the title that the open note does not
+    // match the question and answer from a different note.
+    if (currentNoteId !== undefined) {
+      prompt +=
+        `\n\nThe user has note ${currentNoteId} open now. Questions are about this note unless the user names a different note. ` +
+        `Before you answer, read its summary and transcript: gristmill notes summary show ${currentNoteId} and gristmill notes transcript show ${currentNoteId}. ` +
+        "Use other notes only when the user asks about them or this note does not have the answer. Then tell the user which note you used.";
+    }
   }
 
   if (availableTools && availableTools.length > 0) {

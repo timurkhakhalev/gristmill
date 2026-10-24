@@ -15,7 +15,7 @@ const identities =
 
 const version = "0.3.0";
 
-execFileSync(path.join(root, "node_modules", ".bin", "tsc"), ["-p", "extension/tsconfig.json"], {
+execFileSync(path.join(root, "node_modules", ".bin", "tsrs"), ["-p", "extension/tsconfig.json"], {
   cwd: root,
   stdio: "inherit",
 });

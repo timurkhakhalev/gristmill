@@ -2,6 +2,12 @@ const test: typeof import("node:test") = require("node:test");
 
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
+// i18nMain loads debugLogger, which imports electron at load time; under plain
+// node and the mutation image the loader hands it the repo stub.
+const { installElectronStub }: typeof import("./harness/electronStub.js") = require("./harness/electronStub.ts");
+
+installElectronStub();
+
 const {
   formatTxt,
   formatSrt,

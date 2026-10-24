@@ -2,6 +2,13 @@ const test: typeof import("node:test") = require("node:test");
 
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
+// The service's transitive chain (database.ts) loads debugLogger, which imports
+// electron at module load; under plain node and the mutation image the loader
+// hands it this stub.
+const { installElectronStub }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
+
+installElectronStub();
+
 const {
   NoteReadService,
 }: typeof import("../../src/helpers/noteReadService.ts") = require("../../src/helpers/noteReadService.ts");

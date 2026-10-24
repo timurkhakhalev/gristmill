@@ -37,7 +37,6 @@ import type {
   MeetingProcessingResultDto,
 } from "../../contracts/meetingRecording";
 import { snapshotMeetingRecordingConfig } from "../../helpers/meetingRecordingConfigSnapshot";
-import { initializeActions } from "../../stores/actionStore";
 import { ConfirmDialog } from "../ui/dialog";
 import { useDialogs } from "../../hooks/useDialogs";
 import { openSettings } from "../../utils/openSettings";
@@ -516,7 +515,6 @@ export default function MeetingResultsPanel({
     .filter((group) => group.parts.length > 0);
 
   const displayedGroups = [...audioGroups].reverse();
-  const audioCount = audioGroups.reduce((count, group) => count + group.parts.length, 0);
   const latestGroup = groups[groups.length - 1];
 
   const groupAsrDeadlines = useMemo(() => {
@@ -653,6 +651,13 @@ export default function MeetingResultsPanel({
       : (selected?.run.config?.summary?.provider ?? "");
 
   const savedSummary = selected?.summary?.text;
+
+  const hasSavedTranscript =
+    Boolean(
+      sharedTranscript?.status === "ready" ||
+      sharedTranscript?.text?.trim() ||
+      fallbackText.transcript.trim()
+    ) || recordings.some((part) => part.runs.some((item) => item.run.hasTranscript));
 
   const hasSavedSummary =
     Boolean(fallbackText.enhanced.trim()) ||
@@ -792,7 +797,7 @@ export default function MeetingResultsPanel({
     latestRun &&
     latestRun.run.stage === "prepare" &&
     !latestRun.run.hasRawProviderResponse &&
-    latestRun.run.omittedRecordingIds.length === 0 &&
+    // Retry selects the parts again. A later app version can prepare an omitted part.
     [
       "capture-write-failed",
       "audio-write-failed",
@@ -1002,9 +1007,7 @@ export default function MeetingResultsPanel({
         : selected
     )?.run.config;
 
-    await initializeActions();
-
-    const snapshot = snapshotMeetingRecordingConfig(
+    const snapshot = await snapshotMeetingRecordingConfig(
       choice.kind === "summary" ? savedConfig?.transcription : undefined,
       choice.generateSummary
     );
@@ -1508,16 +1511,15 @@ export default function MeetingResultsPanel({
                 variant="tertiary"
                 isIconOnly
                 className="relative overflow-visible"
-                aria-label={`${tr("transcriptAndAudio", "Transcript and audio")} ${audioCount}`}
+                aria-label={tr("transcriptAndAudio", "Transcript and audio")}
               >
                 <AudioLines size={16} />
-                {audioCount > 0 && (
+                {audioGroups.length > 0 && !hasSavedTranscript && (
                   <span
-                    key={audioCount}
-                    className="absolute -end-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-3xs font-semibold text-accent-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200"
-                  >
-                    {audioCount}
-                  </span>
+                    aria-hidden="true"
+                    data-testid="pending-transcript-dot"
+                    className="absolute -end-0.5 -inset-bs-0.5 size-2 rounded-full bg-accent"
+                  />
                 )}
               </Button>
             </IconTooltip>
@@ -1959,7 +1961,7 @@ export default function MeetingResultsPanel({
                         return;
                       }
 
-                      const snapshot = snapshotMeetingRecordingConfig(
+                      const snapshot = await snapshotMeetingRecordingConfig(
                         latestRun.run.stage === "summary" && latestRun.transcript
                           ? latestRun.run.config?.transcription
                           : undefined

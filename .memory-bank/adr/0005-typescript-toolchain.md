@@ -1,6 +1,6 @@
 # ADR-0005: Native TypeScript 7 and TypeScript 6 for the Compiler API
 
-Status: Accepted
+Status: Accepted. Compiler CLI part superseded by [ADR-0011](0011-tsrs-compiler-cli.md)
 Decided by: Timur; issue [#10](https://github.com/timurkhakhalev/gristmill/issues/10) and the subsequent migration stages
 
 ## Context

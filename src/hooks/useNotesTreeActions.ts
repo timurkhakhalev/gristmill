@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "../components/ui/useToast";
 import type { NoteMoveTarget } from "./useNoteDragAndDrop";
 import type { NoteItem } from "../contracts/notes";
-import { initializeActions } from "../stores/actionStore";
 import { parseTranscriptSegments } from "../utils/parseTranscriptSegments";
 import { isExplicitSpeakerCount, resolveExpectedSpeakerCount } from "../utils/participants";
 import { isMeetingAutoEndEligible } from "../helpers/meetingRecordingSession";
@@ -40,7 +39,6 @@ export function useNotesTreeActions() {
   const isTranscribing = useMeetingRecordingStore((s) => s.isRecording);
 
   const startRecordingForNote = useCallback(async (note: NoteItem | null, resume = false) => {
-    if (!resume) await initializeActions();
     const seedSegments = note?.transcript ? parseTranscriptSegments(note.transcript) : [];
 
     const args = {

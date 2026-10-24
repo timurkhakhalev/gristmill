@@ -6,7 +6,7 @@ As a Gristmill user, I want Gristmill to follow my Google Meet or Yandex Telemos
 
 - **Gristmill app → Settings → Recording → Browser call integration** — set up the Chrome extension.
 - **Chrome → Gristmill Companion extension** — connects the call tab to Gristmill.
-- **Gristmill app → recording note → Link call** — link a call that Gristmill found later.
+- **Gristmill app → recording note → Link call** — select the call when several calls are open.
 
 ## Paths
 
@@ -20,14 +20,14 @@ As a Gristmill user, I want Gristmill to follow my Google Meet or Yandex Telemos
 
 ### Record a browser call
 
-1. Join a Google Meet or Telemost call in Chrome.
-2. Start the recording in Gristmill. Gristmill links the new call to the recording automatically. The note shows **Linked to** and the call name.
+1. Join a Google Meet or Telemost call in Chrome, before or after you start the recording.
+2. Start the recording in Gristmill. When exactly one call is open in the call (not in the lobby), Gristmill links it to the recording automatically. The note shows **Linked to** and the call name.
 3. During the call, Gristmill collects the visible participant names and who speaks. After Stop, it uses them to suggest speaker names.
 
 ### Link a call manually
 
-1. If Gristmill finds the call after the recording started, the note shows **Link** and the call name.
-2. Click it and confirm. The mute and Leave of the call now affect this recording.
+1. If several calls are open, Gristmill does not select one. The note shows **Link** and the call names.
+2. Click one and confirm. The mute and Leave of the call now affect this recording.
 
 ### Mute and leave
 
@@ -45,6 +45,8 @@ As a Gristmill user, I want Gristmill to follow my Google Meet or Yandex Telemos
 ## BDD acceptance criteria
 
 - Given the extension is installed and a call is open, when I start a recording, then the call is linked automatically.
+- Given a recording started without a call, when I join exactly one call, then the call is linked automatically.
+- Given several calls are open, when I record, then Gristmill links a call only after I select it.
 - Given a linked call, when I click Leave, then the recording stops and I can restart it.
 - Given the extension disconnects, when the call continues, then the recording continues.
 

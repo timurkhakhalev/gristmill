@@ -133,9 +133,17 @@ test("freshness uses saved generation and authoritative corrections, including a
   f.db.setMeetingProcessingRunState(f.run.id, { status: "running", stage: "summary" });
   assert.equal(f.db.setMeetingRunLlmSourceSnapshot(f.run.id, JSON.stringify(snapshot(f))), true);
   const read = () => f.reader.readOutput({ scope: "run", noteId: f.note.id, runId: f.run.id });
-  assert.equal(read().summaryFreshness.status, "current");
-  f.db.updateNote(f.note.id, { content: "changed", title: "changed title" });
-  assert.deepEqual(read().summaryFreshness.reasons, ["manual-notes-changed", "title-changed"]);
+  const originalFreshness = read().summaryFreshness;
+  assert.equal(originalFreshness.status, "current");
+  f.db.updateNote(f.note.id, { title: "changed title" });
+  assert.deepEqual(read().summaryFreshness, originalFreshness);
+  f.db.updateNote(f.note.id, { content: "changed" });
+  const changedFreshness = read().summaryFreshness;
+  assert.equal(changedFreshness.status, "stale");
+  assert.deepEqual(changedFreshness.reasons, ["manual-notes-changed"]);
+  assert.notEqual(changedFreshness.revision, originalFreshness.revision);
+  f.db.updateNote(f.note.id, { title: "another title" });
+  assert.deepEqual(read().summaryFreshness, changedFreshness);
   f.db.updateNote(f.note.id, { content: f.note.content, title: f.note.title });
   f.db.updateNote(f.note.id, {
     transcript: JSON.stringify([{ text: "source transcript", speaker: "speaker_0" }]),

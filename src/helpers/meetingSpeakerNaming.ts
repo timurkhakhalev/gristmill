@@ -32,8 +32,10 @@ export const meetingSpeakerNamingInputSchema = z
   .object({
     generateTitle: z.boolean().optional(),
     meetingTitle: z.string().nullable(),
+    manualNotes: z.string().optional(),
     transcriptSourceId: z.string().min(1).optional(),
     participants: z.array(participantSchema),
+    callParticipants: z.array(z.string().min(1).max(200)).max(100).optional(),
     segments: z.array(segmentSchema).min(1),
   })
   .strict();
@@ -51,7 +53,9 @@ const responseSchema = z
   })
   .strict();
 
-export const MEETING_SPEAKER_NAMING_INSTRUCTION = `Assign a name only when the conversation establishes that the named person attended and spoke under that speaker label. Calendar invitations and mentions of absent people do not establish attendance. Surname and email may remain unknown. Different speaker IDs may share the same first name; duplicate calendar names are not a reason to reject a supported first name. Calendar candidates supply spellings only. Never infer a name from email, attendee order, organizer role or the mere existence of a calendar contact.
+export const MEETING_SPEAKER_NAMING_INSTRUCTION = `Assign a name only when the evidence establishes that the named person attended and spoke under that speaker label. Calendar invitations and mentions of absent people do not establish attendance. Surname and email may remain unknown. Different speaker IDs may share the same first name; duplicate calendar names are not a reason to reject a supported first name. Calendar candidates supply spellings only. Never infer a name from email, attendee order, organizer role or the mere existence of a calendar contact.
+
+Attendance evidence: call participants seen in the meeting app, and a person whom the meeting title or manual notes name as a participant of this meeting, for example "Coffee with Anna" or "Call with Anna". These sources do not show which label is whose. Use them for a label without conversation evidence only in a one-to-one case: exactly one attended remote person has no known speaker label, and exactly one unknown system-audio label holds most of the remote speech. Then give that person's name to that label. Small extra system-audio labels stay unnamed. With several attended remote people, use only the conversation evidence below.
 
 Evidence may be a self-introduction, an address followed by a substantive response, an unambiguous handoff of the floor, or addressed thanks immediately after that speaker's contribution. No separate "yes, that is me" or response to every thanks is required. Third-party mentions alone never identify the speaker. Omit uncertain addressees and conflicting names: do not choose a confident identity when the same label appears to answer different names.
 
@@ -115,7 +119,14 @@ Speaker 1: "Max, what changed?"
 Speaker 2: "We fixed the build."
 Speaker 1: "Dan, what happens next?"
 Speaker 2: "We deploy tomorrow."
-Expected response: {"speakers":[]}`;
+Expected response: {"speakers":[]}
+
+Example 10: one-to-one call. Meeting title: "Coffee with Anna Lee". Speaker 1 is the local user, already identified. Speaker 2 and Speaker 3 are system audio. Speaker 2 speaks for most of the meeting. Allowed output IDs: Speaker 2, Speaker 3.
+Speaker 2: "I moved to the new team in spring."
+Speaker 1: "How do you like it?"
+Speaker 2: "It is calmer, and the product is closer to users."
+Speaker 3: "Yes."
+Expected response: {"speakers":[{"speakerId":"Speaker 2","name":"Anna Lee"}]}`;
 
 export const MEETING_TITLE_INSTRUCTION = `Generate a concise 3–8 word meeting title in the main language of the conversation. Describe its main topic from the actual transcript, ignoring greetings and small talk. Do not invent details or infer a topic from calendar participants. If meaningful content is insufficient, return title: null. Return JSON only: {"title":"..."} or {"title":null}.`;
 

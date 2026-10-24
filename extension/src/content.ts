@@ -1,5 +1,6 @@
 import { companionDesktopMessageSchema } from "../../src/contracts/companion.js";
-import { isMeetLeaveControl, readMeetContext } from "./meetAdapter.js";
+import { isMeetLeaveControl, meetActivityTile, readMeetContext } from "./meetAdapter.js";
+import { MeetSpeakingActivity } from "./meetSpeakingActivity.js";
 import {
   isTelemostLeaveControl,
   readTelemostContext,
@@ -37,6 +38,23 @@ let leaveMenuRequested = false;
 let lastProbe = -Infinity;
 
 const observed = new Map<Document, MutationObserver>();
+
+const activity = new MeetSpeakingActivity();
+
+function onMutations(records: MutationRecord[]): void {
+  if (!telemost) {
+    const now = performance.now();
+
+    for (const record of records)
+      if (record.type === "attributes" && record.attributeName === "class") {
+        const id = meetActivityTile(record.target);
+
+        if (id) activity.note(id, now);
+      }
+  }
+
+  schedule();
+}
 
 function stop(): void {
   stopped = true;
@@ -110,7 +128,7 @@ function scan(): void {
 
   for (const doc of docs)
     if (!observed.has(doc)) {
-      const observer = new MutationObserver(schedule);
+      const observer = new MutationObserver(onMutations);
       observer.observe(doc.documentElement, {
         subtree: true,
         childList: true,
@@ -147,7 +165,8 @@ function scan(): void {
     : readMeetContext(
         docs,
         sourceNs(),
-        performance.now() <= leaveRequestedUntil && leaveRequestedUntil > 0
+        performance.now() <= leaveRequestedUntil && leaveRequestedUntil > 0,
+        activity.active(performance.now())
       );
 
   send({ type: "context", context });

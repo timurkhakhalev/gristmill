@@ -15,6 +15,7 @@ const {
 
 const {
   matchMeetingPlatformSpeakers,
+  MEET_SPEAKER_TIMING_POLICY,
 }: typeof import("../../../../src/helpers/meetingPlatformMatcher.ts") = require("../../../../src/helpers/meetingPlatformMatcher.ts");
 
 const {
@@ -162,6 +163,34 @@ test("evidence, atomic decisions and platform corrections survive reopen; stale/
   assert.equal(reopened.listMeetingAudioClockAnchors(recording.id).length, 14);
   assert.equal(reopened.getMeetingRunSpeakerCorrections(runId)[0].displayName, "Manual");
   assert.equal(reopened.getMeetingPlatformCoverage(recording.id)?.state, "complete");
+});
+
+test("only the one-to-one browser decision may name a speaker without clock anchors", (t) => {
+  const db = createDb(t);
+
+  if (!db) return;
+  const { recording, runId } = finished(db);
+  const { observation, decision } = evidence(recording.id);
+  const remote = { ...observation, id: randomUUID(), platform: "google-meet" as const };
+  db.saveMeetingPlatformObservation(remote);
+
+  const sole = {
+    ...decision,
+    platform: "google-meet" as const,
+    reason: "sole-remote-participant",
+    observationIds: [remote.id],
+    clockAnchorIds: [],
+    intervals: [],
+    timingPolicy: { ...MEET_SPEAKER_TIMING_POLICY },
+  };
+
+  assert.equal(
+    db.applyMeetingPlatformDecisions(runId, 0, [{ ...sole, reason: "repeated-activity-agreement" }]),
+    false
+  );
+  assert.equal(db.applyMeetingPlatformDecisions(runId, 0, [sole]), true);
+  assert.equal(db.getMeetingRunSpeakerCorrections(runId)[0].source, "platform");
+  assert.equal(db.getMeetingRunSpeakerCorrections(runId)[0].displayName, decision.displayName);
 });
 
 test("old CHECK migration preserves source/revision and cascade deletes recording evidence", (t) => {

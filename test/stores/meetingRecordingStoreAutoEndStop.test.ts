@@ -30,6 +30,7 @@ interface RecordingEntry {
 }
 
 interface MeetingElectronAPI {
+  getActions(): Promise<[]>;
   onMeetManualMute(): () => void;
   onMeetPlatformMute(): () => void;
   finishPausedMeetRecording(recordingId: string): Promise<{ success: boolean }>;
@@ -130,6 +131,7 @@ function createElectronAPI({ stopResult }: { stopResult: () => unknown }) {
       }),
       onMeetManualMute: () => () => {},
       onMeetPlatformMute: () => () => {},
+      getActions: async () => [],
       meetingTranscriptionStart: async (options) => {
         api.startRequests.push(options);
 

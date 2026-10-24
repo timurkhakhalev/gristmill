@@ -152,8 +152,6 @@ const buildTranscriptText = (segments: TranscriptSegment[]) =>
     .join(" ")
     .trim();
 
-const getMeetingRecordingConfig = () => snapshotMeetingRecordingConfig();
-
 const stopMediaStream = (stream: MediaStream | null) => {
   // stop() on an already-ended track can throw; stopping is best-effort.
   try {
@@ -1084,6 +1082,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         }
       }
 
+      const recordingConfig = await snapshotMeetingRecordingConfig();
       const startTime = performance.now();
 
       const initialSystemAudioAccess =
@@ -1108,7 +1107,7 @@ export async function startRecording(args: StartRecordingArgs): Promise<boolean>
         autoEndEligible: args.autoEndEligible,
         restartSessionId: args.restartSessionId,
         manualMicMuted: args.manualMicMuted === true,
-        recordingConfig: getMeetingRecordingConfig(),
+        recordingConfig,
       });
 
       const micCapturePromise = getMeetingMicConstraints().then(async (constraints) => {

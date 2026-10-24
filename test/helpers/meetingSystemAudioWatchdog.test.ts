@@ -583,3 +583,105 @@ test("replacement ACK without chunks has its own bounded delivery window", async
   await h.advance(STALL_MS + TICK_MS);
   assert.equal(h.restarts(), MAX_RESTARTS);
 });
+
+// M0/M1 mutation survivor follow-ups (#382): deferred invalidation and restart-cap observation.
+test("watchdog: a device invalidation during an in-flight restart is deferred, not dropped", async () => {
+  const restartGate = createDeferredGate();
+  let startedCount = 0;
+  const h = createHarness({
+    startImpl: () => {
+      startedCount += 1;
+
+      return restartGate.promise;
+    },
+  });
+  startNative(h);
+
+  // Stall past the window: the first restart begins and stays in flight.
+  await h.advance(STALL_MS + TICK_MS);
+  assert.equal(startedCount, 1);
+  assert.deepEqual(h.calls.slice(0, 1), ["stop"]);
+
+  // A device invalidation arrives while the replacement has not started:
+  // it must be retained and consumed after the in-flight restart settles.
+  h.watchdog.reportDeviceInvalidated();
+  await flush();
+  assert.equal(startedCount, 1, "no second start while the first restart is in flight");
+
+  restartGate.release();
+  await flush();
+  assert.equal(startedCount, 2, "the deferred invalidation triggers exactly one follow-up restart");
+  assert.equal(h.restarts(), 2);
+});
+
+test("a capture failure during replacement startup does not queue a device invalidation", async () => {
+  const restartGate = createDeferredGate();
+  const h = createHarness({ startImpl: () => restartGate.promise });
+  startNative(h);
+
+  await h.advance(STALL_MS + TICK_MS);
+  assert.equal(h.restarts(), 1, "the replacement is starting");
+
+  h.watchdog.reportCaptureFailed();
+  await flush();
+  assert.equal(h.restarts(), 1, "the in-flight restart remains the only attempt");
+
+  restartGate.release();
+  await flush();
+  assert.equal(h.restarts(), 1, "capture failure must not queue a device-invalidated restart");
+  assert.deepEqual(h.interruptions.map((event) => event.reason), ["no_audio_delivered"]);
+});
+
+
+function createDeferredGate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  return { promise, release: () => release() };
+}
+
+test("a stop during an in-flight restart leaves the retiring helper retired", async () => {
+  let now = START_TIME;
+  const calls: unknown[] = [];
+  let releaseStop!: () => void;
+  const stopGate = new Promise<void>((resolve) => {
+    releaseStop = resolve;
+  });
+  const watchdog = createMeetingSystemAudioWatchdog({
+    now: () => now,
+    onInterrupted: () => undefined,
+    onResumed: () => undefined,
+  });
+
+  watchdog.attachCapture({
+    stop: () => {
+      calls.push("stop");
+
+      return stopGate;
+    },
+    start: () => {
+      calls.push("start");
+
+      return Promise.resolve();
+    },
+  });
+  watchdog.start({ systemAudioStrategy: "native", watchesDelivery: true });
+  watchdog.recordStarted();
+  watchdog.recordChunk(true);
+
+  // Fire the restart and hold its stop half so the swap is in flight.
+  now += STALL_MS + TICK_MS;
+  watchdog.tick();
+  await flush();
+  assert.deepEqual(calls, ["stop"]);
+
+  // Teardown during the swap: the stale generation must refuse the restart's second half.
+  watchdog.stop();
+  releaseStop();
+  await flush();
+  await flush();
+
+  assert.deepEqual(calls, ["stop"], "a stale restart must not start the replacement after teardown");
+});

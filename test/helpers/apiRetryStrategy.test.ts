@@ -68,6 +68,34 @@ test("a response carrying a non-numeric status is treated as a network failure a
   assert.equal(shouldRetry({ response: {} }), true);
 });
 
+test("a rejection that is not an object cannot carry a status, so it retries", async () => {
+  const { createApiRetryStrategy } = await load();
+  const { shouldRetry } = createApiRetryStrategy();
+
+  assert.equal(shouldRetry(null), true);
+  assert.equal(shouldRetry(undefined), true);
+  assert.equal(shouldRetry("fetch failed"), true);
+  assert.equal(shouldRetry(502), true);
+});
+
+test("withRetry treats a null rejection as a network fault and retries it", async () => {
+  const { withRetry, createApiRetryStrategy } = await load();
+
+  let attempts = 0;
+
+  const result = await withRetry(
+    async () => {
+      attempts += 1;
+      if (attempts === 1) throw null;
+      return "ok";
+    },
+    { ...createApiRetryStrategy(), maxRetries: 1, initialDelay: 1 }
+  );
+
+  assert.equal(result, "ok");
+  assert.equal(attempts, 2, "the null rejection is retried once");
+});
+
 test("withRetry stops after one attempt when the strategy refuses to retry", async () => {
   const { withRetry, createApiRetryStrategy } = await load();
 

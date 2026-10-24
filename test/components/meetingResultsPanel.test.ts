@@ -530,7 +530,7 @@ async function mountPanel(
         "/hooks/useDateTimePreferences": `export function useDateTimePreferences() { return { dateFormat: "locale", timeFormat: "locale" }; }`,
         "/ui/ProviderIcon": `export const ProviderIcon = () => null;`,
         "/ui/dialog": `export const ConfirmDialog = (props) => { globalThis.__meetingResultsConfirmDialog = props; return null; };`,
-        "/helpers/meetingRecordingConfigSnapshot": `export function snapshotMeetingRecordingConfig(transcriptionOverride) { const config = ${JSON.stringify(CONFIG)}; return { config: transcriptionOverride ? { ...config, transcription: transcriptionOverride } : config, configError: null }; } export function builtinMeetingSummaryInstruction() { return "Built-in summary instruction"; }`,
+        "/helpers/meetingRecordingConfigSnapshot": `export async function snapshotMeetingRecordingConfig(transcriptionOverride) { const config = ${JSON.stringify(CONFIG)}; return { config: transcriptionOverride ? { ...config, transcription: transcriptionOverride } : config, configError: null }; } export function builtinMeetingSummaryInstruction() { return "Built-in summary instruction"; }`,
       },
     }
   ));
@@ -575,7 +575,7 @@ async function mountPanel(
       capturePhase,
       actions,
       mockPipeline,
-      fallbackText: { raw: "Manual notes", enhanced: "", transcript: "No transcript" },
+      fallbackText: { raw: "Manual notes", enhanced: "", transcript: "" },
       manualContent: React.createElement("p", null, "Manual notes"),
       renderFallbackTranscript: () => React.createElement("p", null, "No transcript"),
       fallbackSummary: (selectedSummaryAction: SummaryActionState) =>
@@ -798,14 +798,14 @@ test("interrupted recordings keep audio and transcript available without capture
   );
 });
 
-test("audio count and list include a newly saved recording without reload", async (t: TestContext) => {
+test("audio list includes a newly saved recording without reload", async (t: TestContext) => {
   const first = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
   const second = recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z");
   const ui = await mountPanel(t, [first]);
   assert.equal(ui.warningIcons(), 0);
-  assert.ok(ui.label("Transcript and audio 1"));
+  assert.ok(ui.label("Transcript and audio"));
   await ui.saveRecording([first, second]);
-  assert.ok(ui.label("Transcript and audio 2"));
+  assert.ok(ui.label("Transcript and audio"));
   assert.equal(ui.text().match(/\bmin\b/g)?.length, 2);
   assert.equal(ui.text().match(/Sep 25, 2026/g)?.length, 1);
 });
@@ -814,7 +814,7 @@ test("previously deleted audio is absent from the popover", async (t: TestContex
   const deleted = recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z");
   deleted.recording.audioState = "deleted";
   const ui = await mountPanel(t, [deleted, recording(SECOND, SECOND, "2026-09-25T11:00:00.000Z")]);
-  assert.ok(ui.label("Transcript and audio 1"));
+  assert.ok(ui.label("Transcript and audio"));
   assert.equal(ui.text().match(/\bmin\b/g)?.length, 1);
 });
 
@@ -832,7 +832,7 @@ test("audio part actions export a mixed MP3 and confirm deletion without a trans
   assert.equal(ui.dialog().open, true);
   await ui.flush(() => ui.dialog().onConfirm());
   assert.deepEqual(ui.calls.delete, [FIRST]);
-  assert.ok(ui.label("Transcript and audio 0"));
+  assert.ok(ui.label("Transcript and audio"));
   assert.equal(ui.iconButton("Play audio"), null);
 });
 
@@ -1594,7 +1594,7 @@ for (const [code, description] of [
   });
 }
 
-test("an unrecoverable recording explains that audio is saved without manual repair controls", async (t: TestContext) => {
+test("a recording with every part omitted explains that audio is saved and offers Retry", async (t: TestContext) => {
   const failed = completeRun();
   failed.run.status = "failed";
   failed.run.stage = "prepare";
@@ -1611,9 +1611,12 @@ test("an unrecoverable recording explains that audio is saved without manual rep
   assert.match(ui.text(), /Could not prepare the recording/);
   assert.match(ui.text(), /could not be prepared for transcription/);
   assert.doesNotMatch(ui.text(), /connection|API key|waiting for settings/);
-  assert.equal(ui.button("meetingResults.retry"), null);
+  assert.deepEqual(ui.calls.retry, [], "opening an old error must not send audio");
+  const retry = ui.button("meetingResults.retry");
+  assert.ok(retry, "a later app version can prepare the omitted part");
+  await ui.flush(() => (retry.props as { onPress(): void }).onPress());
+  assert.deepEqual(ui.calls.retry, [RUN]);
   assert.equal(ui.button("Review audio parts"), null);
-  assert.deepEqual(ui.calls.retry, []);
   assert.deepEqual(ui.calls.delete, []);
 });
 
@@ -1692,4 +1695,50 @@ test("automatic recovery shows the available result without exclusion or retry c
   assert.equal(ui.button("meetingResults.retry"), null);
   assert.deepEqual(ui.calls.create, [], "opening the result does not require another processing click");
   assert.deepEqual(ui.calls.delete, []);
+});
+
+for (const hasTranscript of [false, true]) {
+  test(`audio indicator shows a dot only before a transcript exists (${hasTranscript})`, async (t: TestContext) => {
+    const ui = await mountPanel(
+      t,
+      [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", hasTranscript ? completeRun() : null)],
+      {
+        noteTranscript: {
+          note_id: 1,
+          status: hasTranscript ? "ready" : "pending",
+          text: "",
+          segments: null,
+          speakers: [],
+          timeline: {
+            unit: "ms",
+            duration_ms: null,
+            basis: "concatenated_recording_time",
+            intentional_pauses: "excluded",
+          },
+          diagnostics: [],
+        },
+      }
+    );
+    const dot = findNode(ui.tree(), (node) => node.props?.["data-testid"] === "pending-transcript-dot");
+    assert.equal(Boolean(dot), !hasTranscript);
+    assert.ok(ui.label("Transcript and audio"));
+  });
+}
+
+
+test("blocked settings retry awaits the current processing snapshot before updating the run", async (t: TestContext) => {
+  const blocked = completeRun();
+  Object.assign(blocked.run, {
+    status: "blocked",
+    stage: "prepare",
+    config: null,
+    configError: { code: "detailed-notes-action-missing" },
+    errorCode: "detailed-notes-action-missing",
+  });
+  const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", blocked)]);
+  const retry = ui.button("meetingResults.updateRunSettings");
+  assert.ok(retry);
+  await ui.flush(() => (retry.props as { onPress(): void }).onPress());
+  assert.equal(ui.calls.update.length, 1);
+  assert.deepEqual(ui.calls.update[0], { runId: RUN, config: CONFIG, configError: null });
 });

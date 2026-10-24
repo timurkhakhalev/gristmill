@@ -21,6 +21,7 @@ test("settings switch the live microphone without stopping or replacing the reco
         }),
         onMeetManualMute: () => () => {},
         onMeetPlatformMute: () => () => {},
+        getActions: async () => [],
         meetingTranscriptionStart: async () => {
           starts += 1;
 

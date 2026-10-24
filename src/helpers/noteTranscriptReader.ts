@@ -14,7 +14,7 @@ import {
   type TranscriptFilter,
 } from "../contracts/noteRead.js";
 import { z } from "zod";
-import { meetingTimelineFrameCount } from "./meetingAudioMixer.js";
+import { meetingTimelineFrameCount } from "./meetingAudioParts.js";
 
 const FRAMES_PER_MS = 24;
 

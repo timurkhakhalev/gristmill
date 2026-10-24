@@ -1,5 +1,5 @@
 // Emit the Electron dependency graph, including JSON and the separately loaded worker.
-// The sandboxed preload cannot require local modules, so after tsc succeeds the
+// The sandboxed preload cannot require local modules, so after tsrs succeeds the
 // preload is bundled into one file with esbuild (electron external, CJS, node).
 // SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
 const fs = require("node:fs") as typeof import("node:fs");
@@ -14,7 +14,7 @@ const root = path.resolve(__dirname, "..");
 
 fs.rmSync(path.join(root, "dist-main"), { recursive: true, force: true });
 
-execFileSync(path.join(root, "node_modules", ".bin", "tsc"), ["-p", "tsconfig.main.json"], {
+execFileSync(path.join(root, "node_modules", ".bin", "tsrs"), ["-p", "tsconfig.main.json"], {
   cwd: root,
   stdio: "inherit",
 });

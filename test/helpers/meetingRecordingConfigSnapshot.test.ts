@@ -23,7 +23,7 @@ test("new Local snapshots enable diarization despite a removed preference; saved
   const vite = await createRendererServer(t, {
     cachePrefix: "meeting-local-diarization-snapshot-",
     mockModules: {
-      "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Summary instruction" }]; }`,
+      "/stores/actionStore.js": `export async function initializeActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Summary instruction" }]; }`,
     },
   });
 
@@ -38,7 +38,7 @@ test("new Local snapshots enable diarization despite a removed preference; saved
     "/helpers/meetingRecordingConfigSnapshot.ts"
   );
 
-  const fresh = snapshotMeetingRecordingConfig();
+  const fresh = await snapshotMeetingRecordingConfig();
   assert.equal(fresh.configError, null);
   assert.equal(fresh.config.transcription.mode, "local");
   assert.equal(fresh.config.transcription.local.options.diarize, true);
@@ -48,7 +48,7 @@ test("new Local snapshots enable diarization despite a removed preference; saved
     local: { ...fresh.config.transcription.local, options: { diarize: false } },
   };
 
-  const reprocessed = snapshotMeetingRecordingConfig(saved);
+  const reprocessed = await snapshotMeetingRecordingConfig(saved);
   assert.equal(reprocessed.configError, null);
   assert.deepEqual(reprocessed.config.transcription, saved);
 });
@@ -68,7 +68,7 @@ test("saved transcription bypasses an unsupported current meeting route while sn
       "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { globalThis.__meetingSnapshotRouteReads += 1; return { transcriptionMode: "self-hosted" }; } export function selectResolvedNoteFormatting() { return { mode: "providers", provider: "openai", model: "gpt-4o-mini", cloudMode: "chat", cloudBaseUrl: "", remoteUrl: "" }; }`,
       "/config/prompts.js": `export function appendDictionarySuffix(prompt, dictionary) { return dictionary.length ? prompt + " " + dictionary.join(", ") : prompt; }`,
       "/config/secretKeys.js": `export const BYOK_API_KEYS = [];`,
-      "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "User-edited Detailed Notes instruction." }]; }`,
+      "/stores/actionStore.js": `export async function initializeActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "User-edited Detailed Notes instruction." }]; }`,
     },
   });
 
@@ -83,7 +83,7 @@ test("saved transcription bypasses an unsupported current meeting route while sn
     language: "en",
   };
 
-  const corrected = snapshotMeetingRecordingConfig(savedTranscription);
+  const corrected = await snapshotMeetingRecordingConfig(savedTranscription);
   assert.equal(
     routeGlobals.__meetingSnapshotRouteReads,
     0,
@@ -97,7 +97,7 @@ test("saved transcription bypasses an unsupported current meeting route while sn
   assert.match(corrected.config.summary.instruction, /ProjectX/);
   assert.match(corrected.config.summary.instruction, /User-edited Detailed Notes instruction/);
 
-  const ordinary = snapshotMeetingRecordingConfig();
+  const ordinary = await snapshotMeetingRecordingConfig();
   assert.deepEqual(ordinary, {
     config: null,
     configError: { code: "unsupported-transcription-route" },
@@ -117,7 +117,7 @@ test("meeting summary snapshots the selected bb harness, model and reasoning lev
       "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { throw new Error("saved transcription should be used"); } export function selectResolvedNoteFormatting() { return { mode: "agent", agentProvider: "codex", agentModel: "gpt-6-luna", agentReasoningLevel: "high" }; }`,
       "/config/prompts.js": `export function appendDictionarySuffix(prompt) { return prompt; }`,
       "/config/secretKeys.js": `export const BYOK_API_KEYS = [];`,
-      "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Current Detailed Notes prompt." }]; }`,
+      "/stores/actionStore.js": `export async function initializeActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Current Detailed Notes prompt." }]; }`,
     },
   });
 
@@ -125,7 +125,7 @@ test("meeting summary snapshots the selected bb harness, model and reasoning lev
     "/helpers/meetingRecordingConfigSnapshot.ts"
   );
 
-  const result = snapshotMeetingRecordingConfig({
+  const result = await snapshotMeetingRecordingConfig({
     mode: "providers",
     provider: "elevenlabs",
     model: "scribe_v2",
@@ -145,7 +145,7 @@ test("transcription-only config includes the naming model without requesting Sum
     mockModules: {
       "/stores/settingsStore.js": `export function getSettings() { return { profileName: "Owner", preferredLanguage: "en", uiLanguage: "en" }; }`,
       "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { throw new Error("use saved route"); } export function selectResolvedNoteFormatting() { return { mode: "providers", provider: "openai", model: "gpt-4o-mini" }; }`,
-      "/stores/actionStore.js": `export function getActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Summary instruction" }]; }`,
+      "/stores/actionStore.js": `export async function initializeActions() { return [{ translation_key: "notes.actions.builtin.detailedNotes", prompt: "Summary instruction" }]; }`,
     },
   });
 
@@ -160,9 +160,45 @@ test("transcription-only config includes the naming model without requesting Sum
     language: "en",
   };
 
-  const result = snapshotMeetingRecordingConfig(transcription, false);
+  const result = await snapshotMeetingRecordingConfig(transcription, false);
   assert.equal(result.configError, null);
   assert.equal(result.config.generateSummary, false);
   assert.equal(result.config.summary.provider, "openai");
   assert.deepEqual(result.config.transcription, transcription);
+});
+
+test("cold snapshots load saved Actions and blocked retries read the current prompt", async (t: import("node:test").TestContext) => {
+  let prompt = "Saved meeting instruction";
+  let reads = 0;
+  installBrowserGlobals(t, {
+    window: {
+      electronAPI: {
+        async getActions() {
+          reads += 1;
+          return [{ id: 2, translation_key: "notes.actions.builtin.detailedNotes", prompt }];
+        },
+      },
+    },
+  });
+  const vite = await createRendererServer(t, {
+    mockModules: {
+      "/stores/settingsStore.js": `export function getSettings() { return { profileName: "Owner", preferredLanguage: "en", uiLanguage: "en" }; }`,
+      "/config/settingsSelectors.js": `export function selectResolvedMeetingTranscription() { return { transcriptionMode: "local", localTranscriptionProvider: "whisper", whisperModel: "base" }; } export function selectResolvedNoteFormatting() { return { mode: "providers", provider: "openai", model: "gpt-4o-mini" }; }`,
+    },
+  });
+  const { getActions } = await vite.ssrLoadModule("/stores/actionStore.ts");
+  const { snapshotMeetingRecordingConfig } = await vite.ssrLoadModule(
+    "/helpers/meetingRecordingConfigSnapshot.ts"
+  );
+  assert.equal(getActions().length, 0);
+  const fresh = await snapshotMeetingRecordingConfig();
+  assert.equal(fresh.configError, null);
+  assert.match(fresh.config.summary.instruction, /Saved meeting instruction/);
+  assert.equal(reads, 1);
+
+  prompt = "Updated meeting instruction";
+  const retry = await snapshotMeetingRecordingConfig();
+  assert.equal(retry.configError, null);
+  assert.match(retry.config.summary.instruction, /Updated meeting instruction/);
+  assert.equal(reads, 2);
 });

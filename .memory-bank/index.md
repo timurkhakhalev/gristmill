@@ -24,7 +24,7 @@ It has no backend. All data is in the local application profile.
 - Audio: Swift native helpers (system audio tap, microphone and call detection, Zoom Accessibility, EventKit), bundled FFmpeg/libopus, ONNX Runtime (diarization, speaker embeddings).
 - AI: Vercel AI SDK and direct ASR/LLM adapters. Provider support depends on the task; see [processing routes](architecture/processing-routes.md). Local engines include whisper.cpp, llama.cpp and sherpa-onnx. Optional route: bb.
 - Browser: an MV3 Chrome extension (Gristmill Companion) and a native messaging host.
-- Tooling: native TypeScript 7 `tsc` for typecheck and build, TypeScript 6 for the Compiler API, `node:test` through the canonical test runner.
+- Tooling: `tsrs` (Rust port of the TypeScript 7 compiler) for typecheck and build, TypeScript 6 for the Compiler API, `node:test` through the canonical test runner.
 
 ## Sections
 

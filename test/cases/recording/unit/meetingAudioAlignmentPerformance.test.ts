@@ -50,3 +50,10 @@ test("alignment chooses the furthest overlap, preserves input-order ties, and re
   assert.throws(() => alignedAudioRanges(epoch([a, { ...segment(2400, 4800), helperGeneration: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }], 4800)), { code: "audio-alignment-unavailable" });
   assert.throws(() => alignedAudioRanges(epoch([{ ...a, uncertaintyEndFrames: 601 }], 2400)), { code: "audio-alignment-unavailable" });
 });
+
+test("an uncalibratable startup fragment has no ranges, but a longer or segmented unaligned epoch still fails", () => {
+  assert.deepEqual(alignedAudioRanges(epoch([], 128)), []);
+  assert.deepEqual(alignedAudioRanges(epoch([], 5999)), []);
+  assert.throws(() => alignedAudioRanges(epoch([], 6000)), { code: "audio-alignment-unavailable" });
+  assert.throws(() => alignedAudioRanges({ ...epoch([], 128), sourceGeneration: null }), { code: "audio-alignment-unavailable" });
+});

@@ -1,4 +1,4 @@
-import { matchesHost } from "../../utils/urlUtils.js";
+import { matchesHost } from "../../utils/providerHostMatching.js";
 
 const OPENCODE_HOST = "opencode.ai";
 

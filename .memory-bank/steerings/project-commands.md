@@ -6,6 +6,11 @@ Run all commands from the repository root.
 
 ## Test selection
 
+Mutation testing is a separate manual command: `pnpm mutation --list`, then
+`pnpm mutation --target <registered-target> --mode dry-run|full`.
+Scope, validation lifecycle, limits and Cloud Run setup are in
+[mutation testing](mutation-testing.md). It does not run as part of `pnpm test`.
+
 | Command                                      | Selection                                                                                                         |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `pnpm test`                                  | Full suite, including compiler probes and native and GUI checks. A maximum of two ordinary files at the same time |
@@ -54,7 +59,7 @@ Run all commands from the repository root.
 
 ## Typecheck, lint and build
 
-- `pnpm run typecheck:main`, `pnpm run typecheck:renderer`, `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select compiler targets for the native TypeScript 7 `tsc`.
+- `pnpm run typecheck:main`, `pnpm run typecheck:renderer`, `pnpm run typecheck:settings-selectors` and `pnpm run typecheck:tests` select compiler targets for `tsrs`, the Rust port of the TypeScript 7 compiler ([ADR-0011](../adr/0011-tsrs-compiler-cli.md)).
 - `pnpm run typecheck` runs those targets, `typecheck:companion`, `typecheck:scripts` and `typecheck:lint-tools` in sequence.
 - `pnpm run build:main` uses the same native compiler for emitted Electron code.
 - The `typescript` dependency is an alias for TypeScript 6. Compiler API consumers (test probes and the Oxlint tooling in `tools/oxlint`) use it. Its executable is `tsc6`. Keep the CLI and API packages separate until TypeScript 7 supplies a supported programmatic API.

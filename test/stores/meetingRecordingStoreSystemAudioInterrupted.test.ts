@@ -108,6 +108,7 @@ function createElectronAPI({
     }),
     onMeetManualMute: () => () => {},
     onMeetPlatformMute: () => () => {},
+    getActions: async () => [],
     meetingTranscriptionStart: async (): Promise<MeetingStartResult> => ({
       success: true,
       recordingId: RECORDING_ID,

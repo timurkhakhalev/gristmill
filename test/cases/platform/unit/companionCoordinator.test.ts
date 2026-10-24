@@ -77,14 +77,35 @@ function setup() {
   };
 }
 
-test("only one fresh candidate at Start binds automatically; later contexts require scoped confirmation", () => {
+test("one call joined after Start binds automatically; several calls require scoped confirmation", () => {
   const s = setup();
   const key = candidate();
   s.coordinator.start(s.scope);
+  s.coordinator.receive(key, context({ presence: "unknown", micMuted: true }));
+  assert.deepEqual(s.effects, [], "a lobby or unrecognized page cannot bind");
   s.coordinator.receive(key, context({ micMuted: true }));
-  assert.deepEqual(s.effects, []);
-  assert.equal(s.coordinator.confirm(s.scope, key), true);
   assert.deepEqual(s.effects, ["suppress", "mute:true"]);
+  assert.equal(s.coordinator.status().binding?.connectionId, key.connectionId);
+
+  const several = setup();
+  const first = candidate();
+  const second = candidate();
+  several.coordinator.start(several.scope);
+  several.coordinator.receive(first, context({ presence: "unknown" }));
+  several.coordinator.receive(second, context({ presence: "unknown" }));
+  several.coordinator.receive(first, context());
+  assert.equal(several.coordinator.status().binding?.connectionId, first.connectionId);
+
+  const crowded = setup();
+  crowded.coordinator.receive(first, context());
+  crowded.coordinator.receive(second, context());
+  crowded.coordinator.start(crowded.scope);
+  crowded.coordinator.receive(first, context());
+  crowded.coordinator.receive(second, context());
+  assert.equal(crowded.coordinator.status().binding, null);
+  assert.equal(crowded.coordinator.confirm(crowded.scope, first), true);
+  assert.deepEqual(crowded.effects, ["suppress", "mute:false"]);
+
   s.coordinator.receive(candidate(), context({ confirmedLeave: true, presence: "not-in-call" }));
   assert.equal(
     s.effects.some((effect) => effect === "leave"),
@@ -170,7 +191,8 @@ test("multiple Chrome profiles and Meet Companion tabs are separate; Restart can
   s.coordinator.stop(s.scope);
   s.effects.length = 0;
   s.coordinator.start(s.scope, null);
-  assert.equal(s.coordinator.status().binding, null);
+  s.coordinator.receive(first, context());
+  assert.equal(s.coordinator.status().binding, null, "Restart never binds a later call");
   s.coordinator.start(s.scope, first);
   assert.equal(s.coordinator.status().binding?.connectionId, first.connectionId);
 });
@@ -198,7 +220,7 @@ test("reload accepts fresh same-call document once; retired document and other r
   assert.equal(s.coordinator.status().binding?.ref.callId, room.ref.callId);
 });
 
-test("Telemost uses the same Start, explicit late Link, unknown mute and exact Leave rules", () => {
+test("Telemost uses the same Start, late binding, unknown mute and exact Leave rules", () => {
   const key = candidate();
   key.ref.platform = "telemost";
   key.ref.callId = "12345678901234";
@@ -218,6 +240,6 @@ test("Telemost uses the same Start, explicit late Link, unknown mute and exact L
   const late = setup();
   late.coordinator.start(late.scope);
   late.coordinator.receive(key, context({ micMuted: true }));
-  assert.equal(late.coordinator.status().binding, null);
-  assert.equal(late.coordinator.confirm(late.scope, key), true);
+  assert.equal(late.coordinator.status().binding?.ref.platform, "telemost");
+  assert.deepEqual(late.effects, ["suppress", "mute:true"]);
 });

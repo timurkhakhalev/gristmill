@@ -413,7 +413,8 @@ test("bb Chat seeds instructions once and sends the next user message verbatim",
     /Use gristmill, a helper client, to retrieve additional information about meetings when needed\./
   );
   assert.match(initialPrompt, /Run gristmill --help for usage and options\./);
-  assert.match(initialPrompt, /Current Note ID: 42\./);
+  assert.match(initialPrompt, /The user has note 42 open now\./);
+  assert.match(initialPrompt, /gristmill notes transcript show 42/);
   assert.equal(conversationId, 12);
   assert.match(initialPrompt, /Earlier question[\s\S]*Earlier answer/);
   assert.ok(initialPrompt.endsWith(`USER:\n${userText}`));

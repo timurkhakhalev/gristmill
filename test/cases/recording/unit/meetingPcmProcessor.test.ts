@@ -171,16 +171,27 @@ test("128-frame render quanta keep 100ms packets contiguous", () => {
   assert.deepEqual(chunks.map((message) => [message.sequence, message.sampleOffset, message.renderStartFrame]), [[0, 0, 0], [1, 2400, 2400]]);
 });
 
-test("a forward render gap saves the buffered tail and continues in a distinct epoch", () => {
+test("a startup render gap drops the unsent first quanta and keeps the first epoch", () => {
   const { processor, sent, setFrame } = processorHarness();
   assert.equal(processor.process([[new Float32Array(128)]], [[new Float32Array(128)]]), true);
-  setFrame(256);
+  setFrame(384);
   assert.equal(processor.process([[new Float32Array(2400)]], [[new Float32Array(2400)]]), true);
-  assert.deepEqual(sent.map((message) => message.type), ["chunk", "source-gap", "chunk"]);
-  const chunks = sent.filter((message) => message.type === "chunk");
-  assert.deepEqual(chunks.map((message) => [message.epochIndex, message.sequence, message.sampleOffset, message.renderStartFrame, message.buffer.byteLength]), [[0, 0, 0, 0, 256], [1, 0, 0, 256, 4800]]);
+  assert.deepEqual(sent.map((message) => [message.type, message.epochIndex, message.sequence, message.renderStartFrame, message.buffer.byteLength]), [["chunk", 0, 0, 384, 4800]]);
+});
+
+test("a forward render gap saves the buffered tail and continues in a distinct epoch", () => {
+  const { processor, sent, setFrame } = processorHarness();
+  assert.equal(processor.process([[new Float32Array(2400)]], [[new Float32Array(2400)]]), true);
   processor.port.onmessage?.({ data: { type: "ack", sequence: 0, epochIndex: 0 } });
-  setFrame(256 + 2400 + 240000);
+  setFrame(2400);
+  assert.equal(processor.process([[new Float32Array(128)]], [[new Float32Array(128)]]), true);
+  setFrame(2656);
+  assert.equal(processor.process([[new Float32Array(2400)]], [[new Float32Array(2400)]]), true);
+  assert.deepEqual(sent.map((message) => message.type), ["chunk", "chunk", "source-gap", "chunk"]);
+  const chunks = sent.filter((message) => message.type === "chunk");
+  assert.deepEqual(chunks.map((message) => [message.epochIndex, message.sequence, message.sampleOffset, message.renderStartFrame, message.buffer.byteLength]), [[0, 0, 0, 0, 4800], [0, 1, 2400, 2400, 256], [1, 0, 0, 2656, 4800]]);
+  processor.port.onmessage?.({ data: { type: "ack", sequence: 1, epochIndex: 0 } });
+  setFrame(2656 + 2400 + 240000);
   assert.equal(processor.process([[new Float32Array(128)]], [[new Float32Array(128)]]), false);
   assert.equal(sent.at(-1)!.code, "capture-ack-timeout", "the old epoch ACK must not acknowledge the new epoch's sequence zero");
 });

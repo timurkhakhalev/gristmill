@@ -36,48 +36,47 @@ export const llmDownloadProgressEventSchema = z.object({
 
 export type LlmDownloadProgressEvent = z.infer<typeof llmDownloadProgressEventSchema>;
 
-// One bundled local LLM as the renderer sees it: the registry entry plus the
-// download snapshot. The index signature keeps the renderer's consumers
-// working while pinning the fields every consumer reads.
-// Mirrors the registry's ModelDefinition fields (the manager spreads the
-// registry entry onto the wire row) without importing the renderer-side
-// ModelRegistry module into the main graph.
-export interface LocalLlmModelStatus {
-  id: string;
-  name: string;
-  size: string;
-  sizeBytes: number;
-  description: string;
-  descriptionKey?: string;
-  fileName: string;
-  quantization: string;
-  contextLength: number;
-  hfRepo: string;
-  recommended?: boolean;
-  supportsThinking?: boolean;
-  draftHfRepo?: string;
-  draftFileName?: string;
-  draftSizeBytes?: number;
-  providerId: string;
-  providerName: string;
-  isDownloaded: boolean;
-  isDownloading: boolean;
-  downloadProgress: number;
-  downloadedSize: number;
-  totalSize: number;
-  path: string | null;
-}
+// Catalog fields plus the main-process download snapshot.
+export const localLlmModelStatusSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  size: z.string(),
+  sizeBytes: z.number(),
+  description: z.string(),
+  descriptionKey: z.string().optional(),
+  fileName: z.string(),
+  quantization: z.string(),
+  contextLength: z.number(),
+  hfRepo: z.string(),
+  recommended: z.boolean().optional(),
+  supportsThinking: z.boolean().optional(),
+  draftHfRepo: z.string().optional(),
+  draftFileName: z.string().optional(),
+  draftSizeBytes: z.number().optional(),
+  providerId: z.string(),
+  providerName: z.string(),
+  isDownloaded: z.boolean(),
+  isDownloading: z.boolean(),
+  downloadProgress: z.number(),
+  downloadedSize: z.number(),
+  totalSize: z.number(),
+  path: z.string().nullable(),
+});
 
-// Wire shape of the shared native/LLM download status tracker rows.
-export interface LocalModelDownloadStatusRow {
-  modelType: "whisper" | "parakeet" | "llm";
-  modelId: string;
-  phase: "downloading" | "installing";
-  progress: number;
-  downloadedBytes: number;
-  totalBytes: number;
-  sequence: number;
-}
+export type LocalLlmModelStatus = z.infer<typeof localLlmModelStatusSchema>;
+
+// The tracker is shared by native speech models and LLMs.
+export const localModelDownloadStatusRowSchema = z.object({
+  modelType: z.enum(["whisper", "parakeet", "llm"]),
+  modelId: z.string(),
+  phase: z.enum(["downloading", "installing"]),
+  progress: z.number(),
+  downloadedBytes: z.number(),
+  totalBytes: z.number(),
+  sequence: z.number(),
+});
+
+export type LocalModelDownloadStatusRow = z.infer<typeof localModelDownloadStatusRowSchema>;
 
 export interface LlmActionResult {
   success: boolean;

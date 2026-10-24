@@ -13,11 +13,11 @@ import {
   ELEVENLABS_FILE_SIZE_LIMIT,
   GEMINI_FILE_SIZE_LIMIT,
 } from "../config/transcriptionCapabilities.ts";
+import { isSecureHttpEndpoint } from "../utils/endpointPolicy.ts";
 import {
-  isSecureHttpEndpoint,
   isAzureOpenAIEndpoint,
   buildAzureTranscriptionUrl,
-} from "../utils/urlUtils.ts";
+} from "../utils/azureOpenAI.ts";
 import {
   isSelfHostedTranscription,
   resolveSelfHostedTranscriptionModel,

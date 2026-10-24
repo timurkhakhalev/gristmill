@@ -129,6 +129,11 @@ test("only the main renderer can replace process-global retention settings", () 
 });
 
 test("no sweep runs before the renderer has synced the persisted settings", () => {
+  // ipcHandlers loads electron at module load; under plain node and the mutation
+  // image the loader hands it the repo stub.
+  const { installElectronStub }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
+
+  installElectronStub();
   const IPCHandlers: typeof import("../../src/helpers/ipcHandlers").IPCHandlers = require("../../src/helpers/ipcHandlers");
   const sweeps: unknown[] = [];
 

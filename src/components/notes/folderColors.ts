@@ -13,3 +13,10 @@ export const FOLDER_COLOR_HEX = {
 export function folderColorHex(color: string): string | undefined {
   return Object.entries(FOLDER_COLOR_HEX).find(([name]) => name === color)?.[1];
 }
+
+// Custom properties are outside React.CSSProperties; the row reads them in CSS.
+export function tintStyle(
+  tint: string
+): React.CSSProperties & { "--tint": string; "--tint-strong": string } {
+  return { "--tint": `${tint}26`, "--tint-strong": `${tint}40` };
+}

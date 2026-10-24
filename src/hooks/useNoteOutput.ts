@@ -29,7 +29,12 @@ export function useNoteOutput(
 
     const refresh = async () => {
       const expected = ++revision;
-      setState({ noteId, runId, note: null, run: null, loading: true, error: null });
+      // Refresh the same output in place so metadata edits do not blank the Summary.
+      setState((previous) =>
+        previous?.noteId === noteId && previous.runId === runId && previous.note
+          ? { ...previous, loading: false, error: null }
+          : { noteId, runId, note: null, run: null, loading: true, error: null }
+      );
 
       try {
         const [note, run] = await Promise.all([
@@ -57,7 +62,11 @@ export function useNoteOutput(
         });
       } catch (error) {
         if (active && expected === revision)
-          setState({ noteId, runId, note: null, run: null, loading: false, error: String(error) });
+          setState((previous) =>
+            previous?.noteId === noteId && previous.runId === runId && previous.note
+              ? { ...previous, loading: false, error: String(error) }
+              : { noteId, runId, note: null, run: null, loading: false, error: String(error) }
+          );
       }
     };
 

@@ -1,7 +1,7 @@
 # Script inventory and execution
 
 Use Node 24 or later and pnpm 10.19.0 from the repository root.
-The toolchain decision is [ADR-0005](../adr/0005-typescript-toolchain.md).
+The toolchain decisions are [ADR-0005](../adr/0005-typescript-toolchain.md) and [ADR-0011](../adr/0011-tsrs-compiler-cli.md).
 
 ## TypeScript tooling rules
 
@@ -84,6 +84,7 @@ pnpm run update:local --target /tmp/gristmill-update/Gristmill.app --user-data-d
 | `run-electron.cts`, `launch-macos-electron.cts`, `dev-electron-bundle.cts`                                    | `start`, `dev:main`. ABI check, environment cleanup, Launch Services attribution, cached Dev identity and icons.                                                                                                                                                               |
 | `ensure-sqlite-runtime.cts`                                                                                   | App launcher, canonical test runner, direct diagnostic. Repairs only a confirmed ABI mismatch.                                                                                                                                                                                 |
 | `run-tests.cts`, `test-selection.cts`                                                                         | `pnpm test`. Selection and classification, full-run lock, two-process ordinary phases, serial native and compiler phases, process-group cleanup.                                                                                                                               |
+| `mutation.mts`, `mutation-targets.mts`, `mutation-cloud/`                                                                   | `pnpm mutation` and the manual Cloud Run image. Explicit target allowlist, one bounded Stryker target per run, timeout, metadata and execution-specific report uploads. See [mutation testing](mutation-testing.md).                                                           |
 | `install-macos-local.cts`, `update-local.cts`                                                                 | Direct install, `update:local`. Stable-path installation, backup and rollback, start.                                                                                                                                                                                          |
 | `gristmill-cli.cts`                                                                                           | Generated Notes CLI. Read-only profile discovery, private connection, filters, human and JSON output.                                                                                                                                                                          |
 | `download-whisper-cpp.cts`, `download-llama-server.cts`, `download-sherpa-onnx.cts`, `lib/download-utils.cts` | `download:*` commands and engine installation that the application starts. Pinned releases, install markers, archive and library handling. These are not bundled engine binaries.                                                                                              |

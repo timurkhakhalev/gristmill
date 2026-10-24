@@ -7,7 +7,7 @@ import ApiKeyInput, { type ApiKeySetter } from "./ui/ApiKeyInput";
 import ModelCardList from "./ui/ModelCardList";
 import SearchableModelList, { MODEL_SEARCH_THRESHOLD } from "./ui/SearchableModelList";
 import { buildApiUrl, getModelListBaseCandidates, normalizeBaseUrl } from "../config/constants.mts";
-import { isSecureHttpEndpoint } from "../utils/urlUtils";
+import { isSecureHttpEndpoint } from "../utils/endpointPolicy";
 import { GetApiKeyLink } from "./ui/GetApiKeyLink";
 
 interface ModelOption {

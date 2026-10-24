@@ -1,6 +1,6 @@
 import { API_ENDPOINTS, ensureV1Suffix } from "../../config/constants.mts";
 import { getSettings } from "../../stores/settingsStore";
-import { isSecureHttpEndpoint } from "../../utils/urlUtils";
+import { isSecureHttpEndpoint } from "../../utils/endpointPolicy";
 import logger from "../../utils/logger";
 import i18n from "../../i18n";
 import { resolveSelfHostedOpenAIBase as resolveSelfHostedOpenAIBaseCore } from "./openaiBaseCore.js";

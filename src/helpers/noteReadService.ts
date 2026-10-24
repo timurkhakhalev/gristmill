@@ -260,7 +260,6 @@ export class NoteReadService {
       .update(
         JSON.stringify([
           note.content,
-          note.title,
           note.participants,
           correctionRevision,
           run.config?.summary,
@@ -327,7 +326,6 @@ export class NoteReadService {
     )
       reasons.push("manual-notes-changed");
 
-    if (saved.meetingTitle !== note.title) reasons.push("title-changed");
     let participantsKnown = saved.participants !== null;
 
     try {

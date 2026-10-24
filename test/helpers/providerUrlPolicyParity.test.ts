@@ -1,6 +1,6 @@
 // Characterization of the URL policy parity between the main-process
 // connection test and the renderer policy modules (constants.mts /
-// urlUtils.ts): private-LAN HTTP allowance, public HTTP denial, IPv4/IPv6/
+// endpointPolicy.ts): private-LAN HTTP allowance, public HTTP denial, IPv4/IPv6/
 // .local/.ts.net hosts, URL decorators, endpoint suffix stripping and
 // model-list candidate ordering. Pins the equivalence the connection test
 // now relies on by importing the shared helpers directly.
@@ -12,7 +12,7 @@ const providerTest: typeof import("../../src/helpers/providerConnectionTest.ts")
 
 const {
   isSecureHttpEndpoint,
-}: typeof import("../../src/utils/urlUtils.ts") = require("../../src/utils/urlUtils.ts");
+}: typeof import("../../src/utils/endpointPolicy.ts") = require("../../src/utils/endpointPolicy.ts");
 
 const {
   normalizeBaseUrl,

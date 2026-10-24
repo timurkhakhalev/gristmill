@@ -6,6 +6,8 @@
 import {
   llmDownloadProgressEventSchema,
   localLlmChannels,
+  localLlmModelStatusSchema,
+  localModelDownloadStatusRowSchema,
   type LlamaCppCheckResult,
   type LlamaServerStartResult,
   type LlamaServerStatusRow,
@@ -13,11 +15,9 @@ import {
   type LlmDownloadProgressEvent,
   type LlmDownloadResult,
   type LlmRuntimeCheckResult,
-  type LocalLlmModelStatus,
   type LocalLlmModelsApi,
-  type LocalModelDownloadStatusRow,
 } from "../contracts/localLlmModels.js";
-import { z } from "zod";
+import { z, type ZodType } from "zod";
 
 import type { IpcRendererLike } from "./ipcTransport.js";
 
@@ -46,6 +46,14 @@ function passthroughInvoke<T extends object>(
   return ipcRenderer.invoke(channel, ...args).then((raw) => passthroughResult<T>(raw, channel));
 }
 
+function parseList<T>(schema: ZodType<T>, raw: unknown, channel: string): T[] {
+  const result = z.array(schema).safeParse(raw);
+
+  if (!result.success) throw new Error(`Unexpected response shape from ${channel}`);
+
+  return result.data;
+}
+
 function subscribeProgress(
   ipcRenderer: IpcRendererLike,
   channel: string,
@@ -69,9 +77,14 @@ export function createLocalLlmModelsBridge(ipcRenderer: IpcRendererLike): LocalL
   const c = localLlmChannels;
 
   return {
-    modelGetAll: () => passthroughInvoke<LocalLlmModelStatus[]>(ipcRenderer, c.modelGetAll),
-    modelGetActiveDownloads: () =>
-      passthroughInvoke<LocalModelDownloadStatusRow[]>(ipcRenderer, c.modelGetActiveDownloads),
+    modelGetAll: async () =>
+      parseList(localLlmModelStatusSchema, await ipcRenderer.invoke(c.modelGetAll), c.modelGetAll),
+    modelGetActiveDownloads: async () =>
+      parseList(
+        localModelDownloadStatusRowSchema,
+        await ipcRenderer.invoke(c.modelGetActiveDownloads),
+        c.modelGetActiveDownloads
+      ),
     // SAFETY: the handler parses the id with the shared model-name schema and
     // answers a plain boolean; the cast re-voices the checked wire shape.
     modelCheck: (modelId: string) => ipcRenderer.invoke(c.modelCheck, modelId) as Promise<boolean>,

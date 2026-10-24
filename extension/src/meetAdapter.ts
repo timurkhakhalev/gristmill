@@ -64,109 +64,27 @@ function isLocalTile(tile: Element): boolean {
   });
 }
 
-function colored(value: string): boolean {
-  const match = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/.exec(value);
+const CONTROL = 'button, [role="button"], [role="menu"], [role="tooltip"]';
 
-  if (!match || (match[4] !== undefined && Number(match[4]) === 0)) return false;
-  const channels = match.slice(1, 4).map(Number);
-  const max = Math.max(...channels);
-  const min = Math.min(...channels);
+/** Returns the tile whose voice indicator a class change can belong to. Changes
+ * on the tile itself or inside its controls (hover, menus) are not activity. */
+export function meetActivityTile(target: Node): string | null {
+  if (target.nodeType !== 1) return null;
+  // SAFETY: nodeType 1 is an Element.
+  const element = target as Element;
+  const tile = element.closest(TILE);
 
-  return max >= 40 && min <= 220 && max - min > 60;
-}
+  if (!tile || tile === element || element.closest(CONTROL)) return null;
+  const id = tile.getAttribute("data-participant-id");
 
-function visible(element: Element): boolean {
-  if (!element.getBoundingClientRect().width || !element.getBoundingClientRect().height)
-    return false;
-
-  for (let current: Element | null = element; current; current = current.parentElement) {
-    const style = current.ownerDocument.defaultView?.getComputedStyle(current);
-
-    if (
-      !style ||
-      style.display === "none" ||
-      style.visibility === "hidden" ||
-      style.visibility === "collapse" ||
-      Number(style.opacity) === 0
-    )
-      return false;
-  }
-
-  return true;
-}
-
-function activityRing(element: Element): boolean {
-  if (
-    !visible(element) ||
-    element.closest('button, [role="button"], [role="menu"], [role="tooltip"]')
-  )
-    return false;
-  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
-
-  if (!style) return false;
-
-  return (
-    [
-      [style.borderTopWidth, style.borderTopColor],
-      [style.borderBottomWidth, style.borderBottomColor],
-      [style.borderLeftWidth, style.borderLeftColor],
-      [style.borderRightWidth, style.borderRightColor],
-    ].some(([width, color]) => parseFloat(width) >= 2 && colored(color)) ||
-    (element !== element.ownerDocument.activeElement &&
-      !element.contains(element.ownerDocument.activeElement) &&
-      style.outlineStyle !== "none" &&
-      parseFloat(style.outlineWidth) >= 2 &&
-      colored(style.outlineColor))
-  );
-}
-
-function speakingTile(tile: Element): boolean {
-  const rect = tile.getBoundingClientRect();
-
-  if (rect.width < 50 || rect.height < 50 || !visible(tile)) return false;
-
-  for (
-    let current: Element | null = tile, depth = 0;
-    current && depth < 3;
-    current = current.parentElement, depth++
-  ) {
-    if (activityRing(current)) return true;
-  }
-
-  for (const element of tile.querySelectorAll("*")) {
-    if (element.closest(TILE) !== tile) continue;
-    let depth = 0;
-
-    for (
-      let current: Element | null = element;
-      current && current !== tile;
-      current = current.parentElement
-    )
-      depth++;
-
-    if (
-      depth > 10 ||
-      element.closest('button, [role="button"], [role="menu"], [role="tooltip"]') ||
-      !visible(element)
-    )
-      continue;
-    const rect = element.getBoundingClientRect();
-
-    if (
-      activityRing(element) ||
-      (rect.width <= 10 &&
-        colored(element.ownerDocument.defaultView?.getComputedStyle(element).backgroundColor ?? ""))
-    )
-      return true;
-  }
-
-  return false;
+  return id && id.length <= 100 ? id : null;
 }
 
 export function readMeetContext(
   documents: Document[],
   sourceNs: string,
-  leaveRequested: boolean
+  leaveRequested: boolean,
+  speaking: ReadonlySet<string> = new Set()
 ): CompanionContext {
   const result: CompanionContext = {
     sourceNs,
@@ -247,10 +165,10 @@ export function readMeetContext(
         const local = self === "local" || previous?.self === "local";
         participants.set(id, { id, name, self: local ? "local" : "unknown" });
 
-        // Granola's visual ring/bar observation is a UI hint, not a voice identity.
-        // Keep every active ID; the downstream matcher rejects overlap/clock gaps.
+        // Indicator activity is a UI hint, not a voice identity. Keep every
+        // active ID; the downstream matcher rejects overlap and clock gaps.
         if (local) active.delete(id);
-        else if (speakingTile(tile)) active.add(id);
+        else if (speaking.has(id)) active.add(id);
       }
 
     if (participants.size > 100)

@@ -84,6 +84,10 @@ See [project commands](project-commands.md) for selectors and [test runner and f
 - Keep temporary-profile isolation.
 - Never test against the original OpenWhispr profile or real production data or credentials.
 - For app smoke tests, use an explicit new `--user-data-dir`. Explicit profiles skip the Dev data copy.
+- Use fully synthetic data in tests, fixtures, snapshots and test examples, including comments and screenshots. Do not copy real contacts, meeting exports, notes, transcripts, recordings or profile data into the repository.
+- Invent names, aliases, identifiers and content together. Use reserved example domains such as `example.com` for email addresses and URLs. Replacing only an email or a name does not make a real record safe to commit.
+- Reproduce bugs with the smallest synthetic case that preserves the relevant format, relationships and edge cases. Do not retain identifying details from the original report.
+- Before committing test data or attaching test output to an issue or PR, check text, images and metadata for personal data, credentials and real meeting links.
 
 ### Cleanup
 

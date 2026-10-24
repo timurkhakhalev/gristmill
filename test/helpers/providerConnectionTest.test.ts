@@ -135,7 +135,7 @@ test("probes the /v1 sibling for bare custom origins", () => {
   );
 });
 
-// The runtime (isSecureHttpEndpoint in src/utils/urlUtils.ts) refuses plain
+// The runtime (isSecureHttpEndpoint in src/utils/endpointPolicy.ts) refuses plain
 // HTTP on public hosts, so the test must refuse the same URLs — a passing test
 // would otherwise commit a config every real request rejects.
 test("rejects public HTTP endpoints but allows private hosts", async () => {

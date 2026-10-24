@@ -44,7 +44,7 @@ As a Gristmill user, I want to find upcoming meetings and return to my notes.
 
 1. Look at the macOS menu bar. Next to the Gristmill icon, you see the next meeting and the time until it starts, or the time that is left.
 2. Click the icon. The menu shows the current meeting, the next meeting (**Starts in …**) and a meeting tomorrow.
-3. On the current meeting, click **Open note**, or click **Skip this meeting** to remove it from the menu.
+3. Each displayed meeting has **Open note** and **Skip this meeting**, including upcoming meetings and while recording. Skip hides that meeting from the menu and menu-bar title until the app restarts. It does not change the calendar event or stop a recording.
 4. Click **New Note** or **Settings**. Gristmill opens the window and goes to the selected item. If the window still loads, Gristmill does the action when the window is ready.
 5. During a recording, the menu shows **Recording in progress** and **Stop recording**.
 

@@ -153,7 +153,10 @@ test("menubar keeps the current calendar meeting until its end, then shows the n
     assert.equal(currentItem?.label, "Now");
     assert.equal(Array.isArray(currentItem?.submenu) && currentItem.submenu.length, 2);
     manager.meetingCaptureActive = true;
-    assert.equal(manager.buildCurrentMeetingItem(start + 60000)?.submenu, undefined);
+    assert.equal(
+      Array.isArray(manager.buildCurrentMeetingItem(start + 60000)?.submenu),
+      true
+    );
     manager.meetingCaptureActive = false;
     manager.tray = {
       setTitle: (value: string) => {
@@ -167,6 +170,44 @@ test("menubar keeps the current calendar meeting until its end, then shows the n
     manager.updateTrayTitle(start + 60000);
     assert.equal(title, "Later • in 39m");
     manager.skippedEvents.clear();
+
+    const tomorrow = new Date(start);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const later = withId(event("Later", end + 10 * 60000, end + 40 * 60000), "later");
+    const tomorrowEvent = withId(
+      event("Tomorrow", tomorrow.getTime(), tomorrow.getTime() + 30 * 60000),
+      "tomorrow"
+    );
+    const visibleEvents = [nowEvent, later, tomorrowEvent];
+    manager.calendarSource = { getUpcomingEvents: () => visibleEvents };
+    manager.meetingCaptureActive = true;
+    let stops = 0;
+    manager.stopMeetingCapture = () => { stops++; };
+    let menuRefreshes = 0;
+    manager.updateTrayMenu = () => { menuRefreshes++; };
+
+    for (const eventToSkip of [tomorrowEvent, later, nowEvent]) {
+      const rows = manager.buildMeetingMenuItems(start + 60000);
+      const row = rows.find((item) => item.label === eventToSkip.summary);
+      assert.ok(row && Array.isArray(row.submenu));
+      assert.equal(row.submenu.length, 2);
+      assert.equal(typeof row.submenu[0].click, "function");
+      assert.ok(row.submenu[1].click);
+      row.submenu[1].click({} as never, undefined, {} as never);
+      assert.equal(
+        manager.buildMeetingMenuItems(start + 60000).some((item) => item.label === eventToSkip.summary),
+        false
+      );
+      assert.equal(manager.getUpcomingEvents(start + 60000).includes(eventToSkip), false);
+    }
+    manager.updateTrayTitle(start + 60000);
+    assert.equal(title, "");
+    assert.equal(menuRefreshes, 3);
+    assert.equal(stops, 0);
+    assert.equal(manager.meetingCaptureActive, true);
+    assert.equal(visibleEvents.length, 3);
+    manager.skippedEvents.clear();
+    assert.equal(manager.getUpcomingEvents(start + 60000).length, 3);
     let popups = 0;
     manager.tray = {
       popUpContextMenu: () => {

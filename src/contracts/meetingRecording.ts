@@ -604,6 +604,10 @@ export const meetingPlatformTimingPolicySchema = z
 
 export type MeetingPlatformTimingPolicy = z.infer<typeof meetingPlatformTimingPolicySchema>;
 
+/** A browser call with one named remote participant and one dominant system
+ * voice names that voice without clock-mapped activity. */
+export const MEETING_SOLE_REMOTE_PARTICIPANT_REASON = "sole-remote-participant";
+
 export const meetingPlatformDecisionSchema = z
   .object({
     platform: meetingPlatformSchema,

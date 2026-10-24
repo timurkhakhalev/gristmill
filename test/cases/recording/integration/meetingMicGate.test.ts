@@ -550,6 +550,7 @@ for (const mode of [
 
             return () => {};
           },
+          getActions: async () => [],
           meetingTranscriptionStart: async () => ({
             success: true,
             recordingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

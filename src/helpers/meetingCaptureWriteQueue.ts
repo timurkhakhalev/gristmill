@@ -92,8 +92,10 @@ export class MeetingCaptureWriteQueue<T> {
           const failure = error instanceof Error ? error : new Error(String(error));
 
           this.fail(failure);
+          // The packet's promise is the caller's failure channel; rethrowing
+          // here would leave the tail derivative unhandled (every failed
+          // write emitted an unhandled rejection).
           this.settle(item, () => reject(failure));
-          throw failure;
         }
 
         this.settle(item, resolve);

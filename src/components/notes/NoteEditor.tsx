@@ -67,6 +67,8 @@ import {
   lockTranscriptSpeaker,
   serializeTranscriptSegments,
 } from "../../utils/transcriptSpeakerState";
+import { RowGlyph } from "./folderAppearance";
+import { folderColorHex, tintStyle } from "./folderColors";
 import NoteParticipants from "./NoteParticipants";
 import { takeNoteHandoff } from "./noteHandoff";
 import NoteFindBar from "./NoteFindBar";
@@ -957,7 +959,7 @@ export default function NoteEditor({
                       />
                     </div>
                   )}
-                  <div className="max-h-48 overflow-y-auto">
+                  <div className="grid max-h-48 gap-1 overflow-y-auto">
                     {filteredFolders.map((folder) => {
                       const isMember = note.folder_ids.includes(folder.id);
 
@@ -976,9 +978,20 @@ export default function NoteEditor({
                                 : [...note.folder_ids, folder.id]
                             )
                           }
-                          className={cn(MENU_ITEM_CLASS, "w-full gap-2 text-xs")}
+                          style={
+                            folder.color ? tintStyle(folderColorHex(folder.color) ?? "") : undefined
+                          }
+                          className={cn(
+                            MENU_ITEM_CLASS,
+                            "w-full gap-2 text-xs",
+                            folder.color &&
+                              "bg-(--tint) hover:bg-(--tint-strong) focus:bg-(--tint-strong)"
+                          )}
                         >
-                          <FolderOpen size={14} className="shrink-0 text-muted" />
+                          <RowGlyph
+                            icon={folder.icon}
+                            fallback={<FolderOpen size={14} className="shrink-0 text-muted" />}
+                          />
                           <span dir="auto" className="flex-1 truncate text-start">
                             {defaultFolderDisplayName(folder, t)}
                           </span>

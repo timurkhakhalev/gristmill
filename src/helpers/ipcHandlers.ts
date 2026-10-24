@@ -160,7 +160,8 @@ import {
   exportMeetingMixedMp3,
   exportMeetingSourceTrack,
 } from "./meetingAudioExport.js";
-import { composeMeetingAudioParts, prepareMeetingAudio } from "./meetingAudioMixer.js";
+import { composeMeetingAudioParts } from "./meetingAudioParts.js";
+import { prepareMeetingAudio } from "./meetingAudioMixer.js";
 import { recognizeMeetingSpeakers } from "./meetingSpeakerRecognition.js";
 import { createMeetingTextConversation, generateMeetingSummary } from "./meetingSummary.js";
 import { meetingNamingInstruction, suggestMeetingSpeakerNames } from "./meetingSpeakerNaming.js";

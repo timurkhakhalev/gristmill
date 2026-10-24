@@ -132,32 +132,11 @@ export class TrayManager {
 
     if (!current) return null;
 
-    const open = (): void => {
-      const projected = projectCalendarEvent(current);
-
-      if (projected) runMenuAction(this.windowManager?.requestOpenCalendarEvent(projected));
-      else runMenuAction(this.showControlPanelFromTray());
-    };
-
-    const item: MenuItemConstructorOptions = {
-      label: current.summary || "—",
+    return {
+      ...this.meetingItem(current),
       sublabel: `${this.formatTimeRange(current)} · ${i18nMain.t("tray.timeLeft", {
         time: this.formatDuration(new Date(current.end_time).getTime() - now),
       })}`,
-      click: open,
-    };
-
-    // Skipping only makes sense while nothing is being recorded; native menu rows
-    // cannot hold a button, so the row opens a submenu with both actions.
-    if (this.meetingCaptureActive) return item;
-
-    return {
-      label: item.label,
-      sublabel: item.sublabel,
-      submenu: [
-        { label: i18nMain.t("tray.openNote"), click: open },
-        { label: i18nMain.t("tray.skipMeeting"), click: () => this.skipEvent(current) },
-      ],
     };
   }
 
@@ -213,12 +192,18 @@ export class TrayManager {
     return {
       label: event.summary || "—",
       sublabel: this.formatTimeRange(event),
-      click: () => {
-        const projected = projectCalendarEvent(event);
+      submenu: [
+        {
+          label: i18nMain.t("tray.openNote"),
+          click: () => {
+            const projected = projectCalendarEvent(event);
 
-        if (projected) runMenuAction(this.windowManager?.requestOpenCalendarEvent(projected));
-        else runMenuAction(this.showControlPanelFromTray());
-      },
+            if (projected) runMenuAction(this.windowManager?.requestOpenCalendarEvent(projected));
+            else runMenuAction(this.showControlPanelFromTray());
+          },
+        },
+        { label: i18nMain.t("tray.skipMeeting"), click: () => this.skipEvent(event) },
+      ],
     };
   }
 

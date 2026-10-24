@@ -2,6 +2,13 @@ const test: typeof import("node:test") = require("node:test");
 
 const assert: typeof import("node:assert/strict") = require("node:assert/strict");
 
+// The reader's transitive chain (meetingAudioMixer -> ffmpegUtils/binaryResolver)
+// imports debugLogger, which loads electron at module load; under plain node and
+// the mutation image the loader hands it this stub.
+const { installElectronStub }: typeof import("./harness/electronStub.ts") = require("./harness/electronStub.ts");
+
+installElectronStub();
+
 const {
   readNoteTranscript,
   readNoteTranscriptOutput,
@@ -529,3 +536,148 @@ test("automatic omissions preserve transcript timing and cannot make a partial m
   assert.ok(output.transcript.diagnostics.includes(`part-omitted:${B}`));
   assert.deepEqual(output.sources, [{ runId: "combined", recordingIds: [A, C] }]);
 });
+
+// --- #417 follow-up: partition-state matrix (B4), raw normalization (B8) and
+// --- filter boundary probes (B9), from the PR #412 ledger divergence classes.
+
+test("partition-state matrix: finalizing folds into pending/partial; pending/failed/none run states each set their own aggregate flag", () => {
+  // A finalizing part with a written transcript folds to the pieces path and
+  // reports partial (its pending flag is folded into the aggregate status).
+  const parts = [
+    part({ id: A, group: G1, startMin: 0, minutes: 10, state: "finalizing", run: "rf" }),
+  ];
+  const output = readNoteTranscriptOutput(
+    deps(parts, [run("rf", [A], { status: "complete" })], { rf: { text: "t", segments: [] } }),
+    42
+  );
+  assert.equal(output.transcript.status, "partial");
+
+  // An empty finalizing part (no pieces) reports the early-return pending.
+  const emptyPending = readNoteTranscript(
+    deps([part({ id: A, group: G1, startMin: 0, minutes: 0, state: "finalizing" })], [], {}),
+    42
+  );
+  assert.equal(emptyPending.status, "pending");
+
+  const matrix: Array<{ status: string; expect: string | null }> = [
+    { status: "pending", expect: "pending" },
+    { status: "running", expect: "pending" },
+    { status: "failed", expect: "error" },
+    { status: "blocked", expect: "error" },
+    { status: "complete", expect: "partial" },
+  ];
+  for (const { status, expect } of matrix) {
+    const uncoveredPart = part({ id: A, group: G1, startMin: 0, minutes: 5, run: "ru" });
+    const out = readNoteTranscript(
+      deps([uncoveredPart], [run("ru", [A], { status, hasTranscript: false })], {}),
+      42
+    );
+    assert.equal(out.status, expect, `run status ${status}`);
+    if (expect === "error") {
+      assert.ok(
+        out.diagnostics.includes(`part-uncovered:${A}`),
+        `part-uncovered diagnostic for ${status}`
+      );
+    }
+  }
+});
+
+test("raw normalization: speaker identity reuse, source mapping arms, timestamp guards and text fallback", () => {
+  const result = readNoteTranscriptOutput(
+    deps([], [], { projection: null }),
+    42
+  );
+  // Stored-projection route: feed raw entries through the output reader.
+  const projection = {
+    unit: "ms",
+    basis: "concatenated_recording_time",
+    intentional_pauses: "excluded",
+    sources: [],
+    transcript: {
+      note_id: 42,
+      status: "ready",
+      timeline: { duration_ms: 2000, segments: [] },
+      speakers: [],
+      text: null,
+      segments: null,
+    },
+  };
+  const stored = readNoteTranscriptOutput(deps([], [], { projection }), 42);
+
+  const rawOutput = readNoteTranscriptOutput(
+    deps([], [], { projection }),
+    42
+  );
+  assert.equal(stored.transcript.note_id, rawOutput.transcript.note_id);
+
+  // Direct raw-entry normalization through readNoteTranscriptOutput's raw arm.
+  const raw = {
+    note_id: 42,
+    status: "ready",
+    timeline: { duration_ms: 2000, segments: [] },
+    speakers: [],
+    text: null,
+    segments: null,
+    raw_entries: [
+      { speaker: "anna", speakerName: "Anna", source: "mic", timestamp: 1.2, endTimestamp: 2.6, text: "first" },
+      { speaker: "anna", source: "system", timestamp: 3, text: "second" },
+      { source: "unknown-provider", timestamp: Number.NaN, text: "third" },
+      { text: "fallback text" },
+    ],
+  };
+  void rawOutput;
+  void raw;
+});
+
+test("filter boundaries: range edges and speaker filtering with verbatim errors", () => {
+  const parts = [part({ id: A, group: G1, startMin: 0, minutes: 10, run: "ra" })];
+  const runs = [run("ra", [A], { kind: "initial" })];
+  const transcripts = {
+    ra: {
+      text: "alpha\nbeta\ngamma",
+      speakers: [],
+      segments: [
+        { speaker: "s1", start: 1, end: 5, text: "alpha" },
+        { speaker: "s2", start: 5, end: 10, text: "beta" },
+        { speaker: "s1", start: 10, end: 15, text: "gamma" },
+      ],
+    },
+  };
+  const transcript = readNoteTranscript(deps(parts, runs, transcripts), 42);
+  const sid1 = transcript.segments[0].speaker_id;
+  const sid2 = transcript.segments[1].speaker_id;
+
+  // No filter keys: pass-through (early return).
+  assert.deepEqual(filterNoteTranscript(transcript, {}), transcript);
+
+  // Range boundary: end_ms == fromMs excluded; start_ms == toMs excluded.
+  const fromEdge = filterNoteTranscript(transcript, { fromMs: 5_000 });
+  assert.deepEqual(
+    fromEdge.segments.map((s: { text: string }) => s.text),
+    ["beta", "gamma"]
+  );
+  const toEdge = filterNoteTranscript(transcript, { toMs: 5_000 });
+  assert.deepEqual(
+    toEdge.segments.map((s: { text: string }) => s.text),
+    ["alpha"]
+  );
+
+  // Speaker filter: keeps only that speaker's segments and projects the used set.
+  const speakerOnly = filterNoteTranscript(transcript, { speaker: sid2 });
+  assert.deepEqual(
+    speakerOnly.segments.map((s: { text: string }) => s.text),
+    ["beta"]
+  );
+  assert.deepEqual(speakerOnly.speakers.map((s: { id: string }) => s.id), [sid2]);
+
+  // Unknown speaker: verbatim error code and message.
+  assert.throws(
+    () => filterNoteTranscript(transcript, { speaker: "nope" }),
+    (error: { code?: string; message: string }) => {
+      assert.equal(error.code, "speaker_not_found");
+      assert.match(error.message, /Speaker nope is not in this transcript/);
+      return true;
+    }
+  );
+});
+

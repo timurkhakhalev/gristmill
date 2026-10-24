@@ -27,7 +27,11 @@ async function readDownloaded(): Promise<DownloadedSets> {
   const [whisper, parakeet, llm] = await Promise.all([
     window.electronAPI?.listWhisperModels?.().catch(() => null),
     window.electronAPI?.listParakeetModels?.().catch(() => null),
-    window.electronAPI?.modelGetAll?.().catch(() => null),
+    window.electronAPI?.modelGetAll?.().catch((cause: unknown) => {
+      logger.error("Failed to list local LLM models", { error: cause }, "models");
+
+      return null;
+    }),
   ]);
 
   const fromList = (

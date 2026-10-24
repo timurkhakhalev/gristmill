@@ -6,7 +6,7 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 // --experimental-strip-types, on by default in Node 23.6+/24). CI runs Node 24.
 
 test("isAzureOpenAIEndpoint detects Azure resource hosts", async () => {
-  const { isAzureOpenAIEndpoint } = await import("../../src/utils/urlUtils.ts");
+  const { isAzureOpenAIEndpoint } = await import("../../src/utils/azureOpenAI.ts");
 
   assert.equal(isAzureOpenAIEndpoint("https://r.cognitiveservices.azure.com/openai/v1"), true);
   assert.equal(isAzureOpenAIEndpoint("https://r.openai.azure.com"), true);
@@ -16,7 +16,7 @@ test("isAzureOpenAIEndpoint detects Azure resource hosts", async () => {
 });
 
 test("buildAzureTranscriptionUrl builds the deployment-style URL from a resource base", async () => {
-  const { buildAzureTranscriptionUrl } = await import("../../src/utils/urlUtils.ts");
+  const { buildAzureTranscriptionUrl } = await import("../../src/utils/azureOpenAI.ts");
 
   assert.equal(
     buildAzureTranscriptionUrl(
@@ -28,7 +28,7 @@ test("buildAzureTranscriptionUrl builds the deployment-style URL from a resource
 });
 
 test("buildAzureTranscriptionUrl honors an explicit api-version argument", async () => {
-  const { buildAzureTranscriptionUrl } = await import("../../src/utils/urlUtils.ts");
+  const { buildAzureTranscriptionUrl } = await import("../../src/utils/azureOpenAI.ts");
 
   assert.equal(
     buildAzureTranscriptionUrl("https://r.openai.azure.com", "whisper", "2024-06-01"),
@@ -37,7 +37,7 @@ test("buildAzureTranscriptionUrl honors an explicit api-version argument", async
 });
 
 test("buildAzureTranscriptionUrl respects a full transcription URL the user already pasted", async () => {
-  const { buildAzureTranscriptionUrl } = await import("../../src/utils/urlUtils.ts");
+  const { buildAzureTranscriptionUrl } = await import("../../src/utils/azureOpenAI.ts");
 
   const full =
     "https://r.cognitiveservices.azure.com/openai/deployments/gpt-4o-transcribe/audio/transcriptions?api-version=2025-03-01-preview";
@@ -46,7 +46,7 @@ test("buildAzureTranscriptionUrl respects a full transcription URL the user alre
 });
 
 test("buildAzureTranscriptionUrl returns null when no deployment name is available", async () => {
-  const { buildAzureTranscriptionUrl } = await import("../../src/utils/urlUtils.ts");
+  const { buildAzureTranscriptionUrl } = await import("../../src/utils/azureOpenAI.ts");
 
   assert.equal(buildAzureTranscriptionUrl("https://r.cognitiveservices.azure.com", ""), null);
 });
@@ -55,7 +55,7 @@ test("buildAzureTranscriptionUrl returns null when no deployment name is availab
 // normalized one, because normalizeBaseUrl strips the /audio/transcriptions suffix
 // that marks a deployment the user pinned by pasting their full Azure endpoint.
 test("a pinned Azure endpoint survives base-URL normalization", async () => {
-  const { buildAzureTranscriptionUrl } = await import("../../src/utils/urlUtils.ts");
+  const { buildAzureTranscriptionUrl } = await import("../../src/utils/azureOpenAI.ts");
   const { normalizeBaseUrl } = await import("../../src/config/constants.mts");
 
   for (const pinned of [
@@ -68,7 +68,7 @@ test("a pinned Azure endpoint survives base-URL normalization", async () => {
 });
 
 test("a bare Azure resource base still rebuilds from the deployment name", async () => {
-  const { buildAzureTranscriptionUrl } = await import("../../src/utils/urlUtils.ts");
+  const { buildAzureTranscriptionUrl } = await import("../../src/utils/azureOpenAI.ts");
   const { normalizeBaseUrl } = await import("../../src/config/constants.mts");
 
   const bare = "https://r.openai.azure.com";

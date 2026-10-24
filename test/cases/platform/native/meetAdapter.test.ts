@@ -6,7 +6,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { build } from "esbuild";
 
-test("Meet adapter reads real isolated DOM: RU/EN, mute, multi-active, unknown UI, Leave and Companion mode", async (t) => {
+test("Meet adapter reads real isolated DOM: RU/EN, mute, activity tiles, multi-active, unknown UI, Leave and Companion mode", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gristmill-meet-dom-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
 
@@ -33,9 +33,9 @@ const assert=require('node:assert/strict');
 app.setPath('userData', ${JSON.stringify(path.join(directory, "profile"))});
 app.whenReady().then(async()=>{const win=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true}});
 try {
-const run=async(html,leave=false)=>{await win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(html)); return win.webContents.executeJavaScript(${JSON.stringify(adapter)}+'; adapter.readMeetContext([document], "1000", '+leave+')');};
-const en=await run(${JSON.stringify(fixtures[0])}); assert.equal(en.presence,'in-call'); assert.equal(en.micMuted,false); assert.deepEqual(en.activeParticipantIds,['alice']); assert.equal(en.participants[1].self,'local'); assert.equal(en.rosterComplete,false);
-const ru=await run(${JSON.stringify(fixtures[1])}); assert.equal(ru.micMuted,true); assert.deepEqual(ru.activeParticipantIds,['alice','bob']);
+const run=async(html,leave=false,speaking=[])=>{await win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(html)); return win.webContents.executeJavaScript(${JSON.stringify(adapter)}+'; adapter.readMeetContext([document], "1000", '+leave+', new Set('+JSON.stringify(speaking)+'))');};
+const en=await run(${JSON.stringify(fixtures[0])},false,['alice','self']); assert.equal(en.presence,'in-call'); assert.equal(en.micMuted,false); assert.deepEqual(en.activeParticipantIds,['alice']); assert.equal(en.participants[1].self,'local'); assert.equal(en.rosterComplete,false);
+const ru=await run(${JSON.stringify(fixtures[1])},false,['alice','bob','absent']); assert.equal(ru.micMuted,true); assert.deepEqual(ru.activeParticipantIds,['alice','bob']);
 const leave='<button jsname="changed"><i class="google-symbols">call_end</i></button>';
 const liveRu=await run(leave+'<button jsname="changed-again" data-is-muted="false" aria-label="अन्य"><i class="google-symbols">mic</i></button>'); assert.equal(liveRu.presence,'in-call'); assert.equal(liveRu.micMuted,false);
 const liveMuted=await run(leave+'<button data-is-muted="false"><i class="google-symbols">videocam</i></button><button data-is-muted="true"><i class="google-symbols">mic_off</i></button>'); assert.equal(liveMuted.micMuted,true);
@@ -49,17 +49,12 @@ const disconnected=await run('<h1 jsname="r4nke">任意</h1><button jsname="W6su
 const tile=(id,body,style='')=>'<section data-participant-id="'+id+'" style="width:200px;height:150px;'+style+'">'+body+'</section>';
 const name=n=>'<span class="notranslate">'+n+'</span>';
 const duplicate=await run(${JSON.stringify(fixtures[0])}+tile('other',name('Alice'))); assert.equal(duplicate.participants.filter(p=>p.name==='Alice').length,2);
-const renamed=await run(leave+tile('alice',name('Alice'),'border:3px solid rgb(32,76,230)')+tile('alice',name('Other'))+tile('alice',name('Alice'),'border:3px solid rgb(32,76,230)')); assert.equal(renamed.participants[0].name,''); assert.deepEqual(renamed.activeParticipantIds,[]);
+const renamed=await run(leave+tile('alice',name('Alice'))+tile('alice',name('Other'))+tile('alice',name('Alice')),false,['alice']); assert.equal(renamed.participants[0].name,''); assert.deepEqual(renamed.activeParticipantIds,[]);
 const nameNoise=await run(leave+tile('alice','<button><span class="notranslate">Options</span></button><i class="google-symbols">mic</i><div role="tooltip"><span class="notranslate">Other</span></div>'+name('Alice'))); assert.equal(nameNoise.participants[0].name,'Alice');
-const mirrored=await run(leave+tile('local',name('Self')+'<video style="transform:scaleX(-1)"></video>','border:3px solid rgb(32,76,230)')); assert.equal(mirrored.participants[0].self,'local'); assert.deepEqual(mirrored.activeParticipantIds,[]);
-const bar=await run(leave+tile('alice',name('Alice')+'<div style="width:4px;height:12px;background:rgb(32,76,230)"></div>')); assert.deepEqual(bar.activeParticipantIds,['alice']);
-const hiddenBar=await run(leave+tile('alice',name('Alice')+'<div style="display:none"><div style="width:4px;height:12px;background:rgb(32,76,230)"></div></div>')); assert.deepEqual(hiddenBar.activeParticipantIds,[]);
-const noise=await run(leave+tile('alice',name('Alice')+'<button style="border:3px solid rgb(32,76,230)">Pin</button>','border:3px solid rgb(128,128,128)')); assert.deepEqual(noise.activeParticipantIds,[]);
-await run(leave+tile('alice',name('Alice'),'outline:3px solid rgb(32,76,230)'));
-await win.webContents.executeJavaScript('document.querySelector("section").tabIndex=0;document.querySelector("section").focus()');
-const afterFocus=await win.webContents.executeJavaScript(${JSON.stringify(adapter)}+'; adapter.readMeetContext([document],"1000",false)'); assert.deepEqual(afterFocus.activeParticipantIds,[]);
-const transparent=await run(leave+tile('alice',name('Alice'),'border:3px solid rgba(32,76,230,0)')); assert.deepEqual(transparent.activeParticipantIds,[]);
-const hiddenTile=await run(leave+'<div style="opacity:0">'+tile('alice',name('Alice'),'border:3px solid rgb(32,76,230)')+'</div>'); assert.deepEqual(hiddenTile.activeParticipantIds,[]);
+const mirrored=await run(leave+tile('local',name('Self')+'<video style="transform:scaleX(-1)"></video>'),false,['local']); assert.equal(mirrored.participants[0].self,'local'); assert.deepEqual(mirrored.activeParticipantIds,[]);
+const activityTile=await run(leave+tile('alice',name('Alice')+'<div id="indicator"></div><button><span id="control"></span></button>'));
+const tiles=await win.webContents.executeJavaScript(${JSON.stringify(adapter)}+'; [adapter.meetActivityTile(document.getElementById("indicator")),adapter.meetActivityTile(document.getElementById("control")),adapter.meetActivityTile(document.querySelector("section")),adapter.meetActivityTile(document.querySelector("section").firstChild.firstChild)]');
+assert.deepEqual(tiles,['alice',null,null,null]); assert.deepEqual(activityTile.activeParticipantIds,[]);
 console.log('meet DOM fixtures passed');
 } finally {win.destroy(); app.quit();}}).catch(error=>{console.error(error);app.exit(1);});`
   );

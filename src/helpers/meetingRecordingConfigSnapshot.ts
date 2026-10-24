@@ -13,7 +13,7 @@ import { DETAILED_NOTES_KEY, MEETING_INPUT_PREAMBLE } from "./builtinActions.js"
 import { appendDictionarySuffix } from "../config/prompts.js";
 import { getSettings } from "../stores/settingsStore.js";
 import { getBaseLanguageCode } from "../utils/languageSupport.js";
-import { getActions } from "../stores/actionStore.js";
+import { initializeActions } from "../stores/actionStore.js";
 
 const credentialRefForProvider = (provider: string): string | undefined => {
   if (provider === "custom") return "CUSTOM_TRANSCRIPTION_API_KEY";
@@ -26,10 +26,10 @@ interface SnapshotMeetingRecordingConfigResult {
   configError: MeetingProcessingConfigError | null;
 }
 
-export function snapshotMeetingRecordingConfig(
+export async function snapshotMeetingRecordingConfig(
   transcriptionOverride?: MeetingProcessingConfig["transcription"],
   generateSummary?: boolean
-): SnapshotMeetingRecordingConfigResult {
+): Promise<SnapshotMeetingRecordingConfigResult> {
   const state = getSettings();
 
   let transcription: MeetingProcessingConfig["transcription"] | null =
@@ -77,7 +77,7 @@ export function snapshotMeetingRecordingConfig(
 
   const formatting = selectResolvedNoteFormatting(state);
 
-  const detailedNotes = getActions().find(
+  const detailedNotes = (await initializeActions()).find(
     (action) => action.translation_key === DETAILED_NOTES_KEY
   );
 

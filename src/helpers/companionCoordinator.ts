@@ -57,6 +57,7 @@ export class CompanionCoordinator {
   private contextReason: string | null = null;
   private reminderShown = false;
   private leaveClaimed = false;
+  private lateBindScope: CompanionRecordingScope | null = null;
   constructor(private readonly deps: Dependencies) {}
 
   status(): CompanionStatus {
@@ -150,7 +151,18 @@ export class CompanionCoordinator {
     const current = this.currentBinding();
 
     if (current && sameCandidate(current, key)) this.apply(candidate);
+    else if (!current) this.bindLateCall();
     this.publish();
+  }
+  /** A call joined after an independent Start binds as soon as it is the only
+   * recognized in-call candidate. Several calls still need the user's Link. */
+  private bindLateCall(): void {
+    const scope = this.lateBindScope;
+
+    if (!scope || this.leaveClaimed || !sameScope(this.deps.currentScope(), scope)) return;
+    const eligible = this.freshCandidates();
+
+    if (eligible.length === 1) this.bind(scope, eligible[0]);
   }
   start(scope: CompanionRecordingScope, restartCall?: CompanionCandidateKey | null): void {
     this.binding = null;
@@ -158,6 +170,8 @@ export class CompanionCoordinator {
     this.contextReason = null;
     this.reminderShown = false;
     this.leaveClaimed = false;
+    // Restart keeps its former-call rule; only an independent Start binds later.
+    this.lateBindScope = restartCall === undefined ? scope : null;
     const candidates = this.freshCandidates();
 
     // Explicit null marks Restart without a former call: never pick a different call.
@@ -293,6 +307,8 @@ export class CompanionCoordinator {
     this.publish();
   }
   stop(scope: CompanionRecordingScope): void {
+    if (sameScope(this.lateBindScope, scope)) this.lateBindScope = null;
+
     if (!sameScope(this.binding, scope)) return;
     this.binding = null;
     this.unavailableSince = null;

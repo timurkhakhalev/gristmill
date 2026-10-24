@@ -14,13 +14,13 @@ Run scope checks that the run and all source recordings belong to the requested 
 
 ## Freshness
 
-Run Summary freshness compares saved generation metadata with current manual content, title, participants, run configuration and the authoritative transcript-source correction revision. That revision includes cleared correction tombstones. Known changes produce `stale`; complete matching metadata produces `current`; missing or invalid metadata produces `unknown`. A text fingerprint or current-run pointer does not prove freshness.
+Run Summary freshness compares saved generation metadata with current manual content, participants, run configuration and the authoritative transcript-source correction revision. Renaming the Note does not change Summary freshness or its dismissal revision. That correction revision includes cleared correction tombstones. Known changes produce `stale`; complete matching metadata produces `current`; missing or invalid metadata produces `unknown`. A text fingerprint or current-run pointer does not prove freshness.
 
 The freshness revision in the DTO is a dismissal identity for the Results notice. It does not authorize writes or replace processing revision guards.
 
 ## Consumers
 
-The Results panel reads Note scope plus its chosen run. It preserves aggregate transcript semantics across capture groups and labels the Note Summary separately when the run has no Summary. The hook rejects responses after Note/run changes, superseding refreshes or unmount. Loading and transport failures remain visible. Confirmed optimistic speaker corrections can temporarily precede the read response.
+The Results panel reads Note scope plus its chosen run. It preserves aggregate transcript semantics across capture groups and labels the Note Summary separately when the run has no Summary. The hook rejects responses after Note/run changes, superseding refreshes or unmount. Initial loading and transport failures remain visible. Refreshes of the same Note and run keep the last loaded output visible, including after a failed refresh. Changing the Note or run clears the old output. Confirmed optimistic speaker corrections can temporarily precede the read response.
 
 Editor drafts remain with the editor. The Summary fallback view and its copy action can contain an unsaved enhancement. Main output always describes persisted data. Preview fixtures remain a renderer-only path.
 

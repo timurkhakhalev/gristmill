@@ -14,6 +14,12 @@ const {
   matchMeetingPlatformSpeakers,
 }: typeof import("../../../../src/helpers/meetingPlatformMatcher.ts") = require("../../../../src/helpers/meetingPlatformMatcher.ts");
 
+// The provider-parser chain loads debugLogger, which imports electron at load
+// time; under plain node and the mutation image the loader hands it the stub.
+const { installElectronStub }: typeof import("../../../helpers/harness/electronStub.js") = require("../../../helpers/harness/electronStub.ts");
+
+installElectronStub();
+
 const recordingId = randomUUID();
 
 const sessionId = randomUUID();
@@ -235,6 +241,83 @@ test("continued confirmations are one episode and clock gaps/invalid ranges cann
   const restarted = fixture();
   restarted.anchors[2].clock.generation = randomUUID();
   assert.equal(matchMeetingPlatformSpeakers(restarted)[0].reason, "clock-discontinuity");
+});
+
+test("independently truncated nanoseconds join only contiguous clock frames", () => {
+  const rounded = fixture();
+  rounded.anchors[2].clock.hostStartNs = "2000000001";
+  rounded.anchors.forEach((a) => {
+    a.clock.timebaseNumer = 125;
+    a.clock.timebaseDenom = 3;
+  });
+  assert.ok(matchMeetingPlatformSpeakers(rounded).every((d) => d.status === "accepted"));
+  assert.deepEqual(
+    matchMeetingPlatformSpeakers(rounded)[0].clockAnchorIds,
+    rounded.anchors.slice(1, 4).map((a) => a.id)
+  );
+
+  for (const invalid of ["gap", "frame", "epoch", "generation", "timebase", "rate"] as const) {
+    const input = structuredClone(rounded);
+    const next = input.anchors[2];
+
+    if (invalid === "gap") next.clock.hostStartNs = "2000000002";
+    if (invalid === "frame") next.clock.startFrame++;
+    if (invalid === "epoch") next.epochIndex++;
+    if (invalid === "generation") next.clock.generation = randomUUID();
+    if (invalid === "timebase") next.clock.timebaseNumer++;
+    if (invalid === "rate") next.clock.endFrame += 1000;
+    assert.equal(matchMeetingPlatformSpeakers(input)[0].status, "rejected", invalid);
+  }
+
+  const startup = structuredClone(rounded);
+  startup.observations[0].readStartHostNs = "2000000000";
+  startup.anchors = startup.anchors.slice(2);
+  assert.equal(matchMeetingPlatformSpeakers(startup)[0].reason, "clock-coverage-gap");
+});
+
+test("rejected foreign names preserve their reason and cannot veto three valid episodes", () => {
+  for (const rejection of [
+    "insufficient-stable-speech",
+    "local-speech-overlap",
+    "local-participant",
+  ] as const) {
+    const input = fixture();
+    input.observations.push(observation(12, {
+      displayName: "Spurious Other Name",
+      self: rejection === "local-participant" ? "local" : "unknown",
+      readEndHostNs: "14000000000",
+    }));
+    input.transcript.segments.push({
+      start: 12,
+      end: rejection === "insufficient-stable-speech" ? 12.001 : 13,
+      speaker: "system:provider-a",
+      text: "Brief speech",
+    });
+    if (rejection === "local-speech-overlap")
+      input.transcript.segments.push({ start: 12, end: 13, speaker: "mic", text: "Own speech" });
+    const expected = matchMeetingPlatformSpeakers(input);
+
+    assert.equal(expected.filter((d) => d.status === "accepted").length, 3);
+    assert.equal(expected[3].reason, rejection);
+    const reversed = matchMeetingPlatformSpeakers({
+      ...input,
+      observations: [...input.observations].reverse(),
+    });
+
+    assert.deepEqual(reversed.reverse(), expected);
+  }
+});
+
+test("qualified conflicting names remain rejected in every episode order", () => {
+  const input = fixture();
+  input.observations[1].displayName = "Other Name";
+  const expected = matchMeetingPlatformSpeakers(input);
+
+  assert.ok(expected.every((d) => d.status === "rejected" && d.reason === "conflicting-names"));
+  assert.deepEqual(
+    matchMeetingPlatformSpeakers({ ...input, observations: [...input.observations].reverse() }).reverse(),
+    expected
+  );
 });
 
 test("shared multipart offsets and provider-normalized IDs use the production matcher", () => {

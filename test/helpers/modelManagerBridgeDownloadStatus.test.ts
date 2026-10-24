@@ -319,6 +319,8 @@ test("getAllModels surfaces in-flight local model download state", async (t: imp
   });
 
   const models = await modelManager.getAllModels();
+  const { localLlmModelStatusSchema } = require("../../src/contracts/localLlmModels.ts");
+  for (const row of models) localLlmModelStatusSchema.parse(row);
   const activeModel = models.find((candidate: ModelInfo) => candidate.id === model.id);
   assert.ok(activeModel);
 

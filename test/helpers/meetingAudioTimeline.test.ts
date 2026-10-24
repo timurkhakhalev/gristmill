@@ -40,3 +40,61 @@ test("a restarted source keeps the actual gap and rejects overlapping frame anch
   assert.deepEqual(writes, [0, 24_000]);
   assert.throws(() => timeline.write(Buffer.alloc(2_400), 1_000, () => undefined), /frame range/);
 });
+
+// M0/M1 mutation survivor follow-ups (#382): guard clauses observed through public exports.
+test("audio timeline: rejects unsafe origins without disturbing a valid timeline", () => {
+  for (const origin of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => createMeetingAudioTimeline({ originFrame: origin }), RangeError);
+  }
+
+  const timeline = createMeetingAudioTimeline({ originFrame: 4_800 });
+  assert.equal(timeline.lastFrame, 4_800);
+  assert.throws(() => timeline.write(Buffer.alloc(2_400), 0, () => undefined), /frame range/);
+  assert.throws(() => timeline.markRestart(2_400), RangeError);
+  assert.equal(timeline.markRestart(9_600), 9_600);
+});
+
+test("audio timeline: rejects empty, odd and misaligned writes before any output", () => {
+  const cases: [Buffer, number][] = [
+    [Buffer.alloc(0), 0],
+    [Buffer.alloc(3), 0],
+    [Buffer.alloc(2), 1.5],
+    [Buffer.alloc(2), -2],
+  ];
+
+  for (const [buffer, frameStart] of cases) {
+    let emitted = 0;
+    const timeline = createMeetingAudioTimeline();
+    assert.throws(
+      () =>
+        timeline.write(buffer, frameStart, () => {
+          emitted += 1;
+        }),
+      /frame range/
+    );
+    assert.equal(emitted, 0, "no samples may be emitted for an invalid write");
+  }
+
+  // After a rejection the anchor is unchanged and the next valid write proceeds from it.
+  const timeline = createMeetingAudioTimeline();
+  timeline.write(Buffer.alloc(4), 0, () => undefined);
+  assert.equal(timeline.lastFrame, 2);
+  assert.throws(() => timeline.write(Buffer.alloc(4), 1, () => undefined), /frame range/);
+  timeline.write(Buffer.alloc(4), 2, () => undefined);
+  assert.equal(timeline.lastFrame, 4);
+});
+
+test("audio timeline: restart and origin errors keep their exact messages and a no-op restart keeps the anchor", () => {
+  const timeline = createMeetingAudioTimeline();
+  assert.throws(() => timeline.markRestart(-1), {
+    name: "RangeError",
+    message: "Invalid meeting audio restart frame",
+  });
+  // A restart at the current anchor is a legal no-op: it returns the anchor unchanged.
+  assert.equal(timeline.markRestart(0), 0);
+  assert.equal(timeline.lastFrame, 0);
+  assert.throws(() => createMeetingAudioTimeline({ originFrame: -1 }), {
+    name: "RangeError",
+    message: "Invalid meeting audio origin frame",
+  });
+});

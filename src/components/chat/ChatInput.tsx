@@ -68,7 +68,7 @@ export function ChatInput({
   const { t } = useTranslation();
   const { toast } = useToast();
   const [inputText, setInputText] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const voice = useVoiceDraft({
     onTranscript: (text) => {
@@ -97,8 +97,8 @@ export function ChatInput({
   }, [inputText, onTextSubmit]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         handleSubmit();
       }
@@ -123,7 +123,7 @@ export function ChatInput({
     <div className={cn("shrink-0", className ?? "px-3 pb-3 pt-1")}>
       <div
         className={cn(
-          "flex items-center gap-2 min-h-11 ps-4 pe-1.5 rounded-full",
+          "flex items-center gap-2 min-h-11 ps-4 pe-1.5 py-[7px] rounded-[22px]",
           GLASS_SURFACE,
           "border border-border",
           "transition-all duration-200",
@@ -204,11 +204,11 @@ export function ChatInput({
         )}
 
         {(isIdle || isBusy) && !isVoiceRecording && !isVoiceTranscribing && (
-          <div className="flex items-center gap-2 w-full">
-            <input
+          <div className="flex items-end gap-2 w-full">
+            <textarea
               dir="auto"
               ref={inputRef}
-              type="text"
+              rows={1}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -218,7 +218,7 @@ export function ChatInput({
               className={cn(
                 "input-inline flex-1 outline-none bg-transparent caret-primary",
                 "text-ui text-foreground placeholder:text-muted",
-                "min-w-0 p-0",
+                "min-w-0 px-0 py-1 resize-none [field-sizing:content] max-h-40 overflow-y-auto",
                 isBusy && "text-muted cursor-not-allowed"
               )}
             />

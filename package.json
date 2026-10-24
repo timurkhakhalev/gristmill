@@ -123,7 +123,7 @@
     "@heroui/styles": "3.2.6",
     "@oxlint/plugins": "1.86.0",
     "@radix-ui/react-direction": "1.1.2",
-    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-label": "^2.1.17",
     "@radix-ui/react-slot": "^1.2.3",
     "@stryker-mutator/core": "10.0.0",
     "@tailwindcss/vite": "^4.2.2",

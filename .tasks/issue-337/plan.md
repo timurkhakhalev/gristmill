@@ -190,7 +190,7 @@ Serialize tests, builds and native runtime preparation that share dependencies/o
 | --- | --- | --- |
 | M1 — Contact identity, persistence and consumer cutover | done | 570cb3ca1, 9980c202a |
 | M2 — Participant creation and Telegram card journey | done | 47f100885, 2558bfb34 |
-| Reviewer | in progress | review-1.md |
-| Code Reviewer | in progress | code-review-1.md |
+| Reviewer | done — pass | review-2.md |
+| Code Reviewer | done — pass | code-review-2.md |
 | Fix review-1 + code-review-1 | done | ae0608ab7, 6e1e6d1e0 |
 | User decision — historical Granola imports | approved | Freeze participant context for every existing Granola import during migration because the persisted format discarded Summary versus user-notes provenance. New Granola imports freeze at import only when an actual Summary is present. |

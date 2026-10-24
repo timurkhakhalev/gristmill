@@ -60,9 +60,9 @@ Module._load = originalLoad;
 const NOTE_ID = 42;
 
 const THREE_ATTENDEES = [
-  { email: "one@example.com" },
-  { email: "two@example.com" },
-  { email: "three@example.com" },
+  { contactId: 1, email: "one@example.com", displayName: null, self: false, responseStatus: null },
+  { contactId: 2, email: "two@example.com", displayName: null, self: false, responseStatus: null },
+  { contactId: 3, email: "three@example.com", displayName: null, self: false, responseStatus: null },
 ];
 
 // The refresh only fires while a recording has linked its session to the
@@ -133,7 +133,7 @@ test("an explicit stepper count is never overridden by roster changes", () => {
 test("a shrinking roster leaves the speaker cap untouched", () => {
   refreshConfig(false, {
     expectedCount: 4,
-    attendees: [{ email: "one@example.com" }],
+    attendees: [{ contactId: 1, email: "one@example.com", displayName: null, self: false, responseStatus: null }],
   });
   assert.deepEqual(broadcasts, []);
 

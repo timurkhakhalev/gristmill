@@ -23,7 +23,7 @@ import type {
   MeetingCaptureStopRequest,
 } from "../contracts/meetingCoordinator";
 import type { NoteItem } from "../contracts/notes";
-import type { CalendarAttendee } from "../contracts/calendar";
+import type { NoteParticipant } from "../contracts/contactIdentity";
 import {
   DEFAULT_SYSTEM_AUDIO_ACCESS,
   getDisplayCaptureModeForStrategy,
@@ -694,7 +694,7 @@ export function setSessionExpectedCount(count: number): void {
 // here, or the config would be marked as an explicit stepper choice.
 export function syncSessionExpectedCountFromParticipants(
   noteId: number,
-  participants: readonly CalendarAttendee[]
+  participants: readonly NoteParticipant[]
 ): void {
   const state = useMeetingRecordingStore.getState();
 

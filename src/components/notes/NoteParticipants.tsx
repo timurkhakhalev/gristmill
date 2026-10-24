@@ -7,8 +7,12 @@ import { CalendarProviderIcon, MeetingPlatformIcon } from "./meetingPlatform";
 import { Popover, PopoverAnchor, PopoverTrigger, PopoverContent } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
 import PersonName from "../ui/PersonName";
-import { refreshPersonProfile, usePersonName } from "../../hooks/usePersonProfile";
-import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
+import {
+  refreshPersonProfile,
+  usePersonName,
+  usePersonProfile,
+} from "../../hooks/usePersonProfile";
+import type { CalendarEvent } from "../../contracts/calendar";
 import { syncSessionExpectedCountFromParticipants } from "../../stores/meetingRecordingStore";
 import { runInBackground } from "../../stores/noteStore";
 import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
@@ -22,6 +26,14 @@ import {
 } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { useUiLocale } from "../../hooks/useUiLocale";
+
+type CalendarAttendee = {
+  contactId?: number;
+  email: string | null;
+  displayName: string | null;
+  responseStatus: "accepted" | "declined" | "needsAction" | "tentative" | null;
+  self: boolean;
+};
 
 const MAX_STACKED_AVATARS = 2;
 
@@ -122,7 +134,7 @@ const HOVER_OPEN_DELAY_MS = 150;
 
 const HOVER_CLOSE_DELAY_MS = 200;
 
-/** The contact's name with a rename action; the new name is stored for the email everywhere. */
+/** The contact name with a shared, ID-based rename action. */
 function ContactName({
   attendee,
   editable,
@@ -135,7 +147,8 @@ function ContactName({
   onEditingChange: (editing: boolean) => void;
 }) {
   const { t } = useTranslation();
-  const name = usePersonName(attendee.email, attendee.displayName);
+  const name = usePersonName(attendee.email, attendee.displayName, attendee.contactId);
+  const profile = usePersonProfile(attendee.contactId);
   const [draft, setDraft] = useState(name);
   // Escape unmounts the input; its blur must not save the discarded draft.
   const cancelled = useRef(false);
@@ -152,11 +165,17 @@ function ContactName({
     onEditingChange(false);
     const next = draft.trim();
 
-    if (next === name) return;
+    if (next === name || !attendee.contactId || !profile) return;
     runInBackground(
       window.electronAPI
-        .renameContact(attendee.email, next || null)
-        .then(() => refreshPersonProfile(attendee.email)),
+        .updateContact(attendee.contactId, {
+          displayName: next || null,
+          email: profile.email,
+          telegramUsername: profile.telegram_username,
+        })
+        .then((result) => {
+          if (result.success && attendee.contactId) refreshPersonProfile(attendee.contactId);
+        }),
       "Contact rename failed"
     );
   };
@@ -263,7 +282,7 @@ function AttendeeRow({
 
   const copyEmail = useCallback(() => {
     navigator.clipboard
-      .writeText(attendee.email)
+      .writeText(attendee.email ?? "")
       .then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -291,9 +310,17 @@ function AttendeeRow({
           onClick={() => setOpen(true)}
           className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-default focus-visible:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
         >
-          <PersonAvatar email={attendee.email} displayName={attendee.displayName} />
+          <PersonAvatar
+            contactId={attendee.contactId}
+            email={attendee.email}
+            displayName={attendee.displayName}
+          />
           <span dir="auto" className="min-w-0 flex-1 truncate text-xs text-foreground/70">
-            <PersonName email={attendee.email} inviteName={attendee.displayName} />
+            <PersonName
+              contactId={attendee.contactId}
+              email={attendee.email}
+              inviteName={attendee.displayName}
+            />
             {attendee.self && (
               <span className="ms-1 text-muted">{t("notes.participants.me", "(me)")}</span>
             )}
@@ -312,7 +339,12 @@ function AttendeeRow({
           {...hoverProps}
           className="group/card flex items-center gap-3 p-3"
         >
-          <PersonAvatar email={attendee.email} displayName={attendee.displayName} size={40} />
+          <PersonAvatar
+            contactId={attendee.contactId}
+            email={attendee.email}
+            displayName={attendee.displayName}
+            size={40}
+          />
           <div className="min-w-0 flex-1">
             <ContactName
               attendee={attendee}
@@ -379,7 +411,7 @@ export default function NoteParticipants({
   const [search, setSearch] = useState("");
 
   const [suggestions, setSuggestions] = useState<
-    Array<{ email: string; display_name: string | null }>
+    Array<{ id: number; email: string | null; display_name: string | null }>
   >([]);
 
   const [open, setOpen] = useState(false);
@@ -401,8 +433,8 @@ export default function NoteParticipants({
     runInBackground(
       window.electronAPI.searchContacts(query).then((result) => {
         if (result.success) {
-          const existing = new Set(localParticipants.map((p) => p.email));
-          setSuggestions(result.contacts.filter((c) => !existing.has(c.email)));
+          const existing = new Set(localParticipants.map((p) => p.contactId));
+          setSuggestions(result.contacts.filter((c) => !existing.has(c.id)));
         }
       }),
       "Contact search failed"
@@ -412,7 +444,13 @@ export default function NoteParticipants({
   const saveParticipants = useCallback(
     (updated: CalendarAttendee[]) => {
       if (preview) return;
-      syncSessionExpectedCountFromParticipants(noteId, updated);
+      syncSessionExpectedCountFromParticipants(
+        noteId,
+        updated.filter(
+          (person): person is import("../../contracts/contactIdentity").NoteParticipant =>
+            person.contactId !== undefined
+        )
+      );
       runInBackground(
         window.electronAPI.updateNote(noteId, {
           participants: JSON.stringify(updated),
@@ -424,56 +462,41 @@ export default function NoteParticipants({
   );
 
   const addParticipant = useCallback(
-    (email: string, displayName?: string | null) => {
-      const normalized = email.toLowerCase().trim();
-
-      if (!normalized || localParticipants.some((p) => p.email === normalized)) return;
+    (contact: { id: number; email: string | null; display_name: string | null }) => {
+      if (localParticipants.some((person) => person.contactId === contact.id)) return;
 
       const updated = [
         ...localParticipants,
-        { email: normalized, displayName: displayName || null, responseStatus: null, self: false },
+        {
+          contactId: contact.id,
+          email: contact.email,
+          displayName: contact.display_name,
+          responseStatus: null,
+          self: false,
+        },
       ];
 
       setLocalParticipants(updated);
       saveParticipants(updated);
-
-      if (!preview)
-        runInBackground(
-          window.electronAPI.upsertContact({
-            email: normalized,
-            displayName: displayName || null,
-          }),
-          "Contact upsert failed"
-        );
       setSearch("");
     },
-    [localParticipants, preview, saveParticipants]
+    [localParticipants, saveParticipants]
   );
 
   const removeParticipant = useCallback(
-    (email: string) => {
-      const updated = localParticipants.filter((p) => p.email !== email);
+    (contactId: number | undefined) => {
+      const updated = localParticipants.filter((p) => p.contactId !== contactId);
       setLocalParticipants(updated);
       saveParticipants(updated);
     },
     [localParticipants, saveParticipants]
   );
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && search.includes("@")) {
-        e.preventDefault();
-        addParticipant(search);
-      }
-    },
-    [search, addParticipant]
-  );
-
   const grouped = useMemo(() => {
     const groups = new Map<string, CalendarAttendee[]>();
 
     for (const p of localParticipants) {
-      const domain = p.email.split("@")[1] || "other";
+      const domain = p.email?.split("@")[1] || "other";
 
       if (!groups.has(domain)) groups.set(domain, []);
       groups.get(domain)?.push(p);
@@ -523,7 +546,8 @@ export default function NoteParticipants({
             <span className="flex items-center -space-x-1">
               {localParticipants.slice(0, MAX_STACKED_AVATARS).map((p) => (
                 <PersonAvatar
-                  key={p.email}
+                  key={p.contactId ?? p.email}
+                  contactId={p.contactId}
                   email={p.email}
                   displayName={p.displayName}
                   size={18}
@@ -589,7 +613,7 @@ export default function NoteParticipants({
             dir="auto"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={handleKeyDown}
+
             placeholder={t("notes.participants.addPlaceholder", "Add attendees...")}
             className="w-full px-2 py-1.5 rounded-md bg-transparent text-xs text-foreground placeholder:text-muted outline-none border-none appearance-none"
             autoFocus
@@ -601,11 +625,15 @@ export default function NoteParticipants({
             <div className="p-1 border-b border-border/70">
               {suggestions.slice(0, 5).map((contact) => (
                 <button
-                  key={contact.email}
-                  onClick={() => addParticipant(contact.email, contact.display_name)}
+                  key={contact.id}
+                  onClick={() => addParticipant(contact)}
                   className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-default transition-colors cursor-pointer"
                 >
-                  <PersonAvatar email={contact.email} displayName={contact.display_name} />
+                  <PersonAvatar
+                    contactId={contact.id}
+                    email={contact.email}
+                    displayName={contact.display_name}
+                  />
                   <span dir="auto" className="truncate">
                     {contact.display_name || contact.email}
                   </span>
@@ -627,10 +655,10 @@ export default function NoteParticipants({
               </div>
               {members.map((p) => (
                 <AttendeeRow
-                  key={p.email}
+                  key={p.contactId ?? p.email}
                   attendee={p}
-                  editable={canRenameContacts}
-                  onRemove={() => removeParticipant(p.email)}
+                  editable={canRenameContacts && p.contactId !== undefined}
+                  onRemove={() => removeParticipant(p.contactId)}
                 />
               ))}
             </div>

@@ -370,10 +370,10 @@ export default function MeetingResultsPanel({
   const [speakerId, setSpeakerId] = useState<string | null>(null);
   const [speakerName, setSpeakerName] = useState("");
   const [speakerProfileId, setSpeakerProfileId] = useState("none");
-  const [participantEmail, setParticipantEmail] = useState("none");
+  const [participantContactId, setParticipantContactId] = useState("none");
 
   const [calendarParticipants, setCalendarParticipants] = useState<
-    Array<{ email: string; name: string | null }>
+    Array<{ contactId: number; email: string | null; name: string | null }>
   >([]);
 
   useEffect(() => {
@@ -384,23 +384,20 @@ export default function MeetingResultsPanel({
     runInBackground(
       (async () => {
         const note = await window.electronAPI.getNote(noteId);
-        const attendees = new Map<string, string | null>();
+        const attendees = parseNoteParticipants(note?.participants ?? null);
 
-        for (const person of parseNoteParticipants(note?.participants ?? null)) {
-          const email = person.email.trim();
-
-          if (email) attendees.set(email.toLowerCase(), person.displayName);
-        }
-
-        const contacts = await window.electronAPI.getContactProfiles([...attendees.keys()]);
-
-        const names = new Map(
-          contacts.map((contact) => [contact.email.toLowerCase(), contact.display_name])
+        const contacts = await window.electronAPI.getContactProfiles(
+          attendees.map((person) => person.contactId)
         );
+
+        const names = new Map(contacts.map((contact) => [contact.id, contact.display_name]));
 
         if (!cancelled)
           setCalendarParticipants(
-            [...attendees].map(([email, name]) => ({ email, name: names.get(email) || name }))
+            attendees.map((person) => ({
+              ...person,
+              name: names.get(person.contactId) || person.displayName,
+            }))
           );
       })().catch(() => {
         if (!cancelled)
@@ -1114,7 +1111,12 @@ export default function MeetingResultsPanel({
                     speakerId: targetSpeakerId,
                     displayName: speakerName.trim(),
                     profileId: speakerProfileId === "none" ? null : Number(speakerProfileId),
-                    participantEmail: participantEmail === "none" ? null : participantEmail,
+                    participantContactId:
+                      participantContactId === "none" ? null : Number(participantContactId),
+                    participantEmail:
+                      calendarParticipants.find(
+                        (person) => String(person.contactId) === participantContactId
+                      )?.email ?? null,
                     source: "user" as const,
                     revision:
                       (run.speakerCorrections.find(
@@ -1156,7 +1158,9 @@ export default function MeetingResultsPanel({
         speakerId,
         displayName: speakerName.trim(),
         profileId: speakerProfileId === "none" ? null : Number(speakerProfileId),
-        ...(participantEmail !== "none" ? { participantEmail } : {}),
+        ...(participantContactId !== "none"
+          ? { participantContactId: Number(participantContactId) }
+          : {}),
       });
 
       // Only after main accepted the write; a rejection throws and leaves the
@@ -1188,7 +1192,7 @@ export default function MeetingResultsPanel({
     setSpeakerId(id);
     setSpeakerName(correction?.displayName ?? speakerLabel(id));
     setSpeakerProfileId(String(correction?.profileId ?? "none"));
-    setParticipantEmail("none");
+    setParticipantContactId("none");
   };
 
   const unlinkedSpeakers = calendarParticipants.length
@@ -2349,18 +2353,18 @@ export default function MeetingResultsPanel({
                   <>
                     <Choice
                       label={tr("rememberParticipant", "Remember name for calendar participant")}
-                      value={participantEmail}
+                      value={participantContactId}
                       options={[
                         { id: "none", label: tr("onlyThisMeeting", "Only this meeting") },
                         ...calendarParticipants.map((person) => ({
-                          id: person.email,
+                          id: String(person.contactId),
                           label:
                             person.name && person.name !== person.email
                               ? `${person.name} — ${person.email}`
-                              : person.email,
+                              : person.email || person.name || "",
                         })),
                       ]}
-                      onChange={setParticipantEmail}
+                      onChange={setParticipantContactId}
                     />
                     <p className="text-xs text-muted">
                       {tr(

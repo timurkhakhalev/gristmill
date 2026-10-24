@@ -288,7 +288,7 @@ async function mountPanel(
     getNote: async () => {
       participantLoads++;
       if (failParticipants) throw new Error("participant-load-failed");
-      return { participants: JSON.stringify([{ email: "person@example.com" }]) };
+      return { participants: JSON.stringify([{ contactId: 7, email: "person@example.com", displayName: null, self: false, responseStatus: null }]) };
     },
     onNoteUpdated: () => () => {},
     getNoteOutput: async (request: { noteId: number; scope: "note" | "run"; runId?: string }) => {
@@ -1411,9 +1411,9 @@ test("a recognized speaker can be linked to an email-only calendar participant f
 
   assert.ok(choice);
   const options = choice.props?.options as Array<{ id: string; label: string }>;
-  assert.ok(options.some((option) => option.id === "person@example.com"));
+  assert.ok(options.some((option) => option.id === "7"));
   await ui.flush(() =>
-    (choice.props as { onChange(value: string): void }).onChange("person@example.com")
+    (choice.props as { onChange(value: string): void }).onChange("7")
   );
   await ui.saveSpeaker();
   assert.deepEqual(ui.calls.speaker, [
@@ -1422,7 +1422,7 @@ test("a recognized speaker can be linked to an email-only calendar participant f
       speakerId: "speaker-1",
       displayName: "Alice",
       profileId: null,
-      participantEmail: "person@example.com",
+      participantContactId: 7,
     },
   ]);
 });

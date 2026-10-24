@@ -27,10 +27,10 @@ function createHarness(overrides: Record<string, unknown> = {}) {
 
   const database = {
     searchContacts: () => [{ email: "a@example.net", display_name: "A" }],
-    upsertContacts: (contacts: unknown) => {
+    createContact: (contacts: unknown) => {
       calls.upserts.push(contacts);
     },
-    setContactName: (email: unknown, name: unknown) => {
+    updateContact: (email: unknown, name: unknown) => {
       calls.renames = calls.renames || [];
       calls.renames.push([email, name]);
     },
@@ -43,7 +43,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
       const profile = {
         id: 11,
         display_name: displayName,
-        email,
+        contact_id: email,
         embedding,
         sample_count: 1,
       };
@@ -66,10 +66,10 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     getSpeakerProfiles: () => [
       { id: 11, display_name: "A", email: null, sample_count: 1, created_at: "t", updated_at: "t" },
     ],
-    attachEmailToProfile: (profileId: string, email: unknown) => ({
+    attachContactToProfile: (profileId: string, email: unknown) => ({
       id: profileId,
       display_name: "A",
-      email,
+      contact_id: email,
       embedding: embeddingBuffer(),
       sample_count: 2,
     }),
@@ -166,26 +166,26 @@ test("set-speaker-mapping without any embedding only writes the mapping", async 
   assert.deepEqual(h.calls.setMapping, [1, "speaker_0", 7, "Carol"]);
 });
 
-test("attach-speaker-email projects the public DTO and fires retroactive mapping", async () => {
+test("attach-speaker-contact projects the public DTO and fires retroactive mapping", async () => {
   const h = createHarness();
-  const result = await h.invoke(speakerChannels.attachSpeakerEmail, 11, "a@example.net");
+  const result = await h.invoke(speakerChannels.attachSpeakerContact, 11, 3);
   assert.deepEqual(result, {
     success: true,
-    profile: { id: 11, display_name: "A", email: "a@example.net", sample_count: 2 },
+    profile: { id: 11, display_name: "A", contact_id: 3, sample_count: 2 },
   });
   assert.equal(h.calls.retroactive.length, 1);
 });
 
-test("attach-speaker-email failures keep the error shape", async () => {
+test("attach-speaker-contact failures keep the error shape", async () => {
   const h = createHarness({
     database: {
-      attachEmailToProfile: () => {
+      attachContactToProfile: () => {
         throw new Error("db locked");
       },
     },
   });
 
-  const result = await h.invoke(speakerChannels.attachSpeakerEmail, 11, null);
+  const result = await h.invoke(speakerChannels.attachSpeakerContact, 11, null);
   assert.equal(result.success, false);
   assert.equal(result.error, "db locked");
 });
@@ -253,46 +253,12 @@ test("diarization status combines main and vad model availability", async () => 
   });
 });
 
-test("contacts pass through the database and swallow failures", async () => {
+test("contact mutations validate ID inputs before database calls", async () => {
   const h = createHarness();
-  assert.deepEqual(await h.invoke(speakerChannels.searchContacts, "ali"), {
-    success: true,
-    contacts: [{ email: "a@example.net", display_name: "A" }],
-  });
-  assert.deepEqual(await h.invoke(speakerChannels.upsertContact, { email: "c@other.example.net" }), {
-    success: true,
-  });
-  assert.deepEqual(h.calls.upserts, [[{ email: "c@other.example.net" }]]);
-  assert.deepEqual(await h.invoke(speakerChannels.renameContact, "c@other.example.net", "Cee"), {
-    success: true,
-  });
-  assert.deepEqual(await h.invoke(speakerChannels.renameContact, "c@other.example.net", null), {
-    success: true,
-  });
-  assert.deepEqual(h.calls.renames, [
-    ["c@other.example.net", "Cee"],
-    ["c@other.example.net", null],
-  ]);
-  assert.deepEqual(await h.invoke(speakerChannels.renameContact, "", "x"), { success: false });
-
-  const broken = createHarness({
-    database: {
-      searchContacts: () => {
-        throw new Error("db");
-      },
-      upsertContacts: () => {
-        throw new Error("db");
-      },
-    },
-  });
-
-  assert.deepEqual(await broken.invoke(speakerChannels.searchContacts, "x"), {
-    success: false,
-    contacts: [],
-  });
-  assert.deepEqual(await broken.invoke(speakerChannels.upsertContact, { email: "x" }), {
-    success: false,
-  });
+  await assert.rejects(h.invoke(speakerChannels.updateContact, "email@example.com", { displayName: "Synthetic", email: null, telegramUsername: null }));
+  await assert.rejects(h.invoke(speakerChannels.createContact, { displayName: "", email: null, telegramUsername: null }));
+  assert.deepEqual(h.calls.upserts, []);
+  assert.equal(h.calls.renames, undefined);
 });
 
 test("mapping reads and deletes delegate to the database", async () => {

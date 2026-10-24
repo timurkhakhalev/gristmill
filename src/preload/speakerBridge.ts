@@ -4,18 +4,19 @@
 // local modules, so build-main.js bundles the final preload.
 import {
   diarizationDownloadProgressEventSchema,
+  contactMutationResultSchema,
+  setSpeakerMappingResultSchema,
+  speakerContactSchema,
+  attachSpeakerContactResultSchema,
   contactProfileSchema,
   speakerMappingEntrySchema,
   publicSpeakerProfileSchema,
   speakerChannels,
-  type AttachSpeakerEmailResult,
   type CancelDiarizationResult,
   type DiarizationDownloadProgressEvent,
   type DiarizationModelActionResult,
   type DiarizationModelStatus,
-  type SetSpeakerMappingResult,
   type SpeakerApi,
-  type SpeakerContact,
 } from "../contracts/speakerProfiles.js";
 import { z } from "zod";
 
@@ -68,34 +69,32 @@ export function createSpeakerBridge(ipcRenderer: IpcRendererLike): SpeakerApi {
   const c = speakerChannels;
 
   return {
-    searchContacts: (query: string) =>
-      passthroughInvoke<{ success: boolean; contacts: SpeakerContact[] }>(
-        ipcRenderer,
-        c.searchContacts,
-        query
-      ),
-    upsertContact: (contact: { email: string; displayName?: string | null }) =>
-      passthroughInvoke<{ success: boolean }>(ipcRenderer, c.upsertContact, contact),
-    renameContact: (email: string, name: string | null) =>
-      passthroughInvoke<{ success: boolean }>(ipcRenderer, c.renameContact, email, name),
-    getContactProfiles: (emails: string[]) =>
+    searchContacts: (query) =>
       ipcRenderer
-        .invoke(c.getContactProfiles, emails)
+        .invoke(c.searchContacts, query)
+        .then((raw) =>
+          z.object({ success: z.boolean(), contacts: speakerContactSchema.array() }).parse(raw)
+        ),
+    createContact: (contact) =>
+      ipcRenderer
+        .invoke(c.createContact, contact)
+        .then((raw) => contactMutationResultSchema.parse(raw)),
+    updateContact: (id, contact) =>
+      ipcRenderer
+        .invoke(c.updateContact, id, contact)
+        .then((raw) => contactMutationResultSchema.parse(raw)),
+    getContactProfiles: (ids: number[]) =>
+      ipcRenderer
+        .invoke(c.getContactProfiles, ids)
         .then((raw) => contactProfileSchema.array().parse(raw)),
     getSpeakerMappings: (noteId: number) =>
       ipcRenderer
         .invoke(c.getSpeakerMappings, noteId)
         .then((raw) => speakerMappingEntrySchema.array().parse(raw)),
-    setSpeakerMapping: (noteId, speakerId, displayName, email, profileId) =>
-      passthroughInvoke<SetSpeakerMappingResult>(
-        ipcRenderer,
-        c.setSpeakerMapping,
-        noteId,
-        speakerId,
-        displayName,
-        email,
-        profileId
-      ),
+    setSpeakerMapping: (noteId, speakerId, displayName, contactId, profileId) =>
+      ipcRenderer
+        .invoke(c.setSpeakerMapping, noteId, speakerId, displayName, contactId, profileId)
+        .then((raw) => setSpeakerMappingResultSchema.parse(raw)),
     removeSpeakerMapping: (noteId: number, speakerId: string) =>
       passthroughInvoke<{ success: boolean }>(
         ipcRenderer,
@@ -107,13 +106,10 @@ export function createSpeakerBridge(ipcRenderer: IpcRendererLike): SpeakerApi {
       ipcRenderer
         .invoke(c.getSpeakerProfiles)
         .then((raw) => publicSpeakerProfileSchema.array().parse(raw)),
-    attachSpeakerEmail: (profileId: number, email: string | null) =>
-      passthroughInvoke<AttachSpeakerEmailResult>(
-        ipcRenderer,
-        c.attachSpeakerEmail,
-        profileId,
-        email
-      ),
+    attachSpeakerContact: (profileId, contactId) =>
+      ipcRenderer
+        .invoke(c.attachSpeakerContact, profileId, contactId)
+        .then((raw) => attachSpeakerContactResultSchema.parse(raw)),
     saveNoteSpeakerEmbeddings: (noteId: number, embeddings: Record<string, number[]>) =>
       passthroughInvoke<{ success: boolean }>(
         ipcRenderer,

@@ -18,6 +18,7 @@ const t = (key: string, options: { n?: number } = {}) => {
 };
 
 const attendee = (email: string, displayName: string | null, self = false) => ({
+  contactId: [...email].reduce((sum, char) => sum + char.charCodeAt(0), 1),
   email,
   displayName,
   responseStatus: null,

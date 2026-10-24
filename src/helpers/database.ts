@@ -12,6 +12,15 @@
 // the flagged helpers themselves; every caller above this layer is typed.
 import path from "path";
 import { z } from "zod";
+import { migrateContactIdentity } from "./contactIdentityMigration.js";
+import {
+  contactEmailSchema,
+  normalizeTelegramUsername,
+  noteParticipantSchema,
+  type NoteParticipant,
+} from "../contracts/contactIdentity.js";
+import type { ContactMutationResult } from "../contracts/speakerProfiles.js";
+import { parseNoteParticipants } from "../utils/noteParticipants.js";
 import { migrateMeetingPlatformEvidence } from "./meetingPlatformMigration.js";
 import { migrateMeetingAudio } from "./meetingAudioMigration.js";
 import { migrateSpaces } from "./spacesMigration.js";
@@ -414,15 +423,19 @@ export interface CalendarAccountRow {
 }
 
 export interface ContactRow {
-  email: string;
+  id: number;
+  telegram_username: string | null;
+  email: string | null;
   display_name: string | null;
   created_at: string;
   updated_at: string;
 }
 
-/** An email's best-known name and photo; the Google People name wins over calendar or typed names. */
+/** Current shared name and photo, with learned names before People and invite names. */
 export interface ContactProfileRow {
-  email: string;
+  id: number;
+  telegram_username: string | null;
+  email: string | null;
   display_name: string | null;
   photo_url: string | null;
 }
@@ -430,7 +443,7 @@ export interface ContactProfileRow {
 export interface SpeakerProfileRow {
   id: number;
   display_name: string;
-  email: string | null;
+  contact_id: number | null;
   embedding?: Buffer;
   sample_count: number;
   created_at: string;
@@ -442,7 +455,7 @@ export interface SpeakerProfileRow {
 export interface SpeakerProfileWithEmbedding {
   id: number;
   display_name: string;
-  email: string | null;
+  contact_id: number | null;
   embedding: Buffer;
   sample_count: number;
 }
@@ -906,6 +919,7 @@ export class DatabaseManager {
           transcript TEXT,
           calendar_event_id TEXT,
           participants TEXT,
+          participant_context_frozen INTEGER NOT NULL DEFAULT 0,
           diarization_enabled INTEGER,
           expected_speaker_count INTEGER
         );
@@ -1151,7 +1165,9 @@ export class DatabaseManager {
         );
 
         CREATE TABLE IF NOT EXISTS contacts (
-          email TEXT PRIMARY KEY,
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          email TEXT UNIQUE CHECK(email IS NULL OR (email <> '' AND email = lower(trim(email)))),
+          telegram_username TEXT COLLATE NOCASE UNIQUE,
           display_name TEXT,
           people_name TEXT,
           learned_name TEXT,
@@ -1163,7 +1179,7 @@ export class DatabaseManager {
         CREATE TABLE IF NOT EXISTS speaker_profiles (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           display_name TEXT NOT NULL,
-          email TEXT,
+          contact_id INTEGER REFERENCES contacts(id),
           embedding BLOB NOT NULL,
           sample_count INTEGER NOT NULL DEFAULT 1,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1176,6 +1192,8 @@ export class DatabaseManager {
           profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
           display_name TEXT NOT NULL,
           participant_email TEXT,
+          participant_contact_id INTEGER REFERENCES contacts(id),
+          platform TEXT CHECK(platform IN ('zoom', 'google-meet', 'telemost')),
           source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'platform', 'model', 'user')),
           revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
           PRIMARY KEY (run_id, speaker_id)
@@ -1521,6 +1539,8 @@ export class DatabaseManager {
       if (!contactColumns.some((column) => column.name === "photo_url")) {
         this.sql.exec("ALTER TABLE contacts ADD COLUMN photo_url TEXT");
       }
+
+      migrateContactIdentity(this.sql);
 
       if (!calendarEventColumns.some((column) => column.name === "description")) {
         this.sql.exec("ALTER TABLE calendar_events ADD COLUMN description TEXT");
@@ -2792,7 +2812,7 @@ export class DatabaseManager {
     profileId: number | null,
     displayName: string,
     source: "voice" | "platform" | "model" | "user" = "user",
-    participantEmail?: string,
+    participantContactId?: number,
     platform?: MeetingPlatform
   ): SuccessResult & { noteId?: number } {
     meetingRecordingIdSchema.parse(runId);
@@ -2812,21 +2832,39 @@ export class DatabaseManager {
 
       if (!recording || this.isMeetingNoteDeletionPending(recording.note_id))
         return { success: false };
+
+      const participant =
+        participantContactId === undefined
+          ? null
+          : parseNoteParticipants(this.getNote(recording.note_id)?.participants ?? null).find(
+              (person) => person.contactId === participantContactId
+            );
+
+      if (
+        participantContactId !== undefined &&
+        (!Number.isSafeInteger(participantContactId) ||
+          participantContactId < 1 ||
+          !participant ||
+          !this.getContactProfiles([participantContactId]).length)
+      )
+        return { success: false };
       this.sql
         .prepare(
-          "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, participant_email, source, platform, revision) VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = excluded.participant_email, source = excluded.source, platform = excluded.platform, revision = meeting_run_speaker_corrections.revision + 1"
+          "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, participant_email, participant_contact_id, source, platform, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = excluded.participant_email, participant_contact_id = excluded.participant_contact_id, source = excluded.source, platform = excluded.platform, revision = meeting_run_speaker_corrections.revision + 1"
         )
         .run(
           runId,
           speakerId,
           profileId,
           displayName.trim(),
-          participantEmail?.toLowerCase() ?? null,
+          participant?.email ?? null,
+          participantContactId ?? null,
           source,
           source === "platform" ? platform : null
         );
 
-      if (participantEmail) this.rememberContactName(participantEmail, displayName);
+      if (participantContactId !== undefined)
+        this.rememberContactName(participantContactId, displayName);
 
       const selected = recording.current_run_id
         ? this.getMeetingProcessingRun(recording.current_run_id)
@@ -2887,6 +2925,7 @@ export class DatabaseManager {
     speakerId: string;
     profileId: number | null;
     displayName: string;
+    participantContactId: number | null;
     participantEmail: string | null;
     source: "voice" | "platform" | "model" | "user";
     platform?: MeetingPlatform;
@@ -2896,13 +2935,14 @@ export class DatabaseManager {
 
     return this.sql
       .prepare(
-        "SELECT speaker_id, profile_id, display_name, participant_email, source, platform, revision FROM meeting_run_speaker_corrections WHERE run_id = ? AND display_name <> '' ORDER BY speaker_id"
+        "SELECT speaker_id, profile_id, display_name, participant_email, participant_contact_id, source, platform, revision FROM meeting_run_speaker_corrections WHERE run_id = ? AND display_name <> '' ORDER BY speaker_id"
       )
       .all<{
         speaker_id: string;
         profile_id: number | null;
         display_name: string;
         participant_email: string | null;
+        participant_contact_id: number | null;
         source: "voice" | "platform" | "model" | "user";
         platform: MeetingPlatform | null;
         revision: number;
@@ -2912,6 +2952,7 @@ export class DatabaseManager {
         profileId: row.profile_id,
         displayName: row.display_name,
         participantEmail: row.participant_email,
+        participantContactId: row.participant_contact_id,
         source: row.source,
         ...(row.source === "platform" && row.platform ? { platform: row.platform } : {}),
         revision: row.revision,
@@ -3028,7 +3069,7 @@ export class DatabaseManager {
         return false;
 
       const insert = this.sql.prepare(
-        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, platform, revision) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = NULL, source = excluded.source, platform = excluded.platform, revision = meeting_run_speaker_corrections.revision + 1"
+        "INSERT INTO meeting_run_speaker_corrections (run_id, speaker_id, profile_id, display_name, source, platform, revision) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(run_id, speaker_id) DO UPDATE SET profile_id = excluded.profile_id, display_name = excluded.display_name, participant_email = NULL, participant_contact_id = NULL, source = excluded.source, platform = excluded.platform, revision = meeting_run_speaker_corrections.revision + 1"
       );
 
       for (const correction of corrections) {
@@ -3044,7 +3085,7 @@ export class DatabaseManager {
 
       // Keep a cleared proposal's row so SUM(revision) never returns to an old value.
       const clear = this.sql.prepare(
-        "UPDATE meeting_run_speaker_corrections SET display_name = '', profile_id = NULL, participant_email = NULL, revision = revision + 1 WHERE run_id = ? AND speaker_id = ? AND source = 'model'"
+        "UPDATE meeting_run_speaker_corrections SET display_name = '', profile_id = NULL, participant_email = NULL, participant_contact_id = NULL, revision = revision + 1 WHERE run_id = ? AND speaker_id = ? AND source = 'model'"
       );
 
       for (const id of rejectedModelSpeakerIds) clear.run(runId, id);
@@ -4139,7 +4180,24 @@ export class DatabaseManager {
             row.sourceFile,
             folderId,
             row.transcript,
-            row.participants,
+            row.participants
+              ? JSON.stringify(
+                  this.materializeParticipants(
+                    z
+                      .array(
+                        z.object({
+                          email: z.string().nullish(),
+                          displayName: z.string().nullish(),
+                          responseStatus: z
+                            .enum(["accepted", "declined", "tentative", "needsAction"])
+                            .nullish(),
+                          self: z.boolean().optional(),
+                        })
+                      )
+                      .parse(JSON.parse(z.string().parse(row.participants)))
+                  )
+                )
+              : null,
             row.createdAt,
             row.createdAt
           );
@@ -4196,19 +4254,19 @@ export class DatabaseManager {
       .map(hydrateNote);
   }
 
-  getContactNames(email: string): {
+  getContactNames(contactId: number): {
     display_name: string | null;
     people_name: string | null;
     learned_name: string | null;
   } | null {
     return (
       this.sql
-        .prepare("SELECT display_name, people_name, learned_name FROM contacts WHERE email = ?")
+        .prepare("SELECT display_name, people_name, learned_name FROM contacts WHERE id = ?")
         .get<{
           display_name: string | null;
           people_name: string | null;
           learned_name: string | null;
-        }>(email.toLowerCase()) ?? null
+        }>(contactId) ?? null
     );
   }
 
@@ -4283,6 +4341,43 @@ export class DatabaseManager {
     const current = this.getNote(id);
 
     if (!current) return { success: false, error: "Note not found" };
+
+    if (updates.participants != null) {
+      try {
+        const requested = z.array(noteParticipantSchema).parse(JSON.parse(updates.participants));
+
+        const existing = new Map(
+          parseNoteParticipants(current.participants).map((person) => [person.contactId, person])
+        );
+
+        const seen = new Set<number>();
+
+        const participants = requested.map((person) => {
+          if (seen.has(person.contactId)) throw new Error("Duplicate participant");
+          seen.add(person.contactId);
+          const profile = this.getContactProfiles([person.contactId])[0];
+
+          if (!profile) throw new Error("Participant contact not found");
+          const saved = existing.get(person.contactId);
+
+          return saved
+            ? { ...person, displayName: saved.displayName, email: saved.email }
+            : {
+                ...person,
+                displayName: profile.display_name || person.displayName,
+                email: profile.email,
+              };
+        });
+
+        updates = { ...updates, participants: JSON.stringify(participants) };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Invalid participants",
+        };
+      }
+    }
+
     let extraFolderIds: number[] | null = null;
 
     if (updates.folder_ids !== undefined) {
@@ -5232,8 +5327,9 @@ export class DatabaseManager {
 
     this.sql.transaction((list: Array<{ email?: string; displayName?: string | null }>) =>
       list.forEach((contact) => {
-        if (contact.email)
-          stmt.run(contact.email.toLowerCase().trim(), contact.displayName || null);
+        const email = contact.email?.trim().toLowerCase();
+
+        if (email) stmt.run(email, contact.displayName || null);
       })
     )(contacts);
 
@@ -5258,62 +5354,204 @@ export class DatabaseManager {
     return { success: true };
   }
   /** The user's own name for a contact, ahead of Google and invite names; blank clears it. */
-  setContactName(email: string, name: string | null): void {
-    const trimmed = name?.trim() || null;
+  createContact(input: {
+    displayName: string;
+    email: string | null;
+    telegramUsername: string | null;
+  }): ContactMutationResult {
+    return this.mutateContact(null, input);
+  }
 
-    if (trimmed) {
-      this.rememberContactName(email, trimmed);
+  updateContact(
+    id: number,
+    input: { displayName: string | null; email: string | null; telegramUsername: string | null }
+  ): ContactMutationResult {
+    return this.mutateContact(id, input);
+  }
 
-      return;
+  private mutateContact(
+    id: number | null,
+    input: { displayName: string | null; email: string | null; telegramUsername: string | null }
+  ): ContactMutationResult {
+    let telegram: string | null;
+
+    try {
+      telegram = normalizeTelegramUsername(input.telegramUsername);
+    } catch {
+      return { success: false, error: "invalid_telegram" };
     }
 
-    this.sql
-      .prepare(
-        "UPDATE contacts SET learned_name = NULL, updated_at = CURRENT_TIMESTAMP WHERE email = ?"
-      )
-      .run(email.trim().toLowerCase());
-  }
-  rememberContactName(email: string, name: string): void {
-    this.sql
-      .prepare(
-        "INSERT INTO contacts (email, learned_name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET learned_name = excluded.learned_name, updated_at = CURRENT_TIMESTAMP"
-      )
-      .run(email.trim().toLowerCase(), name.trim());
-  }
-  getContactProfiles(emails: string[]): ContactProfileRow[] {
-    const normalized = [
-      ...new Set(emails.map((email) => email.toLowerCase().trim()).filter(Boolean)),
-    ];
+    const email = contactEmailSchema.parse(input.email);
+    const name = input.displayName?.trim() || null;
 
-    if (normalized.length === 0) return [];
+    if (id === null && !name) return { success: false, error: "invalid_name" };
+
+    if (id !== null && (!Number.isSafeInteger(id) || id < 1))
+      return { success: false, error: "missing_contact" };
+
+    return this.sql.transaction((): ContactMutationResult => {
+      if (id !== null && !this.sql.prepare("SELECT 1 FROM contacts WHERE id = ?").get(id))
+        return { success: false, error: "missing_contact" };
+
+      const collision =
+        email &&
+        this.sql
+          .prepare("SELECT id FROM contacts WHERE email = ? AND id <> ?")
+          .get<{ id: number }>(email, id ?? -1);
+
+      if (collision)
+        return { success: false, error: "email_conflict", existingContactId: collision.id };
+
+      const taken =
+        telegram &&
+        this.sql
+          .prepare("SELECT id FROM contacts WHERE telegram_username = ? COLLATE NOCASE AND id <> ?")
+          .get<{ id: number }>(telegram, id ?? -1);
+
+      if (taken) return { success: false, error: "telegram_conflict", existingContactId: taken.id };
+
+      const contactId =
+        id ??
+        Number(
+          this.sql
+            .prepare(
+              "INSERT INTO contacts (display_name, email, telegram_username) VALUES (?, ?, ?)"
+            )
+            .run(name, email, telegram).lastInsertRowid
+        );
+
+      if (id !== null)
+        this.sql
+          .prepare(
+            "UPDATE contacts SET learned_name = ?, email = ?, telegram_username = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          )
+          .run(name, email, telegram, id);
+
+      return { success: true, contact: this.getContactProfiles([contactId])[0] };
+    })();
+  }
+
+  rememberContactName(contactId: number, name: string): void {
+    this.sql
+      .prepare("UPDATE contacts SET learned_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run(name.trim(), contactId);
+  }
+
+  getContactProfiles(ids: number[]): ContactProfileRow[] {
+    if (!ids.length) return [];
 
     return this.sql
       .prepare(
-        `SELECT email, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url FROM contacts WHERE email IN (${normalized.map(() => "?").join(", ")})`
+        `SELECT id, email, telegram_username, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url FROM contacts WHERE id IN (${ids.map(() => "?").join(",")})`
       )
-      .all<ContactProfileRow>(...normalized);
+      .all<ContactProfileRow>(...ids);
   }
+
   searchContacts(query: string): ContactRow[] {
-    const pattern = `%${query || ""}%`;
+    const pattern = `%${query}%`;
 
     return this.sql
       .prepare(
-        "SELECT email, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url, created_at, updated_at FROM contacts WHERE email LIKE ? OR display_name LIKE ? OR people_name LIKE ? OR learned_name LIKE ? ORDER BY COALESCE(learned_name, people_name, display_name), email LIMIT 20"
+        "SELECT id, email, telegram_username, COALESCE(learned_name, people_name, display_name) AS display_name, created_at, updated_at FROM contacts WHERE email LIKE ? OR display_name LIKE ? OR people_name LIKE ? OR learned_name LIKE ? OR telegram_username LIKE ? ORDER BY COALESCE(learned_name, people_name, display_name), id LIMIT 20"
       )
-      .all<ContactRow>(pattern, pattern, pattern, pattern);
+      .all<ContactRow>(pattern, pattern, pattern, pattern, pattern);
   }
+
+  materializeParticipants(
+    attendees: Array<{
+      email?: string | null;
+      displayName?: string | null;
+      responseStatus?: NoteParticipant["responseStatus"];
+      self?: boolean;
+    }>
+  ): NoteParticipant[] {
+    return this.sql.transaction(() =>
+      attendees.map((person): NoteParticipant => {
+        const email = person.email?.trim().toLowerCase() || null;
+
+        if (email) this.upsertContacts([{ email, displayName: person.displayName }]);
+
+        const existing = email
+          ? this.sql.prepare("SELECT id FROM contacts WHERE email = ?").get<{ id: number }>(email)
+          : undefined;
+
+        const contactId =
+          existing?.id ??
+          Number(
+            this.sql
+              .prepare("INSERT INTO contacts (display_name) VALUES (?)")
+              .run(person.displayName ?? null).lastInsertRowid
+          );
+
+        return {
+          contactId,
+          email,
+          displayName: person.displayName ?? null,
+          responseStatus: person.responseStatus ?? null,
+          self: person.self ?? false,
+        };
+      })
+    )();
+  }
+
+  freezeParticipantContext(noteId: number): NoteRow | null {
+    return this.sql.transaction(() => {
+      const row = this.sql
+        .prepare("SELECT participants, participant_context_frozen FROM notes WHERE id = ?")
+        .get<{ participants: string | null; participant_context_frozen: number }>(noteId);
+
+      if (!row || row.participant_context_frozen) return this.getNote(noteId);
+
+      const list = (() => {
+        try {
+          return z.array(z.unknown()).safeParse(JSON.parse(row.participants ?? "null"));
+        } catch {
+          return null;
+        }
+      })();
+
+      let participants = row.participants;
+
+      if (list?.success) {
+        participants = JSON.stringify(
+          list.data.map((entry) => {
+            const parsed = noteParticipantSchema.safeParse(entry);
+
+            if (!parsed.success) return entry;
+            const person = parsed.data;
+            const profile = this.getContactProfiles([person.contactId])[0];
+
+            if (!profile) throw new Error("Participant contact not found");
+
+            return {
+              ...person,
+              displayName: profile.display_name || person.displayName,
+              email: profile.email,
+            };
+          })
+        );
+      }
+
+      this.sql
+        .prepare("UPDATE notes SET participants = ?, participant_context_frozen = 1 WHERE id = ?")
+        .run(participants, noteId);
+
+      return this.getNote(noteId);
+    })();
+  }
+
   upsertSpeakerProfile(
     name: string,
-    email: string | null | undefined,
+    contactId: number | null | undefined,
     embeddingBuffer: Buffer,
     profileId: number | null = null
   ): SpeakerProfileWithEmbedding | null {
     if (profileId != null) {
       this.sql
         .prepare(
-          "UPDATE speaker_profiles SET display_name = ?, email = ?, embedding = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          "UPDATE speaker_profiles SET display_name = ?, contact_id = ?, embedding = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         )
-        .run(name, email || null, embeddingBuffer, profileId);
+        .run(name, contactId ?? null, embeddingBuffer, profileId);
 
       return (
         this.sql
@@ -5323,8 +5561,10 @@ export class DatabaseManager {
     }
 
     const result = this.sql
-      .prepare("INSERT INTO speaker_profiles (display_name, email, embedding) VALUES (?, ?, ?)")
-      .run(name, email || null, embeddingBuffer);
+      .prepare(
+        "INSERT INTO speaker_profiles (display_name, contact_id, embedding) VALUES (?, ?, ?)"
+      )
+      .run(name, contactId ?? null, embeddingBuffer);
 
     return (
       this.sql
@@ -5335,17 +5575,27 @@ export class DatabaseManager {
   getSpeakerProfiles(includeEmbedding = false): SpeakerProfileRow[] {
     return this.sql
       .prepare(
-        `SELECT ${includeEmbedding ? "*" : "id, display_name, email, sample_count, created_at, updated_at"} FROM speaker_profiles ORDER BY display_name`
+        `SELECT ${includeEmbedding ? "*" : "id, display_name, contact_id, sample_count, created_at, updated_at"} FROM speaker_profiles ORDER BY display_name`
       )
       .all<SpeakerProfileRow>();
   }
-  attachEmailToProfile(
+  attachContactToProfile(
     profileId: number,
-    email: string | null
+    contactId: number | null
   ): SpeakerProfileWithEmbedding | null {
+    if (
+      contactId !== null &&
+      (!Number.isSafeInteger(contactId) ||
+        contactId < 1 ||
+        !this.getContactProfiles([contactId]).length)
+    )
+      return null;
+
     const result = this.sql
-      .prepare("UPDATE speaker_profiles SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-      .run(email, profileId);
+      .prepare(
+        "UPDATE speaker_profiles SET contact_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      )
+      .run(contactId, profileId);
 
     if (result.changes === 0) return null;
 

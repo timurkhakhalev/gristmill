@@ -15,7 +15,7 @@ for (const platform of meetingPlatformSchema.options)
       speakerId: "remote",
       profileId: null,
       displayName: "Guest",
-      participantEmail: null,
+      participantEmail: null, participantContactId: null,
       source: "platform",
       platform,
       revision: 1,

@@ -87,7 +87,7 @@ export interface Enhancement {
 
 type MeetingViewMode = "raw" | "enhanced";
 
-type SpeakerProfileOption = { id?: number; display_name: string; email: string | null };
+type SpeakerProfileOption = { id?: number; display_name: string; contact_id: number | null };
 
 /** Opening priority: a ready Summary wins over the Notes body. */
 function initialMeetingViewMode(note: NoteItem): MeetingViewMode {
@@ -121,7 +121,7 @@ function buildKnownSpeakers(
 
     if (seen.has(key)) continue;
     seen.add(key);
-    list.push({ display_name: name, email: null });
+    list.push({ display_name: name, contact_id: null });
   }
 
   return list;
@@ -259,7 +259,7 @@ export default function NoteEditor({
   const [speakerMappings, setSpeakerMappings] = useState<Record<string, string>>({});
 
   const [speakerProfiles, setSpeakerProfiles] = useState<
-    Array<{ id: number; display_name: string; email: string | null }>
+    Array<{ id: number; display_name: string; contact_id: number | null }>
   >([]);
 
   const editorRef = useRef<Editor | null>(null);
@@ -449,7 +449,7 @@ export default function NoteEditor({
           (profiles || []).map((profile) => ({
             id: profile.id,
             display_name: profile.display_name,
-            email: profile.email,
+            contact_id: profile.contact_id,
           }))
         );
       })(),
@@ -560,7 +560,7 @@ export default function NoteEditor({
     async (
       speakerId: string,
       displayName: string,
-      email?: string | null,
+      contactId?: number | null,
       profileId?: number | null
     ) => {
       setSpeakerMappings((prev) => ({ ...prev, [speakerId]: displayName }));
@@ -570,7 +570,7 @@ export default function NoteEditor({
           note.id,
           speakerId,
           displayName,
-          email,
+          contactId,
           profileId
         );
       }
@@ -617,10 +617,10 @@ export default function NoteEditor({
     [handleMapSpeaker]
   );
 
-  const handleAttachSpeakerEmail = useCallback(
-    async (profileId: number, email: string | null) => {
+  const handleAttachSpeakerContact = useCallback(
+    async (profileId: number, contactId: number | null) => {
       if (debugPreview) return;
-      const result = await window.electronAPI?.attachSpeakerEmail?.(profileId, email);
+      const result = await window.electronAPI?.attachSpeakerContact?.(profileId, contactId);
 
       if (result?.success) {
         refreshSpeakerProfiles();
@@ -695,7 +695,7 @@ export default function NoteEditor({
   }, []);
 
   const handleBulkAssignName = useCallback(
-    async (displayName: string, _email?: string | null, profileId?: number) => {
+    async (displayName: string, _contactId?: number | null, profileId?: number) => {
       if (!selectedSegmentIds.size) return;
 
       const nextSegments = displaySegments.map((segment) =>
@@ -1197,9 +1197,9 @@ export default function NoteEditor({
                     userTouchedStepper={userTouchedStepper}
                     onSetSessionDiarizationEnabled={onSetSessionDiarizationEnabled}
                     onSetSessionExpectedCount={onSetSessionExpectedCount}
-                    onMapSpeaker={(speakerId, displayName, email, profileId) =>
+                    onMapSpeaker={(speakerId, displayName, contactId, profileId) =>
                       runInBackground(
-                        handleMapSpeaker(speakerId, displayName, email, profileId),
+                        handleMapSpeaker(speakerId, displayName, contactId, profileId),
                         "Speaker mapping failed"
                       )
                     }
@@ -1212,9 +1212,9 @@ export default function NoteEditor({
                     onDismissSuggestion={(speakerId) =>
                       runInBackground(handleDismissSuggestion(speakerId), "Speaker dismiss failed")
                     }
-                    onAttachSpeakerEmail={(profileId, email) =>
+                    onAttachSpeakerContact={(profileId, contactId) =>
                       runInBackground(
-                        handleAttachSpeakerEmail(profileId, email),
+                        handleAttachSpeakerContact(profileId, contactId),
                         "Attach speaker email failed"
                       )
                     }

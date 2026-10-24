@@ -24,6 +24,7 @@ const hashByEmail = new Map<string, string>();
 const failedImageUrls = new Set<string>();
 
 interface PersonAvatarProps {
+  contactId?: number | null;
   email: string | null;
   displayName: string | null;
   /** Diameter in px. */
@@ -33,12 +34,13 @@ interface PersonAvatarProps {
 
 /** The person's Google photo, else their Gravatar, else a colored initial. */
 export default function PersonAvatar({
+  contactId,
   email,
   displayName,
   size = 24,
   className,
 }: PersonAvatarProps) {
-  const profile = usePersonProfile(email);
+  const profile = usePersonProfile(contactId);
   const photoUrl = profile?.photo_url ?? null;
 
   const [hash, setHash] = useState<string | null>(() =>

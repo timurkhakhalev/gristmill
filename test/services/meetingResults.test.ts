@@ -277,7 +277,7 @@ test("post-stop embeddings match only a known profile and leave unknown voices u
         {
           id: profileId,
           display_name: "Known voice",
-          email: null,
+          contact_id: null,
           embedding: floatBuffer([1, 0]),
           sample_count: 1,
           created_at: "",
@@ -380,7 +380,7 @@ test("worker stores post-stop recognition per run and does not infer names from 
       speakerId: "system:Speaker 1",
       profileId: knownProfileId,
       displayName: "Known voice",
-      participantEmail: null,
+      participantEmail: null, participantContactId: null,
       source: "voice",
       revision: 1,
     },

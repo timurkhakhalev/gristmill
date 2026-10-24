@@ -400,8 +400,8 @@ const NAME_EMAIL_RE = /^(.*?)\s*<([^<>\s]+@[^<>\s]+)>$/;
 
 const BARE_EMAIL_RE = /^\S+@\S+\.\S+$/;
 
-// Consumers of notes.participants require an email (e.g. SpeakerPicker reads
-// p.email unguarded), so name-only tokens are dropped rather than emitted.
+// Keep the Granola token format email-based; persistence resolves these
+// external attributes to local contact IDs.
 export interface GranolaAttendee {
   displayName: string;
   email: string;

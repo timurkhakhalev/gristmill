@@ -2,12 +2,18 @@
 // the shared speakerProfiles contract: contact lookup, speaker mappings and
 // profiles (public DTO only — the DB embedding Buffer never crosses), note
 // speaker embeddings, and the diarization model lifecycle with progress
-// forwarded to the requesting window. Semantics are the pre-cutover ones 1:1.
+// forwarded to the requesting window. Contact links use stable local IDs.
 import {
   speakerChannels,
+  contactCreateInputSchema,
+  contactUpdateInputSchema,
+  type ContactMutationResult,
+  type ContactProfile,
+  type SpeakerContact,
   type DiarizationDownloadProgressEvent,
 } from "../contracts/speakerProfiles.js";
 import { z } from "zod";
+import { contactIdSchema } from "../contracts/contactIdentity.js";
 import type { SpeakerMappingRow, SpeakerProfileWithEmbedding } from "./database.js";
 
 type IpcMainLike = {
@@ -18,25 +24,19 @@ type IpcMainLike = {
 // the channels have always accepted before any database call.
 const searchContactsArgs = z.tuple([z.string()]);
 
-const upsertContactArgs = z.tuple([
-  z.object({ email: z.string(), displayName: z.string().nullish() }),
-]);
-
-const renameContactArgs = z.tuple([z.string().min(1), z.string().nullable()]);
-
 const noteIdArgs = z.tuple([z.number()]);
 
 const setSpeakerMappingArgs = z.tuple([
   z.number(),
   z.string(),
   z.string(),
-  z.string().nullish(),
-  z.number().nullish(),
+  contactIdSchema.nullish(),
+  contactIdSchema.nullish(),
 ]);
 
 const removeSpeakerMappingArgs = z.tuple([z.number(), z.string()]);
 
-const attachSpeakerEmailArgs = z.tuple([z.number(), z.string().nullable()]);
+const attachSpeakerContactArgs = z.tuple([contactIdSchema, contactIdSchema.nullable()]);
 
 const saveNoteSpeakerEmbeddingsArgs = z.tuple([
   z.number(),
@@ -66,15 +66,13 @@ interface RequestEvent {
 
 // Narrow DB surface this registration consumes (database.ts satisfies it).
 export interface SpeakerDatabase {
-  searchContacts(query: string): Array<{ email: string; display_name: string | null }>;
-  upsertContacts(contacts: Array<{ email?: string; displayName?: string | null }>): void;
-  setContactName(email: string, name: string | null): void;
-  getContactProfiles(
-    emails: string[]
-  ): Array<{ email: string; display_name: string | null; photo_url: string | null }>;
+  searchContacts(query: string): SpeakerContact[];
+  createContact(input: z.infer<typeof contactCreateInputSchema>): ContactMutationResult;
+  updateContact(id: number, input: z.infer<typeof contactUpdateInputSchema>): ContactMutationResult;
+  getContactProfiles(ids: number[]): ContactProfile[];
   upsertSpeakerProfile(
     displayName: string,
-    email: string | null,
+    contactId: number | null,
     embedding: Buffer,
     profileId: number | null
   ): SpeakerProfileWithEmbedding | null;
@@ -90,12 +88,15 @@ export interface SpeakerDatabase {
   getSpeakerProfiles(): Array<{
     id: number;
     display_name: string;
-    email: string | null;
+    contact_id: number | null;
     sample_count: number;
     created_at?: string;
     updated_at?: string;
   }>;
-  attachEmailToProfile(profileId: number, email: string | null): SpeakerProfileWithEmbedding | null;
+  attachContactToProfile(
+    profileId: number,
+    contactId: number | null
+  ): SpeakerProfileWithEmbedding | null;
   saveNoteSpeakerEmbeddings(
     noteId: number,
     embeddings: Array<{ speakerId: string; embedding: Buffer }>
@@ -138,39 +139,21 @@ export function registerSpeakerHandlers(ipcMain: IpcMainLike, deps: SpeakerIpcDe
   });
 
   ipcMain.handle(c.getContactProfiles, async (_event, ...args: unknown[]) => {
-    const emails = Array.isArray(args[0])
-      ? args[0].filter((email): email is string => typeof email === "string")
-      : [];
+    const [ids] = z.tuple([contactIdSchema.array().max(500)]).parse(args);
 
-    try {
-      return deps.databaseManager.getContactProfiles(emails.slice(0, 500));
-    } catch {
-      return [];
-    }
+    return deps.databaseManager.getContactProfiles(ids);
   });
 
-  ipcMain.handle(c.upsertContact, async (_event, ...args: unknown[]) => {
-    try {
-      const [contact] = upsertContactArgs.parse(args);
+  ipcMain.handle(c.createContact, async (_event, ...args: unknown[]) => {
+    const [input] = z.tuple([contactCreateInputSchema]).parse(args);
 
-      deps.databaseManager.upsertContacts([contact]);
-
-      return { success: true };
-    } catch {
-      return { success: false };
-    }
+    return deps.databaseManager.createContact(input);
   });
 
-  ipcMain.handle(c.renameContact, async (_event, ...args: unknown[]) => {
-    try {
-      const [email, name] = renameContactArgs.parse(args);
+  ipcMain.handle(c.updateContact, async (_event, ...args: unknown[]) => {
+    const [id, input] = z.tuple([contactIdSchema, contactUpdateInputSchema]).parse(args);
 
-      deps.databaseManager.setContactName(email, name);
-
-      return { success: true };
-    } catch {
-      return { success: false };
-    }
+    return deps.databaseManager.updateContact(id, input);
   });
 
   ipcMain.handle(c.getSpeakerMappings, async (_event, ...args: unknown[]) => {
@@ -182,7 +165,8 @@ export function registerSpeakerHandlers(ipcMain: IpcMainLike, deps: SpeakerIpcDe
   ipcMain.handle(
     c.setSpeakerMapping,
     async (_event, ...args: unknown[]): Promise<{ success: boolean; profileId: number | null }> => {
-      const [noteId, speakerId, displayName, email, profileId] = setSpeakerMappingArgs.parse(args);
+      const [noteId, speakerId, displayName, contactId, profileId] =
+        setSpeakerMappingArgs.parse(args);
 
       const database = deps.databaseManager;
       const noteEmbeddings = database.getNoteSpeakerEmbeddings(noteId);
@@ -194,7 +178,7 @@ export function registerSpeakerHandlers(ipcMain: IpcMainLike, deps: SpeakerIpcDe
       if (speakerEmbeddingBuffer) {
         const profile = database.upsertSpeakerProfile(
           displayName,
-          email || null,
+          contactId ?? null,
           speakerEmbeddingBuffer,
           resolvedProfileId
         );
@@ -223,10 +207,10 @@ export function registerSpeakerHandlers(ipcMain: IpcMainLike, deps: SpeakerIpcDe
     return deps.databaseManager.getSpeakerProfiles();
   });
 
-  ipcMain.handle(c.attachSpeakerEmail, async (_event, ...args: unknown[]) => {
+  ipcMain.handle(c.attachSpeakerContact, async (_event, ...args: unknown[]) => {
     try {
-      const [profileId, email] = attachSpeakerEmailArgs.parse(args);
-      const profile = deps.databaseManager.attachEmailToProfile(profileId, email);
+      const [profileId, contactId] = attachSpeakerContactArgs.parse(args);
+      const profile = deps.databaseManager.attachContactToProfile(profileId, contactId);
 
       if (!profile) {
         return { success: false, error: "Speaker profile not found" };
@@ -239,7 +223,7 @@ export function registerSpeakerHandlers(ipcMain: IpcMainLike, deps: SpeakerIpcDe
         profile: {
           id: profile.id,
           display_name: profile.display_name,
-          email: profile.email,
+          contact_id: profile.contact_id,
           sample_count: profile.sample_count,
         },
       };

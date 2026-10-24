@@ -1,0 +1,53 @@
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const { createDb, DatabaseManager } = require("../../../helpers/harness/db.ts");
+
+test("name-only contacts stay distinct; contact mutations reject conflicts atomically", (t: import("node:test").TestContext) => {
+  const db: import("../../../../src/helpers/database").DatabaseManager = createDb(t);
+  if (!db) return;
+  const first = db.createContact({ displayName: "Morgan Sample", email: null, telegramUsername: "@Sample_337" });
+  const second = db.createContact({ displayName: "Morgan Sample", email: " second@example.com ", telegramUsername: null });
+  assert.ok(first.success && second.success);
+  if (!first.success || !second.success) return;
+  assert.notEqual(first.contact.id, second.contact.id);
+  const before = db.getContactProfiles([second.contact.id]);
+  assert.deepEqual(db.updateContact(second.contact.id, { displayName: "Changed", email: null, telegramUsername: "sample_337" }), { success: false, error: "telegram_conflict", existingContactId: first.contact.id });
+  assert.deepEqual(db.getContactProfiles([second.contact.id]), before);
+  assert.equal(db.createContact({ displayName: "Third", email: "SECOND@EXAMPLE.COM", telegramUsername: "free_user" }).success, false);
+  assert.throws(() => db.db.prepare("UPDATE contacts SET telegram_username = 'sample_337' WHERE id = ?").run(second.contact.id));
+  assert.ok(db.updateContact(first.contact.id, { displayName: "Morgan Sample", email: null, telegramUsername: "sAMPLE_337" }).success);
+  assert.ok(db.updateContact(first.contact.id, { displayName: "Morgan Sample", email: null, telegramUsername: null }).success);
+  assert.ok(db.updateContact(second.contact.id, { displayName: "Second", email: " ", telegramUsername: "sample_337" }).success);
+  assert.equal(db.getContactProfiles([second.contact.id])[0].email, null);
+  assert.equal(db.db.pragma<Array<{foreign_keys:number}>>("foreign_keys")[0].foreign_keys, 1);
+  assert.deepEqual(db.db.pragma("foreign_key_check"), []);
+  const reopened = new DatabaseManager();
+  t.after(() => reopened.close());
+  assert.deepEqual(reopened.getContactProfiles([first.contact.id, second.contact.id]), db.getContactProfiles([first.contact.id, second.contact.id]));
+});
+
+test("note roster captures additions, freezes live names once and preserves snapshots on edits", (t: import("node:test").TestContext) => {
+  const db: import("../../../../src/helpers/database").DatabaseManager = createDb(t);
+  if (!db) return;
+  const contact = db.createContact({ displayName: "Provisional Sample", email: null, telegramUsername: null });
+  assert.ok(contact.success);
+  if (!contact.success) return;
+  const note = db.saveNote("Synthetic meeting", "").note!;
+  const participant = { contactId: contact.contact.id, email: null, displayName: "Provisional", responseStatus: null, self: false };
+  assert.ok(db.updateNote(note.id, { participants: JSON.stringify([participant]) }).success);
+  db.rememberContactName(contact.contact.id, "Learned Sample");
+  const frozen = db.freezeParticipantContext(note.id)!;
+  assert.equal(JSON.parse(frozen.participants!)[0].displayName, "Learned Sample");
+  db.updateContact(contact.contact.id, { displayName: "Later Sample", email: "later@example.com", telegramUsername: "sample_later" });
+  assert.equal(db.freezeParticipantContext(note.id)!.participants, frozen.participants);
+  assert.ok(db.updateNote(note.id, { participants: JSON.stringify([{ ...participant, displayName: "Forged", email: "forged@example.com" }]) }).success);
+  assert.equal(db.getNote(note.id)!.participants, frozen.participants);
+  const { NoteReadService } = require("../../../../src/helpers/noteReadService.ts");
+  const reader = new NoteReadService(db, { readRunArtifact: () => null });
+  assert.deepEqual(reader.show(db.getNote(note.id)!).participants, [{ name: "Learned Sample", email: null, stored_names: { display_name: "Learned Sample", people_name: null, learned_name: null } }]);
+  const { formatTxt } = require("../../../../src/helpers/transcriptFormatter.ts");
+  const exported = formatTxt(db.getNote(note.id)!, [], {});
+  assert.match(exported, /Learned Sample/);
+  assert.doesNotMatch(exported, /Later Sample|later@example.com|sample_later/);
+  assert.equal(db.updateNote(note.id, { participants: JSON.stringify([{ ...participant, contactId: 999999 }]) }).success, false);
+});

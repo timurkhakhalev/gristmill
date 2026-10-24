@@ -106,7 +106,7 @@ test("an event description shows as a preview and stays hidden when absent", asy
   assert.doesNotMatch(without, /notes\.participants\.description/, "no empty description block");
 });
 
-test("an unsaved event draft allows contact rename, while a debug preview does not", async (t: TestContext) => {
+test("an external calendar preview stays read-only until contacts are materialized", async (t: TestContext) => {
   const draft = {
     noteId: 0,
     preview: true,
@@ -114,8 +114,8 @@ test("an unsaved event draft allows contact rename, while a debug preview does n
     event: makeEvent(),
   };
   const editable = await renderCard(t, { ...draft, canRenameContacts: true });
-  assert.match(editable, /aria-label="Rename contact"/,
-    "the contact rename action is available before a note is saved");
+  assert.doesNotMatch(editable, /aria-label="Rename contact"/,
+    "external attendee attributes do not create a local contact during render");
   const debug = await renderCard(t, { ...draft, canRenameContacts: false });
   assert.doesNotMatch(debug, /aria-label="Rename contact"/,
     "synthetic debug contacts cannot change the stored contacts");

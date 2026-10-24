@@ -1,6 +1,6 @@
 import { meetingPlatformLabel } from "../contracts/meetingRecording.js";
 import type { TranscriptSegment } from "../stores/meetingRecordingStore";
-import type { CalendarAttendee } from "../contracts/calendar";
+import type { NoteParticipant } from "../contracts/contactIdentity";
 import { resolveSegmentSpeakerName } from "./transcriptSpeakerState";
 import type { MentionPerson } from "./mentionMarkdown";
 
@@ -13,10 +13,10 @@ type Translate = (key: string, options?: TranslateOptions) => string;
 export interface MeetingIdentity {
   selfName: string | null;
   selfEmail: string | null;
-  participants: CalendarAttendee[];
+  participants: NoteParticipant[];
 }
 
-const isSelfParticipant = (participant: CalendarAttendee, identity: MeetingIdentity) =>
+const isSelfParticipant = (participant: NoteParticipant, identity: MeetingIdentity) =>
   participant.self || (!!identity.selfEmail && participant.email === identity.selfEmail);
 
 /**
@@ -119,7 +119,7 @@ export function collectKnownPeople(
 
   for (const p of identity.participants) {
     if (isSelfParticipant(p, identity)) continue;
-    push(p.displayName || p.email.split("@")[0], p.email);
+    push(p.displayName || p.email?.split("@")[0], p.email);
   }
 
   for (const name of Object.values(speakerMappings)) push(name, null);

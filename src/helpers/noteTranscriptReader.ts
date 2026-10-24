@@ -25,6 +25,7 @@ export interface NoteTranscriptDeps {
   readTranscript(runId: string): MeetingTranscriptArtifact | null;
   getCorrections(runId: string): MeetingSpeakerCorrection[];
   profileEmail(profileId: number): string | null;
+  participant(contactId: number): { email: string | null } | null;
   /** Stored `notes.transcript` JSON, used only for Notes without meeting recordings. */
   getProjection(noteId: number): string | null;
 }
@@ -236,6 +237,11 @@ export function readNoteTranscriptOutput(
       id = `speaker_${speakerIds.size + 1}`;
       speakerIds.set(key, id);
       const correction = piece.corrections.find((item) => item.speakerId === provider);
+
+      const participant = correction?.participantContactId
+        ? deps.participant(correction.participantContactId)
+        : null;
+
       speakers.push({
         id,
         name: correction?.displayName ?? null,
@@ -245,9 +251,10 @@ export function readNoteTranscriptOutput(
               ...(correction.platform ? { name_platform: correction.platform } : {}),
             }
           : {}),
-        email:
-          correction?.participantEmail ??
-          (correction?.profileId ? deps.profileEmail(correction.profileId) : null),
+        email: participant
+          ? participant.email
+          : (correction?.participantEmail ??
+            (correction?.profileId ? deps.profileEmail(correction.profileId) : null)),
         source:
           provider === "mic" ? "microphone" : provider.startsWith("system:") ? "system" : null,
       });

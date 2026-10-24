@@ -687,7 +687,7 @@ test("automatic naming revises only model names and rejects stale revisions and 
       speakerId: "speaker_a",
       profileId: null,
       displayName: "Dan",
-      participantEmail: null,
+      participantEmail: null, participantContactId: null,
       source: "model",
       revision: 2,
     },
@@ -2041,10 +2041,10 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
   } = createFinishedRecording(db, storage, validConfig, "Manual note evidence.");
 
   db.db.prepare("UPDATE notes SET participants = ? WHERE id = ?").run(
-    JSON.stringify([
+    JSON.stringify(db.materializeParticipants([
       { displayName: "Calendar Alice", email: "alice@example.com" },
       { displayName: "bob@example.com", email: "bob@example.com" },
-    ]),
+    ])),
     note.id
   );
   storage.writeRunArtifact(sourceRun.id, "provider-response", {
@@ -2159,7 +2159,7 @@ test("speaker naming snapshots calendar candidates and a late user correction wi
       speakerId: "speaker_a",
       profileId: null,
       displayName: "User correction",
-      participantEmail: null,
+      participantEmail: null, participantContactId: null,
       source: "user",
       revision: 1,
     },
@@ -2332,7 +2332,7 @@ test("validated speaker names persist model provenance and both Summary stages u
       speakerId: "speaker_0",
       profileId: null,
       displayName: "Alice",
-      participantEmail: null,
+      participantEmail: null, participantContactId: null,
       source: "model",
       revision: 1,
     },
@@ -2353,7 +2353,7 @@ test("validated speaker names persist model provenance and both Summary stages u
         speakerId: "speaker_0",
         profileId: null,
         displayName: "Alice",
-        participantEmail: null,
+        participantEmail: null, participantContactId: null,
         source: "model",
         revision: 1,
       },
@@ -2466,7 +2466,7 @@ test("prioritized tasks and Recap serialize their edits to the selected Summary"
 
   db.db
     .prepare("UPDATE notes SET participants = ? WHERE id = ?")
-    .run(JSON.stringify([{ name: "Calendar Alice", email: "alice@example.com" }]), note.id);
+    .run(JSON.stringify(db.materializeParticipants([{ displayName: "Calendar Alice", email: "alice@example.com" }])), note.id);
 
   let resolveTaskStarted!: () => void;
 
@@ -3877,7 +3877,8 @@ test("speaker-to-calendar linking crosses IPC, survives restart and enriches onl
   if (!db) return;
   const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
   const { note, recording, run } = createFinishedRecording(db, storage);
-  db.updateNote(note.id, { participants: JSON.stringify([{ email: " PERSON@example.com " }]) });
+  const participant = db.materializeParticipants([{ email: " PERSON@example.com " }])[0];
+  db.updateNote(note.id, { participants: JSON.stringify([participant]) });
   db.upsertGooglePeople([
     {
       email: "person@example.com",
@@ -3912,7 +3913,7 @@ test("speaker-to-calendar linking crosses IPC, survives restart and enriches onl
     (
       await bridge.meetingProcessingSetSpeakerCorrection({
         ...correction,
-        participantEmail: "stranger@example.com",
+        participantContactId: 999999,
       })
     ).success,
     false
@@ -3922,7 +3923,7 @@ test("speaker-to-calendar linking crosses IPC, survives restart and enriches onl
       await bridge.meetingProcessingSetSpeakerCorrection({
         ...correction,
         speakerId: "missing",
-        participantEmail: "person@example.com",
+        participantContactId: participant.contactId,
       })
     ).success,
     false
@@ -3931,7 +3932,7 @@ test("speaker-to-calendar linking crosses IPC, survives restart and enriches onl
     (
       await bridge.meetingProcessingSetSpeakerCorrection({
         ...correction,
-        participantEmail: "PERSON@example.com",
+        participantContactId: participant.contactId,
       })
     ).success,
     true
@@ -3942,7 +3943,7 @@ test("speaker-to-calendar linking crosses IPC, survives restart and enriches onl
   db.upsertContacts([{ email: "person@example.com", displayName: "Calendar name" }]);
   const reopened = new DatabaseManagerClass();
   t.after(() => reopened.db.close());
-  assert.deepEqual(reopened.getContactProfiles(["person@example.com"]), [
+  assert.deepEqual(reopened.getContactProfiles([participant.contactId]).map(({ id, telegram_username, ...profile }) => profile), [
     {
       email: "person@example.com",
       display_name: "Maya Solano",
@@ -3974,7 +3975,7 @@ test("speaker-to-calendar linking crosses IPC, survives restart and enriches onl
   nextWorker.onRetentionReady();
   await nextWorker.waitForIdle();
   assert.deepEqual((input as { participants: unknown[] }).participants, [
-    { name: "Maya Solano", email: "PERSON@example.com" },
+    { name: "Maya Solano", email: "person@example.com" },
   ]);
   assert.deepEqual(db.getMeetingRunSpeakerCorrections(next.run.id), []);
   assert.equal(db.getMeetingProcessingRun(next.run.id).hasSummary, true);
@@ -4508,6 +4509,7 @@ test("native-shaped Zoom intervals resume through production naming into the Not
         getRun: (id) => db.getMeetingProcessingRun(id),
         readTranscript: (id) => transcripts.get(id) ?? null,
         getCorrections: (id) => db.getMeetingRunSpeakerCorrections(id),
+        participant: () => null,
         profileEmail: () => null,
         getProjection: () => null,
       },
@@ -5609,3 +5611,143 @@ for (const barrier of ["quit", "audio", "note"] as const) {
     assert.ok(fs.existsSync(storage.getEpochFilePath(recording.id, "system", 0)));
   });
 }
+
+test("first processing freezes learned names saved after calendar materialization, including name-only contacts", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const first = createFinishedRecording(db, storage);
+  const other = createFinishedRecording(db, storage);
+  const roster = db.materializeParticipants([{ email: "candidate337@example.com", displayName: null }, { email: null, displayName: "Provisional Sample" }]);
+  assert.ok(db.updateNote(first.note.id, { participants: JSON.stringify(roster) }).success);
+  assert.ok(db.updateNote(other.note.id, { participants: JSON.stringify(roster) }).success);
+  saveTranscriptArtifact(db, storage, first.run.id, "A synthetic discussion.", "system:A");
+  saveTranscriptArtifact(db, storage, other.run.id, "Another synthetic discussion.", "system:A");
+  assert.ok(db.setMeetingRunSpeakerCorrection(other.run.id, "system:A", null, "Learned Email Sample", "user", roster[0].contactId).success);
+  assert.ok(db.setMeetingRunSpeakerCorrection(other.run.id, "system:A", null, "Learned Name Sample", "user", roster[1].contactId).success);
+  const inputs: Array<{ name: string | null; email: string | null }[]> = [];
+  let cancelNaming = false;
+  const worker = workerFor(db, storage, { now: () => new Date(Date.now() + 300_000), nameSpeakers: async (input, _model, run) => { inputs.push((input as { participants: Array<{ name: string | null; email: string | null }> }).participants); if (cancelNaming) worker.cancelRun(run.id); return { speakers: [] }; } });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  const expected = [{ name: "Learned Email Sample", email: "candidate337@example.com" }, { name: "Learned Name Sample", email: null }];
+  assert.ok(inputs.some((input) => JSON.stringify(input) === JSON.stringify(expected)));
+  const snapshot = JSON.parse(db.getMeetingRunLlmSourceSnapshot(first.run.id)!);
+  assert.deepEqual(snapshot.participants, expected);
+  const frozen = db.getNote(first.note.id)!.participants;
+  const summary = db.getNote(first.note.id)!.enhanced_content;
+  db.updateContact(roster[0].contactId, { displayName: "Later Name Sample", email: "later337@example.com", telegramUsername: "sample_337" });
+  assert.equal(db.freezeParticipantContext(first.note.id)!.participants, frozen);
+  assert.equal(db.getNote(first.note.id)!.enhanced_content, summary);
+  cancelNaming = true;
+  const next = worker.createRun({ recordingId: first.recording.id, kind: "reprocess", config: validConfig });
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(next.run.id).status, "cancelled");
+  assert.deepEqual(JSON.parse(db.getMeetingRunLlmSourceSnapshot(next.run.id)!).participants, expected);
+  cancelNaming = false;
+  const later = worker.createRun({ recordingId: first.recording.id, kind: "reprocess", config: validConfig });
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.deepEqual(JSON.parse(db.getMeetingRunLlmSourceSnapshot(later.run.id)!).participants, expected);
+  assert.equal(db.getContactProfiles([roster[0].contactId])[0].email, "later337@example.com");
+});
+
+test("failed roster freeze rolls back and starts no naming or Summary request; retry freezes once", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
+  const participants = db.materializeParticipants([{ displayName: "Before Sample", email: null }]);
+  db.updateNote(note.id, { participants: JSON.stringify(participants) });
+  db.rememberContactName(participants[0].contactId, "Learned Sample");
+  saveTranscriptArtifact(db, storage, run.id, longTranscriptResponse().text);
+  db.db.exec(`CREATE TRIGGER fail_roster_freeze BEFORE UPDATE OF participant_context_frozen ON notes WHEN NEW.participant_context_frozen = 1 BEGIN SELECT RAISE(ABORT, 'injected freeze failure'); END;`);
+  let calls = 0;
+  const worker = workerFor(db, storage, {
+    now: () => new Date(Date.now() + 300_000),
+    nameSpeakers: async () => { calls++; return { speakers: [] }; },
+    summarize: async () => { calls++; return "## Summary\nSynthetic output."; },
+  });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(calls, 0);
+  assert.equal(db.db.prepare("SELECT participant_context_frozen AS frozen FROM notes WHERE id=?").get(note.id)?.frozen, 0);
+  assert.equal(JSON.parse(db.getNote(note.id)!.participants!)[0].displayName, "Before Sample");
+  db.db.exec("DROP TRIGGER fail_roster_freeze");
+  assert.ok(worker.retry(run.id));
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.ok(calls > 0, JSON.stringify(db.getMeetingProcessingRun(run.id)));
+  assert.equal(JSON.parse(db.getNote(note.id)!.participants!)[0].displayName, "Learned Sample");
+});
+
+test("name-only correction links survive reopen and reject another note's saved contact without writes", (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, run } = createFinishedRecording(db, storage);
+  const roster = db.materializeParticipants([{ email: null, displayName: "Casey Synthetic" }]);
+  const outsider = db.materializeParticipants([{ email: null, displayName: "Other Synthetic" }]);
+  const otherNote = db.saveNote("Other meeting", "").note!;
+  db.updateNote(otherNote.id, { participants: JSON.stringify(outsider) });
+  db.updateNote(note.id, { participants: JSON.stringify(roster), enhanced_content: "Saved Summary" });
+  saveTranscriptArtifact(db, storage, run.id, "Synthetic words.", "system:A");
+  const worker = workerFor(db, storage);
+  t.after(() => worker.stop());
+  const input = { runId: run.id, speakerId: "system:A", profileId: null, displayName: "Confirmed Synthetic" };
+  assert.equal(worker.setSpeakerCorrection({ ...input, participantContactId: outsider[0].contactId }), false);
+  assert.deepEqual(db.getMeetingRunSpeakerCorrections(run.id), []);
+  assert.equal(db.getContactProfiles([outsider[0].contactId])[0].display_name, "Other Synthetic");
+  assert.equal(worker.setSpeakerCorrection({ ...input, participantContactId: roster[0].contactId }), true);
+  const reopened = new DatabaseManagerClass();
+  t.after(() => reopened.close());
+  assert.equal(reopened.getMeetingRunSpeakerCorrections(run.id)[0].participantContactId, roster[0].contactId);
+  assert.equal(reopened.getMeetingRunSpeakerCorrections(run.id)[0].participantEmail, null);
+  assert.equal(reopened.getNote(note.id)!.enhanced_content, "Saved Summary");
+  assert.equal(reopened.getContactProfiles([roster[0].contactId])[0].display_name, "Confirmed Synthetic");
+});
+
+test("frozen context survives provider failure, restart, retry and removal of processing history", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const { note, run } = createFinishedRecording(db, storage, validConfig, "", false, 180);
+  const roster = db.materializeParticipants([{ email: null, displayName: "Frozen Synthetic" }]);
+  db.updateNote(note.id, { participants: JSON.stringify(roster) });
+  saveTranscriptArtifact(db, storage, run.id, longTranscriptResponse().text);
+  const worker = workerFor(db, storage, { summarize: async () => { throw new Error("Synthetic provider failure"); } });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.equal(db.getMeetingProcessingRun(run.id).status, "failed");
+  const frozen = db.getNote(note.id)!.participants;
+  const snapshot = db.getMeetingRunLlmSourceSnapshot(run.id);
+  assert.ok(snapshot);
+  await worker.stop();
+  db.updateContact(roster[0].contactId, { displayName: "Later Synthetic", email: "later@example.com", telegramUsername: "later_337" });
+  const reopened = new DatabaseManagerClass();
+  t.after(() => reopened.close());
+  let summaryInput = "";
+  const nextWorker = workerFor(reopened, storage, {
+    now: () => new Date(Date.now() + 300_000),
+    transcribeRemote: async () => { throw new Error("Retry must reuse the saved transcript"); },
+    summarize: async (input) => { summaryInput = input; return "## Summary\nSynthetic saved result."; },
+  });
+  t.after(() => nextWorker.stop());
+  assert.ok(nextWorker.retry(run.id));
+  nextWorker.onRetentionReady();
+  await nextWorker.waitForIdle();
+  assert.equal(reopened.getMeetingProcessingRun(run.id)!.status, "complete");
+  assert.match(summaryInput, /Actual meeting transcript/);
+  assert.deepEqual(JSON.parse(snapshot!).participants, [{ name: "Frozen Synthetic", email: null }]);
+  assert.doesNotMatch(summaryInput, /Later Synthetic|later@example.com|later_337/);
+  assert.equal(reopened.getMeetingRunLlmSourceSnapshot(run.id), snapshot);
+  assert.equal(reopened.getNote(note.id)!.participants, frozen);
+  await nextWorker.stop();
+  reopened.db.prepare("DELETE FROM meeting_processing_runs WHERE id = ?").run(run.id);
+  assert.equal(reopened.freezeParticipantContext(note.id)!.participants, frozen);
+  assert.equal(reopened.getContactProfiles([roster[0].contactId])[0].display_name, "Later Synthetic");
+});

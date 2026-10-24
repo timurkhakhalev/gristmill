@@ -189,6 +189,6 @@ Serialize tests, builds and native runtime preparation that share dependencies/o
 | Milestone | Status | Commits |
 | --- | --- | --- |
 | M1 — Contact identity, persistence and consumer cutover | done | 570cb3ca1, 9980c202a |
-| M2 — Participant creation and Telegram card journey | in progress | |
-| Reviewer | not started | |
-| Code Reviewer | not started | |
+| M2 — Participant creation and Telegram card journey | done | 47f100885, 2558bfb34 |
+| Reviewer | in progress | |
+| Code Reviewer | in progress | |

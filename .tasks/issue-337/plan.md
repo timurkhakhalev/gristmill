@@ -183,3 +183,12 @@ Run from the repository root. Planned checks are not reports of passing implemen
 - `pnpm run build:renderer` — verify the changed renderer bundles.
 
 Serialize tests, builds and native runtime preparation that share dependencies/output. Do not run install or native rebuild alongside them. Run focused failures first and preserve cleanup/isolation. Do not build/install a production app or migrate a real profile as part of this task. Inspect documentation paths and referenced commands; do not add a separate docs report or test infrastructure.
+
+## Orchestration (managed by orchestrator)
+
+| Milestone | Status | Commits |
+| --- | --- | --- |
+| M1 — Contact identity, persistence and consumer cutover | done | 570cb3ca1, 9980c202a |
+| M2 — Participant creation and Telegram card journey | in progress | |
+| Reviewer | not started | |
+| Code Reviewer | not started | |

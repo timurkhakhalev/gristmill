@@ -164,3 +164,20 @@ test("contact IPC returns typed normalized conflicts and rejects malformed IDs b
   assert.equal(h.retroactive.length, 0);
   assert.equal(db.getSpeakerProfiles()[0].contact_id, null);
 });
+
+test("legacy mention lookup uses exact normalized current emails and performs no persistence", async (t: TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const contact = db.createContact({ displayName: "Legacy Synthetic", email: "old@example.com", telegramUsername: null });
+  assert.ok(contact.success);
+  if (!contact.success) return;
+  const note = db.saveNote("Legacy mention", "[@Saved Synthetic](mention:old%40example.com)").note!;
+  db.updateNote(note.id, { participants: JSON.stringify([{ contactId: contact.contact.id, email: contact.contact.email, displayName: contact.contact.display_name, responseStatus: null, self: false }]), enhanced_content: "Saved Summary" });
+  db.freezeParticipantContext(note.id);
+  db.updateContact(contact.contact.id, { displayName: "Edited Synthetic", email: "current@example.com", telegramUsername: null });
+  const before = db.getNote(note.id);
+  const h = registerWithRealDb(db);
+  assert.deepEqual(await h.invoke(speakerChannels.resolveLegacyMentionContacts, ["CURRENT@example.com", "old@example.com", "curr@example.com"]), [{ email: "current@example.com", contactId: contact.contact.id }, { email: "old@example.com", contactId: null }, { email: "curr@example.com", contactId: null }]);
+  assert.deepEqual(db.getNote(note.id), before);
+  assert.equal(db.searchContacts("").length, 1);
+});

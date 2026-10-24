@@ -70,6 +70,9 @@ export interface SpeakerDatabase {
   createContact(input: z.infer<typeof contactCreateInputSchema>): ContactMutationResult;
   updateContact(id: number, input: z.infer<typeof contactUpdateInputSchema>): ContactMutationResult;
   getContactProfiles(ids: number[]): ContactProfile[];
+  resolveLegacyMentionContacts(
+    emails: string[]
+  ): Array<{ email: string; contactId: number | null }>;
   upsertSpeakerProfile(
     displayName: string,
     contactId: number | null,
@@ -142,6 +145,12 @@ export function registerSpeakerHandlers(ipcMain: IpcMainLike, deps: SpeakerIpcDe
     const [ids] = z.tuple([contactIdSchema.array().max(500)]).parse(args);
 
     return deps.databaseManager.getContactProfiles(ids);
+  });
+
+  ipcMain.handle(c.resolveLegacyMentionContacts, async (_event, ...args: unknown[]) => {
+    const [emails] = z.tuple([z.string().trim().email().array()]).parse(args);
+
+    return deps.databaseManager.resolveLegacyMentionContacts(emails);
   });
 
   ipcMain.handle(c.createContact, async (_event, ...args: unknown[]) => {

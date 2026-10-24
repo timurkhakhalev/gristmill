@@ -7,6 +7,7 @@ import { cn } from "../lib/utils";
 export interface MentionSuggestionItem extends MentionNodeAttrs {
   label: string;
   email: string | null;
+  contactId: number | null;
 }
 
 export interface MentionSuggestionsProps {
@@ -63,7 +64,7 @@ const MentionSuggestions = forwardRef<MentionSuggestionsHandle, MentionSuggestio
       <div className="w-60 rounded-md border border-border bg-popover p-1 shadow-lg">
         {items.map((item, index) => (
           <button
-            key={`${item.label}-${item.email ?? index}`}
+            key={item.contactId ?? `label:${item.label}:${index}`}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => command(item)}
             onMouseEnter={() => setSelectedIndex(index)}
@@ -72,7 +73,12 @@ const MentionSuggestions = forwardRef<MentionSuggestionsHandle, MentionSuggestio
               index === selectedIndex && "bg-default text-foreground"
             )}
           >
-            <PersonAvatar email={item.email} displayName={item.label} size={20} />
+            <PersonAvatar
+              contactId={item.contactId}
+              email={item.contactId ? item.email : null}
+              displayName={item.label}
+              size={20}
+            />
             <span dir="auto" className="min-w-0 flex-1 truncate">
               {item.label}
             </span>

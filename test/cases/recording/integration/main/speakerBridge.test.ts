@@ -39,3 +39,11 @@ test("bundled contact writes and speaker mapping parse concrete result DTOs", as
   response = { success: true, profileId: null };
   assert.deepEqual(plain(await api.setSpeakerMapping(1, "speaker", "Synthetic", null)), response);
 });
+
+test("legacy mention bridge validates nullable positive contact IDs", async () => {
+  let response: unknown = [{ email: "old@example.com", contactId: 7 }, { email: "absent@example.com", contactId: null }];
+  const api = loadBundledPreload<SpeakerApi>({ invoke: async () => response });
+  assert.deepEqual(plain(await api.resolveLegacyMentionContacts(["old@example.com"])), response);
+  response = [{ email: "old@example.com", contactId: 0 }];
+  await assert.rejects(api.resolveLegacyMentionContacts(["old@example.com"]));
+});

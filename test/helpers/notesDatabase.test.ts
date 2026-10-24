@@ -124,10 +124,11 @@ test("update changes only whitelisted fields and accepts nullable columns", (t: 
   if (!db) return;
   const note = db.saveNote("T", "C", "personal", "/tmp/a.mp3", 5).note;
 
+  const participants = JSON.stringify(db.materializeParticipants([{ email: "participant@example.com", displayName: null }]));
   const updated = db.updateNote(note.id, {
     title: "T2",
     transcript: '[{"text":"hi"}]',
-    participants: '["a@b.c"]',
+    participants,
     diarization_enabled: 1,
     expected_speaker_count: 2,
     calendar_event_id: "evt-1",
@@ -139,7 +140,7 @@ test("update changes only whitelisted fields and accepts nullable columns", (t: 
 
   assert.equal(updated.title, "T2");
   assert.equal(updated.transcript, '[{"text":"hi"}]');
-  assert.equal(updated.participants, '["a@b.c"]');
+  assert.equal(updated.participants, participants);
   assert.equal(updated.diarization_enabled, 1);
   assert.equal(updated.expected_speaker_count, 2);
   assert.equal(updated.calendar_event_id, "evt-1");

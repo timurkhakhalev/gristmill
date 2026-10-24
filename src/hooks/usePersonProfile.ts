@@ -39,7 +39,8 @@ function flush(): void {
         if (versions.get(row.id) === requested.get(row.id)) profiles.set(row.id, row);
     })
     .catch(() => {
-      for (const id of ids) if (versions.get(id) === requested.get(id)) profiles.set(id, null);
+      for (const id of ids)
+        if (versions.get(id) === requested.get(id) && !profiles.has(id)) profiles.set(id, null);
     })
     .finally(notify);
 }
@@ -58,6 +59,10 @@ function subscribeToSync(): void {
   syncSubscribed = true;
 
   const refresh = () => {
+    legacyRevision++;
+    legacyMentions.clear();
+    notify();
+
     for (const id of profiles.keys()) request(id);
   };
 
@@ -73,10 +78,12 @@ function subscribe(listener: () => void): () => void {
 }
 
 /** Reloads one person's profile, e.g. after the user renamed them. */
-export function refreshPersonProfile(id: number): void {
-  const key = id;
-
-  if (key) request(key);
+export function refreshPersonProfile(profile: ContactProfile): void {
+  profiles.set(profile.id, profile);
+  legacyRevision++;
+  legacyMentions.clear();
+  notify();
+  request(profile.id);
 }
 
 /** The stored profile for a contact ID; null until loaded or when nothing is known. */
@@ -125,4 +132,63 @@ export function usePersonName(
   if (isRealName(inviteName, email ?? "")) return inviteName;
 
   return email ? nameFromEmail(email) : "";
+}
+
+const legacyMentions = new Map<string, number | null>();
+
+const legacyQueued = new Set<string>();
+
+let legacyScheduled = false;
+
+let legacyRevision = 0;
+
+function requestLegacyMention(email: string): void {
+  legacyQueued.add(email);
+
+  if (legacyScheduled) return;
+  legacyScheduled = true;
+  queueMicrotask(() => {
+    legacyScheduled = false;
+    const emails = [...legacyQueued];
+    const revision = legacyRevision;
+    legacyQueued.clear();
+    window.electronAPI
+      .resolveLegacyMentionContacts(emails)
+      .then((rows) => {
+        if (revision !== legacyRevision) return;
+
+        for (const email of emails) legacyMentions.set(email, null);
+
+        for (const row of rows) legacyMentions.set(row.email, row.contactId);
+        notify();
+      })
+      .catch(() => {
+        if (revision !== legacyRevision) return;
+
+        for (const email of emails) legacyMentions.set(email, null);
+        notify();
+      });
+  });
+}
+
+/** A view-only legacy association; snapshot matches take priority over live email. */
+export function useLegacyMentionContactId(
+  email: string | null,
+  participants: ReadonlyArray<{ contactId: number; email: string | null }>
+): number | null {
+  const key = email?.trim().toLowerCase() ?? "";
+
+  const matches = participants.filter(
+    (person) => key && person.email?.trim().toLowerCase() === key
+  );
+
+  const ids = new Set(matches.map((person) => person.contactId));
+  const revision = useSyncExternalStore(subscribe, () => legacyRevision);
+  const loaded = useSyncExternalStore(subscribe, () => legacyMentions.has(key));
+  const resolved = useSyncExternalStore(subscribe, () => legacyMentions.get(key) ?? null);
+  useEffect(() => {
+    if (key && matches.length === 0 && !loaded) requestLegacyMention(key);
+  }, [key, matches.length, loaded, revision]);
+
+  return matches.length ? (ids.size === 1 ? matches[0].contactId : null) : resolved;
 }

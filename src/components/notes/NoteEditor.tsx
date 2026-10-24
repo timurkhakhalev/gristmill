@@ -1137,6 +1137,7 @@ export default function NoteEditor({
                   placeholder={t("notes.editor.startWriting")}
                   disabled={!canEditNote}
                   mentionPeople={mentionPeople}
+                  mentionParticipants={parsedParticipants}
                 />
               }
               fallbackSummary={(summaryAction: SummaryActionState) => {
@@ -1147,6 +1148,7 @@ export default function NoteEditor({
                       onChange={handleEnhancedChange}
                       disabled={!canEditNote}
                       mentionPeople={mentionPeople}
+                      mentionParticipants={parsedParticipants}
                     />
                   );
 

@@ -278,3 +278,14 @@ test("profiles list the public DTO without the embedding buffer", async () => {
   assert.equal(profiles[0].id, 11);
   assert.equal("embedding" in profiles[0], false);
 });
+
+test("legacy mention resolution batches exact emails and rejects malformed input without writes", async () => {
+  const calls: string[][] = [];
+  const h = createHarness({ database: { resolveLegacyMentionContacts: (emails: string[]) => { calls.push(emails); return [{ email: "known@example.com", contactId: 7 }, { email: "missing@example.com", contactId: null }]; } } });
+  assert.deepEqual(await h.invoke(speakerChannels.resolveLegacyMentionContacts, ["known@example.com", "missing@example.com"]), [{ email: "known@example.com", contactId: 7 }, { email: "missing@example.com", contactId: null }]);
+  await assert.rejects(h.invoke(speakerChannels.resolveLegacyMentionContacts, [7]));
+  await assert.rejects(h.invoke(speakerChannels.resolveLegacyMentionContacts, ["label-only"]));
+  assert.equal(calls.length, 1);
+  assert.deepEqual(h.calls.upserts, []);
+  assert.equal(h.calls.renames, undefined);
+});

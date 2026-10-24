@@ -2352,14 +2352,14 @@ export default function MeetingResultsPanel({
                 {calendarParticipants.length > 0 && (
                   <>
                     <Choice
-                      label={tr("rememberParticipant", "Remember name for calendar participant")}
+                      label={tr("rememberParticipant", "Remember name for participant")}
                       value={participantContactId}
                       options={[
                         { id: "none", label: tr("onlyThisMeeting", "Only this meeting") },
                         ...calendarParticipants.map((person) => ({
                           id: String(person.contactId),
                           label:
-                            person.name && person.name !== person.email
+                            person.name && person.email && person.name !== person.email
                               ? `${person.name} — ${person.email}`
                               : person.email || person.name || "",
                         })),
@@ -2369,7 +2369,7 @@ export default function MeetingResultsPanel({
                     <p className="text-xs text-muted">
                       {tr(
                         "rememberParticipantHint",
-                        "Choose the person who spoke. This name will be used for their email in future meetings. Google contacts are not changed."
+                        "Choose the person who spoke. This name will be used for this contact in future meetings. Google contacts are not changed."
                       )}
                     </p>
                   </>

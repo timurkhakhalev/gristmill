@@ -5,6 +5,7 @@
 import {
   diarizationDownloadProgressEventSchema,
   contactMutationResultSchema,
+  legacyMentionContactSchema,
   setSpeakerMappingResultSchema,
   speakerContactSchema,
   attachSpeakerContactResultSchema,
@@ -75,6 +76,10 @@ export function createSpeakerBridge(ipcRenderer: IpcRendererLike): SpeakerApi {
         .then((raw) =>
           z.object({ success: z.boolean(), contacts: speakerContactSchema.array() }).parse(raw)
         ),
+    resolveLegacyMentionContacts: (emails) =>
+      ipcRenderer
+        .invoke(c.resolveLegacyMentionContacts, emails)
+        .then((raw) => legacyMentionContactSchema.array().parse(raw)),
     createContact: (contact) =>
       ipcRenderer
         .invoke(c.createContact, contact)

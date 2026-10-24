@@ -10,6 +10,7 @@ export const speakerChannels = {
   createContact: "create-contact",
   updateContact: "update-contact",
   getContactProfiles: "get-contact-profiles",
+  resolveLegacyMentionContacts: "resolve-legacy-mention-contacts",
   getSpeakerMappings: "get-speaker-mappings",
   setSpeakerMapping: "set-speaker-mapping",
   removeSpeakerMapping: "remove-speaker-mapping",
@@ -125,6 +126,7 @@ export interface SpeakerApi {
   createContact(contact: ContactCreateInput): Promise<ContactMutationResult>;
   updateContact(id: number, contact: ContactUpdateInput): Promise<ContactMutationResult>;
   getContactProfiles(ids: number[]): Promise<ContactProfile[]>;
+  resolveLegacyMentionContacts(emails: string[]): Promise<LegacyMentionContact[]>;
   getSpeakerMappings(noteId: number): Promise<SpeakerMappingEntry[]>;
   setSpeakerMapping(
     noteId: number,
@@ -184,3 +186,10 @@ export const contactMutationResultSchema = z.discriminatedUnion("success", [
 ]);
 
 export type ContactMutationResult = z.infer<typeof contactMutationResultSchema>;
+
+export const legacyMentionContactSchema = z.object({
+  email: z.string(),
+  contactId: contactIdSchema.nullable(),
+});
+
+export type LegacyMentionContact = z.infer<typeof legacyMentionContactSchema>;

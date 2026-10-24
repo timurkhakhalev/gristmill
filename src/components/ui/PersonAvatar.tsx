@@ -35,12 +35,13 @@ interface PersonAvatarProps {
 /** The person's Google photo, else their Gravatar, else a colored initial. */
 export default function PersonAvatar({
   contactId,
-  email,
+  email: fallbackEmail,
   displayName,
   size = 24,
   className,
 }: PersonAvatarProps) {
   const profile = usePersonProfile(contactId);
+  const email = contactId ? (profile?.email ?? null) : fallbackEmail;
   const photoUrl = profile?.photo_url ?? null;
 
   const [hash, setHash] = useState<string | null>(() =>

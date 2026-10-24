@@ -159,11 +159,12 @@ test("collectKnownPeople merges owner, participants, mappings, and named segment
   );
 
   assert.deepEqual(people, [
-    { name: "Alex Example", email: "alex@example.com" },
-    { name: "Michael Chen", email: "michael@example.com" },
-    { name: "sean", email: "sean@example.com" },
-    { name: "Priya", email: null },
-    { name: "Ada", email: null },
+    { name: "Alex Example", email: "alex@example.com", contactId: attendee("alex@example.com", "Alex Example", true).contactId },
+    { name: "Michael Chen", email: "michael@example.com", contactId: attendee("michael@example.com", "Michael Chen").contactId },
+    { name: "sean", email: "sean@example.com", contactId: attendee("sean@example.com", null).contactId },
+    { name: "Michael Chen", email: null, contactId: null },
+    { name: "Priya", email: null, contactId: null },
+    { name: "Ada", email: null, contactId: null },
   ]);
 });
 
@@ -183,4 +184,11 @@ test("LLM transcript includes the concrete platform only for an accepted platfor
     buildLlmTranscript([{ ...segment, speakerLockSource: "user" }], {}, "You", t),
     "Guest: hi"
   );
+});
+
+test("equal-name contacts remain distinct while duplicate IDs deduplicate", async () => {
+  const { collectKnownPeople } = await load();
+  const one = { contactId: 7, displayName: "Casey Synthetic", email: null, responseStatus: null, self: false };
+  const people = collectKnownPeople({ selfName: null, selfEmail: null, participants: [one, one, { ...one, contactId: 8 }] }, {}, []);
+  assert.deepEqual(people.map((person) => person.contactId), [7, 8]);
 });

@@ -94,19 +94,19 @@ test("selection ring follows selectedSegmentIds", async () => {
   assert.equal(html.split("ring-2 ring-primary/60").length - 1, 1);
 });
 
-test("a mapped profile without an email offers the add-contact affordance", async () => {
+test("a mapped profile without a contact offers the add-contact affordance", async () => {
   const html = await renderChat({
     speakerMappings: { speaker_0: "Alice" },
-    speakerProfiles: [{ id: 7, display_name: "Alice", email: null }],
-    onAttachSpeakerEmail: () => {},
+    speakerProfiles: [{ id: 7, display_name: "Alice", contact_id: null }],
+    onAttachSpeakerContact: () => {},
   });
 
   assert.ok(html.includes("Add contact"));
 
   const withEmail = await renderChat({
     speakerMappings: { speaker_0: "Alice" },
-    speakerProfiles: [{ id: 7, display_name: "Alice", email: "alice@example.com" }],
-    onAttachSpeakerEmail: () => {},
+    speakerProfiles: [{ id: 7, display_name: "Alice", contact_id: 17 }],
+    onAttachSpeakerContact: () => {},
   });
 
   assert.ok(!withEmail.includes("Add contact"));

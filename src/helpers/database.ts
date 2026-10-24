@@ -1437,16 +1437,21 @@ export class DatabaseManager {
 
       // The table exists when this migration check runs; sqlite_master has its DDL.
       if (correctionSql && !correctionSql.sql.includes("'platform'")) {
+        const contactColumn = speakerCorrectionColumns.some(
+          (column) => column.name === "participant_contact_id"
+        );
+
         this.sql.transaction(() => {
           this.sql.exec(`
             CREATE TABLE meeting_run_speaker_corrections_next (
               run_id TEXT NOT NULL REFERENCES meeting_processing_runs(id) ON DELETE CASCADE,
               speaker_id TEXT NOT NULL, profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
               display_name TEXT NOT NULL, participant_email TEXT,
+              ${contactColumn ? "participant_contact_id INTEGER REFERENCES contacts(id)," : ""}
               source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'platform', 'model', 'user')),
               revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0), PRIMARY KEY (run_id, speaker_id)
             );
-            INSERT INTO meeting_run_speaker_corrections_next SELECT run_id, speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections;
+            INSERT INTO meeting_run_speaker_corrections_next SELECT run_id, speaker_id, profile_id, display_name, participant_email, ${contactColumn ? "participant_contact_id," : ""} source, revision FROM meeting_run_speaker_corrections;
             DROP TABLE meeting_run_speaker_corrections;
             ALTER TABLE meeting_run_speaker_corrections_next RENAME TO meeting_run_speaker_corrections;
           `);
@@ -4342,7 +4347,7 @@ export class DatabaseManager {
 
     if (!current) return { success: false, error: "Note not found" };
 
-    if (updates.participants != null) {
+    if (updates.participants) {
       try {
         const requested = z.array(noteParticipantSchema).parse(JSON.parse(updates.participants));
 
@@ -5445,6 +5450,26 @@ export class DatabaseManager {
         `SELECT id, email, telegram_username, COALESCE(learned_name, people_name, display_name) AS display_name, photo_url FROM contacts WHERE id IN (${ids.map(() => "?").join(",")})`
       )
       .all<ContactProfileRow>(...ids);
+  }
+
+  resolveLegacyMentionContacts(
+    emails: string[]
+  ): Array<{ email: string; contactId: number | null }> {
+    const normalized = [...new Set(emails.map((email) => email.trim().toLowerCase()))];
+
+    if (!normalized.length) return [];
+
+    const matches = this.sql
+      .prepare(
+        `SELECT id, email FROM contacts WHERE email IN (${normalized.map(() => "?").join(",")})`
+      )
+      .all<{ id: number; email: string }>(...normalized);
+
+    return normalized.map((email) => {
+      const candidates = matches.filter((person) => person.email === email);
+
+      return { email, contactId: candidates.length === 1 ? candidates[0].id : null };
+    });
   }
 
   searchContacts(query: string): ContactRow[] {

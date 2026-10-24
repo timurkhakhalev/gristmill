@@ -27,8 +27,8 @@ Platform evidence is a hint. It is never proof of identity.
 
 User paths: [Correct speakers](../product/user-journeys/speakers.md).
 
-- The dialog selects Only this meeting each time it opens. It does not restore a previously linked email as the initial selection.
-- Participants come from the note. A participant is a candidate, not proof of speaker identity. Only an email of a note participant can be linked.
+- The dialog selects Only this meeting each time it opens. It does not restore a previously linked contact as the initial selection.
+- Participants come from the note. A participant is a candidate, not proof of speaker identity. Only a contact ID of a note participant can be linked, including contacts without email.
 - A linked contact name is remembered locally. This does not edit Google contacts.
 - Choosing a voice profile in Results stores its ID in the correction. It does not create a profile or train a voice embedding.
 - Name evidence priority: user, voice, platform, then model. Weaker automatic evidence does not replace a manual name.
@@ -187,3 +187,9 @@ User paths: [Correct speakers](../product/user-journeys/speakers.md).
 - An Accessibility read takes approximately 2–12 ms and less than 1% of one core at 2 Hz.
 - The audio callback occurs approximately 32 ms after the input capture time. This is a capture timing difference, not the Zoom indicator delay.
 - The first converted 48 kHz → 24 kHz buffer can be shorter (248 instead of 256 frames). `AVAudioConverter.primeInfo` does not explain it. Use the actual converted frame count.
+
+## Contact links and snapshots
+
+Manual corrections validate the selected contact ID against the run's owning note before a correction or learned-name write. That validation and the write share the database correction transaction. Corrections keep `participant_contact_id` as the link and `participant_email` as a correction-time snapshot attribute for removed or orphaned participants. Email is not an accepted mutation key. Voice-profile IDs and contact IDs remain separate; profile attachment does not train embeddings or transfer existing speaker links.
+
+Contact cards read the current shared profile. Processing reads the meeting roster, refreshed once from current contacts at first AI processing and then frozen. Learned names saved after calendar-note creation can be used before that boundary. Later live edits do not rewrite historical evidence or Summary context. Calendar and platform candidates remain hints, not confirmed identities.

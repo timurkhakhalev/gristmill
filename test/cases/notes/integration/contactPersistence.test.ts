@@ -51,3 +51,28 @@ test("note roster captures additions, freezes live names once and preserves snap
   assert.doesNotMatch(exported, /Later Sample|later@example.com|sample_later/);
   assert.equal(db.updateNote(note.id, { participants: JSON.stringify([{ ...participant, contactId: 999999 }]) }).success, false);
 });
+
+test("new Granola imports freeze actual Summaries while notes-only imports refresh once", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const { parseGranolaCsv } = require("../../../../src/helpers/granolaImport.ts");
+  const parsed = parseGranolaCsv('id,title,summary,notes,attendees\nsummary,Synthetic Summary,Saved synthetic Summary,,"Original Synthetic <import337@example.com>"\nnotes,Synthetic Notes,,Saved synthetic notes,"Original Synthetic <import337@example.com>"');
+  assert.equal(parsed.ok, true);
+  const result = db.importNotes(parsed.notes);
+  assert.equal(result.imported, 2);
+  assert.deepEqual(result.errors, []);
+  const [summaryId, notesId] = result.noteIds;
+  const summary = db.getNote(summaryId)!;
+  const roster = JSON.parse(summary.participants!);
+  const id = roster[0].contactId;
+  assert.ok(db.updateContact(id, { displayName: "Later Synthetic", email: "changed-import337@example.com", telegramUsername: null }).success);
+  assert.equal(db.freezeParticipantContext(summaryId)!.participants, summary.participants);
+  assert.equal(db.getNote(summaryId)!.content, "Saved synthetic Summary");
+  const provisional = JSON.parse(db.freezeParticipantContext(notesId)!.participants!);
+  assert.equal(provisional[0].displayName, "Later Synthetic");
+  assert.equal(provisional[0].email, "changed-import337@example.com");
+  const reopened = new DatabaseManager();
+  t.after(() => reopened.close());
+  assert.equal(reopened.freezeParticipantContext(summaryId)!.participants, summary.participants);
+  assert.deepEqual(reopened.db.pragma("foreign_key_check"), []);
+});

@@ -17,6 +17,15 @@ export function migrateContactIdentity(database: SqliteDatabase): void {
   const columns = database.pragma<Array<{ name: string }>>("table_info(contacts)");
 
   if (columns.some((column) => column.name === "id")) return;
+
+  const profileColumns = database.pragma<Array<{ name: string }>>("table_info(speaker_profiles)");
+
+  const correctionColumns = database.pragma<Array<{ name: string }>>(
+    "table_info(meeting_run_speaker_corrections)"
+  );
+
+  const noteColumns = database.pragma<Array<{ name: string }>>("table_info(notes)");
+
   database.transaction(() => {
     database.exec(`
       CREATE TABLE contacts_identity (
@@ -31,10 +40,23 @@ export function migrateContactIdentity(database: SqliteDatabase): void {
         SELECT NULLIF(lower(trim(email)), ''), display_name, people_name, learned_name, photo_url, created_at, updated_at FROM contacts ORDER BY rowid;
       DROP TABLE contacts;
       ALTER TABLE contacts_identity RENAME TO contacts;
-      ALTER TABLE speaker_profiles ADD COLUMN contact_id INTEGER REFERENCES contacts(id);
-      ALTER TABLE meeting_run_speaker_corrections ADD COLUMN participant_contact_id INTEGER REFERENCES contacts(id);
-      ALTER TABLE notes ADD COLUMN participant_context_frozen INTEGER NOT NULL DEFAULT 0;
     `);
+
+    // Startup creates missing tables in their final shape before upgrading contacts.
+    if (!profileColumns.some((column) => column.name === "contact_id"))
+      database.exec(
+        "ALTER TABLE speaker_profiles ADD COLUMN contact_id INTEGER REFERENCES contacts(id)"
+      );
+
+    if (!correctionColumns.some((column) => column.name === "participant_contact_id"))
+      database.exec(
+        "ALTER TABLE meeting_run_speaker_corrections ADD COLUMN participant_contact_id INTEGER REFERENCES contacts(id)"
+      );
+
+    if (!noteColumns.some((column) => column.name === "participant_context_frozen"))
+      database.exec(
+        "ALTER TABLE notes ADD COLUMN participant_context_frozen INTEGER NOT NULL DEFAULT 0"
+      );
 
     const resolve = (email: string | null | undefined, name?: string | null): number => {
       const normalized = email?.trim().toLowerCase() || null;
@@ -95,14 +117,18 @@ export function migrateContactIdentity(database: SqliteDatabase): void {
         .run(JSON.stringify(participants), note.id);
     }
 
-    for (const profile of database
-      .prepare(
-        "SELECT id, email, display_name FROM speaker_profiles WHERE NULLIF(trim(email), '') IS NOT NULL"
-      )
-      .all<{ id: number; email: string; display_name: string }>()) {
-      database
-        .prepare("UPDATE speaker_profiles SET contact_id = ? WHERE id = ?")
-        .run(resolve(profile.email, profile.display_name), profile.id);
+    if (profileColumns.some((column) => column.name === "email")) {
+      for (const profile of database
+        .prepare(
+          "SELECT id, email, display_name FROM speaker_profiles WHERE NULLIF(trim(email), '') IS NOT NULL"
+        )
+        .all<{ id: number; email: string; display_name: string }>()) {
+        database
+          .prepare("UPDATE speaker_profiles SET contact_id = ? WHERE id = ?")
+          .run(resolve(profile.email, profile.display_name), profile.id);
+      }
+
+      database.exec("ALTER TABLE speaker_profiles DROP COLUMN email");
     }
 
     for (const correction of database
@@ -127,8 +153,7 @@ export function migrateContactIdentity(database: SqliteDatabase): void {
     }
 
     database.exec(`
-      ALTER TABLE speaker_profiles DROP COLUMN email;
-      UPDATE notes SET participant_context_frozen = 1 WHERE NULLIF(enhanced_content, '') IS NOT NULL OR EXISTS (
+      UPDATE notes SET participant_context_frozen = 1 WHERE source_file LIKE 'granola:%' OR NULLIF(enhanced_content, '') IS NOT NULL OR EXISTS (
         SELECT 1 FROM meeting_processing_runs r JOIN meeting_recordings m ON m.id = r.recording_id
         WHERE m.note_id = notes.id AND r.llm_source_snapshot_json IS NOT NULL
       );

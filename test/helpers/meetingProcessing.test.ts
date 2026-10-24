@@ -5751,3 +5751,31 @@ test("frozen context survives provider failure, restart, retry and removal of pr
   assert.equal(reopened.freezeParticipantContext(note.id)!.participants, frozen);
   assert.equal(reopened.getContactProfiles([roster[0].contactId])[0].display_name, "Later Synthetic");
 });
+
+test("processing imported Summary uses its frozen roster while notes-only import learns current fields", async (t) => {
+  const db = createDb(t);
+  if (!db) return;
+  const { parseGranolaCsv } = require("../../src/helpers/granolaImport.ts");
+  const parsed = parseGranolaCsv('id,title,summary,notes,attendees\nsummary,Synthetic Summary,Saved synthetic Summary,,"Original Synthetic <import-processing@example.com>"\nnotes,Synthetic Notes,,Saved synthetic notes,"Original Synthetic <import-processing@example.com>"');
+  const imported = db.importNotes(parsed.notes);
+  assert.equal(imported.imported, 2);
+  const [summaryId, notesId] = imported.noteIds;
+  const before = db.getNote(summaryId)!;
+  const participant = JSON.parse(before.participants!)[0];
+  assert.ok(db.updateContact(participant.contactId, { displayName: "Later Synthetic", email: "later-processing@example.com", telegramUsername: null }).success);
+  const storage = new MeetingRecordingStorage({ userDataPath: getUserDataDir() });
+  const runs = [summaryId, notesId].map((noteId) => {
+    const fixture = createFinishedRecording(db, storage);
+    db.db.prepare("UPDATE meeting_recordings SET note_id = ? WHERE id = ?").run(noteId, fixture.recording.id);
+    saveTranscriptArtifact(db, storage, fixture.run.id, "A synthetic imported discussion.", "system:A");
+    return fixture.run;
+  });
+  const worker = workerFor(db, storage, { now: () => new Date(Date.now() + 300_000) });
+  t.after(() => worker.stop());
+  worker.onRetentionReady();
+  await worker.waitForIdle();
+  assert.deepEqual(JSON.parse(db.getMeetingRunLlmSourceSnapshot(runs[0].id)!).participants, [{ name: participant.displayName, email: participant.email }]);
+  assert.deepEqual(JSON.parse(db.getMeetingRunLlmSourceSnapshot(runs[1].id)!).participants, [{ name: "Later Synthetic", email: "later-processing@example.com" }]);
+  assert.equal(db.getNote(summaryId)!.participants, before.participants);
+  assert.equal(db.getNote(summaryId)!.content, before.content);
+});

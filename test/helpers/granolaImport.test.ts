@@ -582,6 +582,7 @@ test("parseGranolaCsv appends user notes beneath the AI summary", async () => {
   const { parseGranolaCsv } = await load();
   const result = parseGranolaCsv('title,summary,notes\nSync,"AI summary","My own notes"');
   assert.equal(result.notes[0].content, "AI summary\n\n---\n\nMy own notes");
+  assert.equal(result.notes[0].hasSummary, true);
 });
 
 test("parseGranolaCsv uses user notes as content when the summary is empty", async () => {
@@ -589,6 +590,7 @@ test("parseGranolaCsv uses user notes as content when the summary is empty", asy
   const result = parseGranolaCsv('title,summary,notes\nSync,,"My own notes"');
   assert.equal(result.notes.length, 1);
   assert.equal(result.notes[0].content, "My own notes");
+  assert.equal(result.notes[0].hasSummary, false);
 });
 
 test("parseGranolaCsv parses a synthetic export fixture end to end", async () => {

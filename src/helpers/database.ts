@@ -4168,7 +4168,7 @@ export class DatabaseManager {
     const errors: Array<{ error: string }> = [];
 
     const insert = this.sql.prepare(
-      "INSERT INTO notes (title, content, note_type, source_file, folder_id, transcript, participants, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))"
+      "INSERT INTO notes (title, content, note_type, source_file, folder_id, transcript, participants, participant_context_frozen, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))"
     );
 
     this.sql.transaction(() => {
@@ -4203,6 +4203,7 @@ export class DatabaseManager {
                   )
                 )
               : null,
+            row.hasSummary === true ? 1 : 0,
             row.createdAt,
             row.createdAt
           );

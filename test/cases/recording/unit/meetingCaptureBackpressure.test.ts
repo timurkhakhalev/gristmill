@@ -16,15 +16,18 @@ const source = fs.readFileSync(path.join(__dirname, "../../../../src/helpers/mee
 const bufferMatch = source.match(/const MEETING_AUDIO_BUFFER_SIZE = (\d+);/);
 assert.ok(bufferMatch, "read the production packet size");
 const bufferSize = Number(bufferMatch[1]);
+const workletSource = fs.readFileSync(
+  path.join(__dirname, "../../../../src/worklets/meetingPcmProcessor.js"),
+  "utf8"
+);
 
 // Replay ACK latency through the actual AudioWorklet without waiting for wall time.
 // This models a serial writer; it does not emulate the OS audio device or encoder.
 function replay(writeMs: number, seconds: number) {
-  const template = source.match(/const code = `([\s\S]*?)`;/)?.[1];
-  assert.ok(template);
-  const code = template.replaceAll("${MEETING_AUDIO_BUFFER_SIZE}", String(bufferSize))
-    .replaceAll("${MAX_UNACKNOWLEDGED_CAPTURE_FRAMES}", String(MAX_UNACKNOWLEDGED_CAPTURE_FRAMES))
-    .replaceAll("${MAX_CAPTURE_ACK_AGE_MS}", String(MAX_CAPTURE_ACK_AGE_MS));
+  const code = workletSource
+    .replaceAll("__MEETING_AUDIO_BUFFER_SIZE__", String(bufferSize))
+    .replaceAll("__MAX_UNACKNOWLEDGED_CAPTURE_FRAMES__", String(MAX_UNACKNOWLEDGED_CAPTURE_FRAMES))
+    .replaceAll("__MAX_CAPTURE_ACK_AGE_MS__", String(MAX_CAPTURE_ACK_AGE_MS));
   type Message = { type: string; sequence?: number; epochIndex?: number; code?: string };
   type Processor = { port: { onmessage: (event: { data: Message }) => void }; process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean };
   let Constructor!: new (options: object) => Processor;

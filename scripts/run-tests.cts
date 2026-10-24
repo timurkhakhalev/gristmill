@@ -354,6 +354,8 @@ async function runTests(
       const code = await run(
         binary,
         [
+          "--require",
+          path.join(root, "test/helpers/rawLoader.cjs"),
           "--import",
           "tsx",
           "--test",

@@ -9,16 +9,11 @@ const path: typeof import("node:path") = require("node:path");
 const vm: typeof import("node:vm") = require("node:vm");
 
 function processorHarness() {
-  const pipeline = fs.readFileSync(
-    path.join(__dirname, "../../../../src/helpers/meetingAudioPipeline.ts"),
-    "utf8"
-  );
-
-  const worklet = pipeline
-    .match(/const code = `([\s\S]*?)`;/)?.[1]
-    .replace("${MEETING_AUDIO_BUFFER_SIZE}", "2400")
-    .replace("${MAX_UNACKNOWLEDGED_CAPTURE_FRAMES}", "120000")
-    .replace("${MAX_CAPTURE_ACK_AGE_MS}", "10000");
+  const worklet = fs
+    .readFileSync(path.join(__dirname, "../../../../src/worklets/meetingPcmProcessor.js"), "utf8")
+    .replaceAll("__MEETING_AUDIO_BUFFER_SIZE__", "2400")
+    .replaceAll("__MAX_UNACKNOWLEDGED_CAPTURE_FRAMES__", "120000")
+    .replaceAll("__MAX_CAPTURE_ACK_AGE_MS__", "10000");
 
   assert.ok(worklet);
 

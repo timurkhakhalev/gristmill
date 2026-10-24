@@ -1,0 +1,78 @@
+const test: typeof import("node:test") = require("node:test");
+const assert: typeof import("node:assert/strict") = require("node:assert/strict");
+const { createDb, DatabaseManager } = require("../../../helpers/harness/db.ts");
+
+test("name-only contacts stay distinct; contact mutations reject conflicts atomically", (t: import("node:test").TestContext) => {
+  const db: import("../../../../src/helpers/database").DatabaseManager = createDb(t);
+  if (!db) return;
+  const first = db.createContact({ displayName: "Morgan Sample", email: null, telegramUsername: "@Sample_337" });
+  const second = db.createContact({ displayName: "Morgan Sample", email: " second@example.com ", telegramUsername: null });
+  assert.ok(first.success && second.success);
+  if (!first.success || !second.success) return;
+  assert.notEqual(first.contact.id, second.contact.id);
+  const before = db.getContactProfiles([second.contact.id]);
+  assert.deepEqual(db.updateContact(second.contact.id, { displayName: "Changed", email: null, telegramUsername: "sample_337" }), { success: false, error: "telegram_conflict", existingContactId: first.contact.id });
+  assert.deepEqual(db.getContactProfiles([second.contact.id]), before);
+  assert.equal(db.createContact({ displayName: "Third", email: "SECOND@EXAMPLE.COM", telegramUsername: "free_user" }).success, false);
+  assert.throws(() => db.db.prepare("UPDATE contacts SET telegram_username = 'sample_337' WHERE id = ?").run(second.contact.id));
+  assert.ok(db.updateContact(first.contact.id, { displayName: "Morgan Sample", email: null, telegramUsername: "sAMPLE_337" }).success);
+  assert.ok(db.updateContact(first.contact.id, { displayName: "Morgan Sample", email: null, telegramUsername: null }).success);
+  assert.ok(db.updateContact(second.contact.id, { displayName: "Second", email: " ", telegramUsername: "sample_337" }).success);
+  assert.equal(db.getContactProfiles([second.contact.id])[0].email, null);
+  assert.equal(db.db.pragma<Array<{foreign_keys:number}>>("foreign_keys")[0].foreign_keys, 1);
+  assert.deepEqual(db.db.pragma("foreign_key_check"), []);
+  const reopened = new DatabaseManager();
+  t.after(() => reopened.close());
+  assert.deepEqual(reopened.getContactProfiles([first.contact.id, second.contact.id]), db.getContactProfiles([first.contact.id, second.contact.id]));
+});
+
+test("note roster captures additions, freezes live names once and preserves snapshots on edits", (t: import("node:test").TestContext) => {
+  const db: import("../../../../src/helpers/database").DatabaseManager = createDb(t);
+  if (!db) return;
+  const contact = db.createContact({ displayName: "Provisional Sample", email: null, telegramUsername: null });
+  assert.ok(contact.success);
+  if (!contact.success) return;
+  const note = db.saveNote("Synthetic meeting", "").note!;
+  const participant = { contactId: contact.contact.id, email: null, displayName: "Provisional", responseStatus: null, self: false };
+  assert.ok(db.updateNote(note.id, { participants: JSON.stringify([participant]) }).success);
+  db.rememberContactName(contact.contact.id, "Learned Sample");
+  const frozen = db.freezeParticipantContext(note.id)!;
+  assert.equal(JSON.parse(frozen.participants!)[0].displayName, "Learned Sample");
+  db.updateContact(contact.contact.id, { displayName: "Later Sample", email: "later@example.com", telegramUsername: "sample_later" });
+  assert.equal(db.freezeParticipantContext(note.id)!.participants, frozen.participants);
+  assert.ok(db.updateNote(note.id, { participants: JSON.stringify([{ ...participant, displayName: "Forged", email: "forged@example.com" }]) }).success);
+  assert.equal(db.getNote(note.id)!.participants, frozen.participants);
+  const { NoteReadService } = require("../../../../src/helpers/noteReadService.ts");
+  const reader = new NoteReadService(db, { readRunArtifact: () => null });
+  assert.deepEqual(reader.show(db.getNote(note.id)!).participants, [{ name: "Learned Sample", email: null, stored_names: { display_name: "Learned Sample", people_name: null, learned_name: null } }]);
+  const { formatTxt } = require("../../../../src/helpers/transcriptFormatter.ts");
+  const exported = formatTxt(db.getNote(note.id)!, [], {});
+  assert.match(exported, /Learned Sample/);
+  assert.doesNotMatch(exported, /Later Sample|later@example.com|sample_later/);
+  assert.equal(db.updateNote(note.id, { participants: JSON.stringify([{ ...participant, contactId: 999999 }]) }).success, false);
+});
+
+test("new Granola imports freeze actual Summaries while notes-only imports refresh once", (t: import("node:test").TestContext) => {
+  const db = createDb(t);
+  if (!db) return;
+  const { parseGranolaCsv } = require("../../../../src/helpers/granolaImport.ts");
+  const parsed = parseGranolaCsv('id,title,summary,notes,attendees\nsummary,Synthetic Summary,Saved synthetic Summary,,"Original Synthetic <import337@example.com>"\nnotes,Synthetic Notes,,Saved synthetic notes,"Original Synthetic <import337@example.com>"');
+  assert.equal(parsed.ok, true);
+  const result = db.importNotes(parsed.notes);
+  assert.equal(result.imported, 2);
+  assert.deepEqual(result.errors, []);
+  const [summaryId, notesId] = result.noteIds;
+  const summary = db.getNote(summaryId)!;
+  const roster = JSON.parse(summary.participants!);
+  const id = roster[0].contactId;
+  assert.ok(db.updateContact(id, { displayName: "Later Synthetic", email: "changed-import337@example.com", telegramUsername: null }).success);
+  assert.equal(db.freezeParticipantContext(summaryId)!.participants, summary.participants);
+  assert.equal(db.getNote(summaryId)!.content, "Saved synthetic Summary");
+  const provisional = JSON.parse(db.freezeParticipantContext(notesId)!.participants!);
+  assert.equal(provisional[0].displayName, "Later Synthetic");
+  assert.equal(provisional[0].email, "changed-import337@example.com");
+  const reopened = new DatabaseManager();
+  t.after(() => reopened.close());
+  assert.equal(reopened.freezeParticipantContext(summaryId)!.participants, summary.participants);
+  assert.deepEqual(reopened.db.pragma("foreign_key_check"), []);
+});

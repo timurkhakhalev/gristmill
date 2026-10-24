@@ -3,6 +3,7 @@ import { z } from "zod";
 export interface MentionPerson {
   name: string;
   email: string | null;
+  contactId: number | null;
 }
 
 export const MENTION_HREF_PREFIX = "mention:";
@@ -11,6 +12,8 @@ export const MENTION_HREF_PREFIX = "mention:";
 export const mentionAttrsSchema = z.object({
   label: z.string().catch(""),
   email: z.string().nullable().catch(null),
+  contactId: z.number().int().positive().nullable().catch(null),
+  href: z.string().nullable().catch(null),
 });
 
 const sanitizeLabel = (name: string) =>
@@ -19,16 +22,24 @@ const sanitizeLabel = (name: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-// encodeURIComponent leaves ( and ) alone, which would end the markdown link early.
-const encodeMentionId = (id: string) =>
-  encodeURIComponent(id).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-
-/** A mention serializes as a plain markdown link, so exports and other markdown
- * consumers degrade to a readable `@Name` link instead of losing the tag. */
+/** New links use contact IDs; unbound names stay plain text. */
 export function buildMentionMarkdown(person: MentionPerson): string {
   const label = sanitizeLabel(person.name);
+  const id = z.number().int().positive().safeParse(person.contactId);
 
-  return `[@${label}](${MENTION_HREF_PREFIX}${encodeMentionId(person.email || label)})`;
+  return id.success ? `[@${label}](mention:contact:${id.data})` : `@${label}`;
+}
+
+export function parseMentionContactId(href: string | null): number | null {
+  const match = href?.match(/^mention:contact:([1-9][0-9]*)$/);
+
+  const parsed = z
+    .number()
+    .int()
+    .positive()
+    .safeParse(match ? Number(match[1]) : null);
+
+  return parsed.success ? parsed.data : null;
 }
 
 export function parseMentionEmail(href: string | null): string | null {
@@ -37,7 +48,9 @@ export function parseMentionEmail(href: string | null): string | null {
   try {
     const id = decodeURIComponent(href.slice(MENTION_HREF_PREFIX.length));
 
-    return id.includes("@") ? id : null;
+    const parsed = z.string().email().safeParse(id.trim().toLowerCase());
+
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
@@ -48,17 +61,17 @@ const TASK_OWNER_LINE = /^(\s*[-*]\s*\[[ xX]\]\s+\S.*?)(\s+[—–-]\s+)(\S.*?)\
 const OWNER_SPLIT = /\s*(?:,|&|\/|\band\b)\s*/i;
 
 interface NameIndex {
-  byFullName: Map<string, MentionPerson>;
+  byFullName: Map<string, MentionPerson | null>;
   byFirstName: Map<string, MentionPerson | null>;
 }
 
 function buildNameIndex(people: MentionPerson[]): NameIndex {
-  const byFullName = new Map<string, MentionPerson>();
+  const byFullName = new Map<string, MentionPerson | null>();
 
   for (const person of people) {
     const name = sanitizeLabel(person.name).toLowerCase();
 
-    if (name && !byFullName.has(name)) byFullName.set(name, person);
+    if (name) byFullName.set(name, byFullName.has(name) ? null : person);
   }
 
   // First names resolve only when unambiguous across all known people.
@@ -77,7 +90,11 @@ function matchOwner(raw: string, index: NameIndex): MentionPerson | null {
 
   if (!owner) return null;
 
-  return index.byFullName.get(owner) ?? index.byFirstName.get(owner) ?? null;
+  const person = index.byFullName.has(owner)
+    ? index.byFullName.get(owner)
+    : index.byFirstName.get(owner);
+
+  return person?.contactId ? person : null;
 }
 
 /**

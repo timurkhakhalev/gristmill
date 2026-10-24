@@ -288,7 +288,7 @@ async function mountPanel(
     getNote: async () => {
       participantLoads++;
       if (failParticipants) throw new Error("participant-load-failed");
-      return { participants: JSON.stringify([{ email: "person@example.com" }]) };
+      return { participants: JSON.stringify([{ contactId: 7, email: null, displayName: "Casey Synthetic", self: false, responseStatus: null }]) };
     },
     onNoteUpdated: () => () => {},
     getNoteOutput: async (request: { noteId: number; scope: "note" | "run"; runId?: string }) => {
@@ -1395,7 +1395,7 @@ test("calendar participant naming error stays visible with the completed Summary
   assert.match(ui.text(), /Release on Friday/);
 });
 
-test("a recognized speaker can be linked to an email-only calendar participant from the transcript", async (t: TestContext) => {
+test("a recognized speaker can be linked to a name-only participant from the transcript", async (t: TestContext) => {
   const ui = await mountPanel(t, [
     recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", completeRun()),
   ]);
@@ -1406,14 +1406,14 @@ test("a recognized speaker can be linked to an email-only calendar participant f
 
   const choice = findNode(
     ui.tree(),
-    (node) => node.props?.label === "Remember name for calendar participant"
+    (node) => node.props?.label === "Remember name for participant"
   );
 
   assert.ok(choice);
   const options = choice.props?.options as Array<{ id: string; label: string }>;
-  assert.ok(options.some((option) => option.id === "person@example.com"));
+  assert.ok(options.some((option) => option.id === "7" && option.label === "Casey Synthetic"));
   await ui.flush(() =>
-    (choice.props as { onChange(value: string): void }).onChange("person@example.com")
+    (choice.props as { onChange(value: string): void }).onChange("7")
   );
   await ui.saveSpeaker();
   assert.deepEqual(ui.calls.speaker, [
@@ -1422,7 +1422,7 @@ test("a recognized speaker can be linked to an email-only calendar participant f
       speakerId: "speaker-1",
       displayName: "Alice",
       profileId: null,
-      participantEmail: "person@example.com",
+      participantContactId: 7,
     },
   ]);
 });

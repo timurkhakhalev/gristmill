@@ -14,12 +14,17 @@ import {
   buildMentionMarkdown,
   mentionAttrsSchema,
   parseMentionEmail,
+  parseMentionContactId,
   type MentionPerson,
 } from "../../utils/mentionMarkdown";
 
 const SUGGESTION_WIDTH = 240;
 
-const mentionItemSchema = z.object({ label: z.string(), email: z.string().nullable() });
+const mentionItemSchema = z.object({
+  label: z.string(),
+  email: z.string().nullable(),
+  contactId: z.number().int().positive().nullable(),
+});
 
 // Only an HTML element can be styled; the suggestion renderer is a DOM node.
 function htmlElementOf(renderer: { element: Element } | null): HTMLElement | undefined {
@@ -79,18 +84,36 @@ const suggestionRender: SuggestionOptions<
   };
 };
 
-const toSuggestionItems = (people: MentionPerson[], query: string): MentionSuggestionItem[] => {
+export const toSuggestionItems = (
+  people: MentionPerson[],
+  query: string
+): MentionSuggestionItem[] => {
   const q = query.toLowerCase();
 
+  const seen = new Set<string>();
+
   return people
+    .filter((person) => {
+      const key = person.contactId ? `contact:${person.contactId}` : `label:${person.name}`;
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+
+      return true;
+    })
     .filter((p) => !q || p.name.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q))
     .slice(0, 6)
-    .map((p) => ({ id: p.email ?? p.name, label: p.name, email: p.email }));
+    .map((p) => ({
+      id: p.contactId ? String(p.contactId) : p.name,
+      label: p.name,
+      email: p.email,
+      contactId: p.contactId,
+    }));
 };
 
 /**
  * Mention extension that round-trips through tiptap-markdown as a
- * `[@Name](mention:email)` link — see buildMentionMarkdown. `getPeople` is
+ * `[@Name](mention:contact:<id>)` link — see buildMentionMarkdown. `getPeople` is
  * read lazily so suggestions always reflect the latest known people without
  * rebuilding the editor.
  */
@@ -100,6 +123,8 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
       return {
         label: { default: "" },
         email: { default: null },
+        contactId: { default: null },
+        href: { default: null },
       };
     },
     parseHTML() {
@@ -108,22 +133,29 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
           tag: `a[href^="${MENTION_HREF_PREFIX}"]`,
           priority: 100,
           getAttrs: (element) => {
-            const label = (element.textContent || "").replace(/^@/, "").trim();
+            const label = (element.textContent || "").replace(/^@/, "");
 
-            if (!label) return false;
+            if (!label.trim()) return false;
 
-            return { label, email: parseMentionEmail(element.getAttribute("href")) };
+            const href = element.getAttribute("href");
+
+            return {
+              label,
+              href,
+              contactId: parseMentionContactId(href),
+              email: parseMentionEmail(href),
+            };
           },
         },
       ];
     },
     renderHTML({ node, HTMLAttributes }) {
-      const { label, email } = mentionAttrsSchema.parse(node.attrs);
+      const { label, contactId, href } = mentionAttrsSchema.parse(node.attrs);
 
       return [
         "a",
         mergeAttributes(HTMLAttributes, {
-          href: `${MENTION_HREF_PREFIX}${encodeURIComponent(email || label)}`,
+          href: href ?? (contactId ? `mention:contact:${contactId}` : null),
           "data-mention": "",
         }),
         `@${label}`,
@@ -139,8 +171,12 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
       return {
         markdown: {
           serialize(state: { write: (content: string) => void }, node: NodeViewProps["node"]) {
-            const { label, email } = mentionAttrsSchema.parse(node.attrs);
-            state.write(buildMentionMarkdown({ name: label, email }));
+            const { label, email, contactId, href } = mentionAttrsSchema.parse(node.attrs);
+            state.write(
+              href
+                ? `[@${label}](${href})`
+                : buildMentionMarkdown({ name: label, email, contactId })
+            );
           },
           parse: {},
         },
@@ -151,11 +187,25 @@ export function createMentionExtension(getPeople: () => MentionPerson[]) {
       items: ({ query }) => toSuggestionItems(getPeople(), query),
       command: ({ editor, range, props }) => {
         const item = mentionItemSchema.parse(props);
+
+        if (!item.contactId) {
+          editor
+            .chain()
+            .focus()
+            .insertContentAt(range, { type: "text", text: `@${item.label} ` })
+            .run();
+
+          return;
+        }
+
         editor
           .chain()
           .focus()
           .insertContentAt(range, [
-            { type: "mention", attrs: { label: item.label, email: item.email } },
+            {
+              type: "mention",
+              attrs: { label: item.label, email: item.email, contactId: item.contactId },
+            },
             { type: "text", text: " " },
           ])
           .run();

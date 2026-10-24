@@ -53,18 +53,15 @@ export const meetingProcessingUpdateBlockedRunConfigRequestSchema = z.object({
   configError: meetingProcessingConfigErrorSchema.nullable(),
 });
 
-export const meetingProcessingSpeakerCorrectionRequestSchema = z.object({
-  runId: meetingRecordingIdSchema,
-  speakerId: z.string().min(1).max(200),
-  profileId: z.number().int().positive().nullable(),
-  displayName: z.string().trim().min(1).max(200),
-  participantEmail: z
-    .string()
-    .trim()
-    .email()
-    .transform((email) => email.toLowerCase())
-    .optional(),
-});
+export const meetingProcessingSpeakerCorrectionRequestSchema = z
+  .object({
+    runId: meetingRecordingIdSchema,
+    speakerId: z.string().min(1).max(200),
+    profileId: z.number().int().positive().nullable(),
+    displayName: z.string().trim().min(1).max(200),
+    participantContactId: z.number().int().positive().optional(),
+  })
+  .strict();
 
 export const meetingProcessingSummaryActionRequestSchema = z.object({
   runId: meetingRecordingIdSchema,

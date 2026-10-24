@@ -428,7 +428,7 @@ test("Google People names and photos outrank calendar names and survive later ca
   db.upsertGooglePeople([{ email: "contact.example@example.com", displayName: "Contact Example", photoUrl: null }]);
 
   assert.deepEqual(
-    db.getContactProfiles(["CONTACT.EXAMPLE@example.com", "nobody@example.com"]).map((row) => ({ ...row })),
+    db.getContactProfiles([db.searchContacts("contact.example@example.com")[0].id]).map(({ id, telegram_username, ...row }) => row),
     [{ email: "contact.example@example.com", display_name: "Contact Example", photo_url: "https://lh3/contact.jpg" }]
   );
   assert.equal(db.searchContacts("Contact E")[0]?.display_name, "Contact Example");
@@ -442,13 +442,14 @@ test("a contact name the user set outranks Google and invite names until it is c
 
   db.upsertContacts([{ email: "taylor@example.com", displayName: "sample-contact" }]);
   db.upsertGooglePeople([{ email: "taylor@example.com", displayName: "Taylor Example", photoUrl: null }]);
-  db.setContactName("Taylor@Example.com", "  Taylor Custom  ");
+  const id = db.searchContacts("taylor@example.com")[0].id;
+  db.updateContact(id, { displayName: "  Taylor Custom  ", email: "taylor@example.com", telegramUsername: null });
   // Later syncs must not overwrite the user's choice.
   db.upsertGooglePeople([{ email: "taylor@example.com", displayName: "Taylor Example", photoUrl: null }]);
-  assert.equal(db.getContactProfiles(["taylor@example.com"])[0]?.display_name, "Taylor Custom");
+  assert.equal(db.getContactProfiles([id])[0]?.display_name, "Taylor Custom");
 
-  db.setContactName("taylor@example.com", "   ");
-  assert.equal(db.getContactProfiles(["taylor@example.com"])[0]?.display_name, "Taylor Example");
+  db.updateContact(id, { displayName: "   ", email: "taylor@example.com", telegramUsername: null });
+  assert.equal(db.getContactProfiles([id])[0]?.display_name, "Taylor Example");
   db.db.close();
 });
 

@@ -3,17 +3,19 @@
 // model lifecycle with its progress event. Renderer shapes mirror the
 // database projections exactly — no second projection.
 import { z } from "zod";
+import { contactIdSchema } from "./contactIdentity";
 
 export const speakerChannels = {
   searchContacts: "search-contacts",
-  upsertContact: "upsert-contact",
-  renameContact: "rename-contact",
+  createContact: "create-contact",
+  updateContact: "update-contact",
   getContactProfiles: "get-contact-profiles",
+  resolveLegacyMentionContacts: "resolve-legacy-mention-contacts",
   getSpeakerMappings: "get-speaker-mappings",
   setSpeakerMapping: "set-speaker-mapping",
   removeSpeakerMapping: "remove-speaker-mapping",
   getSpeakerProfiles: "get-speaker-profiles",
-  attachSpeakerEmail: "attach-speaker-email",
+  attachSpeakerContact: "attach-speaker-contact",
   saveNoteSpeakerEmbeddings: "save-note-speaker-embeddings",
   downloadDiarizationModels: "download-diarization-models",
   getDiarizationModelStatus: "get-diarization-model-status",
@@ -40,14 +42,18 @@ export type DiarizationDownloadProgressEvent = z.infer<
 // compilation or the parse, not review. The DB embedding Buffer never crosses
 // this boundary; contacts/profiles carry only the projected columns.
 export const speakerContactSchema = z.object({
-  email: z.string(),
+  id: contactIdSchema,
+  email: z.string().nullable(),
+  telegram_username: z.string().nullable(),
   display_name: z.string().nullable(),
 });
 
 export type SpeakerContact = z.infer<typeof speakerContactSchema>;
 
 export const contactProfileSchema = z.object({
-  email: z.string(),
+  id: contactIdSchema,
+  email: z.string().nullable(),
+  telegram_username: z.string().nullable(),
   display_name: z.string().nullable(),
   photo_url: z.string().nullable(),
 });
@@ -55,9 +61,9 @@ export const contactProfileSchema = z.object({
 export type ContactProfile = z.infer<typeof contactProfileSchema>;
 
 export const publicSpeakerProfileSchema = z.object({
-  id: z.number(),
+  id: contactIdSchema,
   display_name: z.string(),
-  email: z.string().nullable(),
+  contact_id: contactIdSchema.nullable(),
   sample_count: z.number(),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
@@ -74,15 +80,15 @@ export const speakerMappingEntrySchema = z.object({
 
 export type SpeakerMappingEntry = z.infer<typeof speakerMappingEntrySchema>;
 
-export const attachSpeakerEmailResultSchema = z.object({
+export const attachSpeakerContactResultSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
   profile: publicSpeakerProfileSchema
-    .pick({ id: true, display_name: true, email: true, sample_count: true })
+    .pick({ id: true, display_name: true, contact_id: true, sample_count: true })
     .optional(),
 });
 
-export type AttachSpeakerEmailResult = z.infer<typeof attachSpeakerEmailResultSchema>;
+export type AttachSpeakerContactResult = z.infer<typeof attachSpeakerContactResultSchema>;
 
 export const setSpeakerMappingResultSchema = z.object({
   success: z.boolean(),
@@ -117,24 +123,24 @@ export type CancelDiarizationResult = z.infer<typeof cancelDiarizationResultSche
 
 export interface SpeakerApi {
   searchContacts(query: string): Promise<{ success: boolean; contacts: SpeakerContact[] }>;
-  upsertContact(contact: {
-    email: string;
-    displayName?: string | null;
-  }): Promise<{ success: boolean }>;
-  /** Sets the name the user chose for a contact; null or blank falls back to Google or invite names. */
-  renameContact(email: string, name: string | null): Promise<{ success: boolean }>;
-  getContactProfiles(emails: string[]): Promise<ContactProfile[]>;
+  createContact(contact: ContactCreateInput): Promise<ContactMutationResult>;
+  updateContact(id: number, contact: ContactUpdateInput): Promise<ContactMutationResult>;
+  getContactProfiles(ids: number[]): Promise<ContactProfile[]>;
+  resolveLegacyMentionContacts(emails: string[]): Promise<LegacyMentionContact[]>;
   getSpeakerMappings(noteId: number): Promise<SpeakerMappingEntry[]>;
   setSpeakerMapping(
     noteId: number,
     speakerId: string,
     displayName: string,
-    email?: string | null,
+    contactId?: number | null,
     profileId?: number | null
   ): Promise<SetSpeakerMappingResult>;
   removeSpeakerMapping(noteId: number, speakerId: string): Promise<{ success: boolean }>;
   getSpeakerProfiles(): Promise<PublicSpeakerProfile[]>;
-  attachSpeakerEmail(profileId: number, email: string | null): Promise<AttachSpeakerEmailResult>;
+  attachSpeakerContact(
+    profileId: number,
+    contactId: number | null
+  ): Promise<AttachSpeakerContactResult>;
   saveNoteSpeakerEmbeddings(
     noteId: number,
     embeddings: Record<string, number[]>
@@ -147,3 +153,43 @@ export interface SpeakerApi {
     callback: (data: DiarizationDownloadProgressEvent) => void
   ): () => void;
 }
+
+export const contactUpdateInputSchema = z
+  .object({
+    displayName: z.string().nullable(),
+    email: z.string().nullable(),
+    telegramUsername: z.string().nullable(),
+  })
+  .strict();
+
+export const contactCreateInputSchema = contactUpdateInputSchema.extend({
+  displayName: z.string().trim().min(1),
+});
+
+export type ContactCreateInput = z.infer<typeof contactCreateInputSchema>;
+
+export type ContactUpdateInput = z.infer<typeof contactUpdateInputSchema>;
+
+export const contactMutationResultSchema = z.discriminatedUnion("success", [
+  z.object({ success: z.literal(true), contact: contactProfileSchema }),
+  z.object({
+    success: z.literal(false),
+    error: z.enum([
+      "invalid_name",
+      "invalid_telegram",
+      "missing_contact",
+      "email_conflict",
+      "telegram_conflict",
+    ]),
+    existingContactId: contactIdSchema.optional(),
+  }),
+]);
+
+export type ContactMutationResult = z.infer<typeof contactMutationResultSchema>;
+
+export const legacyMentionContactSchema = z.object({
+  email: z.string(),
+  contactId: contactIdSchema.nullable(),
+});
+
+export type LegacyMentionContact = z.infer<typeof legacyMentionContactSchema>;

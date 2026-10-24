@@ -1,4 +1,6 @@
 // Participant projections used by capture metadata and speaker profile auto-labeling.
+import { parseNoteParticipants } from "../utils/noteParticipants.js";
+import type { NoteParticipant } from "../contracts/contactIdentity.js";
 import { normalizeStoredSpeakerCount } from "./speakerCount.js";
 import speakerDetection from "../constants/speakerDetection.json";
 
@@ -26,51 +28,34 @@ export interface MeetingSessionSpeakerConfig {
   explicit?: boolean;
 }
 
-interface MeetingParticipant {
-  email?: string | null;
-  displayName?: string | null;
-  self?: boolean;
-}
-
 function parseNonSelfParticipants(
   deps: { databaseManager: MeetingSpeakerRosterDatabase },
   participantsJson: string | null | undefined
-): MeetingParticipant[] {
-  if (!participantsJson) return [];
-  let participants: unknown;
-
-  try {
-    participants = JSON.parse(participantsJson);
-  } catch {
-    return [];
-  }
-
-  if (!Array.isArray(participants) || participants.length === 0) return [];
-
+): NoteParticipant[] {
   const googleEmails = new Set(
-    deps.databaseManager.getGoogleAccounts().map((a) => (a.email || "").toLowerCase())
+    deps.databaseManager
+      .getGoogleAccounts()
+      .map((account) => account.email?.toLowerCase())
+      .filter(Boolean)
   );
 
-  // SAFETY: participants is the calendar sync's JSON array of attendee objects;
-  // only optional email/self fields are read, guarded below.
-  return (participants as MeetingParticipant[]).filter(
-    (p) => p && p.self !== true && !googleEmails.has((p.email || "").toLowerCase())
+  return parseNoteParticipants(participantsJson ?? null).filter(
+    (person) => !person.self && (!person.email || !googleEmails.has(person.email.toLowerCase()))
   );
 }
 
 export function resolveOneOnOneOtherParticipant(
   deps: { databaseManager: MeetingSpeakerRosterDatabase },
   participantsJson: string | null | undefined
-): { displayName: string; email: string | null } | null {
+): { displayName: string; contactId: number } | null {
   const others = parseNonSelfParticipants(deps, participantsJson);
 
   if (others.length !== 1) return null;
   const displayName = others[0].displayName || others[0].email;
 
   if (!displayName) return null;
-  const email = (others[0].email || "").toLowerCase().trim() || null;
 
-  return { displayName, email };
+  return { displayName, contactId: others[0].contactId };
 }
 
 export function noteExpectedSpeakerCountOrNull(

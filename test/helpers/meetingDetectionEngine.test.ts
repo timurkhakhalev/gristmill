@@ -323,6 +323,7 @@ function createEngineWithNotes(existingNote: { id: number; folder_id: number | n
 
       return { note: { id: 42 } };
     },
+    materializeParticipants: (people: Array<{email:string}>) => people.map((person, index) => ({ ...person, contactId: index + 1 })),
     getNoteByCalendarEventId: () => existingNote,
     getCalendarEventById: (id: string) =>
       id === "evt-1" ? { id: "evt-1", summary: "Design review", attendees: "[]" } : null,
@@ -393,7 +394,7 @@ test("an unknown calendar event gets no note", () => {
   assert.deepEqual(saved, []);
 });
 
-test("an event's note stores attendees under their best-known names", () => {
+test("an event's note materializes attendees with stable contact IDs", () => {
   const MeetingDetectionEngine = loadEngine();
 
   const noop = Object.assign(new EventEmitter(), {
@@ -423,7 +424,7 @@ test("an event's note stores attendees under their best-known names", () => {
           { email: "unknown@example.com", displayName: null },
         ]),
       }),
-      getContactProfiles: () => [{ email: "contact.example@example.com", display_name: "Contact Example" }],
+      materializeParticipants: (people: Array<{email:string;displayName:string|null}>) => people.map((person, index) => ({ ...person, contactId: index + 1 })),
       updateNote: (_id: number, update: Record<string, unknown>) => {
         updates.push(update);
 
@@ -437,9 +438,9 @@ test("an event's note stores attendees under their best-known names", () => {
   engine.createCalendarEventNote("evt-1", {});
 
   assert.deepEqual(JSON.parse(updates[0].participants as string), [
-    { email: "Contact.Example@example.com", displayName: "Contact Example" },
-    { email: "k@example.com", displayName: "Morgan" },
-    { email: "unknown@example.com", displayName: null },
+    { contactId: 1, email: "Contact.Example@example.com", displayName: null, responseStatus: null, self: false },
+    { contactId: 2, email: "k@example.com", displayName: "Morgan", responseStatus: null, self: false },
+    { contactId: 3, email: "unknown@example.com", displayName: null, responseStatus: null, self: false },
   ]);
 });
 

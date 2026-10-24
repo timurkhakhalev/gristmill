@@ -27,3 +27,13 @@ Editor drafts remain with the editor. The Summary fallback view and its copy act
 The `get_note` Chat tool reads Summary/manual text from Note scope and retains its metadata and text preference. Public CLI methods remain in the same read owner: Summary uses the saved projection; transcript and transcript search use the aggregate. Public CLI JSON does not expose internal run provenance. Home and search snippets keep their batched Note-row policy; they do not read artifacts per snippet. Embedded Chat and follow-up keep their draft and prompt-material policies. Transcript export keeps its projection timeline.
 
 See [ADR-0009](../adr/0009-note-output-scopes.md).
+
+## Participant projections and mentions
+
+AI participant material, CLI participant names/emails and transcript export use the owning note's snapshots. CLI `stored_names.display_name` contains the meeting name; unavailable snapshot source fields are null. Current contact names do not override this projection. Contact cards and avatars use live ID-based profiles. Telegram does not enter AI or CLI participant output.
+
+The roster is provisional until first AI processing. The worker freezes it atomically before the first generation snapshot; names learned after calendar-note creation can still enter that first context. Retry and later runs use the frozen fields. A live contact edit therefore does not change saved meeting context or Summary freshness. Explicit roster changes and correction revisions retain their freshness effects.
+
+New contact-bound mentions use `mention:contact:<positive-id>` in Markdown and HTML. Saved labels remain unchanged. Suggestions deduplicate by contact ID, so equal-name contacts remain separate. Unbound insertions are plain text. Action owners get an ID mention only when their saved-contact match is unambiguous; duplicate full or first names remain text.
+
+The legacy mention reader preserves raw hrefs and labels. It first resolves a unique normalized email in the owning note's participant snapshots; only an absent snapshot match permits a batched exact current-contact lookup. Ambiguous, malformed and label-only links stay neutral. Resolution changes view metadata only: it performs no contact/note/Summary writes and does not rehash content or change freshness.

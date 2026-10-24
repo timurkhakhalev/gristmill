@@ -502,7 +502,7 @@ test("IPC and BB share durable blank Note, membership, event and participant-edi
     ]);
 
   const edits = {
-    participants: JSON.stringify([{ displayName: "Anna" }]),
+    participants: JSON.stringify(ctx.db.materializeParticipants([{ displayName: "Anna", email: null }])),
     transcript,
     folder_ids: [],
     icon: "star",

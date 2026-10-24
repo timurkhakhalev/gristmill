@@ -255,7 +255,7 @@ export interface MeetingCoordinatorRuntime {
   // Speaker vertical: 1-on-1 auto labeling needs the same participant rule.
   resolveOneOnOneOtherParticipant(
     participantsJson: string | null | undefined
-  ): { displayName: string; email: string | null } | null;
+  ): { displayName: string; contactId: number } | null;
 }
 
 export function registerMeetingCoordinatorHandlers(

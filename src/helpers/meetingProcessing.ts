@@ -1,3 +1,4 @@
+import { parseNoteParticipants } from "../utils/noteParticipants.js";
 import { readMeetingRunOutput } from "./meetingRunReader.js";
 import {
   AUTO_RETRY_LIMIT,
@@ -55,10 +56,7 @@ import {
 } from "../contracts/meetingRecording.js";
 import type { MeetingRecordingStorage } from "./meetingRecordingStorage.js";
 import { matchMeetingPlatformSpeakers } from "./meetingPlatformMatcher.js";
-import {
-  composeMeetingAudioParts,
-  meetingTimelineFrameCount,
-} from "./meetingAudioParts.js";
+import { composeMeetingAudioParts, meetingTimelineFrameCount } from "./meetingAudioParts.js";
 import {
   meetingSourceIntentionallyEmpty,
   prepareMeetingAudio,
@@ -151,10 +149,12 @@ export interface MeetingProcessingDatabase {
     profileId: number | null,
     displayName: string,
     source?: "voice" | "platform" | "model" | "user",
-    participantEmail?: string
+    participantContactId?: number
   ): { success: boolean; noteId?: number };
-  getContactProfiles(emails: string[]): Array<{ email: string; display_name: string | null }>;
-  rememberContactName(email: string, name: string): void;
+  freezeParticipantContext(
+    noteId: number
+  ): { id: number; title: string; content: string; participants: string | null } | null;
+  rememberContactName(contactId: number, name: string): void;
   applyAutomaticMeetingSpeakerCorrections(
     runId: string,
     expectedCurrentRunId: string,
@@ -491,14 +491,14 @@ export class MeetingProcessingWorker {
 
     if (!transcript?.segments?.some((segment) => segment.speaker === input.speakerId)) return false;
 
-    if (input.participantEmail) {
+    if (input.participantContactId) {
       const recording = this.deps.database.getMeetingRecording(run.recordingId);
       const note = recording && this.deps.database.getNote(recording.noteId);
 
       if (
         !note ||
-        !participantCandidates(note.participants).some(
-          (person) => person.email?.toLowerCase() === input.participantEmail?.toLowerCase()
+        !parseNoteParticipants(note.participants).some(
+          (person) => person.contactId === input.participantContactId
         )
       )
         return false;
@@ -510,7 +510,7 @@ export class MeetingProcessingWorker {
       input.profileId,
       input.displayName,
       "user",
-      input.participantEmail
+      input.participantContactId
     );
 
     if (!updated.success) return false;
@@ -1902,7 +1902,11 @@ export class MeetingProcessingWorker {
       return parsed.data;
     }
 
-    const note = this.deps.database.getNote(recording.noteId);
+    const previous = this.deps.database.getNote(recording.noteId);
+    const note = this.deps.database.freezeParticipantContext(recording.noteId);
+
+    if (note && note.participants !== previous?.participants)
+      this.deps.onNoteProjectionChanged?.(recording.noteId);
     const promptModel = run.config?.summary;
 
     if (!note || !promptModel)
@@ -2062,7 +2066,7 @@ export class MeetingProcessingWorker {
           meetingTitle: snapshot.meetingTitle,
           manualNotes: snapshot.manualNotes,
           transcriptSourceId: snapshot.sourceRunId,
-          participants: this.enrichedParticipants(participantsBeforeNaming),
+          participants: participantsBeforeNaming,
           ...this.callParticipants(run),
           segments: this.promptSegments(snapshot, transcript),
         },
@@ -2126,28 +2130,22 @@ export class MeetingProcessingWorker {
           rejectedModelIds
         )
       ) {
-        const candidates = this.enrichedParticipants(participantsBeforeNaming);
+        const candidates = parseNoteParticipants(noteBeforeNaming.participants);
 
         for (const suggestion of suggestions) {
           const matches = candidates.filter(
             (person) =>
-              person.email &&
-              person.name?.normalize("NFC").toLowerCase() ===
-                suggestion.name.trim().normalize("NFC").toLowerCase()
+              person.displayName?.normalize("NFC").toLowerCase() ===
+              suggestion.name.trim().normalize("NFC").toLowerCase()
           );
 
-          const emails = [
-            ...new Set(matches.flatMap((person) => (person.email ? [person.email] : []))),
-          ];
-
           if (
-            emails.length === 1 &&
+            matches.length === 1 &&
             suggestions.filter(
               (item) => item.name.trim().toLowerCase() === suggestion.name.trim().toLowerCase()
             ).length === 1
-          ) {
-            this.deps.database.rememberContactName(emails[0], suggestion.name);
-          }
+          )
+            this.deps.database.rememberContactName(matches[0].contactId, suggestion.name);
         }
 
         snapshot = this.refreshLlmSnapshotSpeakerState(run.id, sourceRunId, transcript, snapshot);
@@ -2202,19 +2200,6 @@ export class MeetingProcessingWorker {
     } catch {
       return {};
     }
-  }
-
-  private enrichedParticipants(participants: Array<{ name: string | null; email: string | null }>) {
-    const profiles = new Map(
-      this.deps.database
-        .getContactProfiles(participants.flatMap((person) => (person.email ? [person.email] : [])))
-        .map((profile) => [profile.email.toLowerCase(), profile.display_name])
-    );
-
-    return participants.map((person) => ({
-      ...person,
-      name: (person.email && profiles.get(person.email.toLowerCase())) || person.name,
-    }));
   }
 
   private isAutoSummaryEligible(
@@ -2288,14 +2273,7 @@ export class MeetingProcessingWorker {
     }
 
     if (decision.action === "retry") {
-      this.setState(
-        run.id,
-        stage,
-        "pending",
-        decision.code,
-        decision.retryAt,
-        decision.retryCount
-      );
+      this.setState(run.id, stage, "pending", decision.code, decision.retryAt, decision.retryCount);
 
       return;
     }

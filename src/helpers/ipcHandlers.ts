@@ -2324,7 +2324,7 @@ export class IPCHandlers {
           const other = this._resolveOneOnOneOtherParticipant(note?.participants);
 
           if (!other || !note) return;
-          const { displayName, email } = other;
+          const { displayName, contactId } = other;
 
           const embeddings = this.databaseManager.getNoteSpeakerEmbeddings(noteId);
 
@@ -2362,7 +2362,7 @@ export class IPCHandlers {
           for (const emb of unmapped) {
             profile = this.databaseManager.upsertSpeakerProfile(
               displayName,
-              email,
+              contactId,
               emb.embedding,
               profile?.id ?? null
             );

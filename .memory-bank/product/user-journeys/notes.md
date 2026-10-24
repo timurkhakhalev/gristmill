@@ -56,9 +56,11 @@ As a Gristmill user, I want to write notes, keep them in folders and find them a
 ### Add participants
 
 1. Open a note and click **Add attendees**.
-2. Type an email and press Enter. Remove a participant with **Remove attendee**.
-3. A calendar note shows its participants, the linked event and **Join** for the meeting link.
-4. Gristmill uses participants as hints for speaker names. See [Correct speakers](speakers.md).
+2. Search for a saved contact or choose **Create contact**. Enter a name. Email and Telegram are optional. Select an existing contact to reuse the same person in another note. Equal names can identify different contacts. Remove a participant with **Remove attendee**.
+3. Open a participant card and choose **Edit contact** to edit or clear email and Telegram. Enter a bare username, `@username`, `t.me/username` or `https://t.me/username`. Telegram uses 5–32 ASCII letters, digits or underscores. A profile link can have one trailing slash; a host-only link is incomplete. Click the saved `@username` to open its HTTPS profile link.
+4. A pending save keeps the form open. A failed save keeps the input for correction or retry. If an email already belongs to a contact during creation, **Select existing contact** uses that contact without changing it. **Cancel selection** keeps the form input. Editing a contact to an occupied email fails without changing either contact or its links. Contact merging is not supported. Telegram usernames are unique without regard to letter case; a conflict preserves all saved fields. If the contact saves but adding it to the note fails, select the saved contact to retry.
+5. A calendar note shows its participants, the linked event and **Join** for the meeting link.
+6. Gristmill uses participants as hints for speaker names. See [Correct speakers](speakers.md).
 
 ## BDD acceptance criteria
 
@@ -73,3 +75,11 @@ As a Gristmill user, I want to write notes, keep them in folders and find them a
 - [Note writes](../../architecture/note-writes.md) — write effects and deletion policy.
 - [Note output](../../architecture/note-output.md) — what a note contains and how consumers read it.
 - [Home and navigation](home.md) — Home and the sidebar.
+
+### Contact context and mentions
+
+Cards show current shared contact details. A meeting retains its name/email context. That context is provisional until its first AI processing, so names learned after calendar-note creation can still be used. At first processing it freezes; later contact edits do not change its saved Summary, participant context or freshness. An explicitly added participant captures its own context at addition without refreshing existing members.
+
+The `@` picker binds saved contacts by ID. Two contacts with the same name stay separate choices. New bound mentions use `[@Label](mention:contact:<id>)`; a later contact edit does not change the saved label. Transcript-only or self labels without a saved contact stay plain `@Name` text. Ambiguous action owners remain text.
+
+Old email mentions can show a contact avatar if their email uniquely matches this note's participant snapshots, or otherwise an exact current-contact email. Old label-only, malformed or unresolved links keep a neutral avatar. Reading a mention does not create a contact, change its saved href/label, write note text or change Summary freshness.

@@ -87,6 +87,7 @@ function deps(
     getRun: (id: string) => (runs as Array<{ id: string }>).find((item) => item.id === id) ?? null,
     readTranscript: (id: string) => transcripts[id] ?? null,
     getCorrections: (id: string) => options.corrections?.[id] ?? [],
+    participant: () => null,
     profileEmail: (id: number) => (id === 7 ? "anna@example.org" : null),
     getProjection: () => options.projection ?? null,
   };
@@ -350,7 +351,7 @@ test("overlapping segments are kept in deterministic order and email comes only 
             {
               speakerId: "s1",
               profileId: 7,
-              participantEmail: null,
+              participantEmail: null, participantContactId: null,
               displayName: "Anna",
               source: "user",
               revision: 1,
@@ -358,7 +359,7 @@ test("overlapping segments are kept in deterministic order and email comes only 
             {
               speakerId: "s2",
               profileId: null,
-              participantEmail: null,
+              participantEmail: null, participantContactId: null,
               displayName: "Bob",
               source: "user",
               revision: 1,
@@ -466,7 +467,7 @@ test("shared Note transcript preserves platform provenance without creating prof
             {
               speakerId: "system:fixture",
               profileId: null,
-              participantEmail: null,
+              participantEmail: null, participantContactId: null,
               displayName: "Synthetic Guest",
               source: "platform",
               platform: "google-meet",

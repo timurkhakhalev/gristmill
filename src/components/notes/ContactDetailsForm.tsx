@@ -4,53 +4,35 @@ import { useTranslation } from "react-i18next";
 import { normalizeTelegramUsername } from "../../contracts/contactIdentity";
 import type { ContactProfile, ContactUpdateInput } from "../../contracts/speakerProfiles";
 import { refreshPersonProfile } from "../../hooks/usePersonProfile";
+import { Mail, Send } from "../icons";
 
 interface Props {
-  contact?: ContactProfile;
-  initialName?: string;
-  participantIds?: number[];
+  contact: ContactProfile;
+  /** The name the card shows; the stored name can be empty when it comes from invites or speakers. */
+  displayName?: string;
   onSaved: (contact: ContactProfile) => Promise<boolean>;
   onCancel: () => void;
 }
 
-/** One draft and one canonical mutation for both contact entry points. */
-export default function ContactDetailsForm({
-  contact,
-  initialName = "",
-  participantIds = [],
-  onSaved,
-  onCancel,
-}: Props) {
+const FIELD_CLASS =
+  "flex items-center gap-2.5 rounded-md border border-border px-3 text-muted focus-within:border-ring/60";
+
+const INPUT_CLASS =
+  "min-w-0 flex-1 appearance-none border-none bg-transparent px-0 py-2 text-xs text-foreground shadow-none outline-none ring-0 placeholder:text-muted focus:ring-0";
+
+/** Compact editor for the name, email and Telegram of one saved contact. */
+export default function ContactDetailsForm({ contact, displayName, onSaved, onCancel }: Props) {
   const { t } = useTranslation();
 
   const [draft, setDraft] = useState({
-    displayName: contact?.display_name ?? initialName,
-    email: contact?.email ?? "",
-    telegramUsername: contact?.telegram_username ?? "",
+    displayName: displayName ?? contact.display_name ?? "",
+    email: contact.email ?? "",
+    telegramUsername: contact.telegram_username ?? "",
   });
 
   const [error, setError] = useState<string | null>(null);
-  const [existing, setExisting] = useState<ContactProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
-  const persisted = useRef<ContactProfile | null>(null);
-
-  const attach = async (person: ContactProfile) => {
-    if (participantIds.includes(person.id)) {
-      setError(t("notes.participants.alreadyAdded"));
-
-      return;
-    }
-
-    try {
-      if (await onSaved(person)) return;
-    } catch {
-      /* The contact save has already committed. */
-    }
-
-    setExisting(person);
-    setError(t("notes.participants.participantSaveFailed"));
-  };
 
   const submit = async () => {
     if (pending.current) return;
@@ -58,12 +40,6 @@ export default function ContactDetailsForm({
     let input: ContactUpdateInput;
 
     try {
-      if (!contact && !draft.displayName.trim()) {
-        setError(t("notes.participants.nameRequired"));
-
-        return;
-      }
-
       input = {
         displayName: draft.displayName.trim() || null,
         email: draft.email.trim().toLowerCase() || null,
@@ -79,37 +55,20 @@ export default function ContactDetailsForm({
     setBusy(true);
 
     try {
-      if (persisted.current) {
-        await attach(persisted.current);
-
-        return;
-      }
-
-      const result = contact
-        ? await window.electronAPI.updateContact(contact.id, input)
-        : await window.electronAPI.createContact({
-            ...input,
-            displayName: draft.displayName.trim(),
-          });
+      const result = await window.electronAPI.updateContact(contact.id, input);
 
       if (!result.success) {
-        if (result.error === "email_conflict" && result.existingContactId) {
-          const rows = await window.electronAPI.getContactProfiles([result.existingContactId]);
-          setExisting(rows[0] ?? null);
-        }
-
         setError(
           t(
-            `notes.participants.${result.error === "email_conflict" ? (contact ? "editEmailConflict" : "emailConflict") : result.error === "telegram_conflict" ? "telegramConflict" : result.error === "invalid_telegram" ? "invalidTelegram" : "contactSaveFailed"}`
+            `notes.participants.${result.error === "email_conflict" ? "editEmailConflict" : result.error === "telegram_conflict" ? "telegramConflict" : result.error === "invalid_telegram" ? "invalidTelegram" : "contactSaveFailed"}`
           )
         );
 
         return;
       }
 
-      persisted.current = contact ? null : result.contact;
       refreshPersonProfile(result.contact);
-      await attach(result.contact);
+      await onSaved(result.contact);
     } catch {
       setError(t("notes.participants.contactSaveFailed"));
     } finally {
@@ -118,27 +77,10 @@ export default function ContactDetailsForm({
     }
   };
 
-  const selectExisting = async () => {
-    if (!existing || pending.current) return;
-    pending.current = true;
-    setBusy(true);
-
-    try {
-      await attach(existing);
-    } catch {
-      setError(t("notes.participants.participantSaveFailed"));
-    } finally {
-      pending.current = false;
-      setBusy(false);
-    }
-  };
-
   return (
     <form
-      className="space-y-2 text-xs"
-      aria-label={t(
-        contact ? "notes.participants.editContact" : "notes.participants.createContact"
-      )}
+      className="space-y-2.5 text-xs"
+      aria-label={t("notes.participants.editContact")}
       onSubmit={(event) => {
         event.preventDefault();
         runInBackground(submit(), "Contact save failed");
@@ -152,87 +94,59 @@ export default function ContactDetailsForm({
         }
       }}
     >
-      <label className="block">
-        {t("notes.participants.contactName")}
-        <input
-          dir="auto"
-          autoFocus
-          required={!contact}
-          disabled={busy}
-          value={draft.displayName}
-          onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
-          className="mt-1 w-full rounded border border-border bg-transparent px-2 py-1.5"
-        />
-      </label>
-      <label className="block">
-        {t("notes.participants.optionalEmail")}
+      <input
+        dir="auto"
+        autoFocus
+        disabled={busy}
+        aria-label={t("notes.participants.contactName")}
+        placeholder={t("notes.participants.contactName")}
+        value={draft.displayName}
+        onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
+        className="w-full appearance-none rounded-md border border-border bg-transparent px-3 py-2 text-sm font-medium text-foreground shadow-none outline-none ring-0 placeholder:text-muted focus:border-ring/60 focus:ring-0"
+      />
+      <label className={FIELD_CLASS}>
+        <Mail size={14} className="shrink-0" />
         <input
           dir="ltr"
           type="email"
           disabled={busy}
+          aria-label={t("notes.participants.optionalEmail")}
+          placeholder={t("notes.participants.optionalEmail")}
           value={draft.email}
           onChange={(event) => setDraft({ ...draft, email: event.target.value })}
-          className="mt-1 w-full rounded border border-border bg-transparent px-2 py-1.5"
+          className={INPUT_CLASS}
         />
       </label>
-      <label className="block">
-        {t("notes.participants.optionalTelegram")}
+      <label className={FIELD_CLASS}>
+        <Send size={14} className="shrink-0" />
         <input
           dir="ltr"
           disabled={busy}
+          aria-label={t("notes.participants.optionalTelegram")}
+          placeholder={t("notes.participants.telegramPlaceholder")}
           value={draft.telegramUsername}
           onChange={(event) => setDraft({ ...draft, telegramUsername: event.target.value })}
-          className="mt-1 w-full rounded border border-border bg-transparent px-2 py-1.5"
+          className={INPUT_CLASS}
         />
       </label>
-      <p className="text-muted">{t("notes.participants.telegramHint")}</p>
       {error && (
         <p role="alert" className="text-danger">
           {error}
         </p>
       )}
-      {existing && (
-        <div className="space-y-1">
-          <p>
-            {existing.display_name || existing.email} · #{existing.id}
-          </p>
-          {!contact && (
-            <button
-              type="button"
-              disabled={busy || participantIds.includes(existing.id)}
-              onClick={() => {
-                runInBackground(selectExisting(), "Participant selection failed");
-              }}
-              className="text-link"
-            >
-              {t(
-                participantIds.includes(existing.id)
-                  ? "notes.participants.alreadyAdded"
-                  : "notes.participants.selectExisting"
-              )}
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setExisting(null);
-              setError(null);
-            }}
-            className="ms-2 text-muted"
-          >
-            {t("notes.participants.cancelSelection")}
-          </button>
-        </div>
-      )}
-      <div className="flex justify-end gap-2">
-        <button type="button" disabled={busy} onClick={onCancel}>
+      <div className="flex justify-end gap-2 pt-1">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onCancel}
+          className="rounded-md px-3 py-1.5 text-muted transition-colors hover:text-foreground"
+        >
           {t("notes.speaker.cancel")}
         </button>
         <button
           type="submit"
           disabled={busy}
-          className="rounded bg-accent px-3 py-1.5 text-accent-foreground"
+          className="rounded-md bg-accent px-3 py-1.5 text-accent-foreground"
         >
           {t(busy ? "notes.participants.saving" : "notes.speaker.save")}
         </button>

@@ -35,39 +35,47 @@ async function mount(t: T, path: string, initial: any, api: any) {
 const person = (id = 7) => ({ id, display_name: "Casey Synthetic", email: null, telegram_username: null, photo_url: null });
 const formPath = "/components/notes/ContactDetailsForm.tsx";
 
-test("name-only creation retains pending input and retries participant persistence with the saved contact", async (t) => {
-  let calls = 0, additions = 0;
+const listPath = "/components/notes/NoteParticipants.tsx";
+
+test("a search with no exact match offers one-click creation that adds the saved contact once", async (t) => {
+  let calls = 0;
+  const noteWrites: any[] = [];
   let finish!: (value: any) => void;
   const pending = new Promise((resolve) => { finish = resolve; });
-  const ui = await mount(t, formPath, { onSaved: async () => ++additions > 1, onCancel() {} }, { createContact: async (input: any) => { calls++; assert.equal(input.displayName, "Casey Synthetic"); assert.equal(input.email, null); return pending; }, getContactProfiles: async () => [person()] });
+  const api = { searchContacts: async () => ({ success: true, contacts: [{ ...person(8), display_name: "Casey Other" }] }), getContactProfiles: async () => [person()], createContact: async (input: any) => { calls++; assert.deepEqual(input, { displayName: "Casey Synthetic", email: null, telegramUsername: null }); return pending; }, updateNote: async (...args: any[]) => { noteWrites.push(args); return { success: true }; } };
+  const ui = await mount(t, listPath, { noteId: 1, participants: [], canRenameContacts: true }, api);
+  await ui.click("notes.participants.addAttendees");
+  assert.equal(ui.nodes().some((node) => node.tagName === "BUTTON" && node.textContent === "notes.participants.createNamed"), false);
   await ui.change(0, "Casey Synthetic");
-  await ui.submit();
-  assert.equal(props(ui.input(0)).disabled, true);
-  await ui.submit();
+  await ui.click("notes.participants.createNamed");
+  await ui.click("notes.participants.createNamed");
   assert.equal(calls, 1);
   await ui.act(() => finish({ success: true, contact: person() }));
-  assert.match(ui.text(), /participantSaveFailed/);
-  assert.equal(props(ui.input(0)).value, "Casey Synthetic");
-  await ui.click("notes.participants.selectExisting");
-  assert.equal(additions, 2);
-  assert.equal(calls, 1);
+  assert.equal(noteWrites.length, 1);
+  assert.deepEqual(JSON.parse(noteWrites[0][1].participants).map((entry: any) => entry.contactId), [7]);
 });
 
-test("email conflicts require explicit selection, retain cancelled drafts and report already added", async (t) => {
-  let additions = 0;
-  const initial = { initialName: "Draft Synthetic", onSaved: async () => { additions++; return true; }, onCancel() {} };
-  const ui = await mount(t, formPath, initial, { createContact: async () => ({ success: false, error: "email_conflict", existingContactId: 7 }), getContactProfiles: async () => [person()] });
-  await ui.change(1, "existing@example.com");
-  await ui.submit();
-  assert.equal(additions, 0);
-  await ui.click("notes.participants.cancelSelection");
-  assert.equal(props(ui.input(0)).value, "Draft Synthetic");
-  assert.equal(props(ui.input(1)).value, "existing@example.com");
-  await ui.submit();
-  await ui.click("notes.participants.selectExisting");
-  assert.equal(additions, 1);
-  await ui.render({ ...initial, participantIds: [7] });
-  assert.equal(props(ui.find((node) => node.tagName === "BUTTON" && node.textContent === "notes.participants.alreadyAdded")).disabled, true);
+test("an exact name match hides the creation row", async (t) => {
+  const api = { searchContacts: async () => ({ success: true, contacts: [person()] }), getContactProfiles: async () => [person()] };
+  const ui = await mount(t, listPath, { noteId: 1, participants: [], canRenameContacts: true }, api);
+  await ui.click("notes.participants.addAttendees");
+  await ui.change(0, "casey synthetic");
+  assert.equal(ui.nodes().some((node) => node.tagName === "BUTTON" && node.textContent === "notes.participants.createNamed"), false);
+});
+
+test("creation failures keep the typed name and report which step failed", async (t) => {
+  let creates = 0, fail = true;
+  const api = { searchContacts: async () => ({ success: true, contacts: [] }), getContactProfiles: async () => [person()], createContact: async () => (creates++ === 0 ? { success: false, error: "invalid_name" } : { success: true, contact: person() }), updateNote: async () => ({ success: !fail }) };
+  const ui = await mount(t, listPath, { noteId: 1, participants: [], canRenameContacts: true }, api);
+  await ui.click("notes.participants.addAttendees");
+  await ui.change(0, "Casey Synthetic");
+  await ui.click("notes.participants.createNamed");
+  assert.match(ui.text(), /contactSaveFailed/);
+  assert.equal(props(ui.input(0)).value, "Casey Synthetic");
+  await ui.click("notes.participants.createNamed");
+  assert.match(ui.text(), /participantSaveFailed/);
+  assert.equal(props(ui.input(0)).value, "Casey Synthetic");
+  fail = false;
 });
 
 test("edit validation and conflicts preserve drafts and links, and Escape cancels", async (t) => {

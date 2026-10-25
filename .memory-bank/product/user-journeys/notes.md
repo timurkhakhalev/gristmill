@@ -56,9 +56,9 @@ As a Gristmill user, I want to write notes, keep them in folders and find them a
 ### Add participants
 
 1. Open a note and click **Add attendees**.
-2. Search for a saved contact or choose **Create contact**. Enter a name. Email and Telegram are optional. Select an existing contact to reuse the same person in another note. Equal names can identify different contacts. Remove a participant with **Remove attendee**.
+2. Search for a saved contact. When no saved contact has exactly that name, the list shows **Create "name"**. Choose it to create a contact with only that name and add it to the note. Add email and Telegram later in **Edit contact**. Select an existing contact to reuse the same person in another note. Equal names can identify different contacts. Remove a participant with **Remove attendee**.
 3. Open a participant card and choose **Edit contact** to edit or clear email and Telegram. Enter a bare username, `@username`, `t.me/username` or `https://t.me/username`. Telegram uses 5–32 ASCII letters, digits or underscores. A profile link can have one trailing slash; a host-only link is incomplete. Click the saved `@username` to open its HTTPS profile link.
-4. A pending save keeps the form open. A failed save keeps the input for correction or retry. If an email already belongs to a contact during creation, **Select existing contact** uses that contact without changing it. **Cancel selection** keeps the form input. Editing a contact to an occupied email fails without changing either contact or its links. Contact merging is not supported. Telegram usernames are unique without regard to letter case; a conflict preserves all saved fields. If the contact saves but adding it to the note fails, select the saved contact to retry.
+4. A pending save keeps the form open. A failed save keeps the input for correction or retry. Editing a contact to an occupied email fails without changing either contact or its links. Contact merging is not supported. Telegram usernames are unique without regard to letter case; a conflict preserves all saved fields. If the contact saves but adding it to the note fails, select the saved contact to retry.
 5. A calendar note shows its participants, the linked event and **Join** for the meeting link.
 6. Gristmill uses participants as hints for speaker names. See [Correct speakers](speakers.md).
 

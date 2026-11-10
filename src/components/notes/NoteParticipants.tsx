@@ -1,14 +1,31 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { AlignLeft, Calendar, Check, ChevronDown, Copy, Pencil, Trash2, Users } from "../icons";
+import {
+  AlignLeft,
+  Calendar,
+  Check,
+  ChevronDown,
+  Copy,
+  Mail,
+  Pencil,
+  Plus,
+  Send,
+  Trash2,
+  Users,
+} from "../icons";
 import { cn } from "../lib/utils";
 import { NOTE_META_CHIP_CLASS } from "./shared";
 import { CalendarProviderIcon, MeetingPlatformIcon } from "./meetingPlatform";
 import { Popover, PopoverAnchor, PopoverTrigger, PopoverContent } from "../ui/popover";
 import PersonAvatar from "../ui/PersonAvatar";
+import ContactDetailsForm from "./ContactDetailsForm";
 import PersonName from "../ui/PersonName";
-import { refreshPersonProfile, usePersonName } from "../../hooks/usePersonProfile";
-import type { CalendarAttendee, CalendarEvent } from "../../contracts/calendar";
+import {
+  refreshPersonProfile,
+  usePersonName,
+  usePersonProfile,
+} from "../../hooks/usePersonProfile";
+import type { CalendarEvent } from "../../contracts/calendar";
 import { syncSessionExpectedCountFromParticipants } from "../../stores/meetingRecordingStore";
 import { runInBackground } from "../../stores/noteStore";
 import { getMeetingJoinUrl } from "../../helpers/meetingJoinUrl";
@@ -22,6 +39,14 @@ import {
 } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { useUiLocale } from "../../hooks/useUiLocale";
+
+type CalendarAttendee = {
+  contactId?: number;
+  email: string | null;
+  displayName: string | null;
+  responseStatus: "accepted" | "declined" | "needsAction" | "tentative" | null;
+  self: boolean;
+};
 
 const MAX_STACKED_AVATARS = 2;
 
@@ -122,87 +147,112 @@ const HOVER_OPEN_DELAY_MS = 150;
 
 const HOVER_CLOSE_DELAY_MS = 200;
 
-/** The contact's name with a rename action; the new name is stored for the email everywhere. */
-function ContactName({
+const CARD_ACTION_CLASS =
+  "shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-default hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40 disabled:opacity-50";
+
+function ContactDetails({
   attendee,
   editable,
   editing,
   onEditingChange,
+  onRemove,
 }: {
   attendee: CalendarAttendee;
   editable: boolean;
   editing: boolean;
-  onEditingChange: (editing: boolean) => void;
+  onEditingChange: (value: boolean) => void;
+  onRemove: () => void;
 }) {
   const { t } = useTranslation();
-  const name = usePersonName(attendee.email, attendee.displayName);
-  const [draft, setDraft] = useState(name);
-  // Escape unmounts the input; its blur must not save the discarded draft.
-  const cancelled = useRef(false);
+  const profile = usePersonProfile(attendee.contactId);
+  const name = usePersonName(attendee.email, attendee.displayName, attendee.contactId);
+  const email = profile ? profile.email : attendee.email;
+  const telegram = profile?.telegram_username;
+  const [copied, setCopied] = useState(false);
 
-  const startEditing = () => {
-    cancelled.current = false;
-    setDraft(name);
-    onEditingChange(true);
-  };
-
-  const save = () => {
-    if (cancelled.current) return;
-    cancelled.current = true;
-    onEditingChange(false);
-    const next = draft.trim();
-
-    if (next === name) return;
-    runInBackground(
-      window.electronAPI
-        .renameContact(attendee.email, next || null)
-        .then(() => refreshPersonProfile(attendee.email)),
-      "Contact rename failed"
-    );
-  };
-
-  if (editing) {
+  if (editing && profile)
     return (
-      <input
-        dir="auto"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            save();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            e.stopPropagation();
-            cancelled.current = true;
-            onEditingChange(false);
-          }
+      <ContactDetailsForm
+        contact={profile}
+        displayName={name}
+        onCancel={() => onEditingChange(false)}
+        onSaved={async () => {
+          onEditingChange(false);
+
+          return true;
         }}
-        aria-label={t("notes.participants.contactName", "Contact name")}
-        className="w-full rounded border border-border bg-transparent px-1 py-0.5 text-sm font-medium text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
-        autoFocus
       />
     );
-  }
 
   return (
-    <div className="flex min-w-0 items-center gap-1">
-      <p dir="auto" className="min-w-0 truncate text-sm font-medium text-foreground">
-        {name}
-        {attendee.self && (
-          <span className="ms-1 font-normal text-muted">{t("notes.participants.me", "(me)")}</span>
+    <div className="space-y-1">
+      <div className="flex min-w-0 items-center gap-0.5">
+        <p className="min-w-0 flex-1 truncate text-sm font-medium">
+          {name}
+          {attendee.self && <span className="ms-1 text-muted">{t("notes.participants.me")}</span>}
+        </p>
+        {editable && (
+          <button
+            type="button"
+            disabled={!profile}
+            aria-label={t("notes.participants.editContact")}
+            onClick={() => onEditingChange(true)}
+            className={CARD_ACTION_CLASS}
+          >
+            <Pencil size={14} />
+          </button>
         )}
-      </p>
-      {editable && (
+        {email && (
+          <button
+            type="button"
+            aria-label={t("notes.participants.copyEmail")}
+            onClick={() => {
+              navigator.clipboard
+                .writeText(email)
+                .then(() => setCopied(true))
+                .catch(() => {});
+            }}
+            className={CARD_ACTION_CLASS}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        )}
         <button
           type="button"
-          onClick={startEditing}
-          aria-label={t("notes.participants.renameContact", "Rename contact")}
-          className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
+          onClick={onRemove}
+          aria-label={t("notes.participants.removeAttendee", "Remove attendee")}
+          className={cn(CARD_ACTION_CLASS, "hover:text-danger")}
         >
-          <Pencil size={12} />
+          <Trash2 size={14} />
         </button>
+      </div>
+      {email && (
+        <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
+          <Mail size={12} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{email}</span>
+        </p>
+      )}
+      {telegram ? (
+        <button
+          type="button"
+          className="flex min-w-0 items-center gap-1.5 text-xs text-link"
+          onClick={() => openExternalLink(`https://t.me/${encodeURIComponent(telegram)}`)}
+        >
+          <Send size={12} className="shrink-0" />
+          <span className="truncate">@{telegram}</span>
+        </button>
+      ) : (
+        editable && (
+          <button
+            type="button"
+            disabled={!profile}
+            className="flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-link"
+            onClick={() => onEditingChange(true)}
+          >
+            <Plus size={12} className="shrink-0" />
+            {t("notes.participants.addTelegram")}
+          </button>
+        )
       )}
     </div>
   );
@@ -220,7 +270,6 @@ function AttendeeRow({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editingRef = useRef(false);
@@ -261,20 +310,11 @@ function AttendeeRow({
     if (!editing && !hoveredRef.current) setOpen(false);
   }, [editing]);
 
-  const copyEmail = useCallback(() => {
-    navigator.clipboard
-      .writeText(attendee.email)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => {});
-  }, [attendee.email]);
-
   return (
     <Popover
       open={open}
       onOpenChange={(next) => {
+        if (!next && editing) return;
         setOpen(next);
 
         if (!next) setEditing(false);
@@ -291,9 +331,17 @@ function AttendeeRow({
           onClick={() => setOpen(true)}
           className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-default focus-visible:bg-default focus-visible:ring-1 focus-visible:ring-ring/40"
         >
-          <PersonAvatar email={attendee.email} displayName={attendee.displayName} />
+          <PersonAvatar
+            contactId={attendee.contactId}
+            email={attendee.email}
+            displayName={attendee.displayName}
+          />
           <span dir="auto" className="min-w-0 flex-1 truncate text-xs text-foreground/70">
-            <PersonName email={attendee.email} inviteName={attendee.displayName} />
+            <PersonName
+              contactId={attendee.contactId}
+              email={attendee.email}
+              inviteName={attendee.displayName}
+            />
             {attendee.self && (
               <span className="ms-1 text-muted">{t("notes.participants.me", "(me)")}</span>
             )}
@@ -303,49 +351,30 @@ function AttendeeRow({
       <PopoverContent
         side="right"
         align="start"
-        sideOffset={16}
+        sideOffset={6}
         focusOnOpen={false}
-        className="w-72 p-0"
+        className="w-80 p-0"
       >
         <div
           {...{ [ATTENDEE_CARD_ATTR]: "" }}
           {...hoverProps}
-          className="group/card flex items-center gap-3 p-3"
+          className="flex items-start gap-3 p-4"
         >
-          <PersonAvatar email={attendee.email} displayName={attendee.displayName} size={40} />
+          <PersonAvatar
+            contactId={attendee.contactId}
+            email={attendee.email}
+            displayName={attendee.displayName}
+            size={40}
+          />
           <div className="min-w-0 flex-1">
-            <ContactName
+            <ContactDetails
               attendee={attendee}
               editable={editable}
               editing={editing}
               onEditingChange={setEditing}
+              onRemove={onRemove}
             />
-            <div className="mt-0.5 flex items-center gap-1">
-              <span dir="ltr" className="min-w-0 flex-1 truncate text-xs text-muted">
-                {attendee.email}
-              </span>
-              <button
-                type="button"
-                onClick={copyEmail}
-                aria-label={
-                  copied
-                    ? t("notes.participants.emailCopied", "Email copied")
-                    : t("notes.participants.copyEmail", "Copy email")
-                }
-                className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
-              >
-                {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-              </button>
-            </div>
           </div>
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label={t("notes.participants.removeAttendee", "Remove attendee")}
-            className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/40"
-          >
-            <Trash2 size={14} />
-          </button>
         </div>
       </PopoverContent>
     </Popover>
@@ -377,9 +406,15 @@ export default function NoteParticipants({
   const locale = useUiLocale();
   const [localParticipants, setLocalParticipants] = useState(participants);
   const [search, setSearch] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const activeNote = useRef(noteId);
+  activeNote.current = noteId;
 
   const [suggestions, setSuggestions] = useState<
-    Array<{ email: string; display_name: string | null }>
+    Array<{ id: number; email: string | null; display_name: string | null }>
   >([]);
 
   const [open, setOpen] = useState(false);
@@ -387,6 +422,13 @@ export default function NoteParticipants({
   useEffect(() => {
     setLocalParticipants(participants);
   }, [participants]);
+
+  useEffect(() => {
+    setCreating(false);
+    setSearch("");
+    setSaveError(null);
+    setSuggestions([]);
+  }, [noteId]);
 
   useEffect(() => {
     if (!open) return;
@@ -397,83 +439,136 @@ export default function NoteParticipants({
       return;
     }
 
+    let active = true;
+    setSuggestions([]);
     const query = search.trim();
     runInBackground(
       window.electronAPI.searchContacts(query).then((result) => {
-        if (result.success) {
-          const existing = new Set(localParticipants.map((p) => p.email));
-          setSuggestions(result.contacts.filter((c) => !existing.has(c.email)));
+        if (active && result.success) {
+          const existing = new Set(localParticipants.map((p) => p.contactId));
+          setSuggestions(result.contacts.filter((c) => !existing.has(c.id)));
         }
       }),
       "Contact search failed"
     );
-  }, [search, open, localParticipants, preview]);
+
+    return () => {
+      active = false;
+    };
+  }, [search, open, localParticipants, preview, noteId]);
 
   const saveParticipants = useCallback(
-    (updated: CalendarAttendee[]) => {
-      if (preview) return;
-      syncSessionExpectedCountFromParticipants(noteId, updated);
-      runInBackground(
-        window.electronAPI.updateNote(noteId, {
+    async (updated: CalendarAttendee[]): Promise<boolean> => {
+      if (preview || savingRef.current) return false;
+      savingRef.current = true;
+      setSaving(true);
+      setSaveError(null);
+      const owner = noteId;
+
+      try {
+        const result = await window.electronAPI.updateNote(owner, {
           participants: JSON.stringify(updated),
-        }),
-        "Participants save failed"
-      );
+        });
+
+        if (!result.success) throw new Error("Participant save failed");
+
+        if (activeNote.current === owner) {
+          setLocalParticipants(updated);
+          syncSessionExpectedCountFromParticipants(
+            owner,
+            updated.filter(
+              (person): person is import("../../contracts/contactIdentity").NoteParticipant =>
+                person.contactId !== undefined
+            )
+          );
+        }
+
+        return true;
+      } catch {
+        if (activeNote.current === owner)
+          setSaveError(t("notes.participants.participantSaveFailed"));
+
+        return false;
+      } finally {
+        savingRef.current = false;
+
+        if (activeNote.current === owner) setSaving(false);
+      }
     },
-    [noteId, preview]
+    [noteId, preview, t]
   );
 
   const addParticipant = useCallback(
-    (email: string, displayName?: string | null) => {
-      const normalized = email.toLowerCase().trim();
+    async (contact: {
+      id: number;
+      email: string | null;
+      display_name: string | null;
+    }): Promise<boolean> => {
+      if (localParticipants.some((person) => person.contactId === contact.id)) {
+        setSaveError(t("notes.participants.alreadyAdded"));
 
-      if (!normalized || localParticipants.some((p) => p.email === normalized)) return;
+        return false;
+      }
 
-      const updated = [
+      const saved = await saveParticipants([
         ...localParticipants,
-        { email: normalized, displayName: displayName || null, responseStatus: null, self: false },
-      ];
+        {
+          contactId: contact.id,
+          email: contact.email,
+          displayName: contact.display_name,
+          responseStatus: null,
+          self: false,
+        },
+      ]);
 
-      setLocalParticipants(updated);
-      saveParticipants(updated);
+      if (saved && activeNote.current === noteId) {
+        setSearch("");
+      }
 
-      if (!preview)
-        runInBackground(
-          window.electronAPI.upsertContact({
-            email: normalized,
-            displayName: displayName || null,
-          }),
-          "Contact upsert failed"
-        );
-      setSearch("");
+      return saved;
     },
-    [localParticipants, preview, saveParticipants]
+    [localParticipants, noteId, saveParticipants, t]
   );
 
-  const removeParticipant = useCallback(
-    (email: string) => {
-      const updated = localParticipants.filter((p) => p.email !== email);
-      setLocalParticipants(updated);
-      saveParticipants(updated);
-    },
-    [localParticipants, saveParticipants]
-  );
+  const createAndAdd = useCallback(
+    async (displayName: string): Promise<void> => {
+      if (creating || savingRef.current) return;
+      const owner = noteId;
+      setCreating(true);
+      setSaveError(null);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && search.includes("@")) {
-        e.preventDefault();
-        addParticipant(search);
+      try {
+        const result = await window.electronAPI.createContact({
+          displayName,
+          email: null,
+          telegramUsername: null,
+        });
+
+        if (!result.success) throw new Error("Contact creation failed");
+
+        refreshPersonProfile(result.contact);
+        await addParticipant(result.contact);
+      } catch {
+        if (activeNote.current === owner) setSaveError(t("notes.participants.contactSaveFailed"));
+      } finally {
+        if (activeNote.current === owner) setCreating(false);
       }
     },
-    [search, addParticipant]
+    [addParticipant, creating, noteId, t]
   );
+
+  const removeParticipant = (contactId: number | undefined) => {
+    runInBackground(
+      saveParticipants(localParticipants.filter((person) => person.contactId !== contactId)),
+      "Participant removal failed"
+    );
+  };
 
   const grouped = useMemo(() => {
     const groups = new Map<string, CalendarAttendee[]>();
 
     for (const p of localParticipants) {
-      const domain = p.email.split("@")[1] || "other";
+      const domain = p.email?.split("@")[1] || "other";
 
       if (!groups.has(domain)) groups.set(domain, []);
       groups.get(domain)?.push(p);
@@ -481,6 +576,12 @@ export default function NoteParticipants({
 
     return Array.from(groups.entries());
   }, [localParticipants]);
+
+  const trimmedSearch = search.trim();
+
+  const hasExactMatch = suggestions.some(
+    (contact) => contact.display_name?.trim().toLowerCase() === trimmedSearch.toLowerCase()
+  );
 
   const joinUrl = useMemo(() => (event ? getMeetingJoinUrl(event) : null), [event]);
   const eventUrl = event?.event_url ?? null;
@@ -500,6 +601,7 @@ export default function NoteParticipants({
     <Popover
       open={open}
       onOpenChange={(o) => {
+        if (!o && (creating || saving)) return;
         setOpen(o);
 
         if (!o) setSearch("");
@@ -523,7 +625,8 @@ export default function NoteParticipants({
             <span className="flex items-center -space-x-1">
               {localParticipants.slice(0, MAX_STACKED_AVATARS).map((p) => (
                 <PersonAvatar
-                  key={p.email}
+                  key={p.contactId ?? p.email}
+                  contactId={p.contactId}
                   email={p.email}
                   displayName={p.displayName}
                   size={18}
@@ -589,7 +692,7 @@ export default function NoteParticipants({
             dir="auto"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={handleKeyDown}
+
             placeholder={t("notes.participants.addPlaceholder", "Add attendees...")}
             className="w-full px-2 py-1.5 rounded-md bg-transparent text-xs text-foreground placeholder:text-muted outline-none border-none appearance-none"
             autoFocus
@@ -597,27 +700,50 @@ export default function NoteParticipants({
         </div>
 
         <div className="max-h-64 overflow-y-auto">
-          {search && suggestions.length > 0 && (
+          {trimmedSearch && (
             <div className="p-1 border-b border-border/70">
               {suggestions.slice(0, 5).map((contact) => (
                 <button
-                  key={contact.email}
-                  onClick={() => addParticipant(contact.email, contact.display_name)}
+                  key={contact.id}
+                  disabled={saving}
+                  onClick={() => {
+                    runInBackground(addParticipant(contact), "Participant addition failed");
+                  }}
                   className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-default transition-colors cursor-pointer"
                 >
-                  <PersonAvatar email={contact.email} displayName={contact.display_name} />
+                  <PersonAvatar
+                    contactId={contact.id}
+                    email={contact.email}
+                    displayName={contact.display_name}
+                  />
                   <span dir="auto" className="truncate">
                     {contact.display_name || contact.email}
                   </span>
                 </button>
               ))}
+              {!preview && !hasExactMatch && (
+                <button
+                  type="button"
+                  disabled={saving || creating}
+                  onClick={() => {
+                    runInBackground(createAndAdd(trimmedSearch), "Contact creation failed");
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-start text-xs text-link transition-colors hover:bg-default disabled:opacity-50"
+                >
+                  <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-default">
+                    <Plus size={12} />
+                  </span>
+                  <span dir="auto" className="truncate">
+                    {t("notes.participants.createNamed", { name: trimmedSearch })}
+                  </span>
+                </button>
+              )}
             </div>
           )}
-
-          {search && !search.includes("@") && suggestions.length === 0 && (
-            <div className="px-3 py-2 text-2xs text-muted">
-              {t("notes.participants.typeEmail", "Type an email to add...")}
-            </div>
+          {saveError && (
+            <p role="alert" className="px-3 py-2 text-xs text-danger">
+              {saveError}
+            </p>
           )}
 
           {grouped.map(([domain, members]) => (
@@ -627,10 +753,10 @@ export default function NoteParticipants({
               </div>
               {members.map((p) => (
                 <AttendeeRow
-                  key={p.email}
+                  key={p.contactId ?? p.email}
                   attendee={p}
-                  editable={canRenameContacts}
-                  onRemove={() => removeParticipant(p.email)}
+                  editable={canRenameContacts && p.contactId !== undefined}
+                  onRemove={() => removeParticipant(p.contactId)}
                 />
               ))}
             </div>
@@ -638,7 +764,7 @@ export default function NoteParticipants({
 
           {localParticipants.length === 0 && !search && (
             <div className="px-3 py-4 text-center text-2xs text-muted">
-              {t("notes.participants.typeEmail", "Type an email to add...")}
+              {t("notes.participants.searchOrCreate")}
             </div>
           )}
         </div>

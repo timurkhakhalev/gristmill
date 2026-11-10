@@ -5,30 +5,30 @@ const assert: typeof import("node:assert/strict") = require("node:assert/strict"
 const load = () => import("../../src/utils/mentionMarkdown.js");
 
 const PEOPLE = [
-  { name: "Alex Example", email: "alex@example.com" },
-  { name: "Michael Chen", email: "michael@example.com" },
-  { name: "Sean", email: null },
+  { name: "Alex Example", email: "alex@example.com", contactId: 1 },
+  { name: "Michael Chen", email: "michael@example.com", contactId: 2 },
+  { name: "Sean", email: null, contactId: 3 },
 ];
 
-test("buildMentionMarkdown links the email when present", async () => {
+test("buildMentionMarkdown links the stable ID when an email is present", async () => {
   const { buildMentionMarkdown } = await load();
   assert.equal(
-    buildMentionMarkdown({ name: "Michael Chen", email: "michael@example.com" }),
-    "[@Michael Chen](mention:michael%40example.com)"
+    buildMentionMarkdown({ name: "Michael Chen", email: "michael@example.com", contactId: 2 }),
+    "[@Michael Chen](mention:contact:2)"
   );
 });
 
-test("buildMentionMarkdown falls back to the name and escapes link-breaking chars", async () => {
+test("unbound mention text keeps readable names without inventing a contact link", async () => {
   const { buildMentionMarkdown } = await load();
-  assert.equal(buildMentionMarkdown({ name: "Sean", email: null }), "[@Sean](mention:Sean)");
+  assert.equal(buildMentionMarkdown({ name: "Sean", email: null, contactId: null }), "@Sean");
   // Parens would end the markdown link destination early; brackets break the label.
   assert.equal(
-    buildMentionMarkdown({ name: "Ana (PM)", email: null }),
-    "[@Ana (PM)](mention:Ana%20%28PM%29)"
+    buildMentionMarkdown({ name: "Ana (PM)", email: null, contactId: null }),
+    "@Ana (PM)"
   );
   assert.equal(
-    buildMentionMarkdown({ name: "Bob [ops]", email: null }),
-    "[@Bob ops](mention:Bob%20ops)"
+    buildMentionMarkdown({ name: "Bob [ops]", email: null, contactId: null }),
+    "@Bob ops"
   );
 });
 
@@ -45,7 +45,7 @@ test("tags a full-name owner on a checkbox line", async () => {
   const { tagActionItemOwners } = await load();
   assert.equal(
     tagActionItemOwners("- [ ] Send the deck — Michael Chen", PEOPLE),
-    "- [ ] Send the deck — [@Michael Chen](mention:michael%40example.com)"
+    "- [ ] Send the deck — [@Michael Chen](mention:contact:2)"
   );
 });
 
@@ -53,7 +53,7 @@ test("tags by unique first name, case-insensitively", async () => {
   const { tagActionItemOwners } = await load();
   assert.equal(
     tagActionItemOwners("- [x] Review PR - michael", PEOPLE),
-    "- [x] Review PR - [@Michael Chen](mention:michael%40example.com)"
+    "- [x] Review PR - [@Michael Chen](mention:contact:2)"
   );
 });
 
@@ -61,8 +61,8 @@ test("leaves ambiguous first names untouched", async () => {
   const { tagActionItemOwners } = await load();
 
   const people = [
-    { name: "Michael Chen", email: "michael@example.com" },
-    { name: "Michael Ross", email: "mross@example.com" },
+    { name: "Michael Chen", email: "michael@example.com", contactId: 2 },
+    { name: "Michael Ross", email: "mross@example.com", contactId: 6 },
   ];
 
   const line = "- [ ] Review PR — Michael";
@@ -73,7 +73,7 @@ test("tags multiple owners only when every owner is known", async () => {
   const { tagActionItemOwners } = await load();
   assert.equal(
     tagActionItemOwners("- [ ] Draft the plan — Sean and Michael", PEOPLE),
-    "- [ ] Draft the plan — [@Sean](mention:Sean), [@Michael Chen](mention:michael%40example.com)"
+    "- [ ] Draft the plan — [@Sean](mention:contact:3), [@Michael Chen](mention:contact:2)"
   );
   const partiallyUnknown = "- [ ] Draft the plan — Sean and Priya";
   assert.equal(tagActionItemOwners(partiallyUnknown, PEOPLE), partiallyUnknown);
@@ -87,7 +87,7 @@ test("ignores unknown owners, non-task lines, and already-tagged lines", async (
   const prose = "We agreed — Michael will follow up.";
   assert.equal(tagActionItemOwners(prose, PEOPLE), prose);
 
-  const tagged = "- [ ] Send the deck — [@Michael Chen](mention:michael%40example.com)";
+  const tagged = "- [ ] Send the deck — [@Michael Chen](mention:contact:2)";
   assert.equal(tagActionItemOwners(tagged, PEOPLE), tagged);
 });
 
@@ -96,7 +96,16 @@ test("handles multi-line markdown and empty people", async () => {
   const markdown = ["## Action Items", "- [ ] Ship it — Sean", "- [ ] Untouched text"].join("\n");
   assert.equal(
     tagActionItemOwners(markdown, PEOPLE),
-    ["## Action Items", "- [ ] Ship it — [@Sean](mention:Sean)", "- [ ] Untouched text"].join("\n")
+    ["## Action Items", "- [ ] Ship it — [@Sean](mention:contact:3)", "- [ ] Untouched text"].join("\n")
   );
   assert.equal(tagActionItemOwners(markdown, []), markdown);
+});
+
+test("positive ID parsing rejects malformed IDs and names never guess contacts", async () => {
+  const { parseMentionContactId, tagActionItemOwners, buildMentionMarkdown } = await load();
+  assert.equal(parseMentionContactId("mention:contact:7"), 7);
+  for (const href of ["mention:contact:0", "mention:contact:-1", "mention:contact:1.5", "mention:contact:01", "mention:contact:9007199254740992", "mention:label", "mention:%oops"]) assert.equal(parseMentionContactId(href), null);
+  assert.equal(buildMentionMarkdown({ name: "Unbound Sample", email: "unbound@example.com", contactId: null }), "@Unbound Sample");
+  const twins = [{ name: "Casey Synthetic", email: null, contactId: 7 }, { name: "Casey Synthetic", email: null, contactId: 8 }];
+  for (const owner of ["Casey Synthetic", "Casey"]) assert.equal(tagActionItemOwners(`- [ ] Review — ${owner}`, twins), `- [ ] Review — ${owner}`);
 });

@@ -81,8 +81,8 @@ export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudi
   const result: AlignedAudioRange[] = [];
   const end = epoch.sourceStartFrame + epoch.frameCount;
   let cursor = epoch.sourceStartFrame;
-  let helperGeneration: string | undefined;
 
+  // Each calibration is anchored to the same recording timeline, even after a helper restart.
   while (cursor < end) {
     let best: (typeof ordered)[number] | undefined;
 
@@ -97,7 +97,6 @@ export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudi
 
       if (
         item.sourceEndFrame > cursor &&
-        (!helperGeneration || helperGeneration === item.helperGeneration) &&
         (!best ||
           item.sourceEndFrame > best.segment.sourceEndFrame ||
           (item.sourceEndFrame === best.segment.sourceEndFrame && candidate.order < best.order))
@@ -110,8 +109,6 @@ export function alignedAudioRanges(epoch: MeetingRecordingEpochDto): AlignedAudi
         code: "audio-alignment-unavailable",
       });
     const segment = best.segment;
-
-    helperGeneration = segment.helperGeneration;
     const next = Math.min(end, segment.sourceEndFrame);
     result.push({
       fileStartFrame: cursor - epoch.sourceStartFrame,

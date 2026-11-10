@@ -1,24 +1,8 @@
 import { z } from "zod";
-import type { CalendarAttendee } from "../contracts/calendar";
-
-// Calendar providers differ in what they send; unknown RSVP values and missing
-// flags degrade to the neutral value instead of dropping the attendee.
-const attendeeSchema = z.object({
-  email: z.string(),
-  displayName: z
-    .string()
-    .nullish()
-    .transform((name) => name ?? null),
-  responseStatus: z
-    .enum(["needsAction", "declined", "tentative", "accepted"])
-    .nullish()
-    .catch(null)
-    .transform((status) => status ?? null),
-  self: z.boolean().catch(false),
-});
+import { noteParticipantSchema, type NoteParticipant } from "../contracts/contactIdentity";
 
 /** Parses `notes.participants` JSON; malformed entries are skipped one by one. */
-export function parseNoteParticipants(raw: string | null): CalendarAttendee[] {
+export function parseNoteParticipants(raw: string | null): NoteParticipant[] {
   if (!raw) return [];
 
   let parsed: unknown;
@@ -34,7 +18,7 @@ export function parseNoteParticipants(raw: string | null): CalendarAttendee[] {
   if (!list.success) return [];
 
   return list.data.flatMap((item) => {
-    const attendee = attendeeSchema.safeParse(item);
+    const attendee = noteParticipantSchema.safeParse(item);
 
     return attendee.success ? [attendee.data] : [];
   });

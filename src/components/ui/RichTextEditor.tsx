@@ -6,6 +6,7 @@ import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown, type MarkdownStorage } from "tiptap-markdown";
 import { cn } from "../lib/utils";
+import { MentionParticipantsContext } from "./mentionContext";
 import { createMentionExtension } from "./RichTextEditorMention";
 import type { MentionPerson } from "../../utils/mentionMarkdown";
 
@@ -24,6 +25,7 @@ interface RichTextEditorProps {
   editorRef?: MutableRefObject<Editor | null>;
   /** Enables @mention tagging with these people as suggestions. */
   mentionPeople?: MentionPerson[];
+  mentionParticipants?: ReadonlyArray<{ contactId: number; email: string | null }>;
 }
 
 export function RichTextEditor({
@@ -34,6 +36,7 @@ export function RichTextEditor({
   disabled,
   editorRef,
   mentionPeople,
+  mentionParticipants = [],
 }: RichTextEditorProps) {
   const internalValueRef = useRef(value);
   const suppressUpdateRef = useRef(false);
@@ -127,15 +130,17 @@ export function RichTextEditor({
 
   return (
     <div className={cn("relative w-full h-full", className)} onClick={handleClick}>
-      <EditorContent
-        editor={editor}
-        className={cn(
-          "h-full overflow-y-auto",
-          disabled && "pointer-events-none opacity-70",
-          // Reserved by an ancestor via --floating-inset; 0 elsewhere.
-          "pb-[var(--floating-inset,0px)]"
-        )}
-      />
+      <MentionParticipantsContext.Provider value={mentionParticipants}>
+        <EditorContent
+          editor={editor}
+          className={cn(
+            "h-full overflow-y-auto",
+            disabled && "pointer-events-none opacity-70",
+            // Reserved by an ancestor via --floating-inset; 0 elsewhere.
+            "pb-[var(--floating-inset,0px)]"
+          )}
+        />
+      </MentionParticipantsContext.Provider>
     </div>
   );
 }

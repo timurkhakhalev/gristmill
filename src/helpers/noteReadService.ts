@@ -1,3 +1,4 @@
+import { parseNoteParticipants } from "../utils/noteParticipants.js";
 import { createHash } from "node:crypto";
 import {
   noteOutputRequestSchema,
@@ -100,8 +101,21 @@ export class NoteReadService {
           return meetingTranscriptArtifactSchema.parse(artifact);
         },
         getCorrections: (id) => this.db.getMeetingRunSpeakerCorrections(id),
-        profileEmail: (id) =>
-          this.db.getSpeakerProfiles().find((profile) => profile.id === id)?.email ?? null,
+        participant: (contactId) =>
+          parseNoteParticipants(this.db.getNote(noteId)?.participants ?? null).find(
+            (person) => person.contactId === contactId
+          ) ?? null,
+        profileEmail: (id) => {
+          const contactId = this.db
+            .getSpeakerProfiles()
+            .find((profile) => profile.id === id)?.contact_id;
+
+          return (
+            parseNoteParticipants(this.db.getNote(noteId)?.participants ?? null).find(
+              (person) => person.contactId === contactId
+            )?.email ?? null
+          );
+        },
         getProjection: (id) => this.db.getNote(id)?.transcript ?? null,
       },
       noteId
@@ -258,12 +272,7 @@ export class NoteReadService {
   ): OutputFreshness {
     const revision = createHash("sha256")
       .update(
-        JSON.stringify([
-          note.content,
-          note.participants,
-          correctionRevision,
-          run.config?.summary,
-        ])
+        JSON.stringify([note.content, note.participants, correctionRevision, run.config?.summary])
       )
       .digest("hex");
 
@@ -380,11 +389,8 @@ export class NoteReadService {
   }
 
   show(note: NoteRow) {
-    // SAFETY: participants are stored as a JSON array of contact references;
-    // malformed JSON would have failed at write time.
-    const participants = note.participants
-      ? (JSON.parse(note.participants) as Array<{ email?: string; displayName?: string }>)
-      : [];
+    const participants: Array<{ email?: string | null; displayName?: string | null }> =
+      parseNoteParticipants(note.participants);
 
     const spoken = this.transcript(note.id).speakers.filter(
       (speaker) => speaker.name || speaker.email
@@ -411,12 +417,11 @@ export class NoteReadService {
       transcript_status: this.transcript(note.id).status,
       participants: participants.map((person) => {
         const email = person.email?.trim() || null;
-        const names = email ? this.db.getContactNames(email) : null;
 
         const stored_names = {
-          display_name: names?.display_name ?? person.displayName ?? null,
-          people_name: names?.people_name ?? null,
-          learned_name: names?.learned_name ?? null,
+          display_name: person.displayName ?? null,
+          people_name: null,
+          learned_name: null,
         };
 
         return {

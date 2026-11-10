@@ -1,15 +1,15 @@
-import type { CalendarAttendee } from "../contracts/calendar";
+import type { NoteParticipant } from "../contracts/contactIdentity";
 
 interface ParticipantSpeakerCountSyncInput {
   recordingNoteId: number | null;
   noteId: number;
   userTouchedStepper: boolean;
   currentExpectedCount: number;
-  participants: readonly CalendarAttendee[];
+  participants: readonly NoteParticipant[];
 }
 
 export const resolveParticipantExpectedSpeakerCount = (
-  participants: readonly CalendarAttendee[]
+  participants: readonly NoteParticipant[]
 ): number | null => {
   const others = participants.filter((attendee) => attendee?.self !== true).length;
 
@@ -57,7 +57,7 @@ export const resolveExpectedSpeakerCount = (
 
   if (!note?.participants) return null;
 
-  let attendees: CalendarAttendee[];
+  let attendees: NoteParticipant[];
 
   try {
     const parsed: unknown = JSON.parse(note.participants);
@@ -65,7 +65,7 @@ export const resolveExpectedSpeakerCount = (
     // SAFETY: participants is written by the calendar sync as a JSON array of
     // attendee objects; a non-array (or malformed) value yields none. Timestamp
     // and self fields are only truthiness-checked, so extra shapes still count.
-    attendees = Array.isArray(parsed) ? (parsed as CalendarAttendee[]) : [];
+    attendees = Array.isArray(parsed) ? (parsed as NoteParticipant[]) : [];
   } catch {
     return null;
   }

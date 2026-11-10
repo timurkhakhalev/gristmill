@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { WebContents } from "electron";
 import { createHash } from "crypto";
 import debugLogger from "./debugLogger.js";
@@ -195,7 +196,9 @@ export interface MeetingDetectionDatabase {
     updates: NoteUpdates & { participants?: string }
   ): { success?: boolean; note?: unknown } | null | undefined;
   getActiveEvents(): DetectionCalendarEvent[];
-  getContactProfiles?(emails: string[]): Array<{ email: string; display_name: string | null }>;
+  materializeParticipants(
+    attendees: import("../contracts/calendar.js").CalendarAttendee[]
+  ): import("../contracts/contactIdentity.js").NoteParticipant[];
 }
 
 interface ActiveMeetingState {
@@ -1238,36 +1241,27 @@ export class MeetingDetectionEngine {
    * so the note, its summaries and speaker naming see "Contact Example", not "contact.example".
    */
   _participantsWithNames(attendees: string): string {
-    let list: Array<{ email?: string; displayName?: string | null }>;
-
-    try {
-      // SAFETY: the isArray check below gates every field access of the
-      // decoded attendee row list.
-      list = JSON.parse(attendees) as typeof list;
-    } catch {
-      return attendees;
-    }
-
-    if (!Array.isArray(list)) return attendees;
-
-    const emails = list
-      .map((attendee) => attendee.email)
-      .filter((email): email is string => Boolean(email));
-
-    const names = new Map(
-      (this.databaseManager.getContactProfiles?.(emails) ?? []).flatMap((profile) =>
-        profile.display_name ? [[profile.email.toLowerCase(), profile.display_name] as const] : []
+    const list = z
+      .array(
+        z.object({
+          email: z.string(),
+          displayName: z
+            .string()
+            .nullish()
+            .transform((value) => value ?? null),
+          responseStatus: z
+            .enum(["needsAction", "declined", "tentative", "accepted"])
+            .nullish()
+            .transform((value) => value ?? null),
+          self: z
+            .boolean()
+            .optional()
+            .transform((value) => value ?? false),
+        })
       )
-    );
+      .parse(JSON.parse(attendees));
 
-    if (names.size === 0) return attendees;
-
-    return JSON.stringify(
-      list.map((attendee) => ({
-        ...attendee,
-        displayName: names.get(attendee.email?.toLowerCase() ?? "") ?? attendee.displayName ?? null,
-      }))
-    );
+    return JSON.stringify(this.databaseManager.materializeParticipants(list));
   }
 
   /** A new meeting note linked to the event and carrying its attendees. */

@@ -54,6 +54,8 @@ export function migrateMeetingPlatformEvidence(database: SqliteDatabase): void {
       .get() as { sql: string };
 
     if (!definition.sql.includes("'telemost'")) {
+      const contactColumn = columns.some((column) => column.name === "participant_contact_id");
+
       database.exec(`
         CREATE TABLE meeting_run_speaker_corrections_telemost (
           run_id TEXT NOT NULL REFERENCES meeting_processing_runs(id) ON DELETE CASCADE,
@@ -61,13 +63,14 @@ export function migrateMeetingPlatformEvidence(database: SqliteDatabase): void {
           profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
           display_name TEXT NOT NULL,
           participant_email TEXT,
+          ${contactColumn ? "participant_contact_id INTEGER REFERENCES contacts(id)," : ""}
           source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice', 'platform', 'model', 'user')),
           revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
           platform TEXT CHECK(platform IN ('zoom', 'google-meet', 'telemost')),
           PRIMARY KEY (run_id, speaker_id)
         );
         INSERT INTO meeting_run_speaker_corrections_telemost
-          SELECT run_id, speaker_id, profile_id, display_name, participant_email, source, revision, platform
+          SELECT run_id, speaker_id, profile_id, display_name, participant_email, ${contactColumn ? "participant_contact_id," : ""} source, revision, platform
           FROM meeting_run_speaker_corrections;
         DROP TABLE meeting_run_speaker_corrections;
         ALTER TABLE meeting_run_speaker_corrections_telemost RENAME TO meeting_run_speaker_corrections;

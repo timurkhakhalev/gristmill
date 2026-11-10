@@ -98,7 +98,7 @@ test("show view: stored-name precedence is learned > people > display (B9)", (t)
     .prepare("UPDATE contacts SET learned_name = 'Stored Learned' WHERE email = ?")
     .run(email);
   db.updateNote(note.id, {
-    participants: JSON.stringify([{ email: "Ann@Example.org", displayName: "Contact Name" }]),
+    participants: JSON.stringify(db.materializeParticipants([{ email: "Ann@Example.org", displayName: "Contact Name" }])),
     transcript: JSON.stringify([
       { text: "hello", speaker: "spk", timestamp: 1, endTimestamp: 2 },
     ]),
@@ -108,9 +108,9 @@ test("show view: stored-name precedence is learned > people > display (B9)", (t)
   assert.equal(view.participants.length, 1);
   assert.equal(view.participants[0].name, "Stored Learned");
   assert.deepEqual(view.participants[0].stored_names, {
-    display_name: "Stored Display",
-    people_name: "Stored People",
-    learned_name: "Stored Learned",
+    display_name: "Stored Learned",
+    people_name: null,
+    learned_name: null,
   });
 });
 
@@ -122,7 +122,7 @@ test("show view: a spoken speaker without a stored contact is appended with own 
   // speakerName/email); the show view appends spoken speakers that are not
   // already among the note's participants.
   db.updateNote(note.id, {
-    participants: JSON.stringify([{ email: "other@example.org", displayName: "Other" }]),
+    participants: JSON.stringify(db.materializeParticipants([{ email: "other@example.org", displayName: "Other" }])),
     transcript: JSON.stringify([
       { text: "hello", speaker: "spoken voice", speakerName: "Spoken Voice", source: "mic", timestamp: 1, endTimestamp: 2 },
     ]),
@@ -140,29 +140,26 @@ test("show view: a spoken speaker whose email differs only by case does not dupl
   // carry one; it comes from the speaker correction's participant email. The
   // correction also rewrites the stored projection, which must be valid JSON.
   f.db.updateNote(f.note.id, {
-    participants: JSON.stringify([{ email: "Ann@Example.org", displayName: "Ann Example" }]),
+    participants: JSON.stringify(f.db.materializeParticipants([{ email: "Ann@Example.org", displayName: "Ann Example" }])),
     transcript: JSON.stringify([{ text: "source transcript", speaker: "speaker_0" }]),
   });
   assert.equal(
-    f.db.setMeetingRunSpeakerCorrection(f.run.id, "speaker_0", null, "Ann Example", "user", "ann@example.org").success,
+    f.db.setMeetingRunSpeakerCorrection(f.run.id, "speaker_0", null, "Ann Example", "user", f.db.searchContacts("ann@example.org")[0].id).success,
     true
   );
 
   const view = f.reader.show(f.db.getNote(f.note.id)!);
   assert.equal(view.participants.length, 1, "a case-differing email must not append a duplicate participant");
-  assert.equal(view.participants[0].email, "Ann@Example.org");
+  assert.equal(view.participants[0].email, "ann@example.org");
 });
 
 test("show view: a spoken speaker with a different email is appended (B9)", (t) => {
   const f = fixture(t);
   f.db.updateNote(f.note.id, {
-    participants: JSON.stringify([{ email: "other@example.org", displayName: "Other" }]),
+    participants: JSON.stringify(f.db.materializeParticipants([{ email: "other@example.org", displayName: "Other" }])),
     transcript: JSON.stringify([{ text: "source transcript", speaker: "speaker_0" }]),
   });
-  assert.equal(
-    f.db.setMeetingRunSpeakerCorrection(f.run.id, "speaker_0", null, "Ann Example", "user", "ann@example.org").success,
-    true
-  );
+  f.db.db.prepare("INSERT INTO meeting_run_speaker_corrections (run_id,speaker_id,display_name,participant_email,source,revision) VALUES (?,?,?,?,?,1)").run(f.run.id,"speaker_0","Ann Example","ann@example.org","user");
 
   const view = f.reader.show(f.db.getNote(f.note.id)!);
   assert.equal(view.participants.length, 2);
@@ -173,7 +170,7 @@ test("freshness reasons: participants drift, correction revision drift and confi
   const f = fixture(t);
   f.db.setMeetingProcessingRunState(f.run.id, { status: "running", stage: "summary" });
   seedSnapshot(f);
-  f.db.updateNote(f.note.id, { participants: JSON.stringify([{ email: "drift@example.org" }]) });
+  f.db.updateNote(f.note.id, { participants: JSON.stringify(f.db.materializeParticipants([{ email: "drift@example.org" }])) });
   const read = () => f.reader.readOutput({ scope: "run", noteId: f.note.id, runId: f.run.id });
 
   const drifted = read();

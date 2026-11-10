@@ -147,14 +147,14 @@ function AttendeeOption({
   attendee,
   onSelectName,
 }: {
-  attendee: { email: string; displayName: string | null };
-  onSelectName: (name: string, email: string) => void;
+  attendee: { contactId: number; email: string | null; displayName: string | null };
+  onSelectName: (name: string, contactId: number) => void;
 }) {
-  const name = usePersonName(attendee.email, attendee.displayName);
+  const name = usePersonName(attendee.email, attendee.displayName, attendee.contactId);
 
   return (
     <button
-      onClick={() => onSelectName(name, attendee.email)}
+      onClick={() => onSelectName(name, attendee.contactId)}
       className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-default transition-colors cursor-pointer"
     >
       <span dir="auto" className="truncate flex-1 text-start">
@@ -170,101 +170,40 @@ function AttendeeOption({
 interface SpeakerProfileLite {
   id?: number;
   display_name: string;
-  email: string | null;
+  contact_id: number | null;
 }
 
 interface SpeakerPickerProps {
   speakerProfiles?: SpeakerProfileLite[];
-  participants?: Array<{ email: string; displayName: string | null }>;
-  onSelectName: (name: string, email?: string | null, profileId?: number) => void;
+  participants?: Array<{ contactId: number; email: string | null; displayName: string | null }>;
+  onSelectName: (name: string, contactId?: number | null, profileId?: number) => void;
   t: TFunction;
 }
 
 function AddContactButton({
   profile,
-  onAttachEmail,
+  participants,
+  onAttachContact,
   t,
 }: {
   profile: { id: number; display_name: string };
-  onAttachEmail: (profileId: number, email: string | null) => void;
+  participants: Array<{ contactId: number; email: string | null; displayName: string | null }>;
+  onAttachContact: (profileId: number, contactId: number | null) => void;
   t: TFunction;
 }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-
-  const canSave = isLikelyEmail(draft);
-
-  const submit = () => {
-    if (!canSave) return;
-    onAttachEmail(profile.id, draft.trim().toLowerCase());
-    setOpen(false);
-  };
-
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-
-        if (!next) setDraft("");
-      }}
-    >
+    <Popover>
       <PopoverTrigger asChild>
-        <button
-          className={cn(
-            "inline-flex items-center mb-0.5 px-1.5 py-0.5 rounded-md text-2xs outline-none cursor-pointer",
-            "border border-dashed border-border",
-            "text-muted hover:text-foreground hover:border-border/90 dark:hover:border-white/30",
-            "transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-focus"
-          )}
-        >
-          {t("notes.speaker.addContact")}
-        </button>
+        <button>{t("notes.speaker.addContact")}</button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-3">
-        <div dir="auto" className="text-xs font-medium text-foreground truncate mb-2">
-          {profile.display_name}
-        </div>
-        <input
-          dir="ltr"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submit();
-            } else if (e.key === "Escape") {
-              setOpen(false);
-            }
-          }}
-          placeholder={t("notes.speaker.emailPlaceholder")}
-          className={cn(
-            "w-full px-2 py-1.5 rounded-md bg-transparent text-xs text-foreground",
-            "placeholder:text-muted outline-none",
-            "border border-border/70 focus:border-border/90 transition-colors"
-          )}
-          autoFocus
-          type="email"
-        />
-        <div className="flex justify-end gap-1 mt-2">
-          <button
-            onClick={() => setOpen(false)}
-            className="px-2 py-1 rounded text-2xs text-muted hover:text-foreground hover:bg-default transition-colors cursor-pointer"
-          >
-            {t("notes.speaker.cancel")}
-          </button>
-          <button
-            onClick={submit}
-            disabled={!canSave}
-            className={cn(
-              "px-2 py-1 rounded text-2xs font-medium transition-colors cursor-pointer",
-              "bg-accent text-accent-foreground hover:bg-accent-hover",
-              "disabled:bg-accent/20 disabled:text-accent-foreground/40 disabled:pointer-events-none"
-            )}
-          >
-            {t("notes.speaker.save")}
-          </button>
-        </div>
+      <PopoverContent>
+        {participants.map((person) => (
+          <AttendeeOption
+            key={person.contactId}
+            attendee={person}
+            onSelectName={(_name, contactId) => onAttachContact(profile.id, contactId)}
+          />
+        ))}
       </PopoverContent>
     </Popover>
   );
@@ -280,27 +219,19 @@ function SpeakerPicker({ speakerProfiles, participants, onSelectName, t }: Speak
     (p) =>
       !search ||
       (p.displayName || "").toLowerCase().includes(lower) ||
-      p.email.toLowerCase().includes(lower)
+      (p.email ?? "").toLowerCase().includes(lower)
   );
 
   const filteredProfiles = (speakerProfiles || []).filter(
-    (p) =>
-      !search ||
-      p.display_name.toLowerCase().includes(lower) ||
-      (p.email && p.email.toLowerCase().includes(lower))
+    (p) => !search || p.display_name.toLowerCase().includes(lower)
   );
 
   const hasExactMatch =
     filteredParticipants.some(
       (p) =>
         (p.displayName || "").toLowerCase() === trimmedLower ||
-        p.email.toLowerCase() === trimmedLower
-    ) ||
-    filteredProfiles.some(
-      (p) =>
-        p.display_name.toLowerCase() === trimmedLower ||
-        (p.email && p.email.toLowerCase() === trimmedLower)
-    );
+        (p.email ?? "").toLowerCase() === trimmedLower
+    ) || filteredProfiles.some((p) => p.display_name.toLowerCase() === trimmedLower);
 
   const canCreate = !!trimmed && !hasExactMatch;
   const inputIsEmail = isLikelyEmail(trimmed);
@@ -310,7 +241,7 @@ function SpeakerPicker({ speakerProfiles, participants, onSelectName, t }: Speak
 
     if (inputIsEmail) {
       const email = trimmed.toLowerCase();
-      onSelectName(nameFromEmail(email), email);
+      onSelectName(nameFromEmail(email), null);
     } else {
       onSelectName(trimmed, null);
     }
@@ -347,7 +278,7 @@ function SpeakerPicker({ speakerProfiles, participants, onSelectName, t }: Speak
               {t("notes.speaker.meetingAttendees")}
             </div>
             {filteredParticipants.slice(0, 5).map((p) => (
-              <AttendeeOption key={p.email} attendee={p} onSelectName={onSelectName} />
+              <AttendeeOption key={p.contactId} attendee={p} onSelectName={onSelectName} />
             ))}
           </div>
         )}
@@ -359,17 +290,12 @@ function SpeakerPicker({ speakerProfiles, participants, onSelectName, t }: Speak
             {filteredProfiles.slice(0, 5).map((p) => (
               <button
                 key={p.id ?? `name-${p.display_name}`}
-                onClick={() => onSelectName(p.display_name, p.email, p.id)}
+                onClick={() => onSelectName(p.display_name, p.contact_id, p.id)}
                 className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-foreground/70 hover:bg-default transition-colors cursor-pointer"
               >
                 <span dir="auto" className="truncate flex-1 text-start">
                   {p.display_name}
                 </span>
-                {p.email && (
-                  <span dir="ltr" className="text-muted truncate text-2xs">
-                    {p.email}
-                  </span>
-                )}
               </button>
             ))}
           </div>
@@ -425,10 +351,10 @@ function SpeakerLabel({
   segment: TranscriptSegment;
   resolvedName?: string;
   speakerProfiles?: SpeakerProfileLite[];
-  participants?: Array<{ email: string; displayName: string | null }>;
+  participants?: Array<{ contactId: number; email: string | null; displayName: string | null }>;
   colorIdx: number;
   isOriginallyYou: boolean;
-  onMap?: (speakerId: string, name: string, email?: string | null, profileId?: number) => void;
+  onMap?: (speakerId: string, name: string, contactId?: number | null, profileId?: number) => void;
   onConfirm?: (speakerId: string, name: string, profileId: number) => void;
   onDismiss?: (speakerId: string) => void;
   t: TFunction;
@@ -507,8 +433,8 @@ function SpeakerLabel({
         <SpeakerPicker
           speakerProfiles={speakerProfiles}
           participants={participants}
-          onSelectName={(name, email, profileId) => {
-            onMap?.(speakerId, name, email, profileId);
+          onSelectName={(name, contactId, profileId) => {
+            onMap?.(speakerId, name, contactId, profileId);
             setOpen(false);
           }}
           t={t}
@@ -558,8 +484,8 @@ export function SelectionBar({
   count: number;
   onClear: () => void;
   speakerProfiles?: SpeakerProfileLite[];
-  participants?: Array<{ email: string; displayName: string | null }>;
-  onAssignName: (name: string, email?: string | null, profileId?: number) => void;
+  participants?: Array<{ contactId: number; email: string | null; displayName: string | null }>;
+  onAssignName: (name: string, contactId?: number | null, profileId?: number) => void;
   t: TFunction;
 }) {
   const [open, setOpen] = useState(false);
@@ -583,8 +509,8 @@ export function SelectionBar({
           <SpeakerPicker
             speakerProfiles={speakerProfiles}
             participants={participants}
-            onSelectName={(name, email, profileId) => {
-              onAssignName(name, email, profileId);
+            onSelectName={(name, contactId, profileId) => {
+              onAssignName(name, contactId, profileId);
               setOpen(false);
             }}
             t={t}
@@ -612,16 +538,16 @@ interface SegmentRowProps {
   activeName?: string;
   matchedProfile?: SpeakerProfileLite;
   speakerProfiles?: SpeakerProfileLite[];
-  participants?: Array<{ email: string; displayName: string | null }>;
+  participants?: Array<{ contactId: number; email: string | null; displayName: string | null }>;
   onMapSpeaker?: (
     speakerId: string,
     displayName: string,
-    email?: string | null,
+    contactId?: number | null,
     profileId?: number
   ) => void;
   onConfirmSuggestion?: (speakerId: string, suggestedName: string, profileId: number) => void;
   onDismissSuggestion?: (speakerId: string) => void;
-  onAttachSpeakerEmail?: (profileId: number, email: string | null) => void;
+  onAttachSpeakerContact?: (profileId: number, contactId: number | null) => void;
   onToggleSelect?: (segmentId: string) => void;
   t: TFunction;
 }
@@ -646,19 +572,22 @@ const SegmentRow = memo(function SegmentRow({
   onMapSpeaker,
   onConfirmSuggestion,
   onDismissSuggestion,
-  onAttachSpeakerEmail,
+  onAttachSpeakerContact,
   onToggleSelect,
   t,
 }: SegmentRowProps) {
   const hasSpeaker = !!segment.speaker;
   const speakerId = segment.speaker;
-  const attachSpeakerEmail = onAttachSpeakerEmail;
+  const attachSpeakerContact = onAttachSpeakerContact;
   const isOriginallyYou = segment.speaker === "you";
   const isSystemSpeaker = hasSpeaker && !selfSide;
   const selectable = !!onToggleSelect;
 
   const canAddContact =
-    !!matchedProfile && matchedProfile.id != null && !matchedProfile.email && !!attachSpeakerEmail;
+    !!matchedProfile &&
+    matchedProfile.id != null &&
+    !matchedProfile.contact_id &&
+    !!attachSpeakerContact;
 
   const labelElement = speakerId && (
     <div className="flex items-center gap-1">
@@ -675,10 +604,11 @@ const SegmentRow = memo(function SegmentRow({
         onDismiss={onDismissSuggestion}
         t={t}
       />
-      {canAddContact && matchedProfile && matchedProfile.id != null && attachSpeakerEmail && (
+      {canAddContact && matchedProfile && matchedProfile.id != null && attachSpeakerContact && (
         <AddContactButton
           profile={{ id: matchedProfile.id, display_name: matchedProfile.display_name }}
-          onAttachEmail={attachSpeakerEmail}
+          participants={participants ?? []}
+          onAttachContact={attachSpeakerContact}
           t={t}
         />
       )}
@@ -747,7 +677,7 @@ interface MeetingTranscriptChatProps {
   systemPartialSpeakerName?: string | null;
   speakerMappings?: Record<string, string>;
   speakerProfiles?: SpeakerProfileLite[];
-  participants?: Array<{ email: string; displayName: string | null }>;
+  participants?: Array<{ contactId: number; email: string | null; displayName: string | null }>;
   selectedSegmentIds?: Set<string>;
   isRecording?: boolean;
   isDiarizing?: boolean;
@@ -759,12 +689,12 @@ interface MeetingTranscriptChatProps {
   onMapSpeaker?: (
     speakerId: string,
     displayName: string,
-    email?: string | null,
+    contactId?: number | null,
     profileId?: number
   ) => void;
   onConfirmSuggestion?: (speakerId: string, suggestedName: string, profileId: number) => void;
   onDismissSuggestion?: (speakerId: string) => void;
-  onAttachSpeakerEmail?: (profileId: number, email: string | null) => void;
+  onAttachSpeakerContact?: (profileId: number, contactId: number | null) => void;
   onToggleSelect?: (segmentId: string) => void;
 }
 
@@ -789,7 +719,7 @@ export function MeetingTranscriptChat({
   onMapSpeaker,
   onConfirmSuggestion,
   onDismissSuggestion,
-  onAttachSpeakerEmail,
+  onAttachSpeakerContact,
   onToggleSelect,
 }: MeetingTranscriptChatProps) {
   const { t } = useTranslation();
@@ -1057,7 +987,7 @@ export function MeetingTranscriptChat({
                     onMapSpeaker={onMapSpeaker}
                     onConfirmSuggestion={onConfirmSuggestion}
                     onDismissSuggestion={onDismissSuggestion}
-                    onAttachSpeakerEmail={onAttachSpeakerEmail}
+                    onAttachSpeakerContact={onAttachSpeakerContact}
                     onToggleSelect={onToggleSelect}
                     t={t}
                   />

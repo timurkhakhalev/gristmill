@@ -400,8 +400,8 @@ const NAME_EMAIL_RE = /^(.*?)\s*<([^<>\s]+@[^<>\s]+)>$/;
 
 const BARE_EMAIL_RE = /^\S+@\S+\.\S+$/;
 
-// Consumers of notes.participants require an email (e.g. SpeakerPicker reads
-// p.email unguarded), so name-only tokens are dropped rather than emitted.
+// Keep the Granola token format email-based; persistence resolves these
+// external attributes to local contact IDs.
 export interface GranolaAttendee {
   displayName: string;
   email: string;
@@ -433,7 +433,7 @@ const parseAttendees = (cell: string): GranolaAttendee[] =>
  *   headerInfo: { mapped: Record<string, string>, unknown: string[] },
  *   notes: Array<{
  *     clientNoteId: string, sourceFile: string, title: string, content: string,
- *     transcript: string | null, participants: string | null, createdAt: string | null,
+ *     hasSummary: boolean, transcript: string | null, participants: string | null, createdAt: string | null,
  *   }>,
  *   warnings: Array<{ code: string, row?: number, detail?: string }>,
  * }}
@@ -443,6 +443,7 @@ export interface GranolaParsedNote {
   sourceFile: string;
   title: string;
   content: string;
+  hasSummary: boolean;
   transcript: string | null;
   participants: string | null;
   createdAt: string | null;
@@ -569,6 +570,7 @@ export function parseGranolaCsv(
       sourceFile: `granola:${key}`,
       title,
       content,
+      hasSummary: Boolean(cell("summary")),
       transcript: segments.length > 0 ? JSON.stringify(segments) : null,
       participants: attendees.length > 0 ? JSON.stringify(attendees) : null,
       createdAt,

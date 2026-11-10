@@ -37,7 +37,7 @@ test("two-hour alignment coverage uses every frame without a quadratic scan", ()
   assert.ok(ms < 500, `two-hour alignment selection took ${ms.toFixed(1)}ms`);
 });
 
-test("alignment chooses the furthest overlap, preserves input-order ties, and rejects gaps or generation changes", () => {
+test("alignment chooses the furthest overlap, preserves input-order ties, and rejects gaps or source generation changes", () => {
   const a = segment(0, 2400);
   const b = { ...segment(0, 4800), timelineStartFrame: 10 };
   const tie = { ...segment(0, 4800), timelineStartFrame: 20 };
@@ -47,7 +47,7 @@ test("alignment chooses the furthest overlap, preserves input-order ties, and re
     { fileStartFrame: 4800, frameCount: 2400, timelineStartFrame: 4800, rate: 1 },
   ]);
   assert.throws(() => alignedAudioRanges(epoch([a, segment(2401, 4800)], 4800)), { code: "audio-alignment-unavailable" });
-  assert.throws(() => alignedAudioRanges(epoch([a, { ...segment(2400, 4800), helperGeneration: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }], 4800)), { code: "audio-alignment-unavailable" });
+  assert.throws(() => alignedAudioRanges(epoch([a, { ...segment(2400, 4800), sourceGeneration: 2 }], 4800)), { code: "audio-alignment-unavailable" });
   assert.throws(() => alignedAudioRanges(epoch([{ ...a, uncertaintyEndFrames: 601 }], 2400)), { code: "audio-alignment-unavailable" });
 });
 

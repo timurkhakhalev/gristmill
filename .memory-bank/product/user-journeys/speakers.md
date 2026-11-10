@@ -13,14 +13,14 @@ As a Gristmill user, I want to give the transcript speakers their correct names.
 1. Open the transcript of the selected result.
 2. Click a speaker name, for example **Speaker 2**. The **Save speaker** dialog opens.
 3. Type the correct name in **Speaker name**.
-4. Keep **Only this meeting** in **Remember name for calendar participant**.
+4. Keep **Only this meeting** in **Remember name for participant**.
 5. Click **Save speaker**. The transcript shows the new name.
 
 ### Link a speaker to a calendar participant
 
 1. Open the **Save speaker** dialog on a meeting note with calendar participants.
-2. In **Remember name for calendar participant**, select the participant email.
-3. Click **Save speaker**. Gristmill remembers the name for that email on this Mac. It does not change your Google contacts.
+2. In **Remember name for participant**, select the participant contact.
+3. Click **Save speaker**. Gristmill remembers the name for that contact on this Mac. It does not change your Google contacts.
 4. The next time the dialog opens, it shows **Only this meeting** again.
 
 ### Attach a voice profile
@@ -54,3 +54,9 @@ As a Gristmill user, I want to give the transcript speakers their correct names.
 
 - [Speaker evidence](../../architecture/speaker-evidence.md) — name priority and correction rules.
 - [Recording results](meeting-results.md) — the results panel.
+
+### Participant identity and learned names
+
+The speaker dialog starts with **Only this meeting**. Select a participant by contact ID, including a participant with only a name. Equal names and Telegram usernames are not identity evidence. Selecting a voice profile remains a separate choice. A correction can link only to a contact in that run's owning note; a missing or other-note contact is rejected before any name or correction write.
+
+**Remember these names for future meetings** saves a shared learned name. An unprocessed calendar note can use a name learned after it was created. Its name/email roster freezes at its first AI naming or Summary processing. Later contact edits do not refresh that roster, rewrite its Summary or change Summary freshness. Explicit participant changes and speaker corrections keep their existing freshness effects. Email conflicts do not merge contacts or transfer speaker links.

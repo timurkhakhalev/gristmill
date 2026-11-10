@@ -203,10 +203,10 @@ test("old CHECK migration preserves source/revision and cascade deletes recordin
   sql.exec(`CREATE TABLE old_corrections (
     run_id TEXT NOT NULL REFERENCES meeting_processing_runs(id) ON DELETE CASCADE,
     speaker_id TEXT NOT NULL, profile_id INTEGER REFERENCES speaker_profiles(id) ON DELETE SET NULL,
-    display_name TEXT NOT NULL, participant_email TEXT,
+    display_name TEXT NOT NULL, participant_email TEXT, participant_contact_id INTEGER REFERENCES contacts(id),
     source TEXT NOT NULL DEFAULT 'user' CHECK(source IN ('voice','model','user')),
     revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0), PRIMARY KEY(run_id,speaker_id));
-    INSERT INTO old_corrections SELECT run_id, speaker_id, profile_id, display_name, participant_email, source, revision FROM meeting_run_speaker_corrections;
+    INSERT INTO old_corrections SELECT run_id, speaker_id, profile_id, display_name, participant_email, participant_contact_id, source, revision FROM meeting_run_speaker_corrections;
     DROP TABLE meeting_run_speaker_corrections;
     ALTER TABLE old_corrections RENAME TO meeting_run_speaker_corrections;`);
   db.close();

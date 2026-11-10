@@ -1,6 +1,6 @@
 import { meetingPlatformLabel } from "../contracts/meetingRecording.js";
 import type { TranscriptSegment } from "../stores/meetingRecordingStore";
-import type { CalendarAttendee } from "../contracts/calendar";
+import type { NoteParticipant } from "../contracts/contactIdentity";
 import { resolveSegmentSpeakerName } from "./transcriptSpeakerState";
 import type { MentionPerson } from "./mentionMarkdown";
 
@@ -13,10 +13,10 @@ type Translate = (key: string, options?: TranslateOptions) => string;
 export interface MeetingIdentity {
   selfName: string | null;
   selfEmail: string | null;
-  participants: CalendarAttendee[];
+  participants: NoteParticipant[];
 }
 
-const isSelfParticipant = (participant: CalendarAttendee, identity: MeetingIdentity) =>
+const isSelfParticipant = (participant: NoteParticipant, identity: MeetingIdentity) =>
   participant.self || (!!identity.selfEmail && participant.email === identity.selfEmail);
 
 /**
@@ -104,22 +104,29 @@ export function collectKnownPeople(
   const people: MentionPerson[] = [];
   const seen = new Set<string>();
 
-  const push = (name: string | null | undefined, email: string | null | undefined) => {
+  const push = (
+    name: string | null | undefined,
+    email: string | null | undefined,
+    contactId: number | null = null
+  ) => {
     const trimmed = name?.trim();
 
     if (!trimmed) return;
-    const key = trimmed.toLowerCase();
+    const key = contactId ? `contact:${contactId}` : `label:${trimmed.toLowerCase()}`;
 
     if (seen.has(key)) return;
     seen.add(key);
-    people.push({ name: trimmed, email: email?.trim() || null });
+    people.push({ name: trimmed, email: email?.trim() || null, contactId });
   };
 
-  push(identity.selfName, identity.selfEmail);
+  const self = identity.participants.find((person) => isSelfParticipant(person, identity));
+
+  if (self) push(self.displayName || identity.selfName || self.email, self.email, self.contactId);
+  else push(identity.selfName, identity.selfEmail);
 
   for (const p of identity.participants) {
     if (isSelfParticipant(p, identity)) continue;
-    push(p.displayName || p.email.split("@")[0], p.email);
+    push(p.displayName || p.email?.split("@")[0], p.email, p.contactId);
   }
 
   for (const name of Object.values(speakerMappings)) push(name, null);

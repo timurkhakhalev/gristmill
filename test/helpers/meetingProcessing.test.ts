@@ -1676,6 +1676,7 @@ test("main corrects summary-only configuration and resumes from saved artifacts 
   assert.equal(blocked.status, "blocked");
   assert.equal(blocked.stage, "summary");
   assert.equal(blocked.errorCode, "missing-summary-config");
+  assert.ok(blocked.attemptStartedAt);
   const rawBefore = storage.readRunArtifact(run.id, "provider-response");
   const transcriptBefore = storage.readRunArtifact(run.id, "transcript");
   assert.equal(transcribeCalls, 1);
@@ -1711,6 +1712,7 @@ test("main corrects summary-only configuration and resumes from saved artifacts 
   const corrected = { ...savedConfig, summary: validConfig.summary };
   const response = await update(null, { runId: run.id, config: corrected, configError: null });
   assert.equal(response.success, true);
+  assert.equal(response.result.run.attemptStartedAt, null);
   await worker.waitForIdle();
 
   const completed = db.getMeetingProcessingRun(run.id);

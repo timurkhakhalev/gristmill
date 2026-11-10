@@ -2087,8 +2087,8 @@ export default function MeetingResultsPanel({
               />
             );
 
-          const startedAt = latestRun.run.createdAt
-            ? normalizeDbDate(latestRun.run.createdAt).getTime()
+          const startedAt = latestRun.run.attemptStartedAt
+            ? normalizeDbDate(latestRun.run.attemptStartedAt).getTime()
             : undefined;
 
           return (

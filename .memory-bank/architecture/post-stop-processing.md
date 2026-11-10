@@ -11,6 +11,9 @@ Main saves this requested set before ASR. Preparation also saves the IDs of unus
 A new capture cancels the pending processing of the same Note.
 Groups describe capture sessions. They do not show if the transcript is complete.
 The audio assembly sorts the parts itself.
+
+The processing timer uses the persisted attempt start, set when the queue claims the run. Explicit Retry or correcting blocked settings clears it. Stage changes and interrupted-attempt recovery keep it. Work that has not started and historical runs without a known attempt start do not show elapsed processing time. The run creation date is not the attempt start.
+
 Old results and BB threads stay.
 To get a complete result for a recording that was split before, transcribe it again.
 

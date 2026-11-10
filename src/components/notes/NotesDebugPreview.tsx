@@ -310,6 +310,7 @@ function makePreview(scenario: NotesDebugScenario) {
     hasTranscript,
     hasSummary,
     createdAt: runCreatedAt,
+    attemptStartedAt: runStatus === "running" ? runCreatedAt : null,
     updatedAt: runCreatedAt,
   };
 

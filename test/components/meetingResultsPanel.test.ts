@@ -137,6 +137,7 @@ function completeRun(): RunBundle {
       speakerNamingErrorCode: null,
       retryAt: null,
       retryCount: 0,
+      attemptStartedAt: null,
       hasRawProviderResponse: true,
       hasTranscript: true,
       hasSummary: true,
@@ -753,7 +754,8 @@ for (const timeZone of ["Asia/Tokyo", "America/New_York"]) {
     const run = completeRun();
     run.run.stage = "asr";
     run.run.status = "running";
-    run.run.createdAt = "2026-09-29 08:24:54";
+    run.run.createdAt = "2026-01-01 00:00:00";
+    run.run.attemptStartedAt = "2026-09-29 08:24:54";
     const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", run)]);
     assert.equal(ui.progressStart(), Date.parse("2026-09-29T08:24:54Z"));
   });
@@ -917,10 +919,12 @@ test("Summary labels show the saved provider, including BB runs", async (t: Test
   assert.match(ui.text(), /bb · cpa\/glm-5\.3-flash/);
 });
 
-test("running Summary elapsed time reads SQLite timestamps as UTC", async (t: TestContext) => {
+test("a retried run counts the current attempt across stages and reads SQLite timestamps as UTC", async (t: TestContext) => {
   const running = completeRun();
   const startedAt = Date.now() - 120_000;
-  running.run.createdAt = new Date(startedAt).toISOString().slice(0, 19).replace("T", " ");
+  running.run.createdAt = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  running.run.attemptStartedAt = new Date(startedAt).toISOString().slice(0, 19).replace("T", " ");
+  running.run.updatedAt = new Date().toISOString();
   running.run.status = "running";
   running.run.hasSummary = false;
   running.summary = undefined;
@@ -929,6 +933,24 @@ test("running Summary elapsed time reads SQLite timestamps as UTC", async (t: Te
   assert.ok(notice);
   assert.ok(Math.abs(Number(notice.props?.progressStartedAt) - startedAt) < 1000);
 });
+
+for (const status of ["pending", "running"]) {
+  test(`a ${status} run without a known attempt start does not show an invented timer`, async (t: TestContext) => {
+    const bundle = completeRun();
+    Object.assign(bundle.run, {
+      status,
+      stage: "prepare",
+      createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+      attemptStartedAt: null,
+      hasTranscript: false,
+      hasSummary: false,
+    });
+    bundle.transcript = undefined;
+    bundle.summary = undefined;
+    const ui = await mountPanel(t, [recording(FIRST, FIRST, "2026-09-25T10:00:00.000Z", bundle)]);
+    assert.equal(findNode(ui.tree(), (node) => typeof node.props?.progressStartedAt === "number"), null);
+  });
+}
 
 // Regression (#177): the DB keeps a cleared (display_name = '') tombstone for a
 // revoked model proposal, so the authoritative revision is 2 while the display

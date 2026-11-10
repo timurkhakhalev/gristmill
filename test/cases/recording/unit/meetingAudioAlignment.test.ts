@@ -195,34 +195,27 @@ test("equal-endpoint tie-break keeps input order; earlier endpoints sort first",
   assert.deepEqual(ordered.map((range) => range.fileStartFrame), [0, 24_000]);
 });
 
-test("helperGeneration change across the epoch excludes segments from another helper generation", () => {
+test("overlapping calibrations keep their timeline anchors across a helper restart", () => {
   const mixed = epoch({
     frameCount: 48_000,
     alignmentSegments: [
       segment(),
       segment({
-        sourceStartFrame: 24_000,
+        sourceStartFrame: 22_000,
         sourceEndFrame: 48_000,
+        timelineStartFrame: 22_100,
         sourceEndNs: "1002000000",
         helperGeneration: HELPER_B,
       }),
     ],
   });
-  assert.throws(() => alignedAudioRanges(mixed), /audio-alignment-unavailable/);
-
-  const consistent = epoch({
-    frameCount: 48_000,
-    alignmentSegments: [
-      segment(),
-      segment({
-        sourceStartFrame: 24_000,
-        sourceEndFrame: 48_000,
-        sourceEndNs: "1002000000",
-        helperStartNs: "1001000000",
-      }),
-    ],
-  });
-  assert.equal(alignedAudioRanges(consistent).length, 2);
+  const ranges = alignedAudioRanges(mixed);
+  assert.deepEqual(ranges.map(({ fileStartFrame, frameCount, timelineStartFrame }) => ({
+    fileStartFrame, frameCount, timelineStartFrame,
+  })), [
+    { fileStartFrame: 0, frameCount: 24_000, timelineStartFrame: 0 },
+    { fileStartFrame: 24_000, frameCount: 24_000, timelineStartFrame: 24_100 },
+  ]);
 });
 
 test("mid-epoch coverage gap throws audio-alignment-unavailable", () => {

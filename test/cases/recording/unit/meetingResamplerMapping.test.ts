@@ -54,6 +54,22 @@ test("historical anchors have no invented confidence and epochs reset even witho
   assert.equal(manifest.epochs[1].rows[0].reset, true);
   assert.equal(meetingResamplerDecisionSummary(manifest).acceptedShare, null);
 });
+test("a helper restart keeps continuous microphone frames and resets at the new timeline anchor", () => {
+  const epoch = calibratedEpoch([{ frames: 96000, start: 0 }, { frames: 96000, start: 96010 }]);
+  const afterRestart = epoch.alignmentSegments[1];
+  afterRestart.helperGeneration = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  const manifest = prepare(epoch);
+  assert.deepEqual(manifest.epochs[0].rows, [
+    { inputStart: 0, inputEnd: 96000, timelineStart: 0, timelineEnd: 96000, reset: true },
+    { inputStart: 96000, inputEnd: 192000, timelineStart: 96010, timelineEnd: 192010, reset: true },
+  ]);
+  assert.equal(manifest.boundaryResets, 1);
+  assert.deepEqual(manifest.decisions, []);
+
+  afterRestart.sourceStartFrame++;
+  assert.throws(() => prepare(epoch), { code: "audio-alignment-unavailable" });
+});
 test("decision metrics prioritize uncertainty, retain corrections and exclude epoch resets", () => {
   const first = calibratedEpoch([{ frames: 96000, start: 0, uncertainty: 1 }, { frames: 96000, start: 96500 }, { frames: 96000, start: 192550 }]);
   const second = calibratedEpoch([{ frames: 96000, start: 400000 }], 1);

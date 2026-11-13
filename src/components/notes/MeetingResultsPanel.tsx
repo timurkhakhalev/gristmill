@@ -25,7 +25,6 @@ import {
   MessageSquareText,
   MoreHorizontal,
   Play,
-  Share2,
   Sparkles,
   Trash2,
   WandSparkles,
@@ -58,7 +57,6 @@ import {
 } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { composeMockSummary, type MockPipeline } from "./meetingMock";
-import { formatNoteLink, formatNoteShareText } from "../../contracts/noteLink";
 
 type ViewMode = "raw" | "enhanced";
 
@@ -239,7 +237,6 @@ function ResultActionButton({
 
 export default function MeetingResultsPanel({
   noteId,
-  noteTitle = "",
   locale,
   previewRecordings,
   viewMode,
@@ -255,8 +252,6 @@ export default function MeetingResultsPanel({
 }: {
   /** Debug preview only: in-memory stand-in for the delayed-ASR, naming, tasks and Recap pipeline. */
   mockPipeline?: MockPipeline;
-  /** Names the downloaded Summary file and the shared call. */
-  noteTitle?: string;
   actions?: (summaryAction: SummaryActionState) => ReactNode;
   /** Plain text of each view's fallback content, copied when no processing run provides it. */
   fallbackText: Record<ViewMode | "transcript", string>;
@@ -756,8 +751,6 @@ export default function MeetingResultsPanel({
     }
   };
 
-  const [shared, setShared] = useState(false);
-
   const downloadSummary = async () => {
     try {
       const result = await window.electronAPI.exportSummary(noteId, copyText);
@@ -768,47 +761,20 @@ export default function MeetingResultsPanel({
     }
   };
 
-  const shareCall = async () => {
-    try {
-      const protocol = await window.electronAPI.getOAuthProtocol();
-      const link = formatNoteLink(protocol, noteId);
-      await navigator.clipboard.writeText(formatNoteShareText(link, noteTitle));
-      setShared(true);
-      window.setTimeout(() => setShared(false), 1500);
-    } catch {
-      notify(
-        t("meetingResults.copyError", { defaultValue: "Couldn't copy to the clipboard." }),
-        "destructive"
-      );
-    }
-  };
-
-  const canShareCall = !previewRecordings && (hasSavedTranscript || hasSavedSummary);
-
-  const resultActions = (copyText.trim() || canShareCall) && (
+  const resultActions = copyText.trim() !== "" && (
     <div className="mt-3 flex justify-start gap-0.5">
-      {copyText.trim() && (
-        <ResultActionButton
-          label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}
-          onPress={() => void copyView()}
-        >
-          {copied ? <Check size={15} /> : <Copy size={15} />}
-        </ResultActionButton>
-      )}
-      {viewMode === "enhanced" && copyText.trim() && !previewRecordings && (
+      <ResultActionButton
+        label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}
+        onPress={() => void copyView()}
+      >
+        {copied ? <Check size={15} /> : <Copy size={15} />}
+      </ResultActionButton>
+      {viewMode === "enhanced" && !previewRecordings && (
         <ResultActionButton
           label={tr("downloadSummary", "Download as Markdown")}
           onPress={() => void downloadSummary()}
         >
           <Download size={15} />
-        </ResultActionButton>
-      )}
-      {canShareCall && (
-        <ResultActionButton
-          label={shared ? tr("callLinkCopied", "Link copied") : tr("shareWithAgent", "Share with agent")}
-          onPress={() => void shareCall()}
-        >
-          {shared ? <Check size={15} /> : <Share2 size={15} />}
         </ResultActionButton>
       )}
     </div>

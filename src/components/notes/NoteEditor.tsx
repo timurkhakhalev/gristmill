@@ -70,6 +70,7 @@ import {
 import { RowGlyph } from "./folderAppearance";
 import { folderColorHex, tintStyle } from "./folderColors";
 import NoteParticipants from "./NoteParticipants";
+import ShareWithAgentChip from "./ShareWithAgentChip";
 import { takeNoteHandoff } from "./noteHandoff";
 import NoteFindBar from "./NoteFindBar";
 import type { CalendarEvent } from "../../contracts/calendar";
@@ -1044,6 +1045,7 @@ export default function NoteEditor({
                 </PopoverContent>
               </Popover>
             )}
+            {!debugPreview && <ShareWithAgentChip noteId={note.id} noteTitle={note.title} />}
             {isSaving && (
               <span className="inline-flex items-center gap-1 text-xs text-muted tabular-nums">
                 <Loader2 size={10} className="animate-spin" />
@@ -1056,7 +1058,6 @@ export default function NoteEditor({
         <div className="flex-1 relative min-h-0 flex flex-col [--floating-inset:5.5rem]">
           <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-y-auto agent-chat-scroll">
             <MeetingResultsPanel
-              noteTitle={note.title}
               capturePhase={capturePhase}
               notice={
                 <>

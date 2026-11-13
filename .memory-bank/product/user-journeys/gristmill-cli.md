@@ -38,7 +38,7 @@ As a Gristmill user, I want to read my notes from the terminal and use them in s
 
 ### Give a call to an agent
 
-1. In the note, click **Share with agent**. The clipboard contains the call link, for example `gristmill://notes/42`, and the command to start.
+1. In the note header, click **Share with agent**. The clipboard contains the call link, for example `gristmill://notes/42`, and the command to start.
 2. Paste the text into the agent chat. The agent must be able to run `gristmill` on this Mac.
 3. The agent runs `gristmill skills get core`. The CLI prints the agent guide for the installed version: how to read a call, search and quote the transcript.
 4. The agent uses the link in place of a note ID, for example `gristmill notes transcript show gristmill://notes/42`. The link selects the profile: `gristmill-dev://` reads Gristmill Dev. If `--profile` or `GRISTMILL_PROFILE` selects a different profile, the command fails with exit code 2.

@@ -20,7 +20,7 @@ As a Gristmill user, I want to review the audio, the transcript and the Summary 
 ### Save or share the result
 
 1. Under the Summary, click **Copy** to copy it, or **Download as Markdown** to save it as an `.md` file. The save dialog proposes the call title as the file name. The file contains the Summary that the note shows.
-2. Click **Share with agent** to copy a call link, for example `gristmill://notes/42`, with a short instruction for an agent. Give the text to an agent that can run the `gristmill` CLI. The agent reads the call with the CLI. See [Gristmill CLI](gristmill-cli.md#give-a-call-to-an-agent).
+2. In the note header, next to the folder, click **Share with agent** to copy a call link, for example `gristmill://notes/42`, with a short instruction for an agent. Give the text to an agent that can run the `gristmill` CLI. The agent reads the call with the CLI. See [Gristmill CLI](gristmill-cli.md#give-a-call-to-an-agent).
 3. Open the call link on the Mac. Gristmill opens the note. A link from Gristmill Dev starts with `gristmill-dev://`.
 
 ### Listen to a part of the meeting
@@ -65,7 +65,7 @@ As a Gristmill user, I want to review the audio, the transcript and the Summary 
 - Given processing waits or runs, when I cancel it, then the saved audio stays available.
 - Given the meeting is too short for an automatic Summary, when transcription completes, then Gristmill shows a notice and I can still make a Summary.
 - Given the note shows a Summary, when I click **Download as Markdown** and select a file, then the file contains the shown Summary, and the proposed name is the call title.
-- Given a note with a transcript or a Summary, when I click **Share with agent**, then the clipboard contains the call link and the CLI command to read it.
+- Given a saved note, when I click **Share with agent** in the note header, then the clipboard contains the call link and the CLI command to read it.
 - Given I click a transcript timestamp, when playback starts, then it starts at that line.
 - Given a run failed, when I click **Retry**, then Gristmill uses the saved audio again.
 

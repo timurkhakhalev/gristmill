@@ -2402,7 +2402,11 @@
     "transcribeAndSummary": "文字起こしと要約",
     "summary": "要約",
     "audioPreparationDiskFull": "音声は保存されています。音声の準備を再試行する前に、ディスクの空き容量を増やしてください。",
-    "audioPreparationFailed": "音声は保存されています。ローカルストレージを確認して再試行してください。音声の準備が引き続き失敗する場合は、Gristmill を再インストールしてください。"
+    "audioPreparationFailed": "音声は保存されています。ローカルストレージを確認して再試行してください。音声の準備が引き続き失敗する場合は、Gristmill を再インストールしてください。",
+    "downloadSummary": "Markdown でダウンロード",
+    "downloadSummaryError": "要約を保存できませんでした。",
+    "shareWithAgent": "エージェントと共有",
+    "callLinkCopied": "リンクをコピーしました"
   },
   "shortcutsDialog": {
     "title": "キーボードショートカット",

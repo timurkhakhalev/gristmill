@@ -88,6 +88,8 @@ Explicit Stop discards partial persistence. Unmount can save a visible partial r
 - In `userData/bb-agent`, the CLI selects the profile of that workspace automatically, independently of the app channel of the launcher.
 - Outside BB, the launcher uses the channel of the app that installed it. Explicit `--profile` and `GRISTMILL_PROFILE` override these defaults.
 - A closed workspace profile fails visibly. The CLI does not read a different profile.
+- A call link (`<app protocol>://notes/<id>`, parsed by `src/contracts/noteLink.ts`) names its profile through the protocol: `gristmill` is production, `gristmill-dev` is development. The link replaces only the launcher default. When `--profile`, `GRISTMILL_PROFILE` or a workspace selects a different profile, the CLI rejects the link with exit code 2 and does not read any profile. A custom `GRISTMILL_PROTOCOL` makes links that the CLI does not accept.
+- The agent guide is part of the CLI (`scripts/gristmill-cli-skills.cts`, printed by `gristmill skills get`). `skills/gristmill/SKILL.md` is only a discovery stub that points to it, so the guide always matches the installed CLI. `skills` output is Markdown also when stdout is redirected; only `--json` changes it.
 
 ### Bridge routes and access limits
 

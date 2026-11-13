@@ -109,7 +109,8 @@ gristmill notes list
 gristmill notes transcript show 42
 ```
 
-Replace `42` with a note ID from the list. The CLI can also read user notes and Summaries, search transcripts, and return JSON for scripts and external agents. It cannot change or delete your data.
+Replace `42` with a note ID from the list, or with a call link from **Share with agent**, such as `gristmill://notes/42`. The CLI can also read user notes and Summaries, search transcripts, and return JSON for scripts and external agents. It cannot change or delete your data.
+Agents read the usage guide from the CLI with `gristmill skills get core`. The discovery skill for agents is in [skills/gristmill](skills/gristmill/SKILL.md).
 See [Gristmill CLI](.memory-bank/product/user-journeys/gristmill-cli.md).
 
 ## Build an app

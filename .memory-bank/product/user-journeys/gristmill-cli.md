@@ -7,6 +7,7 @@ As a Gristmill user, I want to read my notes from the terminal and use them in s
 - **Gristmill app → Settings → Advanced → Gristmill CLI** — install the CLI.
 - **Terminal → `gristmill`** — find and read saved notes.
 - **Gristmill app → Chat → bb harness** — the chat agent also uses `gristmill` to read other notes. See [AI conversations](chat.md).
+- **Gristmill app → open meeting note → Share with agent** — copy a call link for an external agent. See [Recording results](meeting-results.md#save-or-share-the-result).
 
 ## Paths
 
@@ -35,6 +36,14 @@ As a Gristmill user, I want to read my notes from the terminal and use them in s
    - `gristmill notes transcript show 42` — the transcript with speakers and times.
 3. To read a part of the transcript, add `--from 00:12:00 --to 00:13:00` or `--speaker speaker_2`.
 
+### Give a call to an agent
+
+1. In the note, click **Share with agent**. The clipboard contains the call link, for example `gristmill://notes/42`, and the command to start.
+2. Paste the text into the agent chat. The agent must be able to run `gristmill` on this Mac.
+3. The agent runs `gristmill skills get core`. The CLI prints the agent guide for the installed version: how to read a call, search and quote the transcript.
+4. The agent uses the link in place of a note ID, for example `gristmill notes transcript show gristmill://notes/42`. The link selects the profile: `gristmill-dev://` reads Gristmill Dev. If `--profile` or `GRISTMILL_PROFILE` selects a different profile, the command fails with exit code 2.
+5. To let agents find the CLI without a link, install the discovery skill from `skills/gristmill/SKILL.md` in the repository into the skills directory of the agent. The skill only tells the agent to run `gristmill skills get core`.
+
 ### Use notes in a script or another tool
 
 1. Send the output to a file or a pipe. The CLI writes JSON automatically.
@@ -61,6 +70,8 @@ As a Gristmill user, I want to read my notes from the terminal and use them in s
 - Given the app is closed, when I run a CLI command, then the command fails with exit code 1 and tells me to open Gristmill.
 - Given I use the CLI, when I try to change a note, then I cannot, because the CLI only reads notes.
 - Given I redirect the output to a file, when the command completes, then the file contains JSON.
+- Given a call link from Gristmill Dev, when an agent runs `gristmill notes show gristmill-dev://notes/42`, then the CLI reads note 42 from the Gristmill Dev profile.
+- Given an agent runs `gristmill skills get core` with redirected output, then it gets the Markdown guide, not JSON.
 
 ## Related documents
 

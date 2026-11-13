@@ -2402,7 +2402,11 @@
     "transcribeAndSummary": "Transkribieren & Zusammenfassen",
     "summary": "Zusammenfassung",
     "audioPreparationDiskFull": "Deine Audioaufnahme ist gespeichert. Gib Speicherplatz frei, bevor du die Audiovorbereitung erneut startest.",
-    "audioPreparationFailed": "Deine Audioaufnahme ist gespeichert. Prüfe den lokalen Speicher und versuche es erneut. Falls die Audiovorbereitung weiterhin fehlschlägt, installiere Gristmill neu."
+    "audioPreparationFailed": "Deine Audioaufnahme ist gespeichert. Prüfe den lokalen Speicher und versuche es erneut. Falls die Audiovorbereitung weiterhin fehlschlägt, installiere Gristmill neu.",
+    "downloadSummary": "Als Markdown herunterladen",
+    "downloadSummaryError": "Die Zusammenfassung konnte nicht gespeichert werden.",
+    "shareWithAgent": "Mit Agent teilen",
+    "callLinkCopied": "Link kopiert"
   },
   "shortcutsDialog": {
     "title": "Tastenkürzel",

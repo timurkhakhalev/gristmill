@@ -112,6 +112,19 @@ export interface TranscriptionDataDeps<PendingNotification = PendingNoteNavigati
 
 const SAFE_NAME_PATTERN = /[/\\?%*:|"<>]/g;
 
+/** The call title as a file name: path and reserved characters become "-". */
+export function summaryFileName(title: string | null | undefined): string {
+  const name = String(title || "")
+    // eslint-disable-next-line no-control-regex -- control characters are invalid in file names.
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(SAFE_NAME_PATTERN, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+/, "");
+
+  return name || "Untitled";
+}
+
 // Electron delivers each handler its own event first; the body is only ever a
 // rest tuple of renderer arguments, decoded at the boundary before use.
 type IpcMainLike = {
@@ -472,6 +485,32 @@ export function registerTranscriptionDataHandlers<PendingNotification>(
     }
   });
 
+  ipcMain.handle(transcriptionDataChannels.exportSummary, async (_event, ...args: unknown[]) => {
+    try {
+      const parsed = zSummaryExportArgs.safeParse({ noteId: args[0], markdown: args[1] });
+
+      if (!parsed.success) return { success: false, error: "Invalid export request" };
+      const note = database.getNote(parsed.data.noteId);
+
+      if (!note) return { success: false, error: "Note not found" };
+
+      const result = await dialog.showSaveDialog({
+        defaultPath: `${summaryFileName(note.title)}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+
+      if (result.canceled || !result.filePath) return { success: false };
+
+      fs.writeFileSync(result.filePath, parsed.data.markdown, "utf-8");
+
+      return { success: true };
+    } catch (error) {
+      logger.error("Error exporting summary", { error: messageOf(error) }, "notes");
+
+      return { success: false, error: messageOf(error) };
+    }
+  });
+
   ipcMain.handle(transcriptionDataChannels.exportTranscript, async (_event, ...args: unknown[]) => {
     try {
       const parsed = zTranscriptExportArgs.safeParse({ noteId: args[0], format: args[1] });
@@ -664,6 +703,11 @@ const zUpdateArgs = z.object({
 const zNoteExportArgs = z.object({
   noteId: z.number().int(),
   format: z.enum(["txt", "md"]),
+});
+
+const zSummaryExportArgs = z.object({
+  noteId: z.number().int(),
+  markdown: z.string().refine((value) => value.trim().length > 0),
 });
 
 const zTranscriptExportArgs = z.object({

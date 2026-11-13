@@ -2425,7 +2425,11 @@
     "transcribeAndSummary": "تفريغ وتلخيص",
     "summary": "ملخص",
     "audioPreparationDiskFull": "تم حفظ الصوت. حرّر مساحة على القرص قبل إعادة محاولة تجهيز الصوت.",
-    "audioPreparationFailed": "تم حفظ الصوت. تحقّق من التخزين المحلي وحاول مجددًا. إذا استمر فشل تجهيز الصوت، فأعد تثبيت Gristmill."
+    "audioPreparationFailed": "تم حفظ الصوت. تحقّق من التخزين المحلي وحاول مجددًا. إذا استمر فشل تجهيز الصوت، فأعد تثبيت Gristmill.",
+    "downloadSummary": "تنزيل بتنسيق Markdown",
+    "downloadSummaryError": "تعذر حفظ الملخص.",
+    "shareWithAgent": "مشاركة مع وكيل",
+    "callLinkCopied": "تم نسخ الرابط"
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

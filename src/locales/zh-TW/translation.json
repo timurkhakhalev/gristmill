@@ -2402,7 +2402,11 @@
     "transcribeAndSummary": "轉錄並摘要",
     "summary": "摘要",
     "audioPreparationDiskFull": "音訊已儲存。請先釋放磁碟空間，再重試音訊準備。",
-    "audioPreparationFailed": "音訊已儲存。請檢查本機儲存空間並重試。如果音訊準備仍然失敗，請重新安裝 Gristmill。"
+    "audioPreparationFailed": "音訊已儲存。請檢查本機儲存空間並重試。如果音訊準備仍然失敗，請重新安裝 Gristmill。",
+    "downloadSummary": "下載為 Markdown",
+    "downloadSummaryError": "無法儲存摘要。",
+    "shareWithAgent": "分享給智慧代理",
+    "callLinkCopied": "連結已複製"
   },
   "shortcutsDialog": {
     "title": "鍵盤快速鍵",

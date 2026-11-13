@@ -2402,7 +2402,11 @@
     "transcribeAndSummary": "转录并总结",
     "summary": "总结",
     "audioPreparationDiskFull": "音频已保存。请先释放磁盘空间，再重试音频准备。",
-    "audioPreparationFailed": "音频已保存。请检查本地存储并重试。如果音频准备仍然失败，请重新安装 Gristmill。"
+    "audioPreparationFailed": "音频已保存。请检查本地存储并重试。如果音频准备仍然失败，请重新安装 Gristmill。",
+    "downloadSummary": "下载为 Markdown",
+    "downloadSummaryError": "无法保存摘要。",
+    "shareWithAgent": "分享给智能体",
+    "callLinkCopied": "链接已复制"
   },
   "shortcutsDialog": {
     "title": "键盘快捷键",

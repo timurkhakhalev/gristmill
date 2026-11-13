@@ -25,6 +25,7 @@ import {
   MessageSquareText,
   MoreHorizontal,
   Play,
+  Share2,
   Sparkles,
   Trash2,
   WandSparkles,
@@ -57,6 +58,7 @@ import {
 } from "../../utils/dateFormatting";
 import { useDateTimePreferences } from "../../hooks/useDateTimePreferences";
 import { composeMockSummary, type MockPipeline } from "./meetingMock";
+import { formatNoteLink, formatNoteShareText } from "../../contracts/noteLink";
 
 type ViewMode = "raw" | "enhanced";
 
@@ -210,8 +212,34 @@ function AudioPartSummary({
   );
 }
 
+function ResultActionButton({
+  label,
+  onPress,
+  children,
+}: {
+  label: string;
+  onPress: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <IconTooltip label={label}>
+      <Button
+        size="sm"
+        variant="ghost"
+        isIconOnly
+        className="size-7 min-h-7 text-muted hover:text-foreground"
+        aria-label={label}
+        onPress={onPress}
+      >
+        {children}
+      </Button>
+    </IconTooltip>
+  );
+}
+
 export default function MeetingResultsPanel({
   noteId,
+  noteTitle = "",
   locale,
   previewRecordings,
   viewMode,
@@ -227,6 +255,8 @@ export default function MeetingResultsPanel({
 }: {
   /** Debug preview only: in-memory stand-in for the delayed-ASR, naming, tasks and Recap pipeline. */
   mockPipeline?: MockPipeline;
+  /** Names the downloaded Summary file and the shared call. */
+  noteTitle?: string;
   actions?: (summaryAction: SummaryActionState) => ReactNode;
   /** Plain text of each view's fallback content, copied when no processing run provides it. */
   fallbackText: Record<ViewMode | "transcript", string>;
@@ -725,6 +755,64 @@ export default function MeetingResultsPanel({
       );
     }
   };
+
+  const [shared, setShared] = useState(false);
+
+  const downloadSummary = async () => {
+    try {
+      const result = await window.electronAPI.exportSummary(noteId, copyText);
+
+      if (!result.success && result.error) throw new Error(result.error);
+    } catch {
+      notify(tr("downloadSummaryError", "Couldn't save the Summary."), "destructive");
+    }
+  };
+
+  const shareCall = async () => {
+    try {
+      const protocol = await window.electronAPI.getOAuthProtocol();
+      const link = formatNoteLink(protocol, noteId);
+      await navigator.clipboard.writeText(formatNoteShareText(link, noteTitle));
+      setShared(true);
+      window.setTimeout(() => setShared(false), 1500);
+    } catch {
+      notify(
+        t("meetingResults.copyError", { defaultValue: "Couldn't copy to the clipboard." }),
+        "destructive"
+      );
+    }
+  };
+
+  const canShareCall = !previewRecordings && (hasSavedTranscript || hasSavedSummary);
+
+  const resultActions = (copyText.trim() || canShareCall) && (
+    <div className="mt-3 flex justify-start gap-0.5">
+      {copyText.trim() && (
+        <ResultActionButton
+          label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}
+          onPress={() => void copyView()}
+        >
+          {copied ? <Check size={15} /> : <Copy size={15} />}
+        </ResultActionButton>
+      )}
+      {viewMode === "enhanced" && copyText.trim() && !previewRecordings && (
+        <ResultActionButton
+          label={tr("downloadSummary", "Download as Markdown")}
+          onPress={() => void downloadSummary()}
+        >
+          <Download size={15} />
+        </ResultActionButton>
+      )}
+      {canShareCall && (
+        <ResultActionButton
+          label={shared ? tr("callLinkCopied", "Link copied") : tr("shareWithAgent", "Share with agent")}
+          onPress={() => void shareCall()}
+        >
+          {shared ? <Check size={15} /> : <Share2 size={15} />}
+        </ResultActionButton>
+      )}
+    </div>
+  );
 
   const allRuns = parts.flatMap((part) => part.runs);
 
@@ -2113,23 +2201,7 @@ export default function MeetingResultsPanel({
         {viewMode === "raw" ? (
           <div>
             {manualContent}
-            {copyText.trim() && (
-              <div className="mt-3 flex justify-start">
-                <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    isIconOnly
-                    className="size-7 min-h-7 text-muted hover:text-foreground"
-                    isDisabled={!copyText.trim()}
-                    aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}
-                    onPress={() => void copyView()}
-                  >
-                    {copied ? <Check size={15} /> : <Copy size={15} />}
-                  </Button>
-                </IconTooltip>
-              </div>
-            )}
+            {resultActions}
           </div>
         ) : (
           <div>
@@ -2300,23 +2372,7 @@ export default function MeetingResultsPanel({
               />
             )}
             {!mock && recapStatus && <RecapNotice status={recapStatus} tr={tr} />}
-            {copyText.trim() && (
-              <div className="mt-3 flex justify-start">
-                <IconTooltip label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    isIconOnly
-                    className="size-7 min-h-7 text-muted hover:text-foreground"
-                    isDisabled={!copyText.trim()}
-                    aria-label={copied ? tr("copied", "Copied") : tr("copyView", "Copy")}
-                    onPress={() => void copyView()}
-                  >
-                    {copied ? <Check size={15} /> : <Copy size={15} />}
-                  </Button>
-                </IconTooltip>
-              </div>
-            )}
+            {resultActions}
           </div>
         )}
       </div>

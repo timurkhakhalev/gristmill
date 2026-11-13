@@ -2402,7 +2402,11 @@
     "transcribeAndSummary": "Transcribir y resumir",
     "summary": "Resumen",
     "audioPreparationDiskFull": "Tu audio está guardado. Libera espacio en disco antes de volver a preparar el audio.",
-    "audioPreparationFailed": "Tu audio está guardado. Revisa el almacenamiento local e inténtalo de nuevo. Si la preparación de audio sigue fallando, reinstala Gristmill."
+    "audioPreparationFailed": "Tu audio está guardado. Revisa el almacenamiento local e inténtalo de nuevo. Si la preparación de audio sigue fallando, reinstala Gristmill.",
+    "downloadSummary": "Descargar como Markdown",
+    "downloadSummaryError": "No se pudo guardar el resumen.",
+    "shareWithAgent": "Compartir con un agente",
+    "callLinkCopied": "Enlace copiado"
   },
   "shortcutsDialog": {
     "title": "Atajos de teclado",

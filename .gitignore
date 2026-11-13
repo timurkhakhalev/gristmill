@@ -292,7 +292,9 @@ $RECYCLE.BIN/
 .trae/
 .windsurf/
 .zencoder/
-skills/
+skills/*
+# The Gristmill CLI discovery stub ships with the repository.
+!skills/gristmill/
 
 # OS generated files
 .DS_Store

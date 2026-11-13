@@ -20,6 +20,7 @@ import { writeBbConnection, removeBbConnection } from "./src/helpers/bbWorkspace
 import { closeBbConnection } from "./src/helpers/bbConnection.js";
 import { installAgentCli } from "./src/helpers/installAgentCli.js";
 import { NoteReadService } from "./src/helpers/noteReadService.js";
+import { parseNoteLink } from "./src/contracts/noteLink.js";
 import { GlobeKeyManager } from "./src/helpers/globeKeyManager.js";
 import { GoogleCalendarManager } from "./src/helpers/googleCalendarManager.js";
 import { MicrosoftCalendarManager } from "./src/helpers/microsoftCalendarManager.js";
@@ -583,10 +584,38 @@ function initializeDeferredManagers(): InitializedDeferredManagers {
   return { trayManager: initializedTrayManager, globeKeyManager: initializedGlobeKeyManager };
 }
 
+// A shared Note link that arrives before the startup window exists waits here;
+// startApp opens it after it creates the control panel.
+let pendingLinkedNoteId: number | null = null;
+
+let controlPanelStarted = false;
+
+function openLinkedNote(noteId: number): void {
+  if (!controlPanelStarted || !windowManager) {
+    pendingLinkedNoteId = noteId;
+
+    return;
+  }
+
+  const folderId = databaseManager?.getNote(noteId)?.folder_id ?? null;
+
+  windowManager.queueNoteNavigation({ noteId, folderId }).catch((error: Error) => {
+    debugLogger.error("Failed to open the linked note", { error: error.message }, "window");
+  });
+}
+
 app.on("open-url", (event, url) => {
   event.preventDefault();
 
   if (!url.startsWith(`${OAUTH_PROTOCOL}://`)) return;
+
+  const link = parseNoteLink(url);
+
+  if (link && link.protocol === OAUTH_PROTOCOL) {
+    openLinkedNote(link.noteId);
+
+    return;
+  }
 
   void windowManager?.createControlPanelWindow().catch((error: Error) => {
     debugLogger.error("Failed to open control panel", { error: error.message }, "window");
@@ -674,6 +703,13 @@ async function startApp(): Promise<void> {
   debugLogger.info("Start minimized", { enabled: startMinimized, launchedHidden });
   // Hydrate onboarding and settings even when the app starts in the tray.
   await initializedWindowManager.createControlPanelWindow({ show: !startMinimized });
+  controlPanelStarted = true;
+
+  if (pendingLinkedNoteId !== null) {
+    const noteId = pendingLinkedNoteId;
+    pendingLinkedNoteId = null;
+    openLinkedNote(noteId);
+  }
 
   // Set up meeting mode hotkey
   const isMeetingPress = createHotkeyRepeatGate();

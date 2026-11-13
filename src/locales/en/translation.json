@@ -2393,7 +2393,11 @@
     "transcribeAndSummary": "Transcribe & Summary",
     "summary": "Summary",
     "audioPreparationDiskFull": "Your audio is saved. Free disk space before retrying audio preparation.",
-    "audioPreparationFailed": "Your audio is saved. Check local storage and retry. If audio preparation still fails, reinstall Gristmill."
+    "audioPreparationFailed": "Your audio is saved. Check local storage and retry. If audio preparation still fails, reinstall Gristmill.",
+    "downloadSummary": "Download as Markdown",
+    "downloadSummaryError": "Couldn't save the Summary.",
+    "shareWithAgent": "Share with agent",
+    "callLinkCopied": "Link copied"
   },
   "cleanupSettings": {
     "permissions": "Recording permissions",

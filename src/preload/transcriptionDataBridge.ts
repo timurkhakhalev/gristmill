@@ -134,6 +134,8 @@ export function createTranscriptionDataBridge(ipcRenderer: IpcRendererLike): Tra
       ),
     exportNote: (noteId, format) =>
       invokeParse(exportResultSchema, transcriptionDataChannels.exportNote, noteId, format),
+    exportSummary: (noteId, markdown) =>
+      invokeParse(exportResultSchema, transcriptionDataChannels.exportSummary, noteId, markdown),
     exportTranscript: (noteId, format) =>
       invokeParse(exportResultSchema, transcriptionDataChannels.exportTranscript, noteId, format),
     exportDictionary: (words) =>

@@ -1056,6 +1056,7 @@ export default function NoteEditor({
         <div className="flex-1 relative min-h-0 flex flex-col [--floating-inset:5.5rem]">
           <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-y-auto agent-chat-scroll">
             <MeetingResultsPanel
+              noteTitle={note.title}
               capturePhase={capturePhase}
               notice={
                 <>

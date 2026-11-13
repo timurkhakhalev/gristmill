@@ -11,6 +11,14 @@ const path = require("node:path") as typeof import("node:path");
 // SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
 const { z } = require("zod") as typeof import("zod");
 
+// SAFETY: CJS require seam; Node's strip-only TypeScript loader cannot run this script as ESM.
+const { parseNoteLink, noteLinkProfile } =
+  require("../src/contracts/noteLink.ts") as typeof import("../src/contracts/noteLink.ts");
+
+// SAFETY: CJS require seam; the sibling script exports its API through module.exports.
+const { skills, skillText } =
+  require("./gristmill-cli-skills.cts") as import("./gristmill-cli-skills.cts").API;
+
 type NoteReadService = import("../src/helpers/noteReadService.ts").NoteReadService;
 
 type NoteTranscript = import("../src/contracts/noteRead.ts").NoteTranscript;
@@ -48,6 +56,8 @@ const errorBodySchema = z.looseObject({
 
 type Parsed =
   | { help: string }
+  | { skills: "list" }
+  | { skills: "get"; names: string[]; full: boolean }
   | { profile: string; doctor: true }
   | { profile: string; url: URL; plainText: boolean; resource: string };
 
@@ -56,22 +66,26 @@ interface HelpTexts {
 }
 
 const help: HelpTexts = {
-  "": "Gristmill Notes CLI\nUsage: gristmill [--profile NAME] [--json] notes <command> | doctor\nCommands: notes list, notes search QUERY, notes show ID, notes content show ID, notes summary show ID, notes transcript show ID, doctor\nInteractive output is readable text. Redirected output is JSON; --json forces JSON in a terminal. Errors use the same output mode on stderr (exit 1); invalid arguments exit 2.\nInside a Gristmill BB workspace, commands use the workspace profile. Elsewhere the installed launcher defaults to its app channel: production or development. --profile dev is shorthand for development; GRISTMILL_PROFILE also selects a profile. Dates use local calendar days in the selected profile's machine time zone.\nExamples: gristmill notes list; gristmill --profile dev notes search release; gristmill --json notes transcript show 42 --from 00:12:00 --to 00:13:00",
+  "": "Gristmill Notes CLI\nUsage: gristmill [--profile NAME] [--json] notes <command> | doctor | skills <command>\nCommands: notes list, notes search QUERY, notes show REF, notes content show REF, notes summary show REF, notes transcript show REF, doctor, skills list, skills get NAME [--full]\nAgents: run gristmill skills get core before you read calls.\nREF is a Note ID or a shared call link such as gristmill://notes/42. The link selects its profile: gristmill-dev:// links read Gristmill Dev.\nInteractive output is readable text. Redirected output is JSON; --json forces JSON in a terminal. Errors use the same output mode on stderr (exit 1); invalid arguments exit 2.\nInside a Gristmill BB workspace, commands use the workspace profile. Elsewhere the installed launcher defaults to its app channel: production or development. --profile dev is shorthand for development; GRISTMILL_PROFILE also selects a profile. Dates use local calendar days in the selected profile's machine time zone.\nExamples: gristmill notes list; gristmill --profile dev notes search release; gristmill --json notes transcript show 42 --from 00:12:00 --to 00:13:00",
   notes:
-    "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\n       gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n       gristmill notes show ID\n       gristmill notes content show ID\n       gristmill notes summary show ID\n       gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nAdd --json for machine-readable output in a terminal. Redirected output is JSON. No result limit is applied. Empty lists and absent content are successful.",
+    "Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\n       gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n       gristmill notes show REF\n       gristmill notes content show REF\n       gristmill notes summary show REF\n       gristmill notes transcript show REF [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nREF is a Note ID or a shared call link such as gristmill://notes/42.\nAdd --json for machine-readable output in a terminal. Redirected output is JSON. No result limit is applied. Empty lists and absent content are successful.",
   transcript:
-    "Usage: gristmill notes transcript show ID [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nTimes use the concatenated Note recording timeline; intentional pauses are excluded. Interval filters include intersecting segments. --plain-text forces text when output is redirected.\nExample: gristmill notes transcript show 42 --from 00:12:00 --speaker speaker_2",
+    "Usage: gristmill notes transcript show REF [--from HH:MM:SS[.mmm]] [--to HH:MM:SS[.mmm]] [--speaker ID] [--plain-text]\nTimes use the concatenated Note recording timeline; intentional pauses are excluded. Interval filters include intersecting segments. --plain-text forces text when output is redirected.\nExample: gristmill notes transcript show 42 --from 00:12:00 --speaker speaker_2",
   list: 'Usage: gristmill notes list [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--with-transcript]\nLists all Notes, newest first. Dates are inclusive local calendar days. Empty archives print No Notes. in a terminal or {"notes":[]} as JSON.',
   search:
     "Usage: gristmill notes search QUERY [--note ID] [--from YYYY-MM-DD] [--to YYYY-MM-DD]\nSearches title, user notes, Summary and every current Note transcript. JSON output has notes and transcripts arrays.",
-  show: "Usage: gristmill notes show ID\nReturns Note metadata, participant names and content availability. Read content, summary and transcript separately.",
+  show: "Usage: gristmill notes show REF\nReturns Note metadata, participant names and content availability. Read content, summary and transcript separately.",
   content:
-    "Usage: gristmill notes content show ID\nReturns exact user notes Markdown; an empty Note returns an empty string.",
+    "Usage: gristmill notes content show REF\nReturns exact user notes Markdown; an empty Note returns an empty string.",
   summary:
-    "Usage: gristmill notes summary show ID\nReturns saved Summary Markdown or status absent; never generates content.",
+    "Usage: gristmill notes summary show REF\nReturns saved Summary Markdown or status absent; never generates content.",
+  skills:
+    "Usage: gristmill skills list\n       gristmill skills get NAME... [--full]\nPrints the agent skill sections bundled with this CLI, so they always match the installed version. Output is Markdown; --json returns {skills:[{name,description,content}]}.\nExample: gristmill skills get core --full",
 };
 
-const jsonOutput = process.argv.includes("--json") || !process.stdout.isTTY;
+const explicitJson = process.argv.includes("--json");
+
+const jsonOutput = explicitJson || !process.stdout.isTTY;
 
 function failure(code: string, message: string, exitCode = 1) {
   process.stderr.write(
@@ -91,6 +105,82 @@ function parseTime(value: string) {
   );
 }
 
+/** A Note ID, and the profile that a shared call link names (null for a bare ID). */
+interface NoteRef {
+  id: string;
+  profile: string | null;
+}
+
+function parseNoteRef(value: string | undefined): NoteRef {
+  if (value && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value)))
+    return { id: value, profile: null };
+
+  const link = value ? parseNoteLink(value) : null;
+
+  if (!link) throw new Error("Expected a positive note ID or a gristmill://notes/ID link");
+  const profile = noteLinkProfile(link.protocol);
+
+  if (profile === null) throw new Error(`Unknown Gristmill link protocol: ${link.protocol}://`);
+
+  return { id: String(link.noteId), profile };
+}
+
+function parseSkillsArgs(args: string[]): Parsed {
+  const action = args.shift();
+
+  if (action === "list" && args.length === 0) return { skills: "list" };
+
+  if (action !== "get")
+    throw new Error("Expected skills list or skills get NAME. Run gristmill skills --help");
+  const full = args.includes("--full");
+  const names = args.filter((arg) => arg !== "--full");
+
+  if (!names.length) throw new Error("skills get requires NAME. Run gristmill skills list");
+
+  for (const name of names) {
+    if (name.startsWith("--")) throw new Error(`Unknown option ${name}`);
+
+    if (!skills.some((skill) => skill.name === name))
+      throw new Error(`Unknown skill ${name}. Run gristmill skills list`);
+  }
+
+  return { skills: "get", names, full };
+}
+
+function printSkills(parsed: Extract<Parsed, { skills: string }>) {
+  if (parsed.skills === "list") {
+    process.stdout.write(
+      explicitJson
+        ? JSON.stringify({
+            skills: skills.map(({ name, description }) => ({ name, description })),
+          }) + "\n"
+        : skills.map((skill) => `  ${skill.name.padEnd(10)} ${skill.description}`).join("\n") + "\n"
+    );
+
+    return;
+  }
+
+  const reference = [help[""], help.notes, help.transcript, help.skills].join("\n\n");
+
+  const selected = parsed.names.flatMap((name) => {
+    const skill = skills.find((item) => item.name === name);
+
+    return skill ? [{ ...skill, content: skillText(skill, reference, parsed.full) }] : [];
+  });
+
+  process.stdout.write(
+    explicitJson
+      ? JSON.stringify({
+          skills: selected.map(({ name, description, content }) => ({
+            name,
+            description,
+            content,
+          })),
+        }) + "\n"
+      : selected.map((skill) => skill.content).join("\n")
+  );
+}
+
 function parseArgs(argv: string[]): Parsed {
   const args = [...argv];
   const cwd = process.cwd();
@@ -102,6 +192,9 @@ function parseArgs(argv: string[]): Parsed {
     process.env.GRISTMILL_CLI_DEFAULT_PROFILE ||
     "production";
 
+  // A shared call link selects its own profile unless the caller selected one.
+  let profileSelected = Boolean(process.env.GRISTMILL_PROFILE || workspaceProfile);
+
   const jsonAt = args.indexOf("--json");
 
   if (jsonAt !== -1) args.splice(jsonAt, 1);
@@ -110,6 +203,7 @@ function parseArgs(argv: string[]): Parsed {
   if (at !== -1) {
     if (!args[at + 1]) throw new Error("--profile requires a name");
     profile = args[at + 1];
+    profileSelected = true;
     args.splice(at, 2);
   }
 
@@ -121,7 +215,12 @@ function parseArgs(argv: string[]): Parsed {
   }
 
   if (args.includes("--help") || args.includes("-h")) {
-    const text = args[0] === "notes" ? help[args[1]] || help.notes : help[""];
+    const text =
+      args[0] === "notes"
+        ? help[args[1]] || help.notes
+        : args[0] === "skills"
+          ? help.skills
+          : help[""];
 
     return { help: text };
   }
@@ -130,7 +229,10 @@ function parseArgs(argv: string[]): Parsed {
 
   if (command === "doctor" && args.length === 0) return { profile, doctor: true };
 
-  if (command !== "notes") throw new Error("Expected notes or doctor. Run gristmill --help");
+  if (command === "skills") return parseSkillsArgs(args);
+
+  if (command !== "notes")
+    throw new Error("Expected notes, doctor or skills. Run gristmill --help");
   const resource = args.shift() || "";
   let pathname = "";
   let id;
@@ -147,11 +249,20 @@ function parseArgs(argv: string[]): Parsed {
     pathname = `/v1/notes/`;
   else throw new Error("Unknown notes command. Run gristmill notes --help");
 
-  if (resource !== "list" && resource !== "search") {
-    id = args.shift();
+  const useLinkProfile = (linkProfile: string | null) => {
+    if (linkProfile === null) return;
 
-    if (!/^[1-9]\d*$/.test(id || "") || !Number.isSafeInteger(Number(id)))
-      throw new Error("Expected positive note ID");
+    if (profileSelected && profileDir(profile) !== profileDir(linkProfile))
+      throw new Error(
+        `The link is for the ${linkProfile} profile, but the ${profile} profile is selected`
+      );
+    profile = linkProfile;
+  };
+
+  if (resource !== "list" && resource !== "search") {
+    const ref = parseNoteRef(args.shift());
+    useLinkProfile(ref.profile);
+    id = ref.id;
     pathname += id + (resource === "show" ? "" : `/${resource}`);
   }
 
@@ -196,12 +307,11 @@ function parseArgs(argv: string[]): Parsed {
         new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value)
     )
       throw new Error("Date must use a valid YYYY-MM-DD");
-    else if (
-      flag === "--note" &&
-      (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))
-    )
-      throw new Error("Invalid note ID");
-    else url.searchParams.set(flag.slice(2), value);
+    else if (flag === "--note") {
+      const ref = parseNoteRef(value);
+      useLinkProfile(ref.profile);
+      url.searchParams.set("note", ref.id);
+    } else url.searchParams.set(flag.slice(2), value);
   }
 
   const fromMs = url.searchParams.get("from_ms");
@@ -460,6 +570,12 @@ async function main() {
 
   if ("help" in parsed) {
     process.stdout.write(parsed.help + "\n");
+
+    return;
+  }
+
+  if ("skills" in parsed) {
+    printSkills(parsed);
 
     return;
   }

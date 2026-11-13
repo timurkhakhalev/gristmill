@@ -196,6 +196,7 @@ export const transcriptionDataChannels = {
   getTranscriptionById: "get-transcription-by-id",
   updateTranscriptionText: "update-transcription-text",
   exportNote: "export-note",
+  exportSummary: "export-summary",
   exportTranscript: "export-transcript",
   exportDictionary: "export-dictionary",
   selectAudioFile: "select-audio-file",
@@ -263,6 +264,8 @@ export interface TranscriptionDataApi {
     rawText: string
   ): Promise<TranscriptionUpdateResult>;
   exportNote(noteId: number, format: "txt" | "md"): Promise<ExportResult>;
+  /** Saves the shown Summary Markdown to a file that the user selects; the Note title names it. */
+  exportSummary(noteId: number, markdown: string): Promise<ExportResult>;
   exportTranscript(noteId: number, format: "txt" | "srt" | "json" | "md"): Promise<ExportResult>;
   exportDictionary(words: string[]): Promise<ExportResult>;
   selectAudioFile(options?: { multiple?: boolean }): Promise<{

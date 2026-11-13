@@ -2402,7 +2402,11 @@
     "transcribeAndSummary": "Transcrire et résumer",
     "summary": "Résumé",
     "audioPreparationDiskFull": "Votre audio est enregistré. Libérez de l’espace disque avant de relancer la préparation audio.",
-    "audioPreparationFailed": "Votre audio est enregistré. Vérifiez le stockage local et réessayez. Si la préparation audio échoue encore, réinstallez Gristmill."
+    "audioPreparationFailed": "Votre audio est enregistré. Vérifiez le stockage local et réessayez. Si la préparation audio échoue encore, réinstallez Gristmill.",
+    "downloadSummary": "Télécharger en Markdown",
+    "downloadSummaryError": "Impossible d'enregistrer le résumé.",
+    "shareWithAgent": "Partager avec un agent",
+    "callLinkCopied": "Lien copié"
   },
   "shortcutsDialog": {
     "title": "Raccourcis clavier",

@@ -2402,7 +2402,11 @@
     "transcribeAndSummary": "Trascrivi e riassumi",
     "summary": "Riepilogo",
     "audioPreparationDiskFull": "Il tuo audio è salvato. Libera spazio sul disco prima di riprovare a preparare l’audio.",
-    "audioPreparationFailed": "Il tuo audio è salvato. Controlla lo spazio di archiviazione locale e riprova. Se la preparazione audio continua a non riuscire, reinstalla Gristmill."
+    "audioPreparationFailed": "Il tuo audio è salvato. Controlla lo spazio di archiviazione locale e riprova. Se la preparazione audio continua a non riuscire, reinstalla Gristmill.",
+    "downloadSummary": "Scarica come Markdown",
+    "downloadSummaryError": "Impossibile salvare il riepilogo.",
+    "shareWithAgent": "Condividi con un agente",
+    "callLinkCopied": "Link copiato"
   },
   "shortcutsDialog": {
     "title": "Scorciatoie da tastiera",
